@@ -541,7 +541,7 @@ SalesIntakeReviewActions salesIntakeReviewActions(
       unitId: goods.unitId,
       unitName: goods.unitName,
       // 无权限或主价不具备本位币证明时，面板按「标价未知」处理，服务端权威核价。
-      price: financeExactTrimmed(goods.baseCurrencyPrice?.toString()),
+      price: financeExactTrimmed(goods.baseCurrencyPriceText),
     );
   },
   createClient: (context, proposal) async {

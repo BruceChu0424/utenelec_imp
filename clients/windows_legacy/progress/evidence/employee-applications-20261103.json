@@ -1,0 +1,244 @@
+{
+  "id": "E-EMPLOYEE-APPLICATIONS-20261103",
+  "branch": "uimp/expense-workflow-20261103",
+  "baseCommit": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "contract": "clients/windows_legacy/progress/contracts/employee-applications-workflow.json",
+  "nativeStatus": "business-not-migrated; read-scope-transport-only",
+  "nativeSourceAudit": {
+    "implementedFeatures": [
+      "Goods",
+      "Units",
+      "Columns",
+      "Downloads",
+      "Publish"
+    ],
+    "expenseOrApplicationBusinessFeaturePresent": false,
+    "expenseNativeTargetsPresent": false,
+    "scopeConsumer": "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs",
+    "scopeRegression": "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs",
+    "sourceSha256": {
+      "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs": "33932fd6b2fad1a1948b7e409896fe2e8a375df0987823b3eea0f78cea53a841",
+      "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs": "5c491419ee0bafbe24555a3046d2324b1efce8133213e066b7de4fe133bfa803"
+    }
+  },
+  "validation": {
+    "nativeCoreCompilation": {
+      "x86": "passed with warnaserror; final frozen working tree",
+      "x64": "passed with warnaserror; final frozen working tree",
+      "profile": "Debug local fixture",
+      "scope": "application-read-scope"
+    },
+    "nativeReadScopeFixtures": {
+      "x86": "passed; final frozen working tree",
+      "x64": "passed; final frozen working tree",
+      "method": "ReadScopeRevisionChecks.Run via private local ScopeRunner; includes business-applications/pending and financial-candidate proof changes, old responses, identity retirement and existing scope transitions"
+    },
+    "nativeBusinessRequestsExecuted": false,
+    "canonicalInventory": {
+      "pageFiles": 226,
+      "featureGroups": 36,
+      "controllerFiles": 254,
+      "routeConstructorCandidates": 282,
+      "workPackages": 368,
+      "newNativePageWorkItems": 6,
+      "newNativePageStatuses": "todo",
+      "done": 10,
+      "fullErpEquivalent": false,
+      "win7Accepted": false
+    },
+    "nativeBusinessUiInteractionExecuted": false,
+    "targetPcAcceptance": false,
+    "workItemStatusesAdvanced": false,
+    "fullErpEquivalent": false,
+    "productionRequestsExecuted": false,
+    "formalPackageCreated": false,
+    "productionDeployment": false,
+    "nativeLogs": [
+      "build-applications-wpf-scope-x86.log",
+      "build-applications-wpf-scope-x64.log",
+      "build-applications-wpf-scope-x86-tests.log",
+      "build-applications-wpf-scope-x64-tests.log"
+    ],
+    "canonicalToolChecks": {
+      "businessInventoryWrite": "passed on final frozen working tree",
+      "progressTrackerSync": "passed; existing IDs retained and six added page-source packages remain todo",
+      "progressTrackerCheck": "passed on final frozen working tree",
+      "stableExistingIdsPreserved": true,
+      "nativeStatusesAdvanced": 0
+    },
+    "nativeBinarySha256": {
+      "x86": "e89e5f13e7516bae2802c85c1415adc505da130e3b9c24111cb79cd291f117d7",
+      "x64": "f2794182708f5dea11a616b40512f4224b117c104f94254f9085b2a5a1ce7ba9"
+    }
+  },
+  "remaining": [
+    "Migrate all reimbursement and administrative application pages, actions, task-center categories, permissions, badge scopes and printing to native WPF before enabling business entry points.",
+    "Consume current server stages, round history, exact money strings, row capabilities and unknown-submission reconciliation; do not recreate server financial calculations.",
+    "Complete Win7 SP1 x86/x64 business and target-PC acceptance separately from local transport fixture checks."
+  ],
+  "nonNativeVerification": {
+    "method": "Workflow PostgreSQL cases use a fresh private PG16 instance and minimal owning schemas with the actual application migration and shared routing SQL. Only the unrelated legacy expense-notice rewrite is excluded there; full Flyway/expense suites validate the complete migration. Financial source matching uses synthetic classified records and does not execute or enable the unsupported supplier-prepayment posting algorithm.",
+    "backendLog": "build-applications-prepayment-final-tests.log",
+    "backendSuites": [
+      {
+        "name": "ArchitectureBoundaryTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "DetailViewAuditCoverageArchitectureTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "BusinessApplicationReadScopeTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "BusinessApplicationAttachmentPolicyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "BusinessApplicationControllerRoutingTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "BusinessApplicationPostgresTest",
+        "tests": 18,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "BusinessApplicationWorkflowTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "BusinessMasterReferenceAccessTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "backendTotals": {
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "financialSourceScopeFlutterTests": 10,
+    "financialSourceScopeFlutterLog": "build-applications-finance-scope-tests.log",
+    "extraExpenseWidgetStressTests": 4,
+    "extraExpenseWidgetStressLog": "build-expense-extra-stress.log",
+    "notNativeBusinessAcceptance": true,
+    "lastBackendRegression": {
+      "log": "build-applications-procurement-final-test.log",
+      "suite": "BusinessApplicationPostgresTest",
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "purpose": "Final supplier-manager-owned paper route skips unrelated department substitution and still prohibits procurement self-approval; includes all prior supplier-prepayment/cancel/routing PostgreSQL cases."
+    },
+    "recordRouteRegression": {
+      "tests": 2,
+      "failures": 0,
+      "log": "build-detail-route-review-final.log",
+      "purpose": "GoRouter reuses state across concrete record routes; old expense/application confirmations cannot mutate the prior record after navigation."
+    },
+    "editorRouteRegression": {
+      "tests": 4,
+      "failures": 0,
+      "log": "build-editor-resource-identity-review.log",
+      "purpose": "Real GoRouter template State reuse is permanently fenced for both expense and application editors after A-to-B-to-A navigation; retained A save callbacks cannot write. Canonical resource keys replace State and save only B identity, amount, purpose and row data even when versions are equal."
+    },
+    "finalBackendFingerprintReview": {
+      "manifest": "build/expense-workflow-20261103/backend-verification.json",
+      "manifestSha256": "9be0aef1ed035624f15800df5c12adfc3ecba8887686967a50d5b765e6c0e5f3",
+      "sourceFileCount": 6351,
+      "mismatchedSourceFiles": 0,
+      "targetedTests": 141,
+      "purpose": "Independent file-by-file comparison of all 6351 recorded server/src and server/pom.xml sources; does not add overlapping test counts or assert full CI."
+    },
+    "finalEditorIntegrationRegression": {
+      "log": "build-final-editor-source-verified.log",
+      "tests": 16,
+      "failures": 0,
+      "purpose": "Root final targeted run includes editor resource identity, ordinary expense edit, guided unknown create/upload and durable recovery after the final receipt guard. Overlaps the independently executed 4-case editor route group; do not sum."
+    },
+    "finalPrintLayoutReview": {
+      "verifiedAtUtc": "2026-11-04T08:52:47.660638+00:00",
+      "tests": 27,
+      "failures": 0,
+      "log": "build-final-paper-layout-verified.log",
+      "analysis": "build-final-paper-source-analysis.log; five files, no issues found",
+      "purpose": "Final 44pt paper signature layout; this group overlaps previously recorded print/form tests and must not be summed. Only print and canonical metadata were refreshed in this follow-up."
+    }
+  },
+  "sourceVersion": {
+    "kind": "verified-working-tree",
+    "baseHead": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+    "finalCommitClaimed": false,
+    "explanation": "Verification includes the frozen uncommitted working-tree changes over this HEAD. It does not claim the subsequent final Git commit.",
+    "verifiedAtUtc": "2026-11-04T08:49:54.711694+00:00",
+    "sourceSha256": {
+      "lib/core/router/app_router.dart": "a5408c61734b129391d92554657e7e8b73d9760f8ed28f2bc84ad8cde3f02a5b",
+      "lib/features/expense/providers/expense_providers.dart": "90d5a16bb0f96056df824b5763a26128ff573c5b71e3793cf6b4016118880635",
+      "lib/features/expense/pages/expense_detail_page.dart": "0057c1f0aeca759ac11c6671ddedd8916c766906c1b9572e7bd05da6fd48d89c",
+      "lib/features/expense/widgets/expense_claim_print.dart": "1188bb2e6fa63cbe07afa9425f2caefc3faeae2198c38f08b8da2b92396e8135",
+      "lib/shared/platform_tables/platform_table_repository.dart": "bfb9639c5cf82cfbb47bdeaecdafc18ed822a38e416d4fd230ac992c3b7c40eb",
+      "lib/shared/platform_tables/platform_table_models.dart": "a6747670f4b0838034a0d95d3e65a0b3d8a68a91ae682ecad73d34c400b608f9",
+      "lib/shared/platform_tables/platform_table_binding.dart": "87f8ac0ef46bc4fead4987456c008ec253609d933a2ea9db994c3352129ae36c",
+      "lib/core/network/api_client.dart": "895b9db1e7924e3936422ad60f01b059914e83f148da548d422bd22452255d1a",
+      "lib/features/applications/pages/business_application_detail_page.dart": "06d7816c47a013ff79cd3104eb34fbc848426ab50b4d764c7981906b27dc551e",
+      "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs": "33932fd6b2fad1a1948b7e409896fe2e8a375df0987823b3eea0f78cea53a841",
+      "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs": "5c491419ee0bafbe24555a3046d2324b1efce8133213e066b7de4fe133bfa803",
+      "lib/features/expense/pages/expense_claim_edit_page.dart": "f23ead366e6d47f503f29e924de9ad1bbc4191009e9c423e2116840d1c97538a",
+      "lib/features/applications/pages/business_application_edit_page.dart": "e75053024d30523d5eec9de1879acb12272a009ad9127f839922af89a9799eff",
+      "test/features/applications/expense_application_editor_identity_test.dart": "4e112778d159daf978cac0c035bab9a690325d22f4ee3fcf9572cca45b31093c",
+      "lib/features/applications/widgets/business_application_print.dart": "0b792857b8c80f1bbff07fca9a27c4b4a95a23e6880167cada7da6c4fbdd6958"
+    },
+    "businessInventorySha256": "44b7f154f86bd33752baa0e0c81733976299026b28bd601f69dd05c1e5cd3e8a"
+  },
+  "lastIndependentReview": {
+    "runtimeEdited": false,
+    "gitDiffCheck": "passed; no whitespace errors",
+    "dependencyFilesMatchHead": [
+      "pubspec.yaml",
+      "pubspec.lock",
+      "server/pom.xml"
+    ],
+    "resolvedArchive": "pub.dev/archive-4.5.2",
+    "isolatedPubspecLockSha256": "1f8b96cd8bbca9792278a19b82426eb0458870b7d5af9fd86ae3dbc468b576f5",
+    "originalMainState": "Existing pubspec.lock modification and untracked tmp/ retained; this task did not write to the original main tree.",
+    "originalMainPubspecLockSha256": "330f106b921c1305c49de298e786f13bdfc2e2777e33513dbaa62ec7a46239e4",
+    "payrollRuntimeChanged": false,
+    "payrollKindsAdded": false,
+    "sharedPayrollExpenseTestDifference": "Only expense serialization expectation adds expenseKind=GENERAL; payroll feature code and payroll permission grants are unchanged.",
+    "knownMetadataWording": "application:pay permission help retains a removed payroll wording reference. Reported to root; no payroll kind or permission expansion exists in runtime.",
+    "productionRequestsExecuted": false,
+    "finalCommitClaimed": false
+  }
+}

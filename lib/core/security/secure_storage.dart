@@ -235,13 +235,55 @@ class SecureStorage {
   final FlutterSecureStorage _storage;
 
   /// 员工令牌记录与模拟身份键的落点：Web 每标签页独立（sessionStorage），
-  /// 原生回退为 [_storage]（进程级共享，与历史行为一致）。
+  /// 桌面端只保留在当前进程；移动端使用平台安全存储。
   final TabScopedStore _sessionScope;
   final AuthRefreshLock _staffTokenRecordLock;
 
   /// 收编旧版共享令牌记录的专用锁：与记录锁分离，避免嵌套获取同一把锁。
   final AuthRefreshLock _legacyAdoptionLock;
   bool _legacyAdoptionChecked = false;
+  bool _applicationSessionPrepared = false;
+
+  /// Retire credentials left by releases that persisted desktop sessions. The
+  /// callback must durably queue the original issuer/token before deletion.
+  /// Ordinary reads never adopt these credentials into a new desktop process.
+  Future<void> prepareForApplicationSession({
+    required Future<void> Function(AuthTokenSnapshot previous)
+    retirePersistedSession,
+  }) async {
+    if (!isProcessSessionScope(_sessionScope) || _applicationSessionPrepared) {
+      return;
+    }
+    await _legacyAdoptionLock.synchronized(() async {
+      if (_applicationSessionPrepared) return;
+      final raw = await _storage.read(key: _keyTokenRecord);
+      final previous = AuthTokenSnapshot.tryParse(raw);
+      // A corrupt authoritative record cannot revive older two-key copies.
+      final legacyRefresh = raw == null
+          ? await _storage.read(key: _keyRefresh)
+          : null;
+      final retired =
+          previous ??
+          AuthTokenSnapshot(
+            accessToken: null,
+            refreshToken: legacyRefresh,
+            generation: 0,
+            intentGeneration: 0,
+            sessionLineage: null,
+          );
+      if (retired.hasRefreshToken) await retirePersistedSession(retired);
+      for (final key in <String>[
+        _keyTokenRecord,
+        _keyAccess,
+        _keyRefresh,
+        _keyImpersonationRecord,
+        _keyImpersonationMode,
+      ]) {
+        await _storage.delete(key: key);
+      }
+      _applicationSessionPrepared = true;
+    });
+  }
 
   static const _keyTokenRecord = 'auth.token_record.v1';
   static const _keyAccess = 'auth.access_token';
@@ -686,6 +728,9 @@ class SecureStorage {
   /// 必须各自显式登录。共享副本删除失败不影响本标签页正确性——最坏情况是
   /// 下一个新标签页重复收编同一记录，服务端刷新轮换的复用检测会让旧副本失效。
   Future<String?> _adoptLegacySharedTokenRecord() {
+    if (isProcessSessionScope(_sessionScope)) {
+      return Future<String?>.value();
+    }
     if (_legacyAdoptionChecked) return Future<String?>.value();
     return _legacyAdoptionLock.synchronized(() async {
       if (_legacyAdoptionChecked) return null;
@@ -712,6 +757,10 @@ class SecureStorage {
     if (record.exists) {
       // A corrupt authoritative record is a fail-closed boundary. Never revive
       // stale legacy keys that an earlier best-effort cleanup left behind.
+      return const AuthTokenSnapshot.empty();
+    }
+
+    if (isProcessSessionScope(_sessionScope)) {
       return const AuthTokenSnapshot.empty();
     }
 
@@ -761,6 +810,9 @@ class SecureStorage {
       return tombstone;
     }
 
+    if (isProcessSessionScope(_sessionScope)) {
+      return const AuthTokenSnapshot.empty();
+    }
     final access = await _storage.read(key: _keyAccess);
     final refresh = await _storage.read(key: _keyRefresh);
     if (access == null && refresh == null) {
@@ -781,6 +833,11 @@ class SecureStorage {
     // The authoritative single-key write must succeed or the mutation fails.
     // Legacy cleanup is explicitly best-effort.
     await _sessionScope.write(_keyTokenRecord, jsonEncode(snapshot.toJson()));
+    // An early explicit login may overtake startup migration. Its in-memory
+    // write must not erase the only legacy refresh copy before it is queued.
+    if (isProcessSessionScope(_sessionScope) && !_applicationSessionPrepared) {
+      return;
+    }
     try {
       await _storage.delete(key: _keyAccess);
     } catch (_) {}

@@ -1035,25 +1035,30 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                   child: StatefulBuilder(
                     builder: (ctx, setOverlayState) {
                       final q = search.text.trim().toLowerCase();
-                      final ranked = widget.items.indexed
-                          .where(
-                            (entry) =>
-                                entry.$2.visible &&
-                                keywordSearchRank([entry.$2.label], q) != null,
-                          )
-                          .toList();
+                      final query = KeywordSearchQuery(q);
+                      final ranked =
+                          <({int index, UtenDropdownItem item, int rank})>[];
+                      for (final entry in widget.items.indexed) {
+                        if (!entry.$2.visible) continue;
+                        final rank = query.rank([entry.$2.label]);
+                        if (rank != null) {
+                          ranked.add((
+                            index: entry.$1,
+                            item: entry.$2,
+                            rank: rank,
+                          ));
+                        }
+                      }
                       // Indented choices carry a parent/child order supplied by
                       // their host. Never detach children from their group header.
                       if (q.isNotEmpty &&
                           !widget.items.any((item) => item.indent > 0)) {
                         ranked.sort((a, b) {
-                          final rank = keywordSearchRank([
-                            a.$2.label,
-                          ], q)!.compareTo(keywordSearchRank([b.$2.label], q)!);
-                          return rank == 0 ? a.$1.compareTo(b.$1) : rank;
+                          final rank = a.rank.compareTo(b.rank);
+                          return rank == 0 ? a.index.compareTo(b.index) : rank;
                         });
                       }
-                      final filtered = [for (final entry in ranked) entry.$2];
+                      final filtered = [for (final entry in ranked) entry.item];
                       final header = <Widget>[
                         SizedBox(
                           height: handleHeight,

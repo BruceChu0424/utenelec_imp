@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem;
@@ -114,7 +115,7 @@ public class PurchaseRequestController {
     public record ItemQtyAdjustRequest(
             @jakarta.validation.constraints.NotNull
             @jakarta.validation.constraints.Positive
-            @jakarta.validation.constraints.Digits(integer = 14, fraction = 4) java.math.BigDecimal qty,
+            @DocumentQuantity java.math.BigDecimal qty,
             @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Long expectedVersion) {
     }
 

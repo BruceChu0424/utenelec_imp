@@ -22,18 +22,20 @@ import java.util.UUID;
 public class ExpenseApplicantQuery {
 
     private final EntityManager entityManager;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ExpenseApprovalPolicy approvalPolicy;
 
-    private static String observerVisibility(com.uten.imp.security.AuthUser actor,
+    private String observerVisibility(com.uten.imp.security.AuthUser actor,
             com.uten.imp.security.OwnerVisibility.OwnerScope scope, String queue) {
         String visible=scope.seeAll()?"TRUE":scope.visibleOwners().isEmpty()?"FALSE":"c.applicant_id IN (:observerOwners)";
-        boolean approve=actor.getPermissions().contains("expense:approve"), pay=actor.getPermissions().contains("expense:pay");
+        boolean approve=ExpenseApprovalPolicy.hasAny(actor), pay=actor.getPermissions().contains("expense:pay") || actor.isSuperAdmin();
         String legacy=switch(queue) {
-            case "pending" -> approve?"c.applicant_id<>:actor":"FALSE";
-            case "payable" -> pay?"c.applicant_id<>:actor AND (c.approved_by IS NULL OR c.approved_by<>:actor)":"FALSE";
-            case "history" -> "("+(approve?"c.approved_by=:actor OR c.rejected_by=:actor":"FALSE")+") OR "+(pay?"c.status='PAID'":"FALSE");
+            case "pending" -> approve?approvalPolicy.context(actor).sql("c"):"FALSE";
+            case "payable" -> pay?ExpenseApprovalPolicy.paymentSql("c",actor):"FALSE";
+            case "history" -> "("+(approve?"EXISTS(SELECT 1 FROM expense_claim_events e WHERE e.claim_id=c.id AND e.actor_employee_id=:actor AND e.event_type IN ('STAGE_APPROVED','APPROVED','REJECTED'))":"FALSE")+") OR "+(pay?"c.status='PAID'":"FALSE");
             default -> "FALSE";
         };
-        return "("+visible+" OR ("+legacy+"))";
+        return "("+visible+" OR (NOT fn_finance_expense_is_application_managed(c.id) AND ("+legacy+")))";
     }
 
     private jakarta.persistence.Query observerQuery(String sql, com.uten.imp.security.AuthUser actor,
@@ -46,14 +48,20 @@ public class ExpenseApplicantQuery {
 
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto observerFacets(
             com.uten.imp.security.AuthUser actor, com.uten.imp.security.OwnerVisibility.OwnerScope scope, String queue) {
+        return workflowFacets(actor,scope,queue,null,null);
+    }
+
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto workflowFacets(
+            com.uten.imp.security.AuthUser actor, com.uten.imp.security.OwnerVisibility.OwnerScope scope,
+            String queue,String stage,String departmentCode) {
         String statuses=switch(queue) {
             case "pending" -> "c.status IN ('SUBMITTED','REVIEWING')";
             case "payable" -> "c.status='APPROVED'";
-            case "history" -> "c.status IN ('APPROVED','REJECTED','PAID')";
+            case "history" -> "c.status<>'DRAFT'";
             case "browse" -> "TRUE";
             default -> throw new IllegalArgumentException("Unknown expense read queue");
         };
-        String where=" FROM expense_claims c WHERE NOT c.is_deleted AND "+statuses+" AND "+observerVisibility(actor,scope,queue);
+        String where=" FROM expense_claims c WHERE NOT c.is_deleted AND "+statuses+" AND "+observerVisibility(actor,scope,queue)+scopeSql(actor,queue,stage,departmentCode);
         var departments=observerBuckets("SELECT c.applicant_department_id::text,COALESCE((SELECT d.name FROM departments d WHERE d.id=c.applicant_department_id),''),count(*)"+where+" GROUP BY 1,2 ORDER BY 2,1",actor,scope);
         var months=observerBuckets("SELECT to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),count(*)"+where+" GROUP BY 1,2 ORDER BY 1 DESC",actor,scope);
         var claims=observerBuckets("SELECT c.claim_no,c.claim_no,count(*)"+where+" GROUP BY 1,2 ORDER BY 1",actor,scope);
@@ -62,6 +70,52 @@ public class ExpenseApplicantQuery {
                 where.replace(" FROM expense_claims c", " FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id")+
                 ") visible GROUP BY category ORDER BY category",actor,scope);
         return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(departments,months,categories,claims);
+    }
+
+    String scopeSql(com.uten.imp.security.AuthUser actor,String queue,String stage,String departmentCode) {
+        String filter="";
+        if(stage!=null && !stage.isBlank()) {
+            String stages=ExpenseApprovalPolicy.stages(stage).stream().map(value->"'"+value+"'").collect(java.util.stream.Collectors.joining(","));
+            filter+=" AND "+("history".equals(queue)
+                    ? "EXISTS(SELECT 1 FROM expense_claim_events scoped_event WHERE scoped_event.claim_id=c.id AND scoped_event.actor_employee_id='"+actor.getEmployeeId()+"'::uuid AND scoped_event.approval_stage IN ("+stages+"))"
+                    : "c.approval_stage IN ("+stages+")");
+        }
+        if(departmentCode!=null && !departmentCode.isBlank()) {
+            var ids=approvalPolicy.context(actor).departmentCodes().entrySet().stream().filter(entry->departmentCode.equals(entry.getValue())).map(Map.Entry::getKey).toList();
+            filter+=" AND c.applicant_department_id IN ("+ExpenseApprovalPolicy.uuidSql(ids)+")";
+        }
+        return filter;
+    }
+
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto workflowCounts(
+            com.uten.imp.security.AuthUser user,ExpenseApprovalPolicy.Context context,boolean apply,boolean pay) {
+        UUID actor=user.getEmployeeId();
+        String approval=context.sql("c");
+        String stale="c.status IN('SUBMITTED','REVIEWING') AND c.approval_stage='DEPARTMENT' AND fn_department_approval_snapshot_stale(c.applicant_id,c.applicant_department_id,c.department_approval_snapshot)";
+        String payable=ExpenseApprovalPolicy.paymentSql("c",user);
+        var rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(entityManager.createNativeQuery(
+                "SELECT c.status,c.approval_stage,c.applicant_department_id,COUNT(*) FILTER(WHERE c.applicant_id=:actor),"
+                +"COUNT(*) FILTER(WHERE "+approval+"),COUNT(*) FILTER(WHERE "+payable+"),COUNT(*) FILTER(WHERE c.applicant_id=:actor AND "+stale+") FROM expense_claims c WHERE NOT c.is_deleted AND ("
+                +(apply?"c.applicant_id=:actor":"FALSE")+" OR ("+approval+") OR ("+(pay?payable:"FALSE")+")) GROUP BY c.status,c.approval_stage,c.applicant_department_id").setParameter("actor",actor));
+        long draft=0,rejected=0,processing=0,payment=0,routingStale=0;
+        Map<String,Long> stageCounts=new LinkedHashMap<>(), byCode=new LinkedHashMap<>(), scopes=new LinkedHashMap<>();
+        context.departmentCodes().values().forEach(code->{scopes.put(code,1L);byCode.put(code,0L);});
+        for(Object[] row:rows) {
+            String status=(String)row[0], stage=(String)row[1]; long own=apply?count(row[3]):0, pending=count(row[4]);
+            if("DRAFT".equals(status))draft+=own;
+            if("REJECTED".equals(status))rejected+=own;
+            long staleOwn=apply?count(row[6]):0;routingStale+=staleOwn;
+            if(Set.of("SUBMITTED","REVIEWING","APPROVED").contains(status))processing+=own-staleOwn;
+            if(pay)payment+=count(row[5]);
+            if(stage!=null)stageCounts.merge(stage,pending,Long::sum);
+            if(ExpenseApprovalPolicy.DEPARTMENT.equals(stage) && pending>0) {
+                String code=context.departmentCodes().get((UUID)row[2]);if(code!=null)byCode.merge(code,pending,Long::sum);
+            }
+        }
+        long department=stageCounts.getOrDefault(ExpenseApprovalPolicy.DEPARTMENT,0L),initial=stageCounts.getOrDefault(ExpenseApprovalPolicy.FINANCE_INITIAL,0L),
+                review=stageCounts.getOrDefault(ExpenseApprovalPolicy.FINANCE_REVIEW,0L),executive=stageCounts.getOrDefault(ExpenseApprovalPolicy.EXECUTIVE,0L);
+        return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto(draft,rejected,department+initial+review+executive,payment,processing,
+                department,initial,review,executive,Map.copyOf(byCode),Map.copyOf(scopes),routingStale);
     }
 
     private List<com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket> observerBuckets(
@@ -182,8 +236,9 @@ public class ExpenseApplicantQuery {
                         FROM expense_claims c
                         JOIN departments d ON d.id = c.applicant_department_id
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
+                          AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY c.applicant_department_id, d.name
                         ORDER BY d.name, c.applicant_department_id
                         """)
@@ -212,8 +267,9 @@ public class ExpenseApplicantQuery {
                                COUNT(*)
                         FROM expense_claims c
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
+                          AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY ym
                         ORDER BY ym DESC
                         """)
@@ -243,8 +299,9 @@ public class ExpenseApplicantQuery {
                         FROM expense_claim_items i
                         JOIN expense_claims c ON c.id = i.claim_id
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
+                          AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY i.category
                         ORDER BY i.category
                         """)
@@ -272,8 +329,9 @@ public class ExpenseApplicantQuery {
                         SELECT c.claim_no, COUNT(*)
                         FROM expense_claims c
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
+                          AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY c.claim_no
                         ORDER BY c.claim_no
                         """)
@@ -323,6 +381,23 @@ public class ExpenseApplicantQuery {
                 .toList();
     }
 
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto abandonedHistoryFacets(UUID actor,boolean includeDeleted,boolean onlyDeleted) {
+        String where="""
+            FROM expense_claims c WHERE c.applicant_id=:actor AND (
+              ((:onlyDeleted AND c.is_deleted OR NOT :onlyDeleted AND (:includeDeleted OR NOT c.is_deleted)) AND c.status='PAID')
+              OR (c.is_deleted AND c.status='REJECTED' AND c.abandoned_at IS NOT NULL))
+            """;
+        var numbers=abandonedBuckets("SELECT c.claim_no,c.claim_no,count(*) "+where+" GROUP BY c.claim_no ORDER BY c.claim_no LIMIT 500",actor,includeDeleted,onlyDeleted);
+        var categories=abandonedBuckets("SELECT i.category,i.category,count(DISTINCT c.id) "+where.replace("FROM expense_claims c","FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id")+" GROUP BY i.category ORDER BY i.category",actor,includeDeleted,onlyDeleted);
+        return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(List.of(),List.of(),categories,numbers);
+    }
+
+    private List<com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket> abandonedBuckets(String sql,UUID actor,boolean includeDeleted,boolean onlyDeleted) {
+        return com.uten.imp.common.util.NativeQueryResults.objectArrayRows(entityManager.createNativeQuery(sql).setParameter("actor",actor)
+                .setParameter("includeDeleted",includeDeleted).setParameter("onlyDeleted",onlyDeleted)).stream()
+                .map(row->new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket(row[0].toString(),row[1].toString(),((Number)row[2]).longValue())).toList();
+    }
+
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto historyFacets(UUID actor,boolean approve,boolean pay) {
         String scope="""
                 WHERE c.is_deleted = false AND c.status IN ('APPROVED','REJECTED','PAID')
@@ -366,11 +441,12 @@ public class ExpenseApplicantQuery {
                               AND c.status IN ('SUBMITTED','REVIEWING','APPROVED')),
                           (SELECT COUNT(*) FROM expense_claims c
                             WHERE c.is_deleted = false AND :approve = true AND c.status IN ('SUBMITTED','REVIEWING')
-                              AND c.applicant_id <> :actor),
+                              AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id <> :actor),
                           (SELECT COUNT(*) FROM expense_claims c
                             WHERE c.is_deleted = false AND :pay = true AND c.status = 'APPROVED'
-                              AND c.applicant_id <> :actor
-                              AND (c.approved_by IS NULL OR c.approved_by <> :actor))
+                              AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id <> :actor
+                              AND (c.approved_by IS NULL OR c.approved_by <> :actor)
+                              AND POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         """)
                 .setParameter("actor", actor)
                 .setParameter("apply", apply)

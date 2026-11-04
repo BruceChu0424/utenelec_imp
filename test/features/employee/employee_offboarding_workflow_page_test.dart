@@ -3,6 +3,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:dio/dio.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,7 +129,17 @@ void main() {
 
     expect(find.textContaining('离职员工'), findsWidgets);
     await _fillDepartureAndContinue(tester);
-    expect(find.text('当前没有需要移交的责任数据，可不选择默认接手人。'), findsOneWidget);
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('当前没有需要移交的责任数据') ?? false),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('当前没有需要移交的责任数据，可不选择默认接手人。'), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
 
     final backRect = tester.getRect(find.byType(UtenBackButton));
     await tester.tapAt(backRect.centerRight - const Offset(1, 0));
@@ -204,7 +215,17 @@ void main() {
     await _fillDepartureAndContinue(tester);
     await _tapNext(tester);
 
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('默认承接尚未交接的责任') ?? false),
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(find.textContaining('默认承接尚未交接的责任'), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     expect(find.text('2. 选择默认接手人'), findsOneWidget);
   });
 

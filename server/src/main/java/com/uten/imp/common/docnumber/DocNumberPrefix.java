@@ -66,6 +66,9 @@ public enum DocNumberPrefix {
     DEFERRED_EXPENSE("DA"),
     /** V608 员工费用报销单（打印报销单/归档编号；打款侧仍生成 YF 财务费用单）。 */
     EXPENSE_CLAIM("BX"),
+    FIN_APPLICATION("FQ"),
+    /** Employee travel, payment, prepayment and supplier-payment applications. */
+    BUSINESS_APPLICATION("SQ"),
     // 生产
     /** V719 物料分析编号：各页「计划单号」与采购/委外来源计划的展示锚点。 */
     MATERIAL_ANALYSIS("WL"),

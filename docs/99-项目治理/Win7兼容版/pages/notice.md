@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeDetailPage @30 (page-class)<br>_Content @92 (supporting-class)<br>_CompleteTodoButton @458 (supporting-class)<br>_CompleteTodoButtonState @468 (state-class) |
-| 真实路由绑定 | /notice/:id；router @758；builder ['NoticeDetailPage']；redirect None |
+| 真实路由绑定 | /notice/:id；router @849；builder ['NoticeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,35 +22,35 @@
 
 ## W7-BIZ-085 · lib/features/notice/pages/notice_list_page.dart
 
-模块 `notice`；406 行；SHA256 `b80edfe45bd1701137cc93ae50807754e508757df6d331245f591de3d8af7ab0`。
+模块 `notice`；427 行；SHA256 `ec5005230ff86200ad2defb0fee58d29a570adb05304930a96b32ea29b32d107`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | NoticeListPage @41 (page-class)<br>_NoticeListPageState @52 (state-class) |
-| 真实路由绑定 | /notice；router @726；builder ['NoticeListPage']；redirect None |
+| 页面/状态类 | NoticeListPage @42 (page-class)<br>_NoticeListPageState @53 (state-class) |
+| 真实路由绑定 | /notice；router @817；builder ['NoticeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @65 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @101 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @106 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @130 [action-like-invocation] 提示 ['delete']；final deleted = await deleteNotices(ref, _selected.toList());<br>removeAll @328 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @397 [callback-reference] 提示 ['delete']；onAction |
+| 动作处理 | addPostFrameCallback @66 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @102 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @107 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @135 [action-like-invocation] 提示 ['delete']；action: () => deleteNotices(ref, _selected.toList()),<br>removeAll @349 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @418 [callback-reference] 提示 ['delete']；onAction |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_selection_summary_pill.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_paged_grid.dart` (sharedComponents)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/components/buttons/click_guard.dart` (sharedComponents)；`lib/features/notice/models/notice.dart` (models)；`lib/features/notice/models/notice_group.dart` (models)；`lib/features/notice/providers/notice_providers.dart` (providers)；`lib/features/notice/widgets/notice_card.dart` (featureWidgets)；`lib/features/notice/widgets/notice_detail_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_group_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_popup_settings_dialog.dart` (featureWidgets)。
+直接源依赖：`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_selection_summary_pill.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_paged_grid.dart` (sharedComponents)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/components/buttons/click_guard.dart` (sharedComponents)；`lib/features/notice/models/notice.dart` (models)；`lib/features/notice/models/notice_group.dart` (models)；`lib/features/notice/providers/notice_providers.dart` (providers)；`lib/features/notice/widgets/notice_card.dart` (featureWidgets)；`lib/features/notice/widgets/notice_action_busy.dart` (featureWidgets)；`lib/features/notice/widgets/notice_detail_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_group_dialog.dart` (featureWidgets)；`lib/features/notice/widgets/notice_popup_settings_dialog.dart` (featureWidgets)。
 
 ## W7-BIZ-086 · lib/features/notice/pages/notice_publish_page.dart
 
-模块 `notice`；936 行；SHA256 `4d748a0172c6ea7474715c77377bdaddf5fcef2014e4167cc7cfbe5bc3e3fd3f`。
+模块 `notice`；950 行；SHA256 `5f04455460405ab002ff93932b1334ae9a631de814f4989161deaa22a765c274`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | NoticePublishPage @46 (page-class)<br>_NoticePublishPageState @59 (state-class)<br>_AudienceHint @873 (supporting-class)<br>_CelebrationTemplateCurator @891 (supporting-class) |
-| 真实路由绑定 | /notice/publish；router @738；builder ['NoticePublishPage']；redirect None |
+| 页面/状态类 | NoticePublishPage @46 (page-class)<br>_NoticePublishPageState @59 (state-class)<br>_AudienceHint @887 (supporting-class)<br>_CelebrationTemplateCurator @905 (supporting-class) |
+| 真实路由绑定 | /notice/publish；router @829；builder ['NoticePublishPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | restoreFormDraft @104 [method-declaration-candidate] 提示 ['restore']；Future<void> restoreFormDraft(Map<String, dynamic> data) async {<br>restoreDraftDepartments @115 [action-like-invocation] 提示 ['restore']；_departments = restoreDraftDepartments(data['departments']);<br>restoreDraftEmployees @117 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(employees, data['employees']);<br>restoreDraftEmployees @120 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(subject, data['celebrationSubject']);<br>startFormDraftIdentityGuard @171 [action-like-invocation] 提示 ['start']；startFormDraftIdentityGuard();<br>addPostFrameCallback @179 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) async {<br>_confirmPublish @373 [action-like-invocation] 提示 ['confirm']；final confirmed = await _confirmPublish(l10n, preview);<br>saveFormDraftNow @376 [action-like-invocation] 提示 ['save']；await saveFormDraftNow();<br>completeFormDraft @405 [action-like-invocation] 提示 ['complete']；await completeFormDraft();<br>_confirmPublish @429 [method-declaration-candidate] 提示 ['confirm']；Future<bool?> _confirmPublish(<br>noticePublishConfirmAudience @435 [action-like-invocation] 提示 ['confirm']；: l10n.noticePublishConfirmAudience(<br>copyWith @597 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @688 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @915 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelMedium?.copyWith( |
+| 动作处理 | restoreFormDraft @104 [method-declaration-candidate] 提示 ['restore']；Future<void> restoreFormDraft(Map<String, dynamic> data) async {<br>restoreDraftDepartments @115 [action-like-invocation] 提示 ['restore']；_departments = restoreDraftDepartments(data['departments']);<br>restoreDraftEmployees @117 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(employees, data['employees']);<br>restoreDraftEmployees @120 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(subject, data['celebrationSubject']);<br>startFormDraftIdentityGuard @171 [action-like-invocation] 提示 ['start']；startFormDraftIdentityGuard();<br>addPostFrameCallback @179 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) async {<br>_confirmPublish @387 [action-like-invocation] 提示 ['confirm']；final confirmed = await _confirmPublish(l10n, preview);<br>saveFormDraftNow @390 [action-like-invocation] 提示 ['save']；await saveFormDraftNow();<br>completeFormDraft @419 [action-like-invocation] 提示 ['complete']；await completeFormDraft();<br>_confirmPublish @443 [method-declaration-candidate] 提示 ['confirm']；Future<bool?> _confirmPublish(<br>noticePublishConfirmAudience @449 [action-like-invocation] 提示 ['confirm']；: l10n.noticePublishConfirmAudience(<br>copyWith @611 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @702 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @929 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelMedium?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

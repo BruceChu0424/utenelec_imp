@@ -744,7 +744,7 @@ public class ClientService {
         if (req.hasFinancialField("bank")) client.setBank(req.getBank());
         if (req.hasFinancialField("bankAccount")) client.setBankAccount(req.getBankAccount());
         if (req.hasFinancialField("taxId")) client.setTaxId(req.getTaxId());
-        if (req.hasFinancialField("credit")) client.setCredit(req.getCredit());
+        if (req.hasFinancialField("credit")) client.setCredit(com.uten.imp.common.util.FinancialExactAmount.optional(req.getCredit(),"信用额度"));
         if (req.hasFinancialField("initTotal")) client.setInitTotal(req.getInitTotal());
         if (req.hasFinancialField("tday")) client.setTday(req.getTday());
         if (req.hasFinancialField("creditFloor")) client.setCreditFloor(normalizeCreditFloor(req.getCreditFloor()));
@@ -955,14 +955,12 @@ public class ClientService {
 
     static BigDecimal normalizeCreditFloor(BigDecimal value) {
         if (value == null) return BigDecimal.ZERO;
-        BigDecimal normalized = value.stripTrailingZeros();
-        int fractionalDigits = Math.max(normalized.scale(), 0);
-        int integerDigits = Math.max(normalized.precision() - normalized.scale(), 0);
-        if (value.signum() < 0 || fractionalDigits > 4 || integerDigits > 14) {
+        if (value.signum() < 0) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "铺底额必须为非负数，最多 14 位整数和 4 位小数");
+                    "铺底额必须为非负数");
         }
+        com.uten.imp.common.util.FinancialExactAmount.require(value,"铺底额");
         return value;
     }
 

@@ -27,11 +27,10 @@ Map<String, dynamic> goodsFilterQueryParams(Map<String, String?> filters) =>
             entry.value,
     });
 
-const _maxGoodsCategoryRootsPerRequest = 32;
-const _goodsSearchMergeFetchSize = 100;
+const _maxGoodsCategoryRootsInUrl = 32;
+const _maxGoodsCategoryRoots = 4096;
 
-List<List<String>> _goodsCategoryRootBatches(Set<String> rawIds) {
-  if (rawIds.isEmpty) return const <List<String>>[];
+List<String> goodsSearchCategoryRoots(Set<String> rawIds) {
   final normalized = <String>{};
   for (final rawId in rawIds) {
     final id = rawId.trim();
@@ -45,44 +44,36 @@ List<List<String>> _goodsCategoryRootBatches(Set<String> rawIds) {
     normalized.add(id);
   }
   final ids = normalized.toList(growable: false)..sort();
-  return [
-    for (
-      var offset = 0;
-      offset < ids.length;
-      offset += _maxGoodsCategoryRootsPerRequest
-    )
-      ids.sublist(
-        offset,
-        offset + _maxGoodsCategoryRootsPerRequest < ids.length
-            ? offset + _maxGoodsCategoryRootsPerRequest
-            : ids.length,
-      ),
-  ];
+  if (ids.length > _maxGoodsCategoryRoots) {
+    throw ArgumentError.value(
+      rawIds.length,
+      'categoryRootIds',
+      'too many roots',
+    );
+  }
+  return ids;
 }
 
-/// 跨批合并结果的客户端排序（见 _searchAcrossRootBatches 注释）。
-/// 只覆盖服务端排序白名单键（code/price）；asc 空值排尾、desc 取反后空值排头，
-/// 与 PostgreSQL 默认 NULLS 口径一致。同值按同方向的 id 稳定排序。
-Comparator<GoodsListItem>? _searchMergeComparator(String? sort, String? order) {
-  int compareNullable<T extends Comparable<T>>(T? a, T? b) {
-    if (a == null) return b == null ? 0 : 1;
-    if (b == null) return -1;
-    return a.compareTo(b);
+/// The JSON read contract uses the same filter as the GET endpoint. Column
+/// keyword predicates are a map, while exact UUID references remain scalar.
+Map<String, dynamic> goodsSearchReadBody(Map<String, dynamic> query) {
+  final filter = <String, dynamic>{};
+  final columns = <String, String>{};
+  for (final entry in query.entries) {
+    if (const {'page', 'size', 'sort', 'order'}.contains(entry.key)) continue;
+    if (entry.key.startsWith('search.')) {
+      if (entry.value != null) {
+        columns[entry.key.substring(7)] = entry.value.toString();
+      }
+    } else {
+      filter[entry.key] = entry.value;
+    }
   }
-
-  int Function(GoodsListItem, GoodsListItem)? byKey;
-  switch (sort) {
-    case 'code':
-      byKey = (a, b) => compareNullable(a.code, b.code);
-    case 'price':
-      byKey = (a, b) => compareNullable(a.price, b.price);
-  }
-  if (byKey == null) return null;
-  final asc = order?.toLowerCase() != 'desc';
-  return (a, b) {
-    final compared = byKey!(a, b);
-    final stable = compared != 0 ? compared : a.id.compareTo(b.id);
-    return asc ? stable : -stable;
+  if (columns.isNotEmpty) filter['columnSearch'] = columns;
+  return {
+    'filter': filter,
+    for (final key in const ['page', 'size', 'sort', 'order'])
+      if (query.containsKey(key)) key: query[key],
   };
 }
 
@@ -119,6 +110,7 @@ abstract interface class GoodsRepository {
   /// 全局（或 [categoryRootIds] 限定的多根范围）字段 facet；滑窗搜索态与
   /// 列表口径共用，桶随当前查询上下文刷新。
   Future<GoodsFacets> globalFacets({
+    String? categoryId,
     String? keyword,
     bool includeRelated = false,
     Map<String, String?> filters = const {},
@@ -255,6 +247,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
 
   @override
   Future<GoodsFacets> globalFacets({
+    String? categoryId,
     String? keyword,
     bool includeRelated = false,
     Map<String, String?> filters = const {},
@@ -262,6 +255,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     bool excludeStub = false,
     Set<String> categoryRootIds = const {},
   }) => _facets(
+    categoryId: categoryId,
     keyword: keyword,
     includeRelated: includeRelated,
     filters: filters,
@@ -279,20 +273,23 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     required bool excludeStub,
     Set<String> categoryRootIds = const {},
   }) async {
-    final json = await api.get(
-      '$queryBasePath/facets',
-      query: {
-        'categoryId': ?categoryId,
-        if (categoryRootIds.isNotEmpty)
-          'categoryRootIds': categoryRootIds.toList(),
-        if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
-        if (includeRelated && keyword?.trim().isNotEmpty == true)
-          'includeRelated': true,
-        if (excludeDisabled) 'excludeDisabled': true,
-        if (excludeStub) 'excludeStub': true,
-        ...goodsFilterQueryParams(filters),
-      },
-    );
+    final roots = goodsSearchCategoryRoots(categoryRootIds);
+    final query = <String, dynamic>{
+      'categoryId': ?categoryId,
+      if (roots.isNotEmpty) 'categoryRootIds': roots,
+      if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+      if (includeRelated && keyword?.trim().isNotEmpty == true)
+        'includeRelated': true,
+      if (excludeDisabled) 'excludeDisabled': true,
+      if (excludeStub) 'excludeStub': true,
+      ...goodsFilterQueryParams(filters),
+    };
+    final json = roots.length > _maxGoodsCategoryRootsInUrl
+        ? await api.post(
+            '$queryBasePath/facets',
+            body: goodsSearchReadBody(query),
+          )
+        : await api.get('$queryBasePath/facets', query: query);
     return GoodsFacets.fromJson(json);
   }
 
@@ -336,27 +333,12 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     String? sort,
     String? order,
   }) async {
-    final rootBatches = _goodsCategoryRootBatches(categoryRootIds);
-    if (rootBatches.length > 1) {
-      return _searchAcrossRootBatches(
-        keyword,
-        page: page,
-        size: size,
-        rootBatches: rootBatches,
-        filters: filters,
-        categoryId: categoryId,
-        includeRelated: includeRelated,
-        excludeDisabled: excludeDisabled,
-        excludeStub: excludeStub,
-        sort: sort,
-        order: order,
-      );
-    }
+    final roots = goodsSearchCategoryRoots(categoryRootIds);
     return _searchPage(
       keyword,
       page: page,
       size: size,
-      categoryRootIds: rootBatches.isEmpty ? const [] : rootBatches.single,
+      categoryRootIds: roots,
       filters: filters,
       categoryId: categoryId,
       includeRelated: includeRelated,
@@ -381,22 +363,25 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     String? order,
   }) async {
     // categoryRootIds 为空时不传，保留调用方明确使用的全库搜索语义。
-    final json = await api.get(
-      queryBasePath,
-      query: {
-        ...goodsFilterQueryParams(filters),
-        'page': page,
-        'size': size,
-        if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds,
-        'categoryId': ?categoryId,
-        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-        if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
-        if (excludeDisabled) 'excludeDisabled': true,
-        if (excludeStub) 'excludeStub': true,
-        if (sort != null && sort.isNotEmpty) 'sort': sort,
-        if (order != null && order.isNotEmpty) 'order': order,
-      },
-    );
+    final query = <String, dynamic>{
+      ...goodsFilterQueryParams(filters),
+      'page': page,
+      'size': size,
+      if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds,
+      'categoryId': ?categoryId,
+      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
+      if (excludeDisabled) 'excludeDisabled': true,
+      if (excludeStub) 'excludeStub': true,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
+    };
+    final json = categoryRootIds.length > _maxGoodsCategoryRootsInUrl
+        ? await api.post(
+            '$queryBasePath/search',
+            body: goodsSearchReadBody(query),
+          )
+        : await api.get(queryBasePath, query: query);
     final result = await PagedResult.fromJsonResponsive(
       json,
       GoodsListItem.fromJson,
@@ -410,84 +395,6 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
       );
     }
     return result;
-  }
-
-  /// 后端单次最多接受 32 个分类根。超过上限时按已排序根分批拉完各批结果，
-  /// 以货品 id 去重后再切调用方请求页；任一批失败都会整体抛错，不返回部分结果。
-  ///
-  /// 批与批的拼接会破坏服务端排序（批1全部+批2全部），传了 [sort] 时在合并后
-  /// 按同一键客户端重排一次，保证与单批路径同序。
-  Future<PagedResult<GoodsListItem>> _searchAcrossRootBatches(
-    String keyword, {
-    required Map<String, String?> filters,
-    required int page,
-    required int size,
-    required List<List<String>> rootBatches,
-    required String? categoryId,
-    required bool includeRelated,
-    required bool excludeDisabled,
-    required bool excludeStub,
-    String? sort,
-    String? order,
-  }) async {
-    final uniqueItems = <String, GoodsListItem>{};
-    for (final roots in rootBatches) {
-      var backendPage = 1;
-      var backendTotalPages = 1;
-      while (backendPage <= backendTotalPages) {
-        final result = await _searchPage(
-          keyword,
-          filters: filters,
-          page: backendPage,
-          size: _goodsSearchMergeFetchSize,
-          categoryRootIds: roots,
-          categoryId: categoryId,
-          includeRelated: includeRelated,
-          excludeDisabled: excludeDisabled,
-          excludeStub: excludeStub,
-          sort: sort,
-          order: order,
-        );
-        for (final item in result.items) {
-          uniqueItems.putIfAbsent(item.id, () => item);
-        }
-        if (result.totalPages > backendTotalPages) {
-          backendTotalPages = result.totalPages;
-        }
-        backendPage++;
-      }
-    }
-
-    final normalizedPage = page < 1 ? 1 : page;
-    final normalizedSize = size.clamp(1, _goodsSearchMergeFetchSize);
-    final merged = uniqueItems.values.toList(growable: false);
-    final comparator =
-        _searchMergeComparator(sort, order) ??
-        _searchMergeComparator('code', 'asc')!;
-    merged.sort((a, b) {
-      final relevance = (a.searchRank ?? 0).compareTo(b.searchRank ?? 0);
-      if (relevance != 0) return relevance;
-      final requested = comparator(a, b);
-      return requested != 0 ? requested : a.id.compareTo(b.id);
-    });
-    final total = merged.length;
-    final totalPages = total == 0
-        ? 0
-        : (total + normalizedSize - 1) ~/ normalizedSize;
-    final start = (normalizedPage - 1) * normalizedSize;
-    final items = start >= total
-        ? const <GoodsListItem>[]
-        : merged.sublist(
-            start,
-            start + normalizedSize < total ? start + normalizedSize : total,
-          );
-    return PagedResult(
-      items: items,
-      page: normalizedPage,
-      size: normalizedSize,
-      total: total,
-      totalPages: totalPages,
-    );
   }
 
   @override
@@ -518,35 +425,37 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     bool excludeDisabled = false,
     bool excludeStub = false,
   }) async {
-    final rootBatches = _goodsCategoryRootBatches(categoryRootIds);
-    if (rootBatches.isEmpty) return <String>{};
-
-    final merged = <String>{};
-    for (final roots in rootBatches) {
-      final ids = await api.getStringList(
-        '$queryBasePath/search-category-ids',
-        query: {
-          ...goodsFilterQueryParams(filters),
-          'categoryRootIds': roots,
-          'categoryId': ?categoryId,
-          if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-          if (includeRelated && keyword.trim().isNotEmpty)
-            'includeRelated': true,
-          if (excludeDisabled) 'excludeDisabled': true,
-          if (excludeStub) 'excludeStub': true,
-        },
-      );
-      for (final rawId in ids) {
-        final id = rawId.trim();
-        if (id.isEmpty) {
-          throw StateError(
-            'scoped goods location search returned a blank category id',
+    final roots = goodsSearchCategoryRoots(categoryRootIds);
+    if (roots.isEmpty) return <String>{};
+    final query = <String, dynamic>{
+      ...goodsFilterQueryParams(filters),
+      'categoryRootIds': roots,
+      'categoryId': ?categoryId,
+      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
+      if (excludeDisabled) 'excludeDisabled': true,
+      if (excludeStub) 'excludeStub': true,
+    };
+    final ids = roots.length > _maxGoodsCategoryRootsInUrl
+        ? await api.postStringList(
+            '$queryBasePath/search-category-ids',
+            body: goodsSearchReadBody(query),
+          )
+        : await api.getStringList(
+            '$queryBasePath/search-category-ids',
+            query: query,
           );
-        }
-        merged.add(id);
+    final result = <String>{};
+    for (final rawId in ids) {
+      final id = rawId.trim();
+      if (id.isEmpty) {
+        throw StateError(
+          'scoped goods location search returned a blank category id',
+        );
       }
+      result.add(id);
     }
-    return merged;
+    return result;
   }
 
   @override

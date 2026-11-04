@@ -248,6 +248,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                   UtenEmployeePicker(
                     presentation:
                         UtenEmployeePickerPresentation.businessReference,
+                    cancelDepartmentTreeReadOnClose: true,
                     departmentTreeLoader: () => ref
                         .read(employeeReferenceRepositoryProvider)
                         .departments(
@@ -258,32 +259,20 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                     sheetTitle: '选择销售员',
                     initial: _selectedSeller,
                     allowClear: true,
-                    loader: (kw) async {
-                      final res = await ref
+                    pagedLoader: (query) async {
+                      final kw = query.keyword;
+                      return await ref
                           .read(employeeReferenceRepositoryProvider)
-                          .listPickerCandidates(
+                          .listPickerPage(
+                            query,
                             purpose:
                                 EmployeeReferencePurpose.salesOrderSellerFilter,
                             size: 30,
-                            search: kw,
                             departmentId: (kw == null || kw.isEmpty)
                                 ? _marketingDeptId
                                 : null,
                             includeSubtree: true,
                           );
-                      return [
-                        for (final e in res)
-                          UtenEmployeePickerItem(
-                            id: e.id,
-                            name: e.fullName,
-                            employeeCode: e.code,
-                            accountStatus: e.accountStatus,
-                            employmentStatus: e.status,
-                            departmentId: e.departmentId,
-                            departmentName: e.departmentName,
-                            positionName: e.positionName,
-                          ),
-                      ];
                     },
                     onChanged: (item) {
                       setState(() {

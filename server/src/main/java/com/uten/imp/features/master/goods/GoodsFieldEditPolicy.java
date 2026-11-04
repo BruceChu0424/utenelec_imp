@@ -95,24 +95,24 @@ public final class GoodsFieldEditPolicy {
 ) {
             CurrentAuthorityGuard.requireAll("goods:edit");
         }
-        if (writeCosts && (different(old.getSourceE(), req.getSourceE())
-                || different(old.getMachiningE(), req.getMachiningE())
-                || different(old.getIncidentalE(), req.getIncidentalE())
-                || different(old.getLacquerE(), req.getLacquerE())
-                || different(old.getPlatingE(), req.getPlatingE())
-                || different(old.getCasingE(), req.getCasingE())
-                || different(old.getPolishE(), req.getPolishE())
-                || different(old.getTotal(), req.getTotal())
-                || different(old.getWorkRate(), req.getWorkRate())
-                || different(old.getWorkE(), req.getWorkE())
-                || different(old.getLostRate(), req.getLostRate())
-                || different(old.getLostE(), req.getLostE())
-                || different(old.getRentRate(), req.getRentRate())
-                || different(old.getRentE(), req.getRentE())
-                || different(old.getMakeRate(), req.getMakeRate())
-                || different(old.getMakeE(), req.getMakeE())
-                || different(old.getCTotal(), req.getCTotal())
-                || different(old.getGTotal(), req.getGTotal()))) {
+        if (writeCosts && (req.hasCostField("sourceE") && different(old.getSourceE(), req.getSourceE())
+                || req.hasCostField("machiningE") && different(old.getMachiningE(), req.getMachiningE())
+                || req.hasCostField("incidentalE") && different(old.getIncidentalE(), req.getIncidentalE())
+                || req.hasCostField("lacquerE") && different(old.getLacquerE(), req.getLacquerE())
+                || req.hasCostField("platingE") && different(old.getPlatingE(), req.getPlatingE())
+                || req.hasCostField("casingE") && different(old.getCasingE(), req.getCasingE())
+                || req.hasCostField("polishE") && different(old.getPolishE(), req.getPolishE())
+                || req.hasCostField("total") && different(old.getTotal(), req.getTotal())
+                || req.hasCostField("workRate") && different(old.getWorkRate(), req.getWorkRate())
+                || req.hasCostField("workE") && different(old.getWorkE(), req.getWorkE())
+                || req.hasCostField("lostRate") && different(old.getLostRate(), req.getLostRate())
+                || req.hasCostField("lostE") && different(old.getLostE(), req.getLostE())
+                || req.hasCostField("rentRate") && different(old.getRentRate(), req.getRentRate())
+                || req.hasCostField("rentE") && different(old.getRentE(), req.getRentE())
+                || req.hasCostField("makeRate") && different(old.getMakeRate(), req.getMakeRate())
+                || req.hasCostField("makeE") && different(old.getMakeE(), req.getMakeE())
+                || req.hasCostField("cTotal") && different(old.getCTotal(), req.getCTotal())
+                || req.hasCostField("gTotal") && different(old.getGTotal(), req.getGTotal()))) {
             CurrentAuthorityGuard.requireAll("goods:edit","goods:cost:view");
         }
     }

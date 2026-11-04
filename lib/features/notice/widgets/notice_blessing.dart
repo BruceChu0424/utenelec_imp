@@ -18,6 +18,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
+import 'notice_action_busy.dart';
 
 /// 系统默认祝福模板（与后端一致；仅 {name} 占位符）。
 const Map<NoticeType, List<String>> kDefaultBlessingTemplates = {
@@ -127,9 +128,19 @@ class _AckSection extends ConsumerWidget {
               icon: Icons.check_circle_outline_rounded,
               label: Text(l10n.noticeClickToReceive),
               onAction: () async {
-                await acknowledgeNotice(ref, notice.id);
-                if (context.mounted) {
-                  context.appSuccess(l10n.noticeInteractionReceived);
+                try {
+                  await runNoticeActionWithBusy(
+                    context,
+                    title: '正在确认收到',
+                    action: () => acknowledgeNotice(ref, notice.id),
+                  );
+                  if (context.mounted) {
+                    context.appSuccess(l10n.noticeInteractionReceived);
+                  }
+                } catch (error) {
+                  if (context.mounted) {
+                    context.appError(humanErrorMessage(error) ?? '回执发送失败，请重试');
+                  }
                 }
               },
             ),

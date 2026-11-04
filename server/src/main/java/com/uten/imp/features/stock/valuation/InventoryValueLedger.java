@@ -26,11 +26,19 @@ abstract class InventoryValueLedger {
     protected final boolean productionCostInstalled;
     protected final boolean consumptionReturnsInstalled;
     protected final ValueAuthorityStore authority;
+    protected final boolean exactPrecisionInstalled;
+    protected final boolean exactRevaluationProofInstalled;
 
     protected InventoryValueLedger(NamedParameterJdbcTemplate db, InventoryMutationLock inventoryMutex) {
         this.db=db;
         this.inventoryMutex=inventoryMutex;
         this.authority=new ValueAuthorityStore(db);
+        this.exactPrecisionInstalled=Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('public.stock_value_nodes')
+                    AND attname='value_precision_version' AND NOT attisdropped)
+                """,Map.of(),Boolean.class));
+        this.exactRevaluationProofInstalled=Boolean.TRUE.equals(db.queryForObject(
+                "SELECT to_regprocedure('public.fn_inventory_value_revaluation_contract_version()') IS NOT NULL",Map.of(),Boolean.class));
         this.productionCostInstalled=Boolean.TRUE.equals(db.queryForObject(
                 "SELECT to_regclass('public.stock_value_production_cost_objects') IS NOT NULL",Map.of(),Boolean.class));
         this.consumptionReturnsInstalled=Boolean.TRUE.equals(db.queryForObject("""
@@ -123,11 +131,16 @@ abstract class InventoryValueLedger {
         return authority.installed?source.withBound(ValueBounds.exact(actual)):source;
     }
 
-    protected record Contribution(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator){}
+    protected record Contribution(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator,UUID restoresTransfer){
+        Contribution(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator){this(parent,from,to,denominator,null);}
+    }
     private record PreparedContribution(Contribution input,BigDecimal projected,ValueBounds bound){}
     protected static Contribution whole(Node parent){return new Contribution(parent,ZERO,BigDecimal.ONE,BigDecimal.ONE);}
     protected static Contribution fraction(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator){
         return new Contribution(parent,from,to,denominator);
+    }
+    protected static Contribution restoringFraction(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator,UUID transfer){
+        return new Contribution(parent,from,to,denominator,transfer);
     }
     protected static List<Contribution> poolContributions(Node previous,Node incoming){
         return previous==null?List.of(whole(incoming)):List.of(whole(previous),whole(incoming));
@@ -215,11 +228,15 @@ abstract class InventoryValueLedger {
             ValueBounds contribution=parentBound==null?null:parentBound.weighted(
                     input.from(),input.to(),input.denominator(),ValueBounds.DEFAULT_SCALE);
             total=total==null||contribution==null?null:total.add(contribution);
-            prepared.add(new PreparedContribution(input,interval(parent.value(),input.from(),input.to(),input.denominator()),contribution));
+            BigDecimal applied=exactRevaluationProofInstalled&&input.restoresTransfer()!=null
+                ?recordedTransferAmount(input.restoresTransfer()):allocationInterval(parent,input.from(),input.to(),input.denominator());
+            prepared.add(new PreparedContribution(input,applied,contribution));
         }
         UUID returnHead="ISSUE_POSITION".equals(kind)&&id.equals(rootIssue)?id:null;
+        UUID precisionSource=exactPrecisionInstalled&&rootIssue!=null&&!id.equals(rootIssue)
+            &&Set.of("ISSUE_POSITION","COST_RETURN_CURSOR","RETURN_SOURCE").contains(kind)?inputs.getFirst().parent().id():null;
         Node child=insertNode(id,pool,kind,ownerKind,ownerId,movement,rootIssue,qty,from,to,value,pending,
-                active,finalValue,event,total,returnHead,referenceRoot,writes);
+                active,finalValue,event,total,returnHead,referenceRoot,writes,precisionSource);
         // Child must already exist: edge parent/child FKs and the BEFORE sequence
         // and fan-out guard are immediate. Parent order and edge facts stay intact.
         for(PreparedContribution part:prepared)insertEdge(part,child,event,writes);
@@ -242,33 +259,43 @@ abstract class InventoryValueLedger {
     private Node insertNode(UUID id,PoolIdentity p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
                             BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,
                             boolean finalValue,UUID event,ValueBounds initial,UUID returnHead,UUID referenceRoot,InventoryValueWriteSet writes){
+        return insertNode(id,p,kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,active,finalValue,event,initial,returnHead,referenceRoot,writes,null);
+    }
+    private Node insertNode(UUID id,PoolIdentity p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
+                            BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,
+                            boolean finalValue,UUID event,ValueBounds initial,UUID returnHead,UUID referenceRoot,InventoryValueWriteSet writes,UUID precisionSource){
         InventoryValueWriteSet.update(db,writes,"""
                 INSERT INTO stock_value_nodes(id,pool_id,kind,owner_kind,owner_id,movement_id,root_issue_id,
                     quantity_basis,range_from,range_to,initial_known_value,initial_pending,creation_event_id,
-                    basis_value_local,pending_parents,active,source_final,return_head_id%s%s)
-                VALUES (:id,:pool,:kind,:ownerKind,:owner,:movement,:root,:qty,:start,:end,:value,:pending,:event,:value,:pending,:active,:final,:returnHead%s%s)
+                    basis_value_local,pending_parents,active,source_final,return_head_id%s%s%s)
+                VALUES (:id,:pool,:kind,:ownerKind,:owner,:movement,:root,:qty,:start,:end,:value,:pending,:event,:value,:pending,:active,:final,:returnHead%s%s%s)
                 """.formatted(authority.installed?",value_model,initial_bound_lower,initial_bound_upper,bound_lower,bound_upper,initial_bound_scale,bound_scale,bound_revision":"",
-                        referenceRoot==null?"":",reference_root_id",
+                        referenceRoot==null?"":",reference_root_id",exactPrecisionInstalled?",precision_source_node_id":"",
                         authority.installed?",'EXACT_SOURCE_SHARES',:lower,:upper,:lower,:upper,:scale,:scale,1":"",
-                        referenceRoot==null?"":",:referenceRoot"),
+                        referenceRoot==null?"":",:referenceRoot",exactPrecisionInstalled?",:precisionSource":""),
                 args("id",id,"pool",p.id(),"kind",kind,"ownerKind",ownerKind,"owner",ownerId,"movement",movementId,"root",rootIssueId,
                 "qty",qty,"start",from,"end",to,"value",value,"pending",pending,"event",event,"active",active,"final",finalValue,
-                "returnHead",returnHead,"referenceRoot",referenceRoot,"lower",ValueAuthorityStore.lower(initial),"upper",ValueAuthorityStore.upper(initial),"scale",ValueAuthorityStore.scale(initial)),"价值节点写入失败");
+                "returnHead",returnHead,"referenceRoot",referenceRoot,"precisionSource",precisionSource,"lower",ValueAuthorityStore.lower(initial),"upper",ValueAuthorityStore.upper(initial),"scale",ValueAuthorityStore.scale(initial)),"价值节点写入失败");
         return new Node(id,p.id(),p.key(),kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,1,active,
                 finalValue,returnHead,null,ZERO,ZERO,null,initial,authority.installed?1L:null);
     }
     private void insertEdge(PreparedContribution part,Node child,UUID event,InventoryValueWriteSet writes){
         Contribution input=part.input();Node parent=input.parent();ValueBounds contribution=part.bound();
+        if(exactRevaluationProofInstalled&&Boolean.TRUE.equals(db.queryForObject("""
+                SELECT fn_inventory_value_precision_marked(ARRAY[fn_inventory_value_precision_key(:goods,CAST(:color AS uuid))])
+                """,args("goods",parent.key().goodsId(),"color",parent.key().colorId()),Boolean.class)))
+            throw conflict("该库存成本后继正在核对，请保留原单稍后重试；本次未确认");
         InventoryValueWriteSet.update(db,writes,"""
                 INSERT INTO stock_value_edges(id,parent_node_id,child_node_id,interval_from,interval_to,denominator,
                     creation_event_id,initial_parent_revision,initial_allocated_amount,last_parent_revision,
-                    allocated_amount_local,pending_contribution%s)
-                VALUES (:id,:parent,:child,:start,:end,:denom,:event,:revision,:amount,:revision,:amount,:pending%s)
+                    allocated_amount_local,pending_contribution%s%s)
+                VALUES (:id,:parent,:child,:start,:end,:denom,:event,:revision,:amount,:revision,:amount,:pending%s%s)
                 """.formatted(authority.installed?",initial_bound_lower,initial_bound_upper,allocated_bound_lower,allocated_bound_upper,bound_scale,bound_parent_revision":"",
-                        authority.installed?",:lower,:upper,:lower,:upper,:scale,:revision":""),
+                        exactRevaluationProofInstalled?",restores_transfer_id":"",
+                        authority.installed?",:lower,:upper,:lower,:upper,:scale,:revision":"",exactRevaluationProofInstalled?",:restoresTransfer":""),
                 args("id",UUID.randomUUID(),"parent",parent.id(),"child",child.id(),"start",input.from(),"end",input.to(),"denom",input.denominator(),
                 "event",event,"revision",parent.revision(),"amount",part.projected(),
-                "pending",parent.pending()>0&&input.to().compareTo(input.from())>0,"lower",ValueAuthorityStore.lower(contribution),
+                "pending",parent.pending()>0&&input.to().compareTo(input.from())>0,"restoresTransfer",input.restoresTransfer(),"lower",ValueAuthorityStore.lower(contribution),
                 "upper",ValueAuthorityStore.upper(contribution),"scale",ValueAuthorityStore.scale(contribution)),"价值来源边写入失败");
     }
     protected Edge edge(UUID id,boolean lock){
@@ -334,11 +361,18 @@ abstract class InventoryValueLedger {
         if(edges.size()>2)throw conflict("库存核心后继超过有界二分规则");
         int count=0;
         for(Edge e:edges){
+            if(exactRevaluationProofInstalled){
+                count+=Objects.requireNonNull(db.queryForObject("SELECT fn_inventory_value_schedule_revaluation_task(:edge,:revision,:event)",
+                    args("edge",e.id(),"revision",parent.revision(),"event",event),Integer.class));
+                continue;
+            }
             count+=db.update("""
                     INSERT INTO stock_value_tasks(id,event_id,edge_id,parent_revision,target_amount_local,target_pending)
                     VALUES (:id,:event,:edge,:revision,:amount,:pending) ON CONFLICT(edge_id,parent_revision) DO NOTHING
                     """,args("id",UUID.randomUUID(),"event",event,"edge",e.id(),"revision",parent.revision(),
-                    "amount",interval(parent.value(),e.from(),e.to(),e.denominator()),"pending",parent.pending()>0&&e.to().compareTo(e.from())>0));
+                    "amount",exactPrecisionInstalled?db.queryForObject("SELECT fn_inventory_value_edge_interval(:edge,:value,:start,:end,:denominator,:event)",
+                        args("edge",e.id(),"value",parent.value(),"start",e.from(),"end",e.to(),"denominator",e.denominator(),"event",event),BigDecimal.class)
+                        :interval(parent.value(),e.from(),e.to(),e.denominator()),"pending",parent.pending()>0&&e.to().compareTo(e.from())>0));
         }
         return count;
     }
@@ -406,7 +440,7 @@ abstract class InventoryValueLedger {
         // blocks physical operations and cannot label a distant affected leaf
         // FINAL before its queued ancestors have propagated.
         return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_jobs WHERE status='PENDING')"
-                +(productionCostInstalled?" OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE status='PENDING') OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty WHERE observed_revision>cleared_revision)":""),Map.of(),Boolean.class));
+                +(productionCostInstalled?" OR EXISTS(SELECT 1 FROM stock_value_production_cost_objects WHERE business_refresh_pending) OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE status='PENDING') OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty dirty JOIN stock_value_production_cost_objects object USING(execution_segment_id) WHERE object.current_revision_id IS NOT NULL AND dirty.observed_revision>dirty.cleared_revision)":""),Map.of(),Boolean.class));
     }
     protected State state(Node n){return effectivePending(n)?State.PENDING:state(n,propagationPending());}
     protected State state(Node n,boolean publicationPending){return (effectivePending(n)||publicationPending
@@ -459,7 +493,8 @@ abstract class InventoryValueLedger {
         if(n.kind().equals("ISSUE_POSITION")&&n.from().compareTo(n.to())==0)return false;
         return n.pending()>0;
     }
-    protected static BigDecimal owned(Node n){
+    protected BigDecimal owned(Node n){
+        if(exactPrecisionInstalled)return db.queryForObject("SELECT owned_value_local FROM stock_value_nodes WHERE id=:id",args("id",n.id()),BigDecimal.class);
         if(!n.active())return ZERO;
         if(n.kind().equals("POOL"))return n.value();
         if(n.kind().equals("ISSUE_POSITION"))return interval(n.value(),n.from(),n.to(),n.qty()).subtract(n.distributed())
@@ -496,12 +531,97 @@ abstract class InventoryValueLedger {
         BigDecimal result=com.uten.imp.common.util.FinancialExactAmount.book(value,label);
         if(!negativeAllowed&&result.signum()<0)throw invalid(label+"不能为负");return result;
     }
-    protected BigDecimal projection(BigDecimal exact){return exact.setScale(4,java.math.RoundingMode.HALF_UP);}
+    protected BigDecimal projection(BigDecimal exact){return exactPrecisionInstalled?com.uten.imp.common.util.FinancialExactAmount.book(exact,"库存本币价值")
+        :exact.setScale(4,java.math.RoundingMode.HALF_UP);}
     protected String sourceText(BigDecimal exact){return exact.scale()<=4?exact.setScale(4).toPlainString():exact.stripTrailingZeros().toPlainString();}
     protected BigDecimal projectedAmount(BigDecimal value,String label,boolean negativeAllowed){
+        if(exactPrecisionInstalled)return sourceAmount(value,label,negativeAllowed);
         if(!authority.installed)return decimal(value,label,negativeAllowed);
         if(value==null||(!negativeAllowed&&value.signum()<0))throw invalid(label+"不正确");
         try{return value.setScale(4,java.math.RoundingMode.UNNECESSARY);}catch(ArithmeticException invalidScale){throw invalid(label+"的小数位数超出支持范围（最多4位）");}
+    }
+
+    protected BigDecimal interval(BigDecimal value,BigDecimal from,BigDecimal to,BigDecimal denominator){
+        return exactPrecisionInstalled?com.uten.imp.common.finance.MoneyPolicy.bookValueSlice(value,denominator,from,to.subtract(from))
+            :ValueMath.interval(value,from,to,denominator);
+    }
+    protected BigDecimal allocationInterval(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator){
+        return Set.of("ISSUE_POSITION","COST_RETURN_CURSOR").contains(parent.kind())?frozenInterval(parent,from,to,denominator)
+            :interval(parent.value(),from,to,denominator);
+    }
+    protected BigDecimal frozenInterval(Node parent,BigDecimal from,BigDecimal to,BigDecimal denominator){
+        if(!exactPrecisionInstalled)return ValueMath.interval(parent.value(),from,to,denominator);
+        if(exactRevaluationProofInstalled)return db.queryForObject(
+            "SELECT fn_inventory_value_new_interval(:node,:start,:end,:denominator,fn_business_precision_snapshot())",
+            args("node",parent.id(),"start",from,"end",to,"denominator",denominator),BigDecimal.class);
+        return db.queryForObject("SELECT fn_inventory_value_node_interval(:node,:value,:start,:end,:denominator,true)",
+            args("node",parent.id(),"value",parent.value(),"start",from,"end",to,"denominator",denominator),BigDecimal.class);
+    }
+    protected BigDecimal frozenTransferInterval(Map<String,Object> transfer,Node source,BigDecimal from,BigDecimal to){
+        if(!exactPrecisionInstalled)return ValueMath.interval(source.value(),from,to,source.qty());
+        if(exactRevaluationProofInstalled)return recordedTransferAmount((UUID)transfer.get("id"));
+        return db.queryForObject("SELECT fn_inventory_value_interval(:value,:start,:end,:denominator,:version,CAST(:policy AS jsonb),false)",
+            args("value",source.value(),"start",from,"end",to,"denominator",source.qty(),
+                "version",transfer.get("value_precision_version"),"policy",Objects.toString(transfer.get("business_precision_policy"),null)),BigDecimal.class);
+    }
+    protected BigDecimal recordedTransferAmount(UUID transfer){
+        return db.queryForObject("""
+            SELECT edge.allocated_amount_local FROM stock_value_position_transfers transfer
+            JOIN stock_value_edges edge ON edge.creation_event_id=transfer.event_id AND edge.parent_node_id=transfer.source_node_id
+              AND edge.child_node_id=transfer.target_node_id WHERE transfer.id=:transfer
+            """,args("transfer",transfer),BigDecimal.class);
+    }
+    protected BigDecimal sourceProjection(Node source,BigDecimal actual){
+        if(!exactPrecisionInstalled)return projection(actual);
+        if(exactRevaluationProofInstalled)return projection(actual);
+        Integer version=db.queryForObject("SELECT value_precision_version FROM stock_value_nodes WHERE id=:id",args("id",source.id()),Integer.class);
+        return Objects.equals(version,1)?actual.setScale(4,java.math.RoundingMode.HALF_UP):projection(actual);
+    }
+    protected void requireNewSourceAdjustmentProof(Node source){
+        if(!exactPrecisionInstalled||exactRevaluationProofInstalled)return;
+        Integer version=db.queryForObject("SELECT value_precision_version FROM stock_value_nodes WHERE id=:id",args("id",source.id()),Integer.class);
+        if(Objects.equals(version,1))throw conflict("该历史成本来源的精确追加分摊尚未完成，请保留原单及本次输入核对；本次未确认");
+    }
+    @FunctionalInterface protected interface PrecisionScope extends AutoCloseable { @Override void close(); }
+    /** Background propagation and reversal retain the original event's choices in Java and this transaction. */
+    protected PrecisionScope useFrozenPrecision(Map<String,Object> fact){
+        if(!exactPrecisionInstalled)return ()->{};
+        Object policyFact=fact.get("business_precision_policy");
+        if(exactRevaluationProofInstalled){
+            // The used rule for this target is not a default for its successors.
+            // New calculations retain the actual causal request's choices.
+            UUID event=(UUID)fact.get("event_id");
+            if(event!=null)policyFact=db.queryForObject("SELECT fn_inventory_value_revaluation_request_policy(:event)::text",args("event",event),String.class);
+            else if(fact.get("request_precision_policy")!=null)policyFact=fact.get("request_precision_policy");
+        }
+        return bindFrozenPrecision(db,policyFact);
+    }
+    /** One binding/restore implementation for both propagation and durable business refresh. */
+    static PrecisionScope bindFrozenPrecision(NamedParameterJdbcTemplate db,Object policyFact){
+        String policy=Objects.toString(policyFact,"{\"version\":1,\"choices\":{}}");
+        var choices=com.uten.imp.common.finance.BusinessPrecisionContext.parse(Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(policy.getBytes(StandardCharsets.UTF_8)));
+        String previous=db.queryForObject("SELECT current_setting('app.business_precision_choices',true)",Map.of(),String.class);
+        AutoCloseable scope=com.uten.imp.common.finance.BusinessPrecisionContext.use(choices);
+        try{db.queryForObject("SELECT set_config('app.business_precision_choices',:policy,true)",args("policy",policy),String.class);}
+        catch(RuntimeException failure){try{scope.close();}catch(Exception close){failure.addSuppressed(close);}throw failure;}
+        return ()->{try{db.queryForObject("SELECT set_config('app.business_precision_choices',:policy,true)",args("policy",Objects.toString(previous,"")),String.class);}
+            finally{try{scope.close();}catch(Exception failure){throw new IllegalStateException("Original inventory precision scope could not be restored",failure);}}};
+    }
+
+    static PrecisionScope bindBusinessRefreshPrecision(NamedParameterJdbcTemplate db,Object policy,Object version,UUID root){
+        var precision=bindFrozenPrecision(db,policy);
+        String[] previous=new String[2];
+        try{
+            previous[0]=db.queryForObject("SELECT current_setting('app.inventory_value_legacy_refresh',true)",Map.of(),String.class);
+            previous[1]=db.queryForObject("SELECT current_setting('app.inventory_value_business_refresh_root',true)",Map.of(),String.class);
+            db.queryForObject("SELECT set_config('app.inventory_value_legacy_refresh',:version,true)",args("version",Objects.toString(version,"")),String.class);
+            db.queryForObject("SELECT set_config('app.inventory_value_business_refresh_root',:root,true)",args("root",Objects.toString(root,"")),String.class);
+        }catch(RuntimeException failure){try{precision.close();}catch(RuntimeException close){failure.addSuppressed(close);}throw failure;}
+        return ()->{try{
+            db.queryForObject("SELECT set_config('app.inventory_value_legacy_refresh',:version,true)",args("version",Objects.toString(previous[0],"")),String.class);
+            db.queryForObject("SELECT set_config('app.inventory_value_business_refresh_root',:root,true)",args("root",Objects.toString(previous[1],"")),String.class);
+        }finally{precision.close();}};
     }
 
     protected static EventContext context(EventContext c){

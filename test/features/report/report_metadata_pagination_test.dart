@@ -334,9 +334,7 @@ void main() {
         '00000000-0000-4000-8000-000000000001',
       );
       expect(table().items, hasLength(1));
-      final print = tester.widget<UtenPrintPreviewButton>(
-        find.byType(UtenPrintPreviewButton).first,
-      );
+      final print = _toolbarAction<UtenPrintPreviewButton>(tester);
       expect(
         print.exportQuery!['f.search.receiptOriginal'],
         '>=0.123456789012',
@@ -379,18 +377,14 @@ void main() {
       expect(api.postBodies.last, {
         'columnSearch': {'phone': '1234 5678'},
       });
-      final export = tester.widget<UtenExportButton>(
-        find.byType(UtenExportButton),
-      );
+      final export = _toolbarAction<UtenExportButton>(tester);
       expect(export.queryParams.containsKey('f.search.phone'), isFalse);
       expect(export.bodyParams, {
         'sensitiveFilter': {
           'columnSearch': {'phone': '1234 5678'},
         },
       });
-      final print = tester.widget<UtenPrintPreviewButton>(
-        find.byType(UtenPrintPreviewButton).first,
-      );
+      final print = _toolbarAction<UtenPrintPreviewButton>(tester);
       expect(print.exportBody, export.bodyParams);
       await tester.runAsync(print.loader);
       expect(api.postBodies.last, {
@@ -436,9 +430,7 @@ void main() {
       (tester) async {
         final api = _ReportApi();
         await _mount(tester, entry.value, api);
-        final button = tester.widget<UtenPrintPreviewButton>(
-          find.byType(UtenPrintPreviewButton).first,
-        );
+        final button = _toolbarAction<UtenPrintPreviewButton>(tester);
         api.previewClamp = true;
         final before = api.queries.length;
         final preview = await tester.runAsync(button.loader);
@@ -550,4 +542,20 @@ void main() {
       },
     );
   }
+}
+
+// These tests verify the report loader/query contract. The shared responsive
+// toolbar may retain an action in its overflow menu without mounting it yet.
+T _toolbarAction<T extends Widget>(WidgetTester tester) {
+  final visible = find.byWidgetPredicate((widget) => widget is T);
+  if (visible.evaluate().isNotEmpty) return tester.widget<T>(visible.first);
+  for (final table
+      in tester.widgetList<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      )) {
+    for (final action in table.toolbarActions ?? const <Widget>[]) {
+      if (action is T) return action;
+    }
+  }
+  throw StateError('The owning report did not declare action $T');
 }

@@ -648,10 +648,98 @@ void main() {
     expect(repo.lastUpdateBody?['nameEn'], 'SUNAS TRADING LIMITED');
     expect(repo.lastUpdateBody?['name'], '中山测试客户');
   });
+  testWidgets('客户完整原值贯穿实际详情、财务编辑和一次保存', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 960));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const credit =
+        '1234567890123456789012345678901234567890.123456789012345678901234';
+    const floor = '0.000000000000000000000001';
+    const opening = '-0.123456789012345678901234';
+    final repo = _FakeClientRepository(
+      creditExactText: credit,
+      creditFloorExactText: floor,
+      initTotalExactText: opening,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          apiClientProvider.overrideWithValue(_EmptyApi()),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.clientView,
+            Perm.clientEdit,
+            Perm.clientFinance,
+            Perm.clientStatus,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          clientRepositoryProvider.overrideWithValue(repo),
+          clientDirectoryRepositoryProvider.overrideWithValue(
+            _FakePartyDirectoryRepository(),
+          ),
+          referenceMethodRepositoryProvider.overrideWithValue(
+            _FakeReferenceMethodRepository(),
+          ),
+          currencyRepositoryProvider.overrideWithValue(
+            _FakeCurrencyRepository(),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: PartyDetailPage(partyType: 'client', id: 'client-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(credit), findsOneWidget);
+    expect(find.text(floor), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const Key('party-detail-edit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('销售条款与财务'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_labeledField('信用额度')).controller!.text,
+      credit,
+    );
+    expect(
+      tester.widget<TextField>(_labeledField('期初应收')).controller!.text,
+      opening,
+    );
+    expect(
+      tester.widget<TextField>(_labeledField('铺底额')).controller!.text,
+      floor,
+    );
+    await tester.enterText(_labeledField('铺底额'), '0.000000000000000000000002');
+    await tester.tap(find.byKey(const Key('party-detail-save')));
+    await tester.pumpAndSettle();
+    expect(repo.lastUpdateBody?['credit'], credit);
+    expect(repo.lastUpdateBody?['initTotal'], opening);
+    expect(repo.lastUpdateBody?['creditFloor'], '0.000000000000000000000002');
+    expect(repo.lastUpdateBody?['version'], 17);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _FakeClientRepository implements ClientRepository {
-  _FakeClientRepository({this.nameEn, this.financialWritable = true});
+  _FakeClientRepository({
+    this.nameEn,
+    this.financialWritable = true,
+    this.creditExactText,
+    this.creditFloorExactText,
+    this.initTotalExactText,
+  });
+
+  final String? creditExactText;
+  final String? creditFloorExactText;
+  final String? initTotalExactText;
 
   final bool financialWritable;
 
@@ -666,6 +754,9 @@ class _FakeClientRepository implements ClientRepository {
   Future<ClientDetail> detail(String id) async => ClientDetail(
     id: id,
     name: '中山测试客户',
+    creditExactText: creditExactText,
+    creditFloorExactText: creditFloorExactText,
+    initTotalExactText: initTotalExactText,
     nameEn: nameEn,
     code: 'C-001',
     version: 17,

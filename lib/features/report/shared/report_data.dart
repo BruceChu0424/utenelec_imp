@@ -23,6 +23,7 @@ class ReportData {
     this.readScopeVersion,
     this.statisticsGeneratedAt,
     this.columnSearchKeys = const {},
+    this.documentMetadata = const {},
   });
 
   final List<ReportColumn> columns;
@@ -41,6 +42,7 @@ class ReportData {
 
   /// Explicit server-supported column queries; a partial page never infers these.
   final Set<String> columnSearchKeys;
+  final Map<String, dynamic> documentMetadata;
 
   /// A new query can retain trusted controls; old facts/counts never describe it.
   ReportData pendingQuery() => ReportData(
@@ -101,6 +103,9 @@ Future<ReportData> parseReportResponseResponsive(
     totals: totals,
     readScopeVersion: json['readScopeVersion'] as String?,
     statisticsGeneratedAt: json['statisticsGeneratedAt'] as String?,
+    documentMetadata: json['documentMetadata'] is Map
+        ? Map<String, dynamic>.from(json['documentMetadata'] as Map)
+        : const {},
     columnSearchKeys: (json['columnSearchKeys'] as List? ?? const [])
         .whereType<String>()
         .toSet(),
@@ -140,6 +145,9 @@ ReportData parseReportResponse(Map<String, dynamic> json, int fallbackPage) {
         .toList(),
     readScopeVersion: json['readScopeVersion'] as String?,
     statisticsGeneratedAt: json['statisticsGeneratedAt'] as String?,
+    documentMetadata: json['documentMetadata'] is Map
+        ? Map<String, dynamic>.from(json['documentMetadata'] as Map)
+        : const {},
     columnSearchKeys: (json['columnSearchKeys'] as List? ?? const [])
         .whereType<String>()
         .toSet(),

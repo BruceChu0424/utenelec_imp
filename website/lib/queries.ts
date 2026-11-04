@@ -7,9 +7,10 @@ import {
   toCatalogProduct,
 } from './catalog';
 import { type ProductFunctionType } from './product-taxonomy';
-import { catalogFacets, catalogWhere, catalogWindow, catalogTextFilter } from './catalog-query';
+import { catalogFacets, catalogWhere, catalogWindow } from './catalog-query';
 import { prisma } from './db';
-import { publicCaseWhere, publicNewsWhere, publicProductWhere } from './publication';
+import { publicCaseWhere, publicNewsWhere, publicProductWhere, publicSeriesWhere } from './publication';
+import { orderSearchPage, productSearchPage } from './product-search';
 
 export const getSeries = () =>
   prisma.series.findMany({
@@ -201,6 +202,14 @@ export async function queryCatalogProducts(input: CatalogQueryInput): Promise<Ca
   const seriesIds = [resolution.identity.id, ...resolution.identity.children.map(child => child.id)];
   const where = catalogWhere(seriesIds, input);
   const window = catalogWindow(input.offset, input.take);
+  if (input.query?.trim()) {
+    const allowedSeries = await prisma.series.findMany({ where: publicSeriesWhere({ id: { in: seriesIds } }), select: { id: true } });
+    const searched = await productSearchPage(prisma, { ...input, query: input.query, seriesIds: allowedSeries.map(series => series.id), publicOnly: true }, window.skip, window.take, true);
+    const records = await prisma.product.findMany({ where: publicProductWhere({ id: { in: searched.ids } }),
+      include: { series: { include: { parent: true } }, variants: { where: { published: true }, orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }] } } });
+    return { products: orderSearchPage(records, searched.ids).map(product => toCatalogProduct(product as unknown as ProductWithRelations, input.locale, input.standardName)),
+      total: searched.total, canonicalSlug: resolution.canonicalSlug, facets: catalogFacets(searched.groups) };
+  }
   const [records, total, groups] = await prisma.$transaction([
     prisma.product.findMany({
       where, ...window,
@@ -208,7 +217,7 @@ export async function queryCatalogProducts(input: CatalogQueryInput): Promise<Ca
       include: { series: { include: { parent: true } }, variants: { where: { published: true }, orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }] } },
     }),
     prisma.product.count({ where }),
-    prisma.product.groupBy({ by: ['functionType', 'gangCount'], orderBy: [{ functionType: 'asc' }, { gangCount: 'asc' }], where: catalogWhere(seriesIds, { query: input.query }), _count: { _all: true } }),
+    prisma.product.groupBy({ by: ['functionType', 'gangCount'], orderBy: [{ functionType: 'asc' }, { gangCount: 'asc' }], where: catalogWhere(seriesIds), _count: { _all: true } }),
   ]);
   return {
     products: (records as unknown as ProductWithRelations[]).map(product => toCatalogProduct(product, input.locale, input.standardName)),
@@ -232,7 +241,7 @@ export const getLatestProducts = (take = 4) =>
 
 /** Studio search is bounded at the database; a valid variant deep link is
  * pinned independently of the current page rather than silently substituted. */
-export async function queryStudioProducts(input: { query?: string; offset?: number; variantId?: string } = {}) {
+export async function queryStudioProducts(input: { query?: string; offset?: number; variantId?: string; locale?: string } = {}) {
   // Explicit NULL branches are essential: SQL NOT over nullable source/slug
   // fields otherwise removes ordinary unclassified series from the preview.
   const wallSeries = { AND: [
@@ -242,11 +251,18 @@ export async function queryStudioProducts(input: { query?: string; offset?: numb
   ] };
   const base = publicProductWhere({ sceneEnabled: true, variants: { some: { published: true, image: { not: null } } }, series: { is: { AND: [wallSeries, { OR: [{ parentId: null }, { parent: { is: wallSeries } }] }] } } });
   const query = input.query?.normalize('NFKC').trim().slice(0, 80) || '';
-  const where = query ? { AND: [base, { OR: [{ i18n: catalogTextFilter(query) }, { model: catalogTextFilter(query) }, { series: { is: { i18n: catalogTextFilter(query) } } }] }] } : base;
   const include = { series: { include: { parent: true } }, variants: { where: { published: true, image: { not: null } }, orderBy: [{ isDefault: 'desc' as const }, { sortOrder: 'asc' as const }, { id: 'asc' as const }] } };
+  if (query) {
+    const allowedSeries = await prisma.series.findMany({ where: publicSeriesWhere({ AND: [wallSeries, { OR: [{ parentId: null }, { parent: { is: wallSeries } }] }] }), select: { id: true } });
+    const window = catalogWindow(input.offset, 24);
+    const searched = await productSearchPage(prisma, { query, locale: input.locale, publicOnly: true, studio: true, seriesIds: allowedSeries.map(series => series.id) }, window.skip, window.take);
+    const products = orderSearchPage(await prisma.product.findMany({ where: { AND: [base, { id: { in: searched.ids } }] }, include }), searched.ids);
+    const selected = input.variantId ? await prisma.product.findFirst({ where: { AND: [base, { variants: { some: { id: input.variantId, published: true, image: { not: null } } } }] }, include }) : null;
+    return { products: selected && !products.some(product => product.id === selected.id) ? [selected, ...products] : products, total: searched.total, selected };
+  }
   const [products, total] = await prisma.$transaction([
-    prisma.product.findMany({ where, ...catalogWindow(input.offset, 24), orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }], include }),
-    prisma.product.count({ where }),
+    prisma.product.findMany({ where: base, ...catalogWindow(input.offset, 24), orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }], include }),
+    prisma.product.count({ where: base }),
   ]);
   const selected = input.variantId ? await prisma.product.findFirst({ where: { AND: [base, { variants: { some: { id: input.variantId, published: true, image: { not: null } } } }] }, include }) : null;
   return { products: selected && !products.some(product => product.id === selected.id) ? [selected, ...products] : products, total, selected };

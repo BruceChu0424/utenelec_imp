@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.shipment.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
+
 import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -31,9 +33,8 @@ public class ShipmentItemLine extends com.uten.imp.common.platformcolumns.Platfo
     private BigDecimal unitRate;
 
     @NotNull
-    @jakarta.validation.constraints.DecimalMin("0.0001")
-    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
-    private BigDecimal qty;
+    @jakarta.validation.constraints.DecimalMin(value="0",inclusive=false)
+    @DocumentQuantity private BigDecimal qty;
 
     private BigDecimal price;
     private BigDecimal weight;

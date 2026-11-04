@@ -1,3 +1,4 @@
+import '../../core/formatters/exact_number_text.dart';
 // ADR-098 委外回厂短交案件模型（/subcontract/short-deliveries）。
 //
 // 数量全部按订货单位；severity / status / effectiveStatus 的取值与服务端
@@ -6,6 +7,7 @@
 
 class SubcontractShortDeliveryCase {
   const SubcontractShortDeliveryCase({
+    this.exactNumbers = const {},
     required this.id,
     required this.orderId,
     required this.orderBillNo,
@@ -47,6 +49,30 @@ class SubcontractShortDeliveryCase {
     required this.version,
     this.canDecide = false,
   });
+
+  final Map<String, String?> exactNumbers;
+  Object? get orderedQtyValue => exactNumbers.containsKey('orderedQty')
+      ? exactNumbers['orderedQty']
+      : orderedQty;
+  Object? get allowedLossPctValue => exactNumbers.containsKey('allowedLossPct')
+      ? exactNumbers['allowedLossPct']
+      : allowedLossPct;
+  Object? get floorQtyValue => exactNumbers.containsKey('floorQty')
+      ? exactNumbers['floorQty']
+      : floorQty;
+  Object? get deliveredQtyValue => exactNumbers.containsKey('deliveredQty')
+      ? exactNumbers['deliveredQty']
+      : deliveredQty;
+  Object? get shortfallQtyValue => exactNumbers.containsKey('shortfallQty')
+      ? exactNumbers['shortfallQty']
+      : shortfallQty;
+  Object? get shortfallPctValue => exactNumbers.containsKey('shortfallPct')
+      ? exactNumbers['shortfallPct']
+      : shortfallPct;
+  Object? get lossQtyValue =>
+      exactNumbers.containsKey('lossQty') ? exactNumbers['lossQty'] : lossQty;
+  Object? get lossPctValue =>
+      exactNumbers.containsKey('lossPct') ? exactNumbers['lossPct'] : lossPct;
 
   final String id;
   final String orderId;
@@ -115,6 +141,7 @@ class SubcontractShortDeliveryCase {
 
   factory SubcontractShortDeliveryCase.fromJson(Map<String, dynamic> json) =>
       SubcontractShortDeliveryCase(
+        exactNumbers: _exactSubcontractNumbers(json),
         id: json['id'] as String,
         orderId: json['orderId'] as String? ?? '',
         orderBillNo: json['orderBillNo'] as String? ?? '',
@@ -246,6 +273,7 @@ class SubcontractShortDeliveryCounts {
 
 class SubcontractGoodsLossRow {
   const SubcontractGoodsLossRow({
+    this.exactNumbers = const {},
     required this.goodsId,
     this.goodsCode,
     this.goodsName,
@@ -257,6 +285,18 @@ class SubcontractGoodsLossRow {
     this.maxLossPct = 0,
     this.lastLossAt,
   });
+
+  final Map<String, String?> exactNumbers;
+  Object? get orderedQtyValue => exactNumbers.containsKey('orderedQty')
+      ? exactNumbers['orderedQty']
+      : orderedQty;
+  Object? get lossQtyValue =>
+      exactNumbers.containsKey('lossQty') ? exactNumbers['lossQty'] : lossQty;
+  Object? get lossPctValue =>
+      exactNumbers.containsKey('lossPct') ? exactNumbers['lossPct'] : lossPct;
+  Object? get maxLossPctValue => exactNumbers.containsKey('maxLossPct')
+      ? exactNumbers['maxLossPct']
+      : maxLossPct;
 
   final String goodsId;
   final String? goodsCode;
@@ -271,6 +311,7 @@ class SubcontractGoodsLossRow {
 
   factory SubcontractGoodsLossRow.fromJson(Map<String, dynamic> json) =>
       SubcontractGoodsLossRow(
+        exactNumbers: _exactSubcontractNumbers(json),
         goodsId: json['goodsId'] as String? ?? '',
         goodsCode: json['goodsCode'] as String?,
         goodsName: json['goodsName'] as String?,
@@ -287,6 +328,7 @@ class SubcontractGoodsLossRow {
 /// 供应商委外损耗汇总（供应商详情「委外损耗」段）。
 class SubcontractSupplierLossSummary {
   const SubcontractSupplierLossSummary({
+    this.exactNumbers = const {},
     required this.supplierId,
     this.settledLineCount = 0,
     this.acceptedLossCount = 0,
@@ -298,6 +340,18 @@ class SubcontractSupplierLossSummary {
     this.byGoods = const [],
     this.recentCases = const [],
   });
+
+  final Map<String, String?> exactNumbers;
+  Object? get orderedQtyValue => exactNumbers.containsKey('orderedQty')
+      ? exactNumbers['orderedQty']
+      : orderedQty;
+  Object? get lossQtyValue =>
+      exactNumbers.containsKey('lossQty') ? exactNumbers['lossQty'] : lossQty;
+  Object? get lossPctValue =>
+      exactNumbers.containsKey('lossPct') ? exactNumbers['lossPct'] : lossPct;
+  Object? get maxLossPctValue => exactNumbers.containsKey('maxLossPct')
+      ? exactNumbers['maxLossPct']
+      : maxLossPct;
 
   final String supplierId;
   final int settledLineCount;
@@ -315,6 +369,7 @@ class SubcontractSupplierLossSummary {
   factory SubcontractSupplierLossSummary.fromJson(
     Map<String, dynamic> json,
   ) => SubcontractSupplierLossSummary(
+    exactNumbers: _exactSubcontractNumbers(json),
     supplierId: json['supplierId'] as String? ?? '',
     settledLineCount: (json['settledLineCount'] as num?)?.toInt() ?? 0,
     acceptedLossCount: (json['acceptedLossCount'] as num?)?.toInt() ?? 0,
@@ -334,27 +389,33 @@ class SubcontractSupplierLossSummary {
   );
 }
 
-/// 数量显示：整数不带小数点，其余去尾零，可带单位（判定页/弹窗/供应商详情共用）。
-String formatSubcontractQty(double value, [String? unit]) {
-  final text = value == value.roundToDouble()
-      ? value.toInt().toString()
-      : value
-            .toStringAsFixed(4)
-            .replaceFirst(RegExp(r'0+$'), '')
-            .replaceFirst(RegExp(r'\.$'), '');
+/// Shared decimal text keeps every original digit; units retain their existing meaning.
+String formatSubcontractQty(Object? value, [String? unit]) {
+  final text = exactNumberDisplay(value) ?? '—';
   return unit == null || unit.isEmpty ? text : '$text $unit';
 }
 
-/// 百分比显示：空 → 「—」；整数不带小数点；其余最多 2 位小数去尾零。
-String formatSubcontractPct(double? value) {
-  if (value == null) return '—';
-  final text = value == value.roundToDouble()
-      ? value.toInt().toString()
-      : value
-            .toStringAsFixed(2)
-            .replaceFirst(RegExp(r'0+$'), '')
-            .replaceFirst(RegExp(r'\.$'), '');
-  return '$text%';
+String formatSubcontractPct(Object? value) {
+  final text = exactNumberDisplay(value);
+  return text == null ? '—' : '$text%';
+}
+
+Map<String, String?> _exactSubcontractNumbers(Map<String, dynamic> json) {
+  const fields = [
+    'orderedQty',
+    'allowedLossPct',
+    'floorQty',
+    'deliveredQty',
+    'shortfallQty',
+    'shortfallPct',
+    'lossQty',
+    'lossPct',
+    'maxLossPct',
+  ];
+  return Map.unmodifiable({
+    for (final key in fields)
+      key: exactNumberText(json['${key}Exact'] ?? json[key]),
+  });
 }
 
 String subcontractShortDeliverySeverityLabel(String code) =>

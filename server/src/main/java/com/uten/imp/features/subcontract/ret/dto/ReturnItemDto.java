@@ -36,4 +36,6 @@ public class ReturnItemDto extends com.uten.imp.common.finance.ProcurementSource
     private Integer stepLegacyId;
     private String receiptNo;
     private String orderNo;
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
+    public String getGirthQtyExact(){return com.uten.imp.common.util.DecimalText.of(girthQty);}
 }

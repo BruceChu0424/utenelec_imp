@@ -105,6 +105,62 @@ class WorkshopMaterialCountPostgresTest {
                         UUID leaf, UUID warehouseUser, UUID counterA, UUID counterB, UUID bin, UUID firstPeriod) {}
 
     @Test
+    void exactOpeningApprovalFlowsThroughDerivedCountAndActualMovementWithoutFourDigitCoercion() {
+        Shop shop=shop("exact-generated-quantity",BusinessTime.today());
+        UUID material=granule(shop,"精确开账与盘点物料");
+        fixture.loginAs(shop.admin());
+        long version=((Number)stockCountRequests.candidates(shop.bin(),"",List.of(material),1,50).getItems().getFirst().get("goodsVersion")).longValue();
+        BigDecimal target=new BigDecimal("1.123456789012345678901234");
+        var line=new com.uten.imp.features.stock.count.StockCountDtos.LineInput(material,null,shop.kg(),BigDecimal.ZERO,null,false,target,target,true,null,version);
+        var request=stockCountRequests.submit(new com.uten.imp.features.stock.count.StockCountDtos.Submit(shop.bin(),"精确首次开账",key("exact-opening"),List.of(line)));
+        stockCountRequests.approve((UUID)request.get("id"),new com.uten.imp.features.stock.count.StockCountDtos.Decision(0L,key("exact-opening-approve"),null));
+        money(target.toPlainString(),db.queryForObject("SELECT signed_qty FROM workshop_material_count_adjustment_postings WHERE request_id=?",BigDecimal.class,request.get("id")));
+        fixture.loginAs(shop.counterA());
+        UUID count=periods.startCount(shop.firstPeriod(),new StartCountRequest(0L,null,key("exact-count-start"))).count().id();
+        var input=new CountLineInput(null,"FULL_BAGS",null,material,null,new BigDecimal("1.000000000000000000000001"),BigDecimal.ONE,null,null,null,null);
+        var saved=counts.saveLine(count,"EXACT-BAG",input);
+        money("1.000000000000000000000001",saved.qtyBase());
+        var replay=counts.saveLine(count,"EXACT-BAG",input);
+        assertEquals(saved.id(),replay.id());assertEquals(saved.rowVersion(),replay.rowVersion());
+        var refused=assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE workshop_material_count_lines SET qty_base=7,row_version=row_version+1 WHERE id=?",saved.id()));
+        assertTrue(refused.getMostSpecificCause().getMessage().contains("Derived WM quantity"));
+        fixture.loginAs(shop.counterB());
+        counts.submit(count,new VersionRequest(counts.detail(count).rowVersion(),key("exact-count-submit")));
+        money("0.123456789012345678901233",db.queryForObject("SELECT actual_qty FROM workshop_material_period_lines WHERE period_id=? AND goods_id=?",BigDecimal.class,shop.firstPeriod(),material));
+        money("1.000000000000000000000001",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,shop.bin(),material));
+        money("0.123456789012345678901233",db.queryForObject("SELECT qty FROM stock_movements WHERE warehouse_id=? AND goods_id=? AND movement_type=21",BigDecimal.class,shop.bin(),material));
+        assertEquals(2,db.queryForObject("SELECT derivation_version FROM workshop_material_period_lines WHERE period_id=? AND goods_id=?",Integer.class,shop.firstPeriod(),material));
+    }
+
+    @Test
+    void correctionCopiesHistoricStoredV1QuantityAndOnlyARealSourceEditCreatesV2() {
+        Shop shop=shop("legacy-generated-proof",BusinessTime.today(),true);
+        UUID material=db.queryForObject("SELECT goods_id FROM workshop_material_count_adjustment_postings WHERE period_id=?",UUID.class,shop.firstPeriod());
+        fixture.loginAs(shop.counterA());
+        UUID count=periods.startCount(shop.firstPeriod(),new StartCountRequest(0L,null,key("legacy-count-start"))).count().id();
+        var saved=counts.saveLine(count,"LEGACY-BAG",new CountLineInput(null,"FULL_BAGS",null,material,null,new BigDecimal("1.2345"),new BigDecimal("2.3456"),null,null,null,null));
+        // Anonymous historical fixture: the old generated expression stored ROUND4.
+        // No runtime capability can enter this path; restore the ALWAYS trigger
+        // before any business action, and never alter real business rows.
+        db.execute("ALTER TABLE workshop_material_count_lines DISABLE TRIGGER trg_zz_wm_exact_derived_quantity");
+        try {db.update("UPDATE workshop_material_count_lines SET qty_base=2.8956,derivation_version=1,derivation_precision_policy=NULL,row_version=row_version+1 WHERE id=?",saved.id());}
+        finally {db.execute("ALTER TABLE workshop_material_count_lines ENABLE ALWAYS TRIGGER trg_zz_wm_exact_derived_quantity");}
+        fixture.loginAs(shop.counterB());
+        counts.submit(count,new VersionRequest(counts.detail(count).rowVersion(),key("legacy-count-submit")));
+        fixture.loginAs(shop.counterA());
+        long periodVersion=db.queryForObject("SELECT row_version FROM workshop_material_periods WHERE id=?",Long.class,shop.firstPeriod());
+        var corrected=counts.correct(shop.firstPeriod(),new CorrectCountRequest(periodVersion,"核对历史冻结数量",key("legacy-count-correct")));
+        var copy=corrected.lines().stream().filter(item->item.clientLineKey().equals("LEGACY-BAG")).findFirst().orElseThrow();
+        money("2.8956",copy.qtyBase());
+        assertEquals(1,db.queryForObject("SELECT derivation_version FROM workshop_material_count_lines WHERE id=?",Integer.class,copy.id()));
+        assertEquals(saved.id(),db.queryForObject("SELECT derivation_source_line_id FROM workshop_material_count_lines WHERE id=?",UUID.class,copy.id()));
+        var changed=counts.saveLine(corrected.id(),copy.clientLineKey(),new CountLineInput(copy.rowVersion(),"FULL_BAGS",null,material,null,new BigDecimal("1.2346"),new BigDecimal("2.3456"),null,null,null,null));
+        money("2.89587776",changed.qtyBase());
+        assertEquals(2,db.queryForObject("SELECT derivation_version FROM workshop_material_count_lines WHERE id=?",Integer.class,changed.id()));
+        money("2.8956",db.queryForObject("SELECT qty_base FROM workshop_material_count_lines WHERE id=?",BigDecimal.class,saved.id()));
+    }
+
+    @Test
     void firstOpeningIsInTheRequiredCountAndEqualPhysicalQuantityConsumesNothing() {
         Shop shop = shop("opening-count-coverage", BusinessTime.today(), true);
         UUID material = db.queryForObject("SELECT goods_id FROM v_workshop_material_bin_ledger WHERE period_id=? AND source_kind='OPENING'", UUID.class, shop.firstPeriod());

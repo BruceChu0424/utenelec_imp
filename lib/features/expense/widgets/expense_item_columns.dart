@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_item.dart';
@@ -27,10 +28,12 @@ final expenseItemColumns = <MasterColumnDef<ExpenseItem>>[
   // 报销恒人民币（2026-10-10 金额带单位口径：数值后自动带「元」）。
   MasterColumnDef(
     key: 'amount',
+    exactValueOf: (item) => item.amountText,
     label: '金额',
     width: 140,
     type: 'money',
-    value: (item) =>
-        financeLocalMoneyWithUnitSuffix(item.amount.toStringAsFixed(2)),
+    value: (item) => financeLocalMoneyWithUnitSuffix(
+      financeExactMoneyDisplay(item.amountText),
+    ),
   ),
 ];

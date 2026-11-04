@@ -67,13 +67,15 @@ public class ExpenseClaimController {
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String claimNo,
             @RequestParam(defaultValue="false") boolean includeDeleted,
-            @RequestParam(defaultValue="false") boolean onlyDeleted) {
-        return service.listMine(status, year, month, departmentId, category,
-                page, size, sort, order, claimNo, includeDeleted, onlyDeleted);
+            @RequestParam(defaultValue="false") boolean onlyDeleted,
+            @RequestParam(defaultValue="false") boolean actionRequired,
+            @RequestParam(defaultValue="false") boolean includeAbandoned) {
+        return service.listMine(actionRequired?"ACTION_REQUIRED":status, year, month, departmentId, category,
+                page, size, sort, order, claimNo, includeDeleted, onlyDeleted,includeAbandoned);
     }
 
     @GetMapping("/pending")
-    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive')")
     public PageResponse<ExpenseClaimDto> pending(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
@@ -84,9 +86,10 @@ public class ExpenseClaimController {
             // 2026-09-25 单号列统一：报销单号表头排序 + 值筛选（精确匹配）。
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String claimNo) {
-        return service.listPending(year, month, departmentId, category, page,
-                size, sort, order, claimNo);
+            @RequestParam(required = false) String claimNo,
+            @RequestParam(required=false) String approvalStage,@RequestParam(required=false) String departmentCode) {
+        return service.listScoped("pending",year, month, departmentId, category, page,
+                size, sort, order, claimNo,approvalStage,departmentCode);
     }
 
     @GetMapping("/payable")
@@ -112,16 +115,18 @@ public class ExpenseClaimController {
      * mine 为我的报销单号桶，2026-09-25 单号列统一）。
      */
     @GetMapping("/facets")
-    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve','expense:pay','expense:apply')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay','expense:apply')")
     public ExpenseClaimFacetsDto facets(@RequestParam String queue,
             @RequestParam(defaultValue="false") boolean includeDeleted,
-            @RequestParam(defaultValue="false") boolean onlyDeleted) {
-        return service.facets(queue,includeDeleted,onlyDeleted);
+            @RequestParam(defaultValue="false") boolean onlyDeleted,
+            @RequestParam(required=false) String approvalStage,@RequestParam(required=false) String departmentCode,
+            @RequestParam(defaultValue="false") boolean includeAbandoned) {
+        return service.facets(queue,includeDeleted,onlyDeleted,approvalStage,departmentCode,includeAbandoned);
     }
 
     /** 队列汇总（V608 审批页统计卡）：两队列单数/金额 + 本月提交 + 本月打款。 */
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
     public ExpenseClaimSummaryDto summary() {
         return service.summary();
     }
@@ -145,8 +150,12 @@ public class ExpenseClaimController {
         return recognition.recognize(file);
     }
 
+    @GetMapping("/{id}/original-source")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
+    public java.util.Map<String,Object> originalSource(@PathVariable UUID id){return service.originalApplicationSource(id);}
+
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
     public ExpenseClaimDto detail(@PathVariable UUID id) {
         ExpenseClaimDto result = service.detail(id);
         detailViewAudit.record(
@@ -160,7 +169,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/{id}/history")
-    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
     public ExpenseClaimDto history(@PathVariable UUID id) {
         ExpenseClaimDto result = service.detailHistory(id);
         detailViewAudit.recordHistory("view_expense_claim_detail", "expense_claims", id,
@@ -169,7 +178,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/{id}/history/rows")
-    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
             @PathVariable UUID id,@RequestParam(required=false) Long beforeId,
             @RequestParam(defaultValue="50") int size) {
@@ -211,14 +220,20 @@ public class ExpenseClaimController {
         return service.withdraw(id,request.expectedVersion());
     }
 
+    @PostMapping("/{id}/abandon")
+    @PreAuthorize("hasAuthority('expense:apply')")
+    public ExpenseClaimDto abandon(@PathVariable UUID id,@Valid @RequestBody com.uten.imp.features.expenseclaim.dto.ExpenseClaimVersionRequest request) {
+        return service.abandon(id,request.expectedVersion());
+    }
+
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('expense:approve')")
+    @PreAuthorize("hasAnyAuthority('expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive')")
     public ExpenseClaimDto approve(@PathVariable UUID id, @Valid @RequestBody com.uten.imp.features.expenseclaim.dto.ExpenseClaimVersionRequest request) {
         return service.approve(id,request.expectedVersion());
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority('expense:approve')")
+    @PreAuthorize("hasAnyAuthority('expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive')")
     public ExpenseClaimDto reject(@PathVariable UUID id,
                                   @Valid @RequestBody ExpenseClaimRejectRequest request) {
         return service.reject(id, request.reason(), request.expectedVersion());
@@ -226,7 +241,7 @@ public class ExpenseClaimController {
 
     /** 批量通过（V608）：单事务全成全败（上限 50），替代前端逐单循环。 */
     @PostMapping("/approve-batch")
-    @PreAuthorize("hasAuthority('expense:approve')")
+    @PreAuthorize("hasAnyAuthority('expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive')")
     public ExpenseClaimBatchResultDto approveBatch(
             @Valid @RequestBody ExpenseClaimBatchRequest request) {
         return service.batchVersioned(request,true);
@@ -234,7 +249,7 @@ public class ExpenseClaimController {
 
     /** 批量驳回（V608）：统一原因必填，单事务全成全败。 */
     @PostMapping("/reject-batch")
-    @PreAuthorize("hasAuthority('expense:approve')")
+    @PreAuthorize("hasAnyAuthority('expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive')")
     public ExpenseClaimBatchResultDto rejectBatch(
             @Valid @RequestBody ExpenseClaimBatchRequest request) {
         return service.batchVersioned(request,false);
@@ -275,27 +290,28 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/history")
-    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
     public PageResponse<ExpenseClaimDto> history(@RequestParam(required=false) Integer year,@RequestParam(required=false) Integer month,
             @RequestParam(required=false) UUID departmentId,@RequestParam(required=false) String category,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,
             // 2026-09-25 单号列统一：报销单号表头排序 + 值筛选（精确匹配）。
             @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
-            @RequestParam(required=false) String claimNo) {
-        return service.listHistory(year,month,departmentId,category,page,size,sort,order,claimNo);
+            @RequestParam(required=false) String claimNo,
+            @RequestParam(required=false) String approvalStage,@RequestParam(required=false) String departmentCode) {
+        return service.listScoped("history",year,month,departmentId,category,page,size,sort,order,claimNo,approvalStage,departmentCode);
     }
     @GetMapping("/counts")
-    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
     @com.uten.imp.security.BusinessTaskRead
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto counts() { return service.counts(); }
     @GetMapping("/settings")
-    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay','expense:settings')")
+    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay','expense:settings')")
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimSettingsDto settings() { return settings.get(); }
     @PutMapping("/settings")
     @PreAuthorize("hasAuthority('expense:settings')")
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimSettingsDto settings(@Valid @RequestBody com.uten.imp.features.expenseclaim.dto.ExpenseClaimSettingsDto input) { return settings.update(input); }
     @PostMapping("/{id}/invoices/{invoiceId}/verify")
-    @PreAuthorize("hasAuthority('expense:approve')")
+    @PreAuthorize("hasAnyAuthority('expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive')")
     public ExpenseClaimDto verifyInvoice(@PathVariable UUID id,@PathVariable UUID invoiceId,
             @Valid @RequestBody com.uten.imp.features.expenseclaim.dto.ExpenseClaimInvoiceVerifyRequest input) {
         return service.verifyInvoice(id,invoiceId,input);

@@ -18,6 +18,8 @@ public class FinanceExpenseItemInput extends com.uten.imp.common.platformcolumns
     /** 费用类别（payment_styles.category='EXPENSE'）。必填：总账借方按行科目过账，空则借贷不平衡。 */
     @NotNull
     private UUID expenseStyleId;
+    /** Explicit accounting intent; omitted legacy requests remain ordinary expenses. */
+    private String postingPurpose;
 
     private UUID departmentId;
     private UUID counterpartAccountId;

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "contractId": "employee-applications-workflow-v1",
+  "auditDate": "2026-11-03",
+  "status": "native-business-not-migrated; server-and-flutter-owning-contract",
+  "scope": ["GENERAL reimbursement", "TRAVEL reimbursement", "TRAVEL application", "PAYMENT application", "PREPAYMENT application", "SUPPLIER_PAYMENT application"],
+  "explicitlyExcluded": ["PAYROLL_PAYMENT application", "employee travel advances and petty-cash borrowing; PREPAYMENT is supplier-only as explicitly confirmed"],
+  "paperSourceInterpretation": {
+    "reimbursement": "申请人填报及相关凭证 → 部门负责人审核 → 财务部苏蝶金复核 → 财务部吴兰梅复核 → 总经办王经理批准支付",
+    "travel": "出差人写出差申请书 → 部门负责人审核 → 小朱总或朱总批准 → 交财务苏蝶金保管",
+    "supplierPayment": "经办人 → 采购部意见 → 财务部意见 → 副总审批 → 总经理审批",
+    "implementation": "原文人名保留为来源，运行时按独立节点权限分配具体员工；界面以财务初核/财务复核区分纸面两次顺序复核。出差保管不是付款；供应商付款不混入普通报销链。"
+  },
+  "orderedStages": {
+    "EXPENSE": ["DEPARTMENT", "FINANCE_INITIAL", "FINANCE_REVIEW", "EXECUTIVE", "PAYMENT"],
+    "TRAVEL": ["DEPARTMENT", "EXECUTIVE", "FINANCE_RECEIVE"],
+    "PAYMENT": ["DEPARTMENT", "FINANCE_INITIAL", "FINANCE_REVIEW", "EXECUTIVE", "PAYMENT"],
+    "PREPAYMENT": ["DEPARTMENT", "FINANCE_INITIAL", "FINANCE_REVIEW", "EXECUTIVE", "PAYMENT"],
+    "SUPPLIER_PAYMENT": ["PROCUREMENT", "FINANCE_REVIEW", "VICE_EXECUTIVE", "EXECUTIVE", "PAYMENT"]
+  },
+  "stageLabels": {
+    "default": {"DEPARTMENT":"部门负责人审核","PROCUREMENT":"采购部意见","FINANCE_INITIAL":"财务初核","FINANCE_REVIEW":"财务复核","VICE_EXECUTIVE":"副总审批","EXECUTIVE":"总经办批准","FINANCE_RECEIVE":"财务接收保管","PAYMENT":"出纳登记付款"},
+    "SUPPLIER_PAYMENT": {"FINANCE_REVIEW":"财务部意见","EXECUTIVE":"总经理审批"}
+  },
+  "owningSources": [
+    "server/src/main/java/com/uten/imp/application/policy/DepartmentApprovalScope.java",
+    "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApprovalPolicy.java",
+    "server/src/main/java/com/uten/imp/features/applications/BusinessApplicationWorkflow.java",
+    "server/src/main/java/com/uten/imp/features/applications/BusinessApplicationService.java",
+    "server/src/main/resources/db/migration/V1000__expense_department_finance_executive_workflow.sql",
+    "server/src/main/resources/db/migration/V1001__business_application_workflows.sql"
+  ],
+  "applicationApi": {
+    "prefix": "/api/business-applications",
+    "reads": ["GET /mine", "GET /pending", "GET /history", "GET /prepayment-posting", "GET /counts", "GET /{id}", "GET /{id}/prepayment-finance-candidates"],
+    "commands": ["POST /", "PUT /{id}", "POST /{id}/submit", "POST /{id}/withdraw", "POST /{id}/approve", "POST /{id}/reject", "POST /{id}/receive", "POST /{id}/pay", "POST /{id}/cancel-payment", "POST /{id}/link-finance", "POST /{id}/cancel"],
+    "identity": "Create uses a client-frozen UUID; an unknown response is reconciled with GET of the same UUID. Never replay a write with a new UUID.",
+    "applicationNumber": "BUSINESS_APPLICATION uses the existing DocNumberService/global lifetime registry: SQ + Shanghai business date + six-digit daily sequence. Numbering is separate from the stable UUID.",
+    "money": "API decimal strings with at most two fractional digits; server NUMERIC(18,2)/BigDecimal, no binary floating-point amount authority.",
+    "versions": "Every edit and command except initial create carries the viewed expectedVersion; PostgreSQL row lock and version check reject stale or repeated transitions.",
+    "stages": "approvalStage plus current-round events are authoritative; do not infer approvals from a later status or another employee's role.",
+    "scopeAliases": {"FINANCE": ["FINANCE_INITIAL", "FINANCE_REVIEW", "FINANCE_RECEIVE", "PAYMENT", "FINANCE_POSTING"], "MANAGEMENT": ["VICE_EXECUTIVE", "EXECUTIVE"], "PMC": ["DEPARTMENT", "PROCUREMENT"]}
+  },
+  "authorization": [
+    "Department review is restricted to current primary/secondary membership or managed roots and their active descendants. Other departments cannot be selected by changing departmentCode.",
+    "A department manager's own application requires the configured superior/substitute, who independently holds the relevant department-approval grant. The applicant cannot select this person. Submitted routing freezes manager, substitute, department generation and policy version; changes require withdrawal/resubmission. The substitute gains no access to ordinary coworkers' applications.",
+    "Applicant cannot approve, receive or pay their own application. An employee cannot approve multiple stages of the same round, including approving and later paying.",
+    "New capabilities default closed. Separate permissions exist for each application kind and each approval/receiving/payment stage.",
+    "Historical participation never grants unrestricted company browsing. Current feature/node authority and actual participation are required.",
+    "Original evidence owner BUSINESS_APPLICATION is writable only by its applicant in DRAFT/REJECTED. Payment evidence owner BUSINESS_APPLICATION_PAYMENT requires a current non-applicant payment capability.",
+    "Authorization publication proofs for business-applications use the existing employee/department expense read-scope domain; each feature keeps its independent object ACL."
+  ],
+  "financialRegistration": [
+    "PAYMENT and SUPPLIER_PAYMENT applications do not perform another balance deduction. Registration links one existing audited finance payment/expense with exact amount, actual date and supplier agreement where applicable.",
+    "PREPAYMENT always has a real supplier UUID/FK and server-frozen supplier name/payee. Its pay command records only actual payment date/reference and clean proof; PAID plus postingStatus=PENDING explicitly means paid but awaiting financial posting, never an expense or an automatic account deduction.",
+    "Independent application:prepayment:link_finance may link a separately audited native finance PAYMENT only when its own AP/DIRECT_PAYMENT ledger is PREPAYMENT, its supplier/amount/date match, its amount authority is recognized, it is not imported/unverified, and it has no ordinary payable-settlement lines. Candidate listing, current row capability, red todo counts and the final locked write share the same finance-owned predicate and existing financial owner scope.",
+    "The existing supplier-prepayment asset/application/refund/general-ledger prohibition is unchanged. The application workflow does not open that financial algorithm. Without a legitimate already-posted record, the actual payment stays PENDING, visible as a yellow follow-up instead of a false actionable posting or completed accounting step.",
+    "Confirmed clean payment proof is read from the application's own attachment owner; caller-supplied proof IDs are not treated as evidence.",
+    "A linked PAID application prevents reversal, deletion or material changes of its financial posting. Original payer may cancel the registration with a required retained reason, preserving the original document/date/reference in history; ledger correction remains a separate authorized finance operation.",
+    "Travel finance receiving completes custody only and never creates a payment or financial posting."
+  ],
+  "draftClosure": "Only the applicant with current kind authority may logically cancel DRAFT/REJECTED using expectedVersion. CANCELLED retains the original number, attachment owner and all events/submissions; submitted rows must first withdraw, and paid/approved rows cannot use this shortcut.",
+  "nativeImplementation": {
+    "businessPagesImplemented": false,
+    "businessWritesOpened": false,
+    "reimbursementWorkItemIds": ["W7-BIZ-051", "W7-BIZ-052", "W7-BIZ-053", "W7-BIZ-054", "W7-BIZ-055", "W7-BIZ-056", "W7-FLOW-012"],
+    "readScopeTransportUpdated": true,
+    "newApplicationPageWorkItems": ["W7-BIZ-224","W7-BIZ-225","W7-BIZ-226","W7-BIZ-227","W7-BIZ-228","W7-BIZ-229"],
+    "x86x64BusinessAcceptance": false,
+    "win7TargetPcAcceptance": false,
+    "fullErpEquivalent": false,
+    "formalRelease": false
+  }
+}

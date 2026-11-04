@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "task": "login-session-lifecycle-backend-20261103",
+  "scope": "后端会话监听、登录替换通知与最短空闲阈值保护；客户端证据另行记录。",
+  "verifiedLocalDate": "2026-11-03",
+  "verifiedTimeZone": "America/Denver",
+  "sourceBaseline": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "headAtVerification": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "branch": "uimp/login-session-lifecycle-20261103",
+  "worktree": "D:/Projects/uten_imp_worktrees/login-session-lifecycle-20261103",
+  "sourceState": "Task changes were uncommitted when these source hashes and results were recorded; root agent will commit the complete task.",
+  "sourceSha256": {
+    "server/src/main/java/com/uten/imp/config/SecurityConfig.java": "a5ca6e03d5c5bdfb8603f7188589e5d91d80f37beeda3787b9582571570b2114",
+    "server/src/main/java/com/uten/imp/features/auth/AuthSessionService.java": "a16cbeee063b1a083e27a7ea6c6bb2eba9591020f584ef60b338ea08f0ba0fe4",
+    "server/src/main/java/com/uten/imp/features/auth/SessionWatchController.java": "a6bb2de73555148753c464e9d502d2c1df9f928e0462a3f75234859137ee1a77",
+    "server/src/main/java/com/uten/imp/features/auth/SessionWatchService.java": "e35e096531fad0125516e28fb15c711cc4bab4d4332a4faeb156422a6f24e73a",
+    "server/src/main/java/com/uten/imp/security/AutomaticRequestPolicy.java": "e05d08a5465017bdb801cb0a418141612bc65c9c688974d7a144dff743cb1766",
+    "server/src/main/java/com/uten/imp/security/JwtAuthFilter.java": "d1fd0116fffa9aa4489165e4f971ea3cfb873239b9af716f787d822cb102dc8f",
+    "server/src/main/java/com/uten/imp/security/PasswordChangeRequiredFilter.java": "2fd078b83dc8b9f8f16cf781fc9fbaf677f4e069da8e10b4642407a9898c832a",
+    "server/src/test/java/com/uten/imp/businesschain/SessionIdleEnforcementPostgresTest.java": "2ca431cc267a16dcb2bade9bc12a658be4a03dd46d8e877b21cd9c382af3b3b1",
+    "server/src/test/java/com/uten/imp/businesschain/SessionWatchBusinessProtectionPostgresTest.java": "3a26a92b3fe314bdc8641fd1eea79de3d5d996332f8134f6219e34c9984a10d1",
+    "server/src/test/java/com/uten/imp/features/auth/AuthLogoutSecurityIntegrationTest.java": "4a65d8b7e822f4eb9f19ed0fa3d7c530711a9a2097da429e80abeb2f85145797",
+    "server/src/test/java/com/uten/imp/features/auth/SessionWatchServiceTest.java": "47e9eba0cd6f00bb302da18d2df706b9bd95d03ea71fd84d282c8b41ac486c0c",
+    "server/src/test/java/com/uten/imp/features/auth/StaffSingleDeviceLoginPostgresTest.java": "29dc79fb059101b77d988b1a39b02f4310c41c5c0a8d7d923e8021eed96d4c40",
+    "server/src/test/java/com/uten/imp/features/auth/TokenIssuerLogoutAuditTest.java": "b6ecb1a2e98c68366bbf9b0772abf7449efab37c5069cf45295e013cb6debf13",
+    "server/src/test/java/com/uten/imp/security/AutomaticRequestPolicyTest.java": "e0a5dd24f1e965f46cf8715d4570fd02f537c2c1fb254a4afd925dbf81e91c50",
+    "server/src/test/java/com/uten/imp/security/JwtAuthorizationVersionTest.java": "deb76d0112d9b7cd649dda32bbf5726c761944978f6087e5945450142c0fb8c1",
+    "server/src/test/java/com/uten/imp/security/PasswordChangeRequiredFilterTest.java": "ca698a2a6dd670a95eb132bae102ceb8fff4133e1713a66a61afe87bff933b3f"
+  },
+  "backendFindings": [
+    "原有logout已按refresh所属sid立即撤销服务端会话，访问令牌不必等JWT自然到期；已轮换的旧refresh仍可关闭原sid，不能跟随replacement关闭新登录。",
+    "原先没有服务端实时会话通道。客户端旧设备须下一次请求/心跳获得401后才感知新登录替换；仅缩短令牌期限不能解决提示时机。",
+    "原60秒last_seen写入节流与可配置的1分钟空闲阈值相等，30秒活动心跳稍有调度抖动会把持续活动用户判成空闲。"
+  ],
+  "watchContract": {
+    "method": "GET",
+    "path": "/api/auth/session/watch",
+    "authentication": "Existing bearer/JWT chain; sid and staff owner come only from the authenticated principal. Impersonation uses its owning staff sid.",
+    "waitMillis": 25000,
+    "heartbeat": {
+      "httpStatus": 200,
+      "status": "active",
+      "code": null,
+      "message": null
+    },
+    "replaced": {
+      "httpStatus": 200,
+      "status": "replaced",
+      "code": "SESSION_REPLACED",
+      "message": "Existing canonical replacedNotice() with normalized device name."
+    },
+    "expired": {
+      "httpStatus": 200,
+      "status": "expired",
+      "code": "UNAUTHORIZED",
+      "message": "登录已失效，请重新登录"
+    },
+    "initialAuthenticationFailure": "Existing structured 401/403 response and refresh flow.",
+    "cacheControl": "no-store",
+    "alwaysAutomatic": true,
+    "maximumPending": 4096,
+    "maximumPendingPerSid": 8,
+    "reconciliationDelayMillis": 2000,
+    "databaseBatchSize": 256,
+    "localDelivery": "Login UPDATE RETURNING captures only actually revoked old sids. Delivery occurs after commit, never on rollback; the new sid is excluded.",
+    "gapProtection": "Register before reading authoritative current session state; database reconciliation also observes missed events/other server processes.",
+    "availabilityFailure": "A failed database read or disconnected receiver is not authority to expire another session or change the committed login result."
+  },
+  "shortIdleProtection": {
+    "normalTouchIntervalSeconds": 60,
+    "formula": "min(60 seconds, configured idle duration / 3)",
+    "oneMinuteIdleTouchIntervalSeconds": 20,
+    "policySource": "Reuse the idle timeout projection already loaded by JwtAuthFilter; no extra settings SQL is added to ordinary requests.",
+    "automaticRequestsRenewLastSeen": false,
+    "jitterRegression": "Twelve human-activity rounds alternating 29.9 and 30.2 seconds remain authenticated under a one-minute limit; stopping for 61 seconds still expires the session.",
+    "defaultThirtyMinuteSqlMetering": "Existing at-most-once-per-minute last_seen SQL count regression passed."
+  },
+  "businessImpactReview": {
+    "initialFilterChain": "JWT, local/remote access, forced password change and existing authentication/authorization guards remain in the initial request chain.",
+    "asyncResultException": "Only an internal ASYNC GET for the exact watch route carrying the controller's authenticated request attribute is permitted after its old sid is revoked. No business write route is added to an allowlist.",
+    "waitingResources": "DeferredResult holds no request thread, transaction or JDBC connection while waiting. Existing remote request capacity is returned when the initial filter chain returns; watcher counts are separately bounded.",
+    "threadLocalScopes": "Existing read-scope snapshot tests confirm the scope closes after the initial thread returns, is not inherited by async processing and does not cache business writes.",
+    "transactionAndReplay": "Only a read-only observer and after-commit notification were added. No business submission replay/cancellation or business calculation code was introduced.",
+    "productionBusinessSourceFilesChanged": [],
+    "pressureEvidence": {
+      "test": "SessionWatchBusinessProtectionPostgresTest.sixteenPendingWatchesLeaveCapacityForReauthenticationAndProtectedWrites",
+      "pendingWatches": 16,
+      "distinctSessionIds": 2,
+      "pendingPerSid": 8,
+      "fixtureJdbcMaximumPoolSize": 8,
+      "fixtureConfiguration": "server/src/test/resources/config/application.yml",
+      "fixtureConfigurationSha256": "dc1ed786e1afa81d91c5425190a822171425a9f4a306f0a4cca4a9c421e35d97",
+      "verified": [
+        "All sixteen waits enter async processing although the JDBC pool has only eight connections.",
+        "Sensitive write without step-up remains 403 REAUTH_REQUIRED.",
+        "Step-up and the authorized credential write complete while all observers are pending.",
+        "Reconciliation ends only the target's eight waits after its session is revoked; the operator's waits and session remain active.",
+        "Timeout/completion cleanup drains the test's pending observers."
+      ]
+    },
+    "selectedErpFlows": [
+      "FullChainEndToEndTest.salesOrder_createThenApprove_outOfStockRoutesToPlanning",
+      "FullChainEndToEndTest.productionDrawBatchIssueApprovesDraftsRollsBackWholeBatchAndReplays",
+      "FullChainEndToEndTest.materialAnalysis_objectScopeBlocksNonMaker"
+    ],
+    "additionalProtectionSuites": [
+      "StepUpHttpContractPostgresTest",
+      "PagePermissionStepUpPostgresTest",
+      "ImpersonationOwnerLifecyclePostgresTest",
+      "PermissionChangeSessionRefreshPostgresTest",
+      "DocumentScopedOperationWriteTest",
+      "WarehouseArrivalRegistrationIdempotencyTest",
+      "WarehouseScopeReadSnapshotFilterTest",
+      "RemoteRequestBudgetFilterTest"
+    ]
+  },
+  "validationBatches": [
+    {
+      "id": "auth-before-short-idle-fix",
+      "result": "PASS",
+      "tests": 71,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "realPostgresTests": 11,
+      "log": "server/target-session-watch-final.log",
+      "logSha256": "c1a63a2389441ec9e6a5b017e888241152a091e46ba6d6cb9c0e29294d7eab59",
+      "note": "本批发生在最短空闲节流修复之前；由 auth-final 批次覆盖。"
+    },
+    {
+      "id": "auth-final",
+      "result": "PASS",
+      "tests": 87,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "realPostgresTests": 12,
+      "log": "server/target-session-watch-idle-final.log",
+      "logSha256": "35089c98ddc14db6a83920d0a4666ea76c3f35ae2bde38d3283be1a024577a0c",
+      "note": "包含最短1分钟空闲阈值、完整JWT/异步分发和真实PostgreSQL会话验证。"
+    },
+    {
+      "id": "business-protection",
+      "result": "PASS",
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "realPostgresTests": 31,
+      "log": "server/target-session-watch-business-protection.log",
+      "logSha256": "152ab665cfa21253cdb49a7128bd5f28afc018c6c4785207cbb87b3c66a07928",
+      "note": "包含16个挂起监听、再认证/授权写入及选定真实ERP业务链。"
+    }
+  ],
+  "currentProductionSourceValidation": {
+    "authenticationTests": 87,
+    "businessProtectionTests": 45,
+    "totalTests": 132,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "migrationAndRelease": {
+    "newMigrationFiles": [],
+    "newMigrationApplied": false,
+    "existingTestBaselineAppliedMigrationCount": 925,
+    "existingTestBaselineVersion": 999,
+    "productionDatabaseChanged": false,
+    "remoteUploadPerformed": false,
+    "deploymentPerformed": false,
+    "formalPackagingPerformed": false,
+    "fullCiRun": false,
+    "releaseOrActivationClaimed": false
+  },
+  "limitations": [
+    "未执行公司实际设备上的Windows/Android/Web跨设备登录与业务操作UAT。",
+    "本证据记录选定真库、HTTP安全链及服务层回归，未运行全部2400余个后端测试类，不能据此承诺零风险。",
+    "跨服务器感知依靠2秒数据库兜底；未执行真实双服务器部署或高并发网络压测。",
+    "本文件仅涵盖后端；Flutter、Web浏览器实际交互与Win7候选端验收由主任务证据另行列明。"
+  ]
+}

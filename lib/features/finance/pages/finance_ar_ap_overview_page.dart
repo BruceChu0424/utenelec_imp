@@ -19,6 +19,8 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../providers/finance_report_facet_options.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 
@@ -769,7 +771,13 @@ class _FinanceArApOverviewPageState
           ),
         ],
       ),
-      body: SafeArea(child: body),
+      body: Stack(
+        children: [
+          SafeArea(child: body),
+          if (_loading)
+            const UtenBusyOverlay(title: '正在查询报表', showDoNotLeaveHint: false),
+        ],
+      ),
     );
   }
 
@@ -902,6 +910,7 @@ class _FinanceArApOverviewPageState
             label: c.label,
             width: (c.width ?? 120).toDouble(),
             type: c.type,
+            facetCandidatesUseKeyword: true,
             columnSearchEnabled:
                 (data?.columnSearchKeys ?? _lastColumnSearchKeys).contains(
                   c.key,
@@ -924,6 +933,24 @@ class _FinanceArApOverviewPageState
           'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1',
       columns: columns,
       serverColumnSearchKeys: data?.columnSearchKeys ?? _lastColumnSearchKeys,
+      facetPageLoaders: financeReportFacetLoaders(
+        ref,
+        report: 'ar-ap/overview',
+        query: _exportQuery,
+        fields: [
+          for (final column in columns)
+            if (column.type == 'text' &&
+                (data?.columnSearchKeys ?? _lastColumnSearchKeys).contains(
+                  column.key,
+                ))
+              column.key,
+        ],
+      ),
+      facetSearchScope: financeReportFacetScope(
+        ref,
+        report: 'ar-ap/overview',
+        query: _exportQuery,
+      ),
       headerFilterScopeDescription: '按往来单位汇总本币余额后筛选；合计覆盖当前条件的全部单位',
       items: data?.rows ?? const [],
       toolbarLeadingActions: _buildFilters(),

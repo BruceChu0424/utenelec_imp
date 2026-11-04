@@ -30,4 +30,8 @@ public record ExpenseClaimSummaryDto(
         return new ExpenseClaimSummaryDto(pendingCount, pendingAmount, payableCount, payableAmount,
                 monthSubmittedCount, monthSubmittedAmount, monthPaidCount, monthPaidAmount, pending, payable);
     }
+    public String getPendingAmountExact(){return com.uten.imp.common.util.DecimalText.of(pendingAmount);}
+    public String getPayableAmountExact(){return com.uten.imp.common.util.DecimalText.of(payableAmount);}
+    public String getMonthSubmittedAmountExact(){return com.uten.imp.common.util.DecimalText.of(monthSubmittedAmount);}
+    public String getMonthPaidAmountExact(){return com.uten.imp.common.util.DecimalText.of(monthPaidAmount);}
 }

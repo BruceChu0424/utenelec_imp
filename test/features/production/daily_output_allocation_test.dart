@@ -1,5 +1,5 @@
 // 报工「去向分配」重排(V736/ADR-127)的纯算法契约：先急后缓逐个分满、余量下移、送入仓库合并、
-// 工人定过的条目不被替换、多行共用同一上层工单「还差多少」、单位换算与服务端同一舍入。
+// 工人定过的条目不被替换、多行共用同一上层工单「还差多少」、单位换算保留完整有限乘积。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/daily_output_allocation.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
@@ -93,9 +93,9 @@ void main() {
     'nominal and converted storage overflow keep exact original allocation while flagged',
     () {
       for (final sample in [
-        ('100000000000000', 0.1, true),
-        ('10000000000000', 10.0, true),
-        ('99999999999999.9999', 1.0, false),
+        ('1${'0' * 40}', 0.1, true),
+        ('1${'0' * 39}', 10.0, true),
+        ('${'9' * 40}.${'9' * 24}', 1.0, false),
       ]) {
         final plan = planOutputAllocations([
           OutputAllocationRowInput(
@@ -114,32 +114,29 @@ void main() {
     },
   );
 
-  test(
-    'positive destination rounding to zero base is flagged without changing quantities',
-    () {
-      final plan = planOutputAllocations([
-        _row(
-          1,
-          rate: 0.4,
-          candidates: [_parent('a', 1)],
-          slots: const [
-            OutputAllocationSlot(
-              demandId: 'a',
-              requested: 0.0001,
-              requestedExact: '0.0001',
-              fixed: true,
-            ),
-          ],
-        ),
-      ]).single;
-      expect(_lines(plan), [('a', 0.0001, true), (null, 0.9999, false)]);
-      expect(plan.lines.first.issue, contains('基本量为 0'));
-      expect(plan.lines.last.issue, isNull);
-      final boundary = planOutputAllocations([_row(0.0001, rate: 0.5)]).single;
-      expect(boundary.lines.single.qtyExact, '0.0001');
-      expect(boundary.issues, isEmpty);
-    },
-  );
+  test('small finite base products retain their complete nonzero quantity', () {
+    final plan = planOutputAllocations([
+      _row(
+        1,
+        rate: 0.4,
+        candidates: [_parent('a', 1)],
+        slots: const [
+          OutputAllocationSlot(
+            demandId: 'a',
+            requested: 0.0001,
+            requestedExact: '0.0001',
+            fixed: true,
+          ),
+        ],
+      ),
+    ]).single;
+    expect(_lines(plan), [('a', 0.0001, true), (null, 0.9999, false)]);
+    expect(plan.lines.first.issue, isNull);
+    expect(plan.lines.last.issue, isNull);
+    final boundary = planOutputAllocations([_row(0.0001, rate: 0.5)]).single;
+    expect(boundary.lines.single.qtyExact, '0.0001');
+    expect(boundary.issues, isEmpty);
+  });
 
   test(
     'exact large rows share receiver capacity without losing the final tick',
@@ -524,13 +521,13 @@ void main() {
     },
   );
 
-  test('base units follow the server rounding for every conversion', () {
+  test('base units retain the complete finite conversion', () {
     // 换算率 5：上层工单还差 150(基本单位) = 30(报工单位)。
     final five = planOutputAllocations([
       _row(40, rate: 5, candidates: [_parent('A', 150)]),
     ]).single;
     expect(_lines(five), [('A', 30, false), (null, 10, false)]);
-    // 1.005 × 0.01 = 0.01005 → 四舍五入 0.0101，正好不超过还差的 0.0101。
+    // 1.005 × 0.01 = 0.01005，全量比较，不超过接收量0.0101。
     final tiny = planOutputAllocations([
       _row(1.005, rate: .01, candidates: [_parent('A', .0101)]),
     ]).single;
@@ -566,6 +563,47 @@ void main() {
       ),
     ]).single;
     expect(_lines(plan), [('A', 1, false), ('B', 1, false), (null, 8, false)]);
+  });
+
+  test('24-place input and 48-place finite product never disappear', () {
+    final plan = planOutputAllocations([
+      const OutputAllocationRowInput(
+        sourceKey: 'small',
+        quantity: null,
+        quantityExact: '0.000000000000000000000001',
+        unitRate: 1,
+        unitRateExact: '0.000000000000000000000001',
+        candidates: [],
+        slots: [],
+      ),
+    ]).single;
+    expect(plan.lines.single.qtyExact, '0.000000000000000000000001');
+    expect(plan.issues, isEmpty);
+  });
+  test('only a needed non-terminating receiver split asks for precision', () {
+    final row = _row(1, rate: 3, candidates: [_parent('a', 1)]);
+    final waiting = planOutputAllocations([row]).single;
+    expect(waiting.lines, isEmpty);
+    expect(waiting.precisionReason, 'NON_TERMINATING');
+    final down = planOutputAllocations(
+      [row],
+      precisionScale: 2,
+      precisionRounding: 'DOWN',
+    ).single;
+    expect(down.lines.map((line) => line.qtyExact), ['0.33', '0.67']);
+    final up = planOutputAllocations(
+      [
+        _row(1, rate: 3, candidates: [_parent('a', 2)]),
+      ],
+      precisionScale: 2,
+      precisionRounding: 'HALF_UP',
+    ).single;
+    expect(up.issue, contains('超过实际可接收数量'));
+    final fits = planOutputAllocations([
+      _row(0.1, rate: 3, candidates: [_parent('a', 1)]),
+    ]).single;
+    expect(fits.lines.single.qtyExact, '0.1');
+    expect(fits.issue, isNull);
   });
 
   test('quantity text drops trailing zeros', () {

@@ -33,4 +33,13 @@ public class WasteItemDto {
     private BigDecimal weight;
     private String sourceDocNo;
     private String remark;
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
+    public String getUnitRateExact(){return com.uten.imp.common.util.DecimalText.of(unitRate);}
+    public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
+    public String getEndingQtyExact(){return com.uten.imp.common.util.DecimalText.of(endingQty);}
+    public String getStandardQtyExact(){return com.uten.imp.common.util.DecimalText.of(standardQty);}
+    public String getWasteRateExact(){return com.uten.imp.common.util.DecimalText.of(wasteRate);}
+    public String getPriceExact(){return com.uten.imp.common.util.DecimalText.of(price);}
+    public String getAmountOriginalExact(){return com.uten.imp.common.util.DecimalText.of(amountOriginal);}
+    public String getAmountLocalExact(){return com.uten.imp.common.util.DecimalText.of(amountLocal);}
 }

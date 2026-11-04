@@ -57,6 +57,14 @@ public class FinanceReportController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
+    /** Typed header candidates retain the same owning report access and full filter projection. */
+    @PostMapping("/column-candidates")
+    @PreAuthorize("hasAuthority('finance_report:view') or (#report == 'account/statement' and hasAuthority('account:view') and hasAuthority('account:balance:view') and hasAuthority('account:flow:view'))")
+    public Map<String,Object> columnCandidates(@RequestParam String report,@RequestParam String column,
+                                               @RequestParam Map<String,String> parameters) {
+        return service.columnCandidates(report,column,parameters);
+    }
+
     // ======================== ① 应收应付 Z / A·C / B·D ========================
 
     /** Z 应收应付总览（前端左分类树+右表）。displayMode: ALL/ANY/AR_ONLY/AP_ONLY。 */
@@ -515,7 +523,7 @@ public class FinanceReportController {
 
     private ResponseEntity<byte[]> exportResponse(String report,ExportPayload payload,String password,
             com.uten.imp.common.export.TableColumnProjection projection) {
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), projection, "view_finance");
+        byte[] xlsx = xlsxExport.build(payload, projection, "view_finance");
         byte[] downloadBytes = workbookDownload.protect(xlsx, password);
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

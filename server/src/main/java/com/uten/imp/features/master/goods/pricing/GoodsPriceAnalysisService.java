@@ -107,7 +107,7 @@ public class GoodsPriceAnalysisService {
                 +data.observations().stream().map(o->o.sourceItemId()+":"+o.sourceRevision()).toList()+"|"+cost);
         return new Analysis(q.goodsId(),goods.code(),goods.name(),q.kind(),context,stats.status(),decimalText(stats.reference()),decimalText(stats.average()),
                 decimalText(stats.lower()),decimalText(stats.upper()),decimalText(stats.last()),stats.lastDate(),stats.samples(),stats.orders(),
-                decimalText(BigDecimal.valueOf(stats.effective()).setScale(3,RoundingMode.HALF_UP)),OffsetDateTime.now(),List.copyOf(reasons),explanation,
+                decimalText(BigDecimal.valueOf(stats.effective())),OffsetDateTime.now(),List.copyOf(reasons),explanation,
                 data.observations(),token,GoodsPriceStatistics.VERSION,data.complete(),cost);
     }
     /** Re-read permissions, source lifecycle, authoritative values and context before reusing an explanation. */
@@ -158,13 +158,13 @@ public class GoodsPriceAnalysisService {
                 if("READY".equals(peer.status())){
                     BigDecimal peerPrice=new BigDecimal(peer.referencePrice());
                     peerHigh=price.compareTo(new BigDecimal(peer.upperReferencePrice()))>0;
-                    peerDeviation=decimalText(price.subtract(peerPrice).divide(peerPrice,MathContext.DECIMAL128).multiply(BigDecimal.valueOf(100)).setScale(2,RoundingMode.HALF_UP));
+                    peerDeviation=decimalText(price.subtract(peerPrice).divide(peerPrice,MathContext.DECIMAL128).multiply(BigDecimal.valueOf(100)));
                 }
             }
             String direction=high?"高于":low?"低于":"位于";
             List<String> alerts=new ArrayList<>();if(high){ alerts.add("PRICE_ABOVE_REFERENCE"); }if(low){ alerts.add("PRICE_BELOW_REFERENCE"); }if(peerHigh){ alerts.add("PEER_PRICE_ABOVE_REFERENCE"); }if(fallback){ alerts.add("SUPPLIER_SCOPE_FALLBACK"); }
             rows.add(new CheckRow(item.rowKey(),item.goodsId(),"READY",high||low||peerHigh?"WARNING":"NONE",decimalText(price),a.referencePrice(),a.weightedAveragePrice(),
-                    decimalText(deviation.setScale(2,RoundingMode.HALF_UP)),decimalText(impact),List.copyOf(alerts),
+                    decimalText(deviation),decimalText(impact),List.copyOf(alerts),
                     (fallback?"当前供应商证据不足，采用同条件授权范围内供应商历史。":"")+"本次单价"+direction+"历史参考区间；近期参考 "+a.referencePrice()+"，加权均价 "+a.weightedAveragePrice()+"，共 "+a.independentOrderCount()+" 张独立订单。"
                     +(peerDeviation==null?"":"同条件授权范围内全部供应商参考 "+peer.referencePrice()+"，偏差 "+peerDeviation+"%。")
                     +"请结合批量及特殊条款核对。",a.evidenceToken(),a.sampleCount(),"REFERENCE_ONLY",peerDeviation==null?null:peer.referencePrice(),peerDeviation,a.context().currencyName(),a.context().unitName()));
@@ -199,7 +199,7 @@ public class GoodsPriceAnalysisService {
         if(context.unitRate()!=null&&decimal(context.unitRate(),"换算率",true).compareTo(BigDecimal.ONE)!=0)gaps.add("COST_UNIT_RATE_MISMATCH");
         BigDecimal margin=q.targetMarginRate()==null?null:decimal(q.targetMarginRate(),"目标毛利率",false);
         if(margin!=null&&margin.compareTo(BigDecimal.ONE)>=0)throw invalid("目标毛利率应大于等于0且小于1");
-        String suggested=complete&&gaps.isEmpty()&&margin!=null?decimalText(new BigDecimal(totals.unitCost()).divide(BigDecimal.ONE.subtract(margin),MathContext.DECIMAL128)):null;
+        String suggested=complete&&gaps.isEmpty()&&margin!=null?decimalText(com.uten.imp.common.finance.BusinessPrecisionContext.divide(new BigDecimal(totals.unitCost()),BigDecimal.ONE.subtract(margin),"goods.quote.cost-margin-price","本次成本报价参考单价",24)):null;
         if(margin==null)gaps.add("TARGET_MARGIN_REQUIRED");
         var included=totals.byCategory()==null?List.<String>of():totals.byCategory().entrySet().stream().filter(e->e.getValue()!=null).map(Map.Entry::getKey).sorted().toList();
         return new CostSummary("CONFIRMED_ESTIMATE",id,snapshot.contentDigest(),snapshot.sheetNo(),snapshot.input().batchQty(),totals.unitCost(),snapshot.calculation().currencyId(),complete,false,List.copyOf(gaps),included,decimalText(margin),suggested,
@@ -208,8 +208,8 @@ public class GoodsPriceAnalysisService {
     }
     private static CostSummary missingCost(String code,String message){return new CostSummary("UNAVAILABLE",null,null,null,null,null,null,false,false,List.of(code),List.of(),null,null,message,null,null);}
     static BigDecimal decimal(String text,String label,boolean positive){
-        if(text==null||text.isBlank()||text.length()>80)throw invalid(label+"不能为空或过长");
-        try{BigDecimal value=new BigDecimal(text);if(value.signum()<0||positive&&value.signum()==0||value.abs().compareTo(new BigDecimal("99999999999999.999999999999999999"))>0||value.scale()>18||value.scale()< -18)throw invalid(label+"超出有效范围");return value;}
+        if(text==null||text.isBlank()||text.length()>1100)throw invalid(label+"不能为空或过长");
+        try{BigDecimal value=new BigDecimal(text);if(value.signum()<0||positive&&value.signum()==0)throw invalid(label+"超出有效范围");return com.uten.imp.common.util.FinancialExactAmount.require(value,label);}
         catch(NumberFormatException ex){throw invalid(label+"不是有效数字");}
     }
     static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}

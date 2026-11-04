@@ -47,4 +47,7 @@ public record CycleCountRow(
         BigDecimal qty,
         BigDecimal weightKg,
         boolean weightEstimated) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightKgExact")
+    public String getWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(weightKg);}
 }

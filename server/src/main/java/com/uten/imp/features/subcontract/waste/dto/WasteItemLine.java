@@ -22,13 +22,18 @@ public class WasteItemLine extends com.uten.imp.common.platformcolumns.PlatformC
 
     private UUID colorId;
     private UUID unitId;
+    @com.uten.imp.common.validation.DocumentQuantity
     private BigDecimal unitRate;
 
     @NotNull
+    @com.uten.imp.common.validation.DocumentQuantity
     private BigDecimal qty;
 
+    @com.uten.imp.common.validation.DocumentQuantity
     private BigDecimal endingQty;
+    @com.uten.imp.common.validation.DocumentQuantity
     private BigDecimal standardQty;
+    @com.uten.imp.common.validation.DocumentQuantity
     private BigDecimal wasteRate;
     private String cause;
 

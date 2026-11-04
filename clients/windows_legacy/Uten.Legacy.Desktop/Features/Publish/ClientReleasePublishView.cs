@@ -19,7 +19,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
     {
         private const double WideLayoutThreshold = 1120;
         private readonly SessionCoordinator session;
-        private readonly DpapiPublishDraftStore draftStore = new DpapiPublishDraftStore();
+        private readonly DpapiPublishDraftStore draftStore;
         private readonly ClientReleaseTargetEditor contextEditor = new ClientReleaseTargetEditor(compact: true);
         private readonly TextBox releaseNotes = new TextBox { MinHeight = 56, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         private readonly TabControl tabs = new TabControl();
@@ -47,6 +47,10 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private ClientReleasePublishQueue queue;
         private ClientReleasePublishDraftLease lease;
         private bool retired, choosing, ready, exitAllowed, discarding, discarded, hadInput, storageError, rebuilding, disposed;
+        private Window preservationOwner;
+        private PublishPreservationGuard preservationGuard;
+        private long ownerGeneration = -1;
+        private bool retryingPreservation;
 
         /// <summary>Small adapter exposing the protected dialog body/action helpers to this view.</summary>
         private sealed class PromptDialog : UtenDialogWindow
@@ -59,9 +63,12 @@ namespace Uten.Legacy.Desktop.Features.Publish
 
         public bool CanCloseForUpdate { get { return ConfirmLeave(); } }
 
-        public ClientReleasePublishView(SessionCoordinator session)
+        public ClientReleasePublishView(SessionCoordinator session) : this(session, new DpapiPublishDraftStore()) { }
+
+        internal ClientReleasePublishView(SessionCoordinator session, DpapiPublishDraftStore draftStore)
         {
             this.session = session ?? throw new ArgumentNullException("session");
+            this.draftStore = draftStore ?? throw new ArgumentNullException("draftStore");
             SetResourceReference(StyleProperty, "Uten.Workspace");
             BuildLayout();
             addFile.Click += delegate { PickFiles(false, null); };
@@ -287,6 +294,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
                     draftId = previous.DraftId;
                 }
                 lease = new ClientReleasePublishDraftLease(draftStore, baseUrl, user, draftId);
+                ownerGeneration = session.Generation;
                 var service = new ClientReleasePublishService(session, Window.GetWindow(this));
                 service.Begin();
                 queue = new ClientReleasePublishQueue(service, SaveDraft);
@@ -362,9 +370,12 @@ namespace Uten.Legacy.Desktop.Features.Publish
 
         private void OnSessionChanged(object sender, EventArgs args)
         {
-            if (retired) return;
+            if (!Dispatcher.CheckAccess())
+            { Dispatcher.BeginInvoke(new Action(() => OnSessionChanged(sender, args))); return; }
+            if (retired || disposed) return;
             var user = session.CurrentUser;
-            if (user == null || !user.HasPermission(ClientReleasePublishLimits.PublishPermission))
+            if (user == null || !user.HasPermission(ClientReleasePublishLimits.PublishPermission)
+                || ready && session.Generation != ownerGeneration)
             {
                 Retire();
                 return;
@@ -373,20 +384,25 @@ namespace Uten.Legacy.Desktop.Features.Publish
 
         private void Retire()
         {
+            if (retired) return;
+            preservationOwner = Window.GetWindow(this) ?? preservationOwner;
             retired = true;
+            debounce.Stop();
             if (queue != null) queue.Retire();
-            SaveDraft();
+            else SaveDraft();
+            if (storageError) ShowPreservationGuard();
             mainPanel.Visibility = Visibility.Collapsed;
             lockedPanel.Visibility = Visibility.Visible;
         }
 
         private void OnQueueChanged()
         {
-            if (rebuilding) return;
+            if (rebuilding || retired || disposed) return;
             rebuilding = true;
             Dispatcher.BeginInvoke(new Action(delegate
             {
                 rebuilding = false;
+                if (retired || disposed) return;
                 RebuildRows();
                 RebuildLedger();
                 UpdateSummary();
@@ -417,18 +433,17 @@ namespace Uten.Legacy.Desktop.Features.Publish
 
         private bool SaveDraft()
         {
-            if (!ready || retired || discarding || disposed) return true;
+            // The immutable original-owner lease remains valid for local preservation
+            // after authentication retirement and during late Unknown accounting.
+            if (!ready || discarding || discarded) return true;
             if (queue == null || lease == null) return true;
             if (!hadInput && queue.Items.Count == 0) return true;
+            if (retryingPreservation) return false;
             try
             {
-                var context = contextEditor.Read();
-                context.ReleaseNotes = releaseNotes.Text;
-                var contextDict = context.ToDictionary();
-                contextDict["releaseNotes"] = releaseNotes.Text;
-                var snapshot = ClientReleasePublishContract.BuildSnapshot(queue.Items, contextDict, queue.Withdrawals);
-                lease.Save(new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(snapshot));
+                lease.Save(BuildDraftSnapshotJson());
                 storageError = false;
+                preservationGuard?.Release(); preservationGuard = null;
                 if (notice.Text == "本机草稿尚未保存，请保留此页并重试；未保全的项目不会继续发送。") Status(null, false);
                 return true;
             }
@@ -436,8 +451,80 @@ namespace Uten.Legacy.Desktop.Features.Publish
             {
                 storageError = true;
                 Status("本机草稿尚未保存，请保留此页并重试；未保全的项目不会继续发送。", true);
+                if (retired || disposed) ShowPreservationGuard();
                 return false;
             }
+        }
+
+        private string BuildDraftSnapshotJson()
+        {
+            var context = contextEditor.Read(); context.ReleaseNotes = releaseNotes.Text;
+            var contextDict = context.ToDictionary(); contextDict["releaseNotes"] = releaseNotes.Text;
+            return new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(
+                ClientReleasePublishContract.BuildSnapshot(queue.Items, contextDict, queue.Withdrawals));
+        }
+
+        private async System.Threading.Tasks.Task RetryPreservationAsync()
+        {
+            if (retryingPreservation || discarded || lease == null) return;
+            retryingPreservation = true;
+            try
+            {
+                // Retired rows are frozen. Capture controls on the dispatcher, then keep
+                // DPAPI/disk IO off it; late queue callbacks cannot race this lease write.
+                var snapshot = BuildDraftSnapshotJson();
+                await System.Threading.Tasks.Task.Run(() => lease.Save(snapshot));
+                storageError = false; preservationGuard?.Release(); preservationGuard = null;
+            }
+            catch (Exception) { storageError = true; Status("本机草稿尚未保存，请恢复存储后重试；原输入和编号仍保留。", true); }
+            finally { retryingPreservation = false; }
+        }
+
+        private void ShowPreservationGuard()
+        {
+            if (preservationGuard != null || preservationOwner == null || !preservationOwner.IsLoaded) return;
+            preservationGuard = new PublishPreservationGuard(preservationOwner, RetryPreservationAsync);
+            (preservationOwner as IPendingEditHost)?.TrackPendingEditor(preservationGuard);
+            preservationGuard.Show();
+        }
+
+        private sealed class PublishPreservationGuard : UtenDialogWindow
+        {
+            private readonly Func<System.Threading.Tasks.Task> retry;
+            private bool released, busy;
+            private readonly Button retryButton;
+            internal PublishPreservationGuard(Window owner, Func<System.Threading.Tasks.Task> retry) : base(owner, "发布草稿保全", 440)
+            {
+                this.retry = retry;
+                Body.Children.Add(new TextBlock { Text = "原发布输入和待核对记录尚未保存在本机。请恢复存储后重试，原编号不会重新发送。", TextWrapping = TextWrapping.Wrap });
+                retryButton = ActionButton("重试保全并关闭", () => { _ = RetryAsync(); }, true);
+            }
+            private async System.Threading.Tasks.Task RetryAsync()
+            {
+                if (busy || released) return;
+                busy = true; retryButton.IsEnabled = false;
+                var waiting = new PublishPreservationWait(this); waiting.Show();
+                try { await Dispatcher.Yield(DispatcherPriority.Render); await retry(); }
+                finally { waiting.Release(); busy = false; retryButton.IsEnabled = true; }
+            }
+            internal void Release()
+            { if (released) return; released = true; Dispatcher.BeginInvoke(new Action(Close)); }
+            protected override void OnClosing(System.ComponentModel.CancelEventArgs args)
+            {
+                base.OnClosing(args);
+                if (released || args.Cancel) return;
+                args.Cancel = true; _ = RetryAsync();
+            }
+        }
+
+        private sealed class PublishPreservationWait : UtenDialogWindow
+        {
+            private bool released;
+            internal PublishPreservationWait(Window owner) : base(owner, "正在保全发布草稿", 360)
+            { CloseButton.IsEnabled = false; Body.Children.Add(new ProgressBar { IsIndeterminate = true, Height = 6 }); }
+            internal void Release() { released = true; Close(); }
+            protected override void OnClosing(System.ComponentModel.CancelEventArgs args)
+            { base.OnClosing(args); if (!released) args.Cancel = true; }
         }
 
         private void PickFiles(bool multiple, ClientReleaseQueueItem replacing)
@@ -865,12 +952,14 @@ namespace Uten.Legacy.Desktop.Features.Publish
         public void Dispose()
         {
             if (disposed) return;
+            preservationOwner = Window.GetWindow(this) ?? preservationOwner;
+            Retire();
             disposed = true;
             debounce.Stop();
             lifetime.Cancel();
             session.SessionChanged -= OnSessionChanged;
-            if (!discarded && queue != null && (hadInput || queue.Items.Count > 0)) SaveDraft();
-            if (queue != null) queue.Retire();
+            if (queue != null) queue.Changed -= OnQueueChanged;
+            if (storageError) ShowPreservationGuard();
             lifetime.Dispose();
         }
     }

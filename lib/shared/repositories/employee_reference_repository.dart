@@ -1,12 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../components/inputs/uten_employee_picker_models.dart';
 import '../models/department_node.dart';
 import '../models/employee_reference.dart';
 import '../models/paged_result.dart';
-import '../paging/complete_paged_snapshot.dart';
 import '../providers/sensitive_read_boundary_provider.dart';
 
 abstract interface class EmployeeReferenceRepository {
@@ -116,40 +116,41 @@ extension EmployeeReferencePickerItem on EmployeeReference {
 }
 
 extension EmployeeReferencePickerCandidates on EmployeeReferenceRepository {
-  Future<List<EmployeeReference>> listPickerCandidates({
+  Future<UtenEmployeePickerPage> listPickerPage(
+    UtenEmployeePickerQuery query, {
     required EmployeeReferencePurpose purpose,
     int size = 100,
-    String? search,
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
-    bool Function()? isCurrent,
   }) async {
     final statusSnapshot = statuses == null ? null : Set<String>.of(statuses);
-    final current = isCurrent ?? () => true;
-    Future<List<EmployeeReference>> load() => loadCompletePagedSnapshot(
-      loadPage: (page, _) => list(
-        purpose: purpose,
-        page: page,
-        size: size,
-        search: search,
-        statuses: statusSnapshot,
-        departmentId: departmentId,
-        includeSubtree: includeSubtree,
-      ),
-      idOf: (value) => value.id,
-      isCurrent: current,
+    final scope = await employeePickerDepartmentScope(
+      query,
+      departmentId: departmentId,
+      includeSubtree: includeSubtree,
+      loadDepartments: () => departments(purpose),
     );
-    final repository = this;
-    if (repository is DioEmployeeReferenceRepository) {
-      final scope = await repository.api.captureRequestScope(
-        isCurrent: current,
-      );
-      final rows = await scope.run(load);
-      scope.checkCurrent();
-      return rows;
+    if (scope.empty) return UtenEmployeePickerPage.empty(page: query.page);
+    final result = await list(
+      purpose: purpose,
+      page: query.page,
+      size: size,
+      search: query.keyword,
+      statuses: statusSnapshot,
+      departmentId: scope.id,
+      includeSubtree: scope.subtree,
+    );
+    if (result.page != query.page) {
+      throw ApiException('INVALID_PAGINATION', '人员候选分页响应与请求不一致');
     }
-    return load();
+    return UtenEmployeePickerPage(
+      items: result.items
+          .map((row) => row.toPickerItem())
+          .toList(growable: false),
+      page: result.page,
+      totalPages: result.totalPages,
+    );
   }
 }
 

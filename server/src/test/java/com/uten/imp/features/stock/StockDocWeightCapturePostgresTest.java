@@ -32,6 +32,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -76,10 +78,65 @@ class StockDocWeightCapturePostgresTest {
     @Autowired private StockDocService stockDocs;
     @Autowired private StockBalanceAdjustmentService balanceAdjustments;
     @Autowired private StockWeightAdjustmentService weightAdjustments;
+    @Autowired private com.uten.imp.features.stock.weight.GoodsWeightProfileService weightProfiles;
 
     @AfterEach
     void clearPrincipal() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void explicitWeightChoiceKeepsPrivateOriginalOperandsAndOnlyMetadataReachesGeneralAudit() throws Exception {
+        Fixture f=fixture("raw-proof");String original="1.123456789012345678901234567",recorded="1.123456789012345678901234";
+        StockDocSaveRequest incoming=document("OTHER_IN",f);StockDocItemLine input=line(f.goods(),f.unit(),"1",original);
+        input.setPrice(BigDecimal.ONE);input.setAmountOriginal(BigDecimal.ONE);input.setAmountLocal(BigDecimal.ONE);incoming.setItems(List.of(input));
+        assertThrows(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class,()->stockDocs.create(incoming));
+        assertEquals(0,count("SELECT count(*) FROM stock_documents WHERE warehouse_id=?",f.warehouse()));
+        assertEquals(0,count("SELECT count(*) FROM business_numeric_input_evidence WHERE actor_id=?",f.user()));
+        try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("weight.kg-field",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN"),"weight.to-kg",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))){
+            StockDocDetail saved=stockDocs.create(incoming);var item=saved.getItems().getFirst();
+            assertThat(item.getWeightExact()).isEqualTo(recorded);assertEquals(1,item.getWeightInputEvidence().size());
+            var evidence=item.getWeightInputEvidence().getFirst();assertEquals(original,evidence.originalDecimal());assertEquals(recorded,evidence.recordedDecimal());
+            assertEquals("KG",evidence.originalUnit().code());assertEquals(f.user(),evidence.actorId());assertEquals(24,evidence.usedPolicy().get("weight.kg-field").scale());
+            String redacted=jdbc.queryForObject("SELECT fn_audit_redact_row('business_numeric_input_evidence',to_jsonb(evidence))::text FROM business_numeric_input_evidence evidence WHERE evidence.id=?",String.class,evidence.id());
+            var fields=new com.fasterxml.jackson.databind.ObjectMapper().readTree(redacted);
+            assertTrue(fields.has("id"));assertTrue(fields.has("actor_id"));assertFalse(fields.has("original_decimal"));assertFalse(fields.has("recorded_decimal"));assertFalse(fields.has("precision_policy"));assertFalse(fields.has("original_unit"));
+            assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE business_numeric_input_evidence SET original_decimal='9' WHERE id=?",evidence.id()));
+            assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("DELETE FROM business_numeric_input_evidence WHERE id=?",evidence.id()));
+            assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.execute("TRUNCATE business_numeric_input_evidence"));
+            var sample=new com.uten.imp.features.stock.weight.dto.WeightSampleRequest(new BigDecimal("2"),new BigDecimal("1000.123456789012345678901234"),"G",null,f.supplier(),f.warehouse(),false,"原数证据测试","raw-sample-"+UUID.randomUUID());
+            weightProfiles.recordSample(f.goods(),sample);weightProfiles.recordSample(f.goods(),sample);
+            assertEquals(1,count("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='GOODS_WEIGHT_OBSERVATION' AND owner_id=? AND field_key='WEIGHT_KG'",f.goods()));
+            Map<String,Object> sampleRaw=jdbc.queryForMap("SELECT original_decimal,original_unit->>'code' unit,recorded_decimal FROM business_numeric_input_evidence WHERE owner_kind='GOODS_WEIGHT_OBSERVATION' AND owner_id=?",f.goods());
+            assertEquals("1000.123456789012345678901234",sampleRaw.get("original_decimal"));assertEquals("G",sampleRaw.get("unit"));assertEquals("1.000123456789012345678901",sampleRaw.get("recorded_decimal"));
+            var update=new com.uten.imp.features.stock.weight.dto.WeightProfileUpdateRequest(0L,new BigDecimal("0.123456789012345678901234567"),null,null,null,null,true,"AUTO");
+            var profile=weightProfiles.updateProfile(f.goods(),update).profile();assertEquals(1,profile.inputEvidence().size());
+            assertEquals("0.123456789012345678901234567",profile.inputEvidence().getFirst().originalDecimal());
+            assertEquals(1,weightProfiles.updateProfile(f.goods(),update).profile().version());
+            assertEquals(1,count("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='GOODS_WEIGHT_PROFILE' AND owner_id=?",f.goods()));
+        }
+    }
+
+    @Test
+    void exactScaleReadingCountSampleAndProfileReplayKeepAllDigitsWithoutDuplicateEffects(){
+        Fixture f=fixture("exact");String original="1.123456789012345678901234";
+        StockDocSaveRequest inbound=document("OTHER_IN",f);StockDocItemLine item=line(f.goods(),f.unit(),"2",original);
+        item.setPrice(BigDecimal.ONE);item.setAmountOriginal(new BigDecimal("2"));item.setAmountLocal(new BigDecimal("2"));inbound.setItems(List.of(item));
+        StockDocDetail created=stockDocs.approve(stockDocs.create(inbound).getId());
+        assertThat(created.getItems().getFirst().getWeightExact()).isEqualTo(original);
+        assertMovement(created.getId(),original,"MEASURED");assertBalance(f,"2",original,false);
+        var sample=new com.uten.imp.features.stock.weight.dto.WeightSampleRequest(new BigDecimal("2"),new BigDecimal(original),"KG",null,f.supplier(),f.warehouse(),false,"原读数高精度","weight-sample-"+UUID.randomUUID());
+        weightProfiles.recordSample(f.goods(),sample);weightProfiles.recordSample(f.goods(),sample);
+        assertEquals(1,count("SELECT count(*) FROM goods_weight_observations WHERE capture_key=?","SAMPLE:"+f.goods()+":"+sample.idempotencyKey()));
+        assertThat((BigDecimal)jdbc.queryForMap("SELECT weight_kg FROM goods_weight_observations WHERE capture_key=?","SAMPLE:"+f.goods()+":"+sample.idempotencyKey()).get("weight_kg")).isEqualByComparingTo(original);
+        var detail=weightProfiles.updateProfile(f.goods(),new com.uten.imp.features.stock.weight.dto.WeightProfileUpdateRequest(0L,new BigDecimal("0.000000000000000000000001"),null,null,null,null,true,"AUTO"));
+        assertEquals(1,detail.profile().version());
+        var replay=weightProfiles.updateProfile(f.goods(),new com.uten.imp.features.stock.weight.dto.WeightProfileUpdateRequest(0L,new BigDecimal("0.000000000000000000000001"),null,null,null,null,true,"AUTO"));
+        assertEquals(1,replay.profile().version());
+        assertThat(replay.profile().defaultTareKg()).isEqualByComparingTo("0.000000000000000000000001");
+        StockDocSaveRequest outgoing=document("OTHER_OUT",f);outgoing.setItems(List.of(line(f.goods(),f.unit(),"2",original)));
+        StockDocDetail out=stockDocs.approve(stockDocs.create(outgoing).getId());assertBalance(f,"0","0",false);
+        stockDocs.reverse(out.getId());assertBalance(f,"2",original,false);
     }
 
     @Test

@@ -43,7 +43,10 @@ public record ExpenseClaimDto(
         List<ExpenseClaimInvoiceDto> invoices,
         List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
         String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission,
-        @com.fasterxml.jackson.annotation.JsonUnwrapped com.uten.imp.common.history.DocumentHistoryMetadata history) {
+        @com.fasterxml.jackson.annotation.JsonUnwrapped com.uten.imp.common.history.DocumentHistoryMetadata history,
+        String approvalStage, String approvalStageLabel, boolean canApprove, int approvalRound, String expenseKind,boolean approvalRoutingStale,boolean canPay,boolean abandoned,
+        ExpenseClaimFinancialApplication financialApplication,
+        String applicationKind,UUID travelApplicationId,String travelApplicationSourceKind) {
     public ExpenseClaimDto(
         UUID id,
         String claimNo,
@@ -75,6 +78,117 @@ public record ExpenseClaimDto(
         List<ExpenseClaimInvoiceDto> invoices,
         List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
         String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission) {
-        this(id, claimNo, applicantId, applicantName, departmentId, departmentName, title, items, totalAmount, status, createdAt, submittedAt, approvedAt, rejectedAt, paidAt, remark, rejectReason, approvedByName, rejectedByName, paidByName, paymentDate, paymentAccountId, paymentAccountName, paymentExpenseStyleId, paymentExpenseStyleName, financeExpenseId, attachments, invoices, events, version, approvedBy, paymentProofs, previousSubmissionSnapshot, submissionSnapshot, resubmission, new com.uten.imp.common.history.DocumentHistoryMetadata());
+        this(id, claimNo, applicantId, applicantName, departmentId, departmentName, title, items, totalAmount, status, createdAt, submittedAt, approvedAt, rejectedAt, paidAt, remark, rejectReason, approvedByName, rejectedByName, paidByName, paymentDate, paymentAccountId, paymentAccountName, paymentExpenseStyleId, paymentExpenseStyleName, financeExpenseId, attachments, invoices, events, version, approvedBy, paymentProofs, previousSubmissionSnapshot, submissionSnapshot, resubmission, new com.uten.imp.common.history.DocumentHistoryMetadata(), null, null, false, 0, "GENERAL",false,false,false);
     }
+
+    public ExpenseClaimDto(
+        UUID id,
+        String claimNo,
+        UUID applicantId,
+        String applicantName,
+        UUID departmentId,
+        String departmentName,
+        String title,
+        List<ExpenseClaimItemDto> items,
+        BigDecimal totalAmount,
+        String status,
+        Instant createdAt,
+        Instant submittedAt,
+        Instant approvedAt,
+        Instant rejectedAt,
+        Instant paidAt,
+        String remark,
+        String rejectReason,
+        String approvedByName,
+        String rejectedByName,
+        String paidByName,
+        LocalDate paymentDate,
+        UUID paymentAccountId,
+        String paymentAccountName,
+        UUID paymentExpenseStyleId,
+        String paymentExpenseStyleName,
+        UUID financeExpenseId,
+        List<AttachmentDto> attachments,
+        List<ExpenseClaimInvoiceDto> invoices,
+        List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
+        String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission,
+        @com.fasterxml.jackson.annotation.JsonUnwrapped com.uten.imp.common.history.DocumentHistoryMetadata history,
+        String approvalStage, String approvalStageLabel, boolean canApprove, int approvalRound, String expenseKind,boolean approvalRoutingStale,boolean canPay,boolean abandoned) {
+        this(id,claimNo,applicantId,applicantName,departmentId,departmentName,title,items,totalAmount,status,createdAt,submittedAt,approvedAt,rejectedAt,paidAt,remark,rejectReason,approvedByName,rejectedByName,paidByName,paymentDate,paymentAccountId,paymentAccountName,paymentExpenseStyleId,paymentExpenseStyleName,financeExpenseId,attachments,invoices,events,version,approvedBy,paymentProofs,previousSubmissionSnapshot,submissionSnapshot,resubmission,history,approvalStage,approvalStageLabel,canApprove,approvalRound,expenseKind,approvalRoutingStale,canPay,abandoned,null,null,null,null);
+    }
+    public ExpenseClaimDto(
+        UUID id,
+        String claimNo,
+        UUID applicantId,
+        String applicantName,
+        UUID departmentId,
+        String departmentName,
+        String title,
+        List<ExpenseClaimItemDto> items,
+        BigDecimal totalAmount,
+        String status,
+        Instant createdAt,
+        Instant submittedAt,
+        Instant approvedAt,
+        Instant rejectedAt,
+        Instant paidAt,
+        String remark,
+        String rejectReason,
+        String approvedByName,
+        String rejectedByName,
+        String paidByName,
+        LocalDate paymentDate,
+        UUID paymentAccountId,
+        String paymentAccountName,
+        UUID paymentExpenseStyleId,
+        String paymentExpenseStyleName,
+        UUID financeExpenseId,
+        List<AttachmentDto> attachments,
+        List<ExpenseClaimInvoiceDto> invoices,
+        List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
+        String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission,
+        com.uten.imp.common.history.DocumentHistoryMetadata history, ExpenseClaimFinancialApplication financialApplication) {
+        this(id,claimNo,applicantId,applicantName,departmentId,departmentName,title,items,totalAmount,status,createdAt,submittedAt,approvedAt,rejectedAt,paidAt,remark,rejectReason,approvedByName,rejectedByName,paidByName,paymentDate,paymentAccountId,paymentAccountName,paymentExpenseStyleId,paymentExpenseStyleName,financeExpenseId,attachments,invoices,events,version,approvedBy,paymentProofs,previousSubmissionSnapshot,submissionSnapshot,resubmission,history,null,null,false,0,"GENERAL",false,false,false,financialApplication,null,null,null);
+    }
+    public ExpenseClaimDto(
+        UUID id,
+        String claimNo,
+        UUID applicantId,
+        String applicantName,
+        UUID departmentId,
+        String departmentName,
+        String title,
+        List<ExpenseClaimItemDto> items,
+        BigDecimal totalAmount,
+        String status,
+        Instant createdAt,
+        Instant submittedAt,
+        Instant approvedAt,
+        Instant rejectedAt,
+        Instant paidAt,
+        String remark,
+        String rejectReason,
+        String approvedByName,
+        String rejectedByName,
+        String paidByName,
+        LocalDate paymentDate,
+        UUID paymentAccountId,
+        String paymentAccountName,
+        UUID paymentExpenseStyleId,
+        String paymentExpenseStyleName,
+        UUID financeExpenseId,
+        List<AttachmentDto> attachments,
+        List<ExpenseClaimInvoiceDto> invoices,
+        List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
+        String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission,
+        com.uten.imp.common.history.DocumentHistoryMetadata history) {
+        this(id,claimNo,applicantId,applicantName,departmentId,departmentName,title,items,totalAmount,status,createdAt,submittedAt,approvedAt,rejectedAt,paidAt,remark,rejectReason,approvedByName,rejectedByName,paidByName,paymentDate,paymentAccountId,paymentAccountName,paymentExpenseStyleId,paymentExpenseStyleName,financeExpenseId,attachments,invoices,events,version,approvedBy,paymentProofs,previousSubmissionSnapshot,submissionSnapshot,resubmission,history,null);
+    }
+    public ExpenseClaimDto withFinancialApplication(ExpenseClaimFinancialApplication link) {
+        return new ExpenseClaimDto(id,claimNo,applicantId,applicantName,departmentId,departmentName,title,items,totalAmount,status,createdAt,submittedAt,approvedAt,rejectedAt,paidAt,remark,rejectReason,approvedByName,rejectedByName,paidByName,paymentDate,paymentAccountId,paymentAccountName,paymentExpenseStyleId,paymentExpenseStyleName,financeExpenseId,attachments,invoices,events,version,approvedBy,paymentProofs,previousSubmissionSnapshot,submissionSnapshot,resubmission,history,approvalStage,approvalStageLabel,canApprove,approvalRound,expenseKind,approvalRoutingStale,canPay,abandoned,link,applicationKind,travelApplicationId,travelApplicationSourceKind);
+    }
+    public ExpenseClaimDto withApplicationSource(String kind,UUID travelId,String sourceKind) {
+        return new ExpenseClaimDto(id,claimNo,applicantId,applicantName,departmentId,departmentName,title,items,totalAmount,status,createdAt,submittedAt,approvedAt,rejectedAt,paidAt,remark,rejectReason,approvedByName,rejectedByName,paidByName,paymentDate,paymentAccountId,paymentAccountName,paymentExpenseStyleId,paymentExpenseStyleName,financeExpenseId,attachments,invoices,events,version,approvedBy,paymentProofs,previousSubmissionSnapshot,submissionSnapshot,resubmission,history,approvalStage,approvalStageLabel,canApprove,approvalRound,expenseKind,approvalRoutingStale,canPay,abandoned,financialApplication,kind,travelId,sourceKind);
+    }
+    public String getTotalAmountExact(){return com.uten.imp.common.util.DecimalText.of(totalAmount);}
 }

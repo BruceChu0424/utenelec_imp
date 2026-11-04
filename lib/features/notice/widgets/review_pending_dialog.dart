@@ -40,9 +40,11 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/opportunistic_dialog_coordinator.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 import '../repositories/notice_repository.dart';
+import 'notice_action_busy.dart';
 
 /// sourceEvent → 该域任务工作台（汇总列表）。主按钮不再直达单据详情
 /// （2026-09-03 第四轮口径：弹窗只做提醒汇总，处理在工作台做）。
@@ -485,9 +487,11 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
     setState(() => _busyIds.add(notice.id));
     final container = ProviderScope.containerOf(context, listen: false);
     try {
-      await container.read(noticeRepositoryProvider).acknowledge(notice.id);
-      container.invalidate(noticeListProvider);
-      container.invalidate(noticeDetailProvider(notice.id));
+      await runNoticeActionWithBusy(
+        context,
+        title: '正在确认收到',
+        action: () => acknowledgeNoticeContainer(container, notice.id),
+      );
       if (!mounted) return;
       setState(() {
         _busyIds.remove(notice.id);
@@ -712,12 +716,10 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context);
     final hasReviews = items.isNotEmpty;
     final count = items.length + manual.length;
-    // 分级计数摘要（ADR-166）：按视觉级别带色点聚合（「紧急 1 · 待办 2 · 进度 1 ·
-    // 公告 1」），取代旧事件域分组 chips——级别一眼可辨，域信息仍在条目卡上。
+    // 分级计数摘要保留在标题旁提示入口，级别及域信息仍在每条通知卡上。
     final levelCounts = <ReviewNoticeLevel, int>{};
     for (final notice in [...items, ...manual]) {
       final level = reviewNoticeLevelOf(notice);
@@ -729,56 +731,21 @@ class _Header extends StatelessWidget {
     return UtenDialogHeader(
       padding: EdgeInsets.zero,
       icon: hasReviews ? Icons.fact_check_rounded : Icons.campaign_rounded,
-      title: Text(hasReviews ? '待办提醒' : '登录提醒'),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      title: Row(
         children: [
-          Text(subtitle),
-          if (count > 1) ...[
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                for (final level in ReviewNoticeLevel.values)
-                  if ((levelCounts[level] ?? 0) > 0)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.secondaryContainer.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(UtenRadius.pill),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: _levelStyleOf(theme, level).accent,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            l10n.noticeLevelSummary(
-                              _levelLabel(l10n, level),
-                              levelCounts[level]!,
-                            ),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: scheme.onSecondaryContainer,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-              ],
-            ),
-          ],
+          Flexible(child: Text(hasReviews ? '待办提醒' : '登录提醒')),
+          UtenFieldHintIcon(
+            dense: true,
+            info: [
+              subtitle,
+              for (final level in ReviewNoticeLevel.values)
+                if ((levelCounts[level] ?? 0) > 0)
+                  l10n.noticeLevelSummary(
+                    _levelLabel(l10n, level),
+                    levelCounts[level]!,
+                  ),
+            ].join('\n'),
+          ),
         ],
       ),
       showCloseButton: true,

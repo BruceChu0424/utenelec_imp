@@ -1,7 +1,9 @@
+import '../../shared/measurement/widgets/weigh_count_recovery_page.dart';
+import '../../features/warehouse/materialbin/widgets/workshop_material_close_retry_dialog.dart';
+import '../../shared/measurement/widgets/weight_sample_recovery_page.dart';
 import '../../shared/history/record_history_page.dart';
 import '../../shared/history/record_revision_page.dart';
 import '../../shared/history/record_history_area.dart';
-import '../../features/sales/pages/sales_manager_review_page.dart';
 import '../../features/basic_data/models/goods_detail_sequence.dart';
 import '../../shared/windows/business_windows.dart';
 import 'business_window_host.dart';
@@ -14,6 +16,8 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+
+import '../platform/desktop_window_modal.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -76,6 +80,13 @@ import '../../features/employee/pages/employee_offboarding_workflow_page.dart';
 import '../../features/employee/pages/employee_onboarding_page.dart';
 import '../../features/expense/pages/expense_approval_detail_page.dart';
 import '../../features/expense/pages/expense_approval_list_page.dart';
+import '../../features/approvals/pages/approval_center_page.dart';
+import '../../features/approvals/pages/approval_policy_settings_page.dart';
+import '../../features/applications/pages/my_applications_page.dart';
+import '../../features/applications/pages/business_application_edit_page.dart';
+import '../../features/applications/pages/business_application_detail_page.dart';
+import '../../features/applications/pages/business_application_list_page.dart';
+
 import '../../features/expense/providers/expense_providers.dart'
     show expenseApprovalQueueFromRoute;
 import '../../features/expense/pages/expense_detail_page.dart';
@@ -92,6 +103,11 @@ import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_audit_center_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
+import '../../features/finance/pages/finance_applications_page.dart';
+import '../../features/finance/config/finance_application_routes.dart';
+import '../../features/finance/pages/finance_application_edit_page.dart';
+import '../../features/finance/pages/finance_application_continuation_page.dart';
+import '../../features/finance/pages/finance_application_settings_page.dart';
 import '../../features/finance/payables/pages/finance_payables_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_review_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
@@ -425,6 +441,17 @@ final businessWindowRouterProvider = Provider.autoDispose
     );
 
 GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
+  final modalRegistry = window == null
+      ? ref.watch(desktopWindowModalRegistryProvider)
+      : null;
+  final rootModalObserver = modalRegistry == null
+      ? null
+      : DesktopWindowModalObserver(modalRegistry, layer: 1);
+  final shellModalObserver = modalRegistry == null
+      ? null
+      : DesktopWindowModalObserver(modalRegistry);
+  if (rootModalObserver != null) ref.onDispose(rootModalObserver.dispose);
+  if (shellModalObserver != null) ref.onDispose(shellModalObserver.dispose);
   final windowRootSafety = window == null ? null : UpdateSafetyNavigation();
   final windowShellSafety = window == null ? null : UpdateSafetyNavigation();
   if (windowRootSafety != null) ref.onDispose(windowRootSafety.dispose);
@@ -432,6 +459,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
   final router = GoRouter(
     navigatorKey: window?.navigatorKey ?? appNavigatorKey,
     observers: [
+      ?rootModalObserver,
       if (window == null) ref.watch(clientUpdateNavigationProvider),
       if (window == null) ref.watch(rootUpdateSafetyNavigationProvider),
       ?windowRootSafety,
@@ -494,7 +522,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
                 );
         case AuthStatus.authenticated:
           if (isLogin) return employeeReturnTo ?? RouteName.dashboard;
-          return employeePermissionRedirect(session.user, loc);
+          return employeePermissionRedirect(session.user, state.uri.toString());
       }
     },
     routes: [
@@ -564,6 +592,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
       ),
       ShellRoute(
         observers: [
+          ?shellModalObserver,
           windowShellSafety ?? ref.watch(shellUpdateSafetyNavigationProvider),
         ],
         // ⚠️ SelectionArea 已下线：Flutter 框架 bug（web 端 SelectableRegion 在
@@ -674,6 +703,65 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             builder: (_, _) => const AccountPage(),
           ),
 
+          DraftAwareGoRoute(
+            path: '/applications',
+            name: 'my-applications',
+            builder: (_, _) => const MyApplicationsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/new',
+            name: 'application-new',
+            builder: (_, s) => BusinessApplicationEditPage(
+              key: editorResourceKey(s.uri),
+              kind: s.uri.queryParameters['kind'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/mine',
+            name: 'application-mine',
+            builder: (_, s) => BusinessApplicationListPage(
+              kind: s.uri.queryParameters['kind'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/approval',
+            name: 'application-approval',
+            builder: (_, s) => BusinessApplicationApprovalListPage(
+              approvalStage: s.uri.queryParameters['stage'],
+              departmentCode: s.uri.queryParameters['departmentCode'],
+              initialHistory: s.uri.queryParameters['queue'] == 'history',
+              initialQueue: s.uri.queryParameters['queue'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/:id/edit',
+            name: 'application-edit',
+            builder: (_, s) => BusinessApplicationEditPage(
+              key: editorResourceKey(s.uri),
+              applicationId: s.pathParameters['id']!,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/:id',
+            name: 'application-detail',
+            builder: (_, s) => BusinessApplicationDetailPage(
+              applicationId: s.pathParameters['id']!,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/approvals/settings',
+            name: 'approval-policy-settings',
+            builder: (_, _) => const ApprovalPolicySettingsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/approvals/:departmentCode',
+            name: 'approval-center',
+            builder: (_, s) => ApprovalCenterPage(
+              departmentCode: s.pathParameters['departmentCode']!,
+              initialGroup: s.uri.queryParameters['group'],
+              initialApplicationQueue: s.uri.queryParameters['queue'],
+            ),
+          ),
           // —— 报销（approval 静态段在 :id 前）——
           DraftAwareGoRoute(
             path: '/expense',
@@ -684,6 +772,17 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             path: '/expense/new',
             name: 'expense-new',
             builder: (_, s) => ExpenseClaimEditPage(
+              key: editorResourceKey(
+                s.uri,
+                sourceIdentity: s.extra is AiGuidedFilePlan
+                    ? (s.extra as AiGuidedFilePlan).result.sha256Hex
+                    : null,
+              ),
+              initialKind: s.uri.queryParameters['kind'],
+              applicationKind: s.uri.queryParameters['applicationKind'],
+              travelApplicationId: s.uri.queryParameters['travelApplicationId'],
+              travelApplicationSourceKind:
+                  s.uri.queryParameters['travelApplicationSourceKind'],
               initialGuidedPlan: s.extra is AiGuidedFilePlan
                   ? s.extra as AiGuidedFilePlan
                   : null,
@@ -697,13 +796,15 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
           DraftAwareGoRoute(
             path: '/expense/:id/edit',
             name: 'expense-edit',
-            builder: (_, s) =>
-                ExpenseClaimEditPage(claimId: s.pathParameters['id']!),
+            builder: (_, s) => ExpenseClaimEditPage(
+              key: editorResourceKey(s.uri),
+              claimId: s.pathParameters['id']!,
+            ),
           ),
           DraftAwareGoRoute(
             path: '/expense/approval',
             name: 'expense-approval-list',
-            builder: (_, s) => ExpenseApprovalListPage(
+            builder: (_, s) => ExpenseFinanceApprovalPage(
               initialQueue: expenseApprovalQueueFromRoute(
                 s.uri.queryParameters['queue'],
               ),
@@ -718,8 +819,10 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
           DraftAwareGoRoute(
             path: '/expense/:id',
             name: 'expense-detail',
-            builder: (_, s) =>
-                ExpenseDetailPage(claimId: s.pathParameters['id']!),
+            builder: (_, s) => ExpenseDetailPage(
+              claimId: s.pathParameters['id']!,
+              history: s.uri.queryParameters['history'] == '1',
+            ),
           ),
 
           // —— 通知 ——
@@ -1527,6 +1630,27 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             ),
           ),
           DraftAwareGoRoute(
+            path: '/workshop-material/close-retry',
+            name: 'workshop-material-close-retry',
+            builder: (_, state) => WmCloseRetryRecoveryPage(
+              draftId: state.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/measurement/weigh-count-recovery',
+            name: 'weigh-count-recovery',
+            builder: (_, state) => WeighCountRecoveryPage(
+              draftId: state.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/measurement/weight-sample',
+            name: 'weight-sample-recovery',
+            builder: (_, state) => WeightSampleRecoveryPage(
+              draftId: state.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
             path: RouteName.warehouseWeighCount,
             name: 'warehouse-weigh-count',
             builder: (_, _) => const WarehouseWeighCountPage(),
@@ -1816,8 +1940,9 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
 
           DraftAwareGoRoute(
             path: RouteName.salesManagerReview,
-            builder: (_, s) => SalesManagerReviewPage(
-              initialKind: s.uri.queryParameters['kind'] ?? 'quote',
+            builder: (_, s) => ApprovalCenterPage(
+              departmentCode: 'DEPT_SALES',
+              initialGroup: s.uri.queryParameters['group'] ?? 'order',
             ),
           ),
           DraftAwareGoRoute(
@@ -2059,6 +2184,50 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
               initialSegment: state.uri.queryParameters['segment'],
               initialSalesState: state.uri.queryParameters['state'],
               initialProcurementStatus: state.uri.queryParameters['status'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications',
+            builder: (_, _) => const FinanceApplicationsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/new',
+            redirect: (_, state) => redirectFreshFinanceApplication(state.uri),
+            builder: (_, s) => FinanceApplicationEditPage(
+              kind: s.uri.queryParameters['kind'] ?? 'TRAVEL_APPLICATION',
+              resumeDraftId: s.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/settings',
+            builder: (_, _) => const FinanceApplicationSettingsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/:id/continue',
+            builder: (_, s) => FinanceApplicationContinuationPage(
+              originId: s.pathParameters['id']!,
+              kind: s.uri.queryParameters['kind'] ?? 'TRAVEL_APPLICATION',
+              resumeDraftId: s.uri.queryParameters['draftId'],
+              originalCommand: s.extra is Map
+                  ? (s.extra as Map)['originalCommand'] as String?
+                  : null,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/:id/edit',
+            builder: (_, s) => FinanceApplicationEditPage(
+              applicationId: s.pathParameters['id'],
+              kind: s.uri.queryParameters['kind'] ?? 'TRAVEL_APPLICATION',
+              resumeDraftId: s.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/:id',
+            builder: (_, s) => FinanceApplicationsPage(
+              applicationId: s.pathParameters['id'],
+              draftAction: s.uri.queryParameters['action'],
+              invoiceId: s.uri.queryParameters['invoiceId'],
+              resumeDraftId: s.uri.queryParameters['draftId'],
             ),
           ),
           DraftAwareGoRoute(

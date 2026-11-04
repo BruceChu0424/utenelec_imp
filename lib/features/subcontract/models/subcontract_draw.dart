@@ -1,3 +1,5 @@
+import '../../../shared/measurement/document_quantity.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 // ADR-143 委外按工序领直属物料：委外任务中心「待处理」拍平表的领料行(ADR-171 修订二)、
 // 任务详情与领料页的数据模型。
 //
@@ -47,6 +49,18 @@ enum SubcontractDrawStatus {
 
 /// 「待处理」领料行的一行(GET /subcontract/draw-tasks 的 page.items[])。
 class SubcontractDrawTaskRow {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'orderQty' => orderQty,
+          'drawnQty' => drawnQty,
+          'pendingQty' => pendingQty,
+          'drawableQty' => drawableQty,
+          'shortQty' => shortQty,
+          _ => null,
+        });
+
   const SubcontractDrawTaskRow({
     required this.orderItemId,
     required this.orderId,
@@ -76,6 +90,7 @@ class SubcontractDrawTaskRow {
     this.planNo,
     this.applicationItemIds = const [],
     this.differenceQtyText,
+    this.exactQuantities = const {},
   });
 
   final String orderItemId;
@@ -130,6 +145,13 @@ class SubcontractDrawTaskRow {
 
   factory SubcontractDrawTaskRow.fromJson(Map<String, dynamic> json) =>
       SubcontractDrawTaskRow(
+        exactQuantities: recordedDecimalFields(json, [
+          'orderQty',
+          'drawnQty',
+          'pendingQty',
+          'drawableQty',
+          'shortQty',
+        ]),
         orderItemId: _requiredString(json, 'orderItemId'),
         orderId: _string(json, 'orderId') ?? '',
         orderBillNo: _string(json, 'orderBillNo') ?? '',
@@ -214,11 +236,20 @@ class SubcontractDrawTaskList {
 
 /// 物料在途供应来源(任务详情「供应来源」列)。
 class SubcontractDrawSupplySource {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'openQty' => openQty,
+          _ => null,
+        });
+
   const SubcontractDrawSupplySource({
     required this.kind,
     required this.docId,
     required this.docNo,
     required this.openQty,
+    this.exactQuantities = const {},
   });
 
   /// PURCHASE / PRODUCTION / SUBCONTRACT。
@@ -229,6 +260,7 @@ class SubcontractDrawSupplySource {
 
   factory SubcontractDrawSupplySource.fromJson(Map<String, dynamic> json) =>
       SubcontractDrawSupplySource(
+        exactQuantities: recordedDecimalFields(json, ['openQty']),
         kind: _string(json, 'kind')?.toUpperCase() ?? '',
         docId: _string(json, 'docId'),
         docNo: _string(json, 'docNo') ?? '',
@@ -238,6 +270,20 @@ class SubcontractDrawSupplySource {
 
 /// 任务详情的一种直属物料(冻结计划行)。
 class SubcontractDrawMaterial {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'perUnitQty' => perUnitQty,
+          'requiredQty' => requiredQty,
+          'sentQty' => sentQty,
+          'pendingQty' => pendingQty,
+          'availableQty' => availableQty,
+          'drawableQty' => drawableQty,
+          'shortQty' => shortQty,
+          _ => null,
+        });
+
   const SubcontractDrawMaterial({
     required this.planItemId,
     required this.lineNo,
@@ -257,6 +303,7 @@ class SubcontractDrawMaterial {
     required this.shortQty,
     required this.state,
     required this.supplySources,
+    this.exactQuantities = const {},
   });
 
   final String planItemId;
@@ -284,6 +331,15 @@ class SubcontractDrawMaterial {
 
   factory SubcontractDrawMaterial.fromJson(Map<String, dynamic> json) =>
       SubcontractDrawMaterial(
+        exactQuantities: recordedDecimalFields(json, [
+          'perUnitQty',
+          'requiredQty',
+          'sentQty',
+          'pendingQty',
+          'availableQty',
+          'drawableQty',
+          'shortQty',
+        ]),
         planItemId: _requiredString(json, 'planItemId'),
         lineNo: _int(json, 'lineNo'),
         goodsId: _string(json, 'goodsId'),
@@ -392,13 +448,26 @@ class SubcontractDrawRequestItem {
   const SubcontractDrawRequestItem({required this.orderItemId, this.qty});
 
   final String orderItemId;
-  final num? qty;
+  final Object? qty;
 
   Map<String, dynamic> toJson() => {'orderItemId': orderItemId, 'qty': qty};
 }
 
 /// 领料页任务表一行(POST /preview 的 tasks[])。
 class SubcontractDrawPreviewTask {
+  final String? commandQtyText;
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'orderQty' => orderQty,
+          'drawnQty' => drawnQty,
+          'drawableQty' => drawableQty,
+          'batchDrawableQty' => batchDrawableQty,
+          'qty' => qty,
+          _ => null,
+        });
+
   const SubcontractDrawPreviewTask({
     required this.orderItemId,
     required this.orderId,
@@ -415,6 +484,8 @@ class SubcontractDrawPreviewTask {
     required this.drawableQty,
     required this.batchDrawableQty,
     required this.qty,
+    this.exactQuantities = const {},
+    this.commandQtyText,
   });
 
   final String orderItemId;
@@ -439,6 +510,14 @@ class SubcontractDrawPreviewTask {
 
   factory SubcontractDrawPreviewTask.fromJson(Map<String, dynamic> json) =>
       SubcontractDrawPreviewTask(
+        commandQtyText: recordedDocumentDecimal(json, 'qty'),
+        exactQuantities: recordedDecimalFields(json, [
+          'orderQty',
+          'drawnQty',
+          'drawableQty',
+          'batchDrawableQty',
+          'qty',
+        ]),
         orderItemId: _requiredString(json, 'orderItemId'),
         orderId: _string(json, 'orderId') ?? '',
         orderBillNo: _string(json, 'orderBillNo') ?? '',
@@ -459,6 +538,15 @@ class SubcontractDrawPreviewTask {
 
 /// 领料页物料表一行(POST /preview 的 lines[])：某仓库本次要发出的某种物料。
 class SubcontractDrawPreviewLine {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'qty' => qty,
+          'warehouseAvailableQty' => warehouseAvailableQty,
+          _ => null,
+        });
+
   const SubcontractDrawPreviewLine({
     required this.orderItemId,
     required this.planItemId,
@@ -473,6 +561,7 @@ class SubcontractDrawPreviewLine {
     required this.unitName,
     required this.qty,
     required this.warehouseAvailableQty,
+    this.exactQuantities = const {},
   });
 
   final String orderItemId;
@@ -497,6 +586,10 @@ class SubcontractDrawPreviewLine {
 
   factory SubcontractDrawPreviewLine.fromJson(Map<String, dynamic> json) =>
       SubcontractDrawPreviewLine(
+        exactQuantities: recordedDecimalFields(json, [
+          'qty',
+          'warehouseAvailableQty',
+        ]),
         orderItemId: _requiredString(json, 'orderItemId'),
         planItemId: _string(json, 'planItemId') ?? '',
         warehouseId: _string(json, 'warehouseId'),

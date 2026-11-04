@@ -32,6 +32,7 @@ import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
 import 'finance_asset_revision_section.dart';
+import 'finance_template_input_dialog.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 
 const _assetReviewerActions = <String>{
@@ -401,6 +402,26 @@ class _FinanceAssetDetailSurfaceState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _actionBar(detail),
+          if (widget.capabilities.canEdit)
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: UtenButton(
+                type: UtenButtonType.secondary,
+                onPressed: () => showFinanceTemplateInputDialog(
+                  context,
+                  kind: 'asset',
+                  scope: {
+                    'objectType': widget.ledger.apiValue,
+                    'objectId': widget.id,
+                    'validFrom': DateTime.now().toIso8601String().substring(
+                      0,
+                      10,
+                    ),
+                  },
+                ),
+                child: const Text('原表资料'),
+              ),
+            ),
           if (detail.summary.allowedActions.isNotEmpty)
             const SizedBox(height: UtenSpacing.s20),
           FinanceAssetRevisionSection(detail: detail),
@@ -522,7 +543,9 @@ class _FinanceAssetDetailSurfaceState
         if (item.openingBalance != null) ...[
           fact('接续日', item.openingBalance!['asOf']?.toString()),
           fact(
-            '期初累计折旧',
+            widget.ledger == FinanceAssetLedger.fixedAsset
+                ? '期初累计折旧'
+                : '期初累计摊销',
             formatFinanceDecimal(
               item.openingBalance!['accumulatedAmount']?.toString(),
             ),
@@ -530,7 +553,9 @@ class _FinanceAssetDetailSurfaceState
           fact('剩余计提月数', item.openingBalance!['remainingMonths']?.toString()),
           fact(
             '期初入账方式',
-            item.openingBalance!['existingVoucherId'] == null
+            item.openingBalance!['groupId'] != null
+                ? '整组旧账接续，来源及余额已核对'
+                : item.openingBalance!['existingVoucherId'] == null
                 ? '生成期初凭证'
                 : '关联已入账凭证，不重复记账',
           ),
@@ -946,30 +971,17 @@ class _FinanceAssetActionInputState
         '${value.day.toString().padLeft(2, '0')}';
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
-    final result = await ref
-        .read(employeeReferenceRepositoryProvider)
-        .listPickerCandidates(
-          purpose: EmployeeReferencePurpose.financeAssetCustodian,
-          size: 30,
-          search: keyword,
-          departmentId: _department?.id,
-          includeSubtree: true,
-        );
-    return [
-      for (final employee in result)
-        UtenEmployeePickerItem(
-          id: employee.id,
-          name: employee.fullName,
-          employeeCode: employee.code,
-          accountStatus: employee.accountStatus,
-          employmentStatus: employee.status,
-          departmentId: employee.departmentId,
-          departmentName: employee.departmentName,
-          positionName: employee.positionName,
-        ),
-    ];
-  }
+  Future<UtenEmployeePickerPage> _loadEmployees(
+    UtenEmployeePickerQuery query,
+  ) => ref
+      .read(employeeReferenceRepositoryProvider)
+      .listPickerPage(
+        query,
+        purpose: EmployeeReferencePurpose.financeAssetCustodian,
+        size: 30,
+        departmentId: _department?.id,
+        includeSubtree: true,
+      );
 
   void _submit() {
     final transfer = widget.action == 'TRANSFER';
@@ -1073,6 +1085,7 @@ class _FinanceAssetActionInputState
                       UtenEmployeePicker(
                         presentation:
                             UtenEmployeePickerPresentation.businessReference,
+                        cancelDepartmentTreeReadOnClose: true,
                         departmentTreeLoader: () => ref
                             .read(employeeReferenceRepositoryProvider)
                             .departments(
@@ -1090,7 +1103,7 @@ class _FinanceAssetActionInputState
                         allowClear: true,
                         initial: _custodian,
                         departmentName: _department?.fullPath,
-                        loader: _loadEmployees,
+                        pagedLoader: _loadEmployees,
                         onChanged: (value) => setState(() {
                           _custodian = value;
                         }),

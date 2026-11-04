@@ -42,6 +42,18 @@ public interface MaterialCategoryRepository extends JpaRepository<MaterialCatego
             """, nativeQuery = true)
     List<MaterialCategory> findSubtree(@Param("rootId") UUID rootId);
 
+    /** Expand a union of roots once. UNION deduplicates overlapping branches and terminates even on a damaged cycle. */
+    @Query(value = """
+            WITH RECURSIVE subtree(id) AS (
+                SELECT id FROM material_categories WHERE id IN (:rootIds) AND is_deleted = false
+                UNION
+                SELECT c.id FROM material_categories c JOIN subtree s ON c.parent_id = s.id
+                WHERE c.is_deleted = false
+            )
+            SELECT id FROM subtree ORDER BY id
+            """, nativeQuery = true)
+    List<UUID> findSubtreeIdsFromRoots(@Param("rootIds") Collection<UUID> rootIds);
+
     /** 判断 candidate 是否为 root 的（含自身）后代——移动分类时防成环。 */
     @Query(value = """
             WITH RECURSIVE subtree AS (

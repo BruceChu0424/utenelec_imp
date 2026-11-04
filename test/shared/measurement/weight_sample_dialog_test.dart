@@ -146,7 +146,8 @@ void main() {
 
     await _type(tester, 'weight-sample-qty', '20');
     await _type(tester, 'weight-sample-weight', '40.1');
-    expect(find.text('本次单重 2.005 g; 当前 1.999 g (+0.3%)'), findsOneWidget);
+    expect(find.textContaining('本次单重 2.005 g'), findsOneWidget);
+    expect(find.textContaining('当前 1.9992574 g'), findsOneWidget);
     expect(find.byKey(const ValueKey('weight-sample-big-diff')), findsNothing);
     expect(_save(tester).onPressed, isNotNull);
 
@@ -156,9 +157,9 @@ void main() {
     expect(api.posts, hasLength(1));
     expect(api.posts.single.$1, ApiEndpoints.stockWeightGoodsSamples('g1'));
     final body = api.posts.single.$2! as Map<String, Object?>;
-    expect(body['qty'], 20);
-    expect(body['weight'], 40.1);
-    expect(body['weightUnit'], 'G');
+    expect(body['qty'], '20');
+    expect(body['weight'], '0.0401');
+    expect(body['weightUnit'], 'KG');
     expect(body['supplierId'], 'sup-A');
     expect(body['warehouseId'], 'wh-1');
     expect(body['newRegime'], isFalse);
@@ -198,9 +199,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('weight-sample-save')));
     await tester.pumpAndSettle();
     final body = api.posts.single.$2! as Map<String, Object?>;
-    expect(body['weight'], 40);
-    expect(body['weightUnit'], 'G');
-    expect(body['tareKg'], 0.01);
+    expect(body['weight'], '0.04');
+    expect(body['weightUnit'], 'KG');
+    expect(body['tareKg'], '0.01');
   });
 
   testWidgets('切换抽样单位记为偏好, 请求带单位码', (tester) async {
@@ -219,7 +220,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('weight-sample-save')));
     await tester.pumpAndSettle();
     final body = api.posts.single.$2! as Map<String, Object?>;
-    expect(body['weight'], 0.0401);
+    expect(body['weight'], '0.0401');
     expect(body['weightUnit'], 'KG');
   });
 

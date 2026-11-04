@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
@@ -588,9 +589,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         row.remark.text = it.remark ?? '';
         // ADR-144：已保存的允许超收原样回显（冻结在本行，不再按主档预填黄标）；
         // 空 = 当时就选了不允许超收，之后加行也不回填。
-        row.allowedOverReceiptPct.text = it.allowedOverReceiptPct == null
-            ? ''
-            : purchasePercentText(it.allowedOverReceiptPct!);
+        row.allowedOverReceiptPct.text = it.allowedOverReceiptPctText ?? '';
         row.overReceiptPrefillConsumed = true;
         // 既有单一套条款：明细不落条款，编辑回显按单头条款回填各行。
         row
@@ -765,7 +764,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
             r.supplierId != null &&
             r.taxRate.text.trim().isEmpty &&
             terms.taxRate != null) {
-          r.taxRate.text = financeExactTrimmed(terms.taxRate.toString()) ?? '';
+          r.taxRate.text = financeExactTrimmed(terms.taxRateText) ?? '';
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
@@ -777,15 +776,14 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                   colorId: r.colorId,
                   unitId: r.unitId,
                   currencyId: r.currencyId,
-                  taxRate: double.tryParse(r.taxRate.text.trim()),
+                  taxRate: r.taxRate.text,
                 ) ??
                 false);
         if (r.price.text.trim().isEmpty &&
             r.pricing.totalAmount.text.trim().isEmpty &&
             terms.purchasePrice != null &&
             matchesPriceContext()) {
-          r.price.text =
-              financeExactTrimmed(terms.purchasePrice.toString()) ?? '';
+          r.price.text = financeExactTrimmed(terms.purchasePriceText) ?? '';
           r.markTermsAutofilled('price', r.price.text);
           r.watchDefaultPrice(
             price: r.price,
@@ -803,9 +801,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         if (!r.overReceiptPrefillConsumed &&
             r.allowedOverReceiptPct.text.trim().isEmpty &&
             terms.allowedOverReceiptPct != null) {
-          r.allowedOverReceiptPct.text = purchasePercentText(
-            terms.allowedOverReceiptPct!,
-          );
+          r.allowedOverReceiptPct.text = terms.allowedOverReceiptPctText ?? '';
           r.markAllowedOverReceiptAutofilled(r.allowedOverReceiptPct.text);
           changed = true;
         }
@@ -1165,7 +1161,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     final rate = double.tryParse(r.exchangeRate.text.trim()) ?? 0;
     final tax = double.tryParse(r.taxRate.text.trim()) ?? 0;
     return '${r.supplierId}|${r.settlementMethodId}|${r.currencyId}|'
-        '${rate.toStringAsFixed(6)}|${tax.toStringAsFixed(4)}';
+        '${rate.toExactString(minimumFractionDigits: 6)}|${tax.toExactString(minimumFractionDigits: 4)}';
   }
 
   /// 保存前查重：同「供应商+条款+货品+颜色+单位+换算率」多行 → 弹窗汇总/去重/
@@ -1500,7 +1496,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         return;
       }
       final remarkText = r.remark.text.trim();
-      // 逐行校验已保证合法；空 = 不允许超收(不提交，服务端按 0%)，两位小数提交。
+      // 逐行校验已保证合法；空 = 不允许超收(不提交，服务端按 0%)，保留原十进制文本提交。
       final overReceiptPct = parsePurchaseOverReceiptPct(
         r.allowedOverReceiptPct.text,
       ).value;

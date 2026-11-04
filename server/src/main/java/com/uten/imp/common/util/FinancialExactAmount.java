@@ -36,11 +36,11 @@ public final class FinancialExactAmount {
     public static BigDecimal optional(BigDecimal value,String label) { return value==null?null:require(value,label); }
 
     public static BigDecimal unitPrice(BigDecimal value,String label) {
-        return boundedInput(value,label,10,14);
+        return boundedInput(value,label,MAX_FRACTION_DIGITS,40);
     }
 
     public static BigDecimal quantity(BigDecimal value,String label) {
-        return boundedInput(value,label,4,14);
+        return boundedInput(value,label,MAX_FRACTION_DIGITS,40);
     }
 
     /** Optional stored quantity annotations obey the same no-rounding fact contract. */
@@ -52,7 +52,7 @@ public final class FinancialExactAmount {
     }
 
     public static BigDecimal rate(BigDecimal value,String label) {
-        return boundedInput(value,label,6,12);
+        return boundedInput(value,label,MAX_FRACTION_DIGITS,40);
     }
 
     /** Keeps legacy four-decimal formatting for equal values without discarding further digits. */

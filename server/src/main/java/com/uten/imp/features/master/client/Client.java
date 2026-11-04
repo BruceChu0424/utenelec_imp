@@ -147,6 +147,6 @@ public class Client extends SoftDeletableEntity {
     private String remark;              // Remark（备注）
 
     /** 铺底额（元）：应收管控下限；应收汇总表「超出铺底额」= 应收余额−铺底额。 */
-    @Column(name = "credit_floor", nullable = false, precision = 18, scale = 4)
+    @Column(name = "credit_floor", nullable = false, columnDefinition = "numeric")
     private java.math.BigDecimal creditFloor = java.math.BigDecimal.ZERO;
 }

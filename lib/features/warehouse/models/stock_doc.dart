@@ -127,6 +127,8 @@ class StockDocItem {
     this.price,
     this.amountLocal,
     this.weight,
+    this.weightExact,
+    this.weightInputEvidence = const [],
     this.surplusQty,
     this.surplusQtyText,
     this.countQty,
@@ -147,8 +149,11 @@ class StockDocItem {
     this.sourceDocNo,
     this.qtyFromWeight = false,
     this.countWeight,
+    this.countWeightExact,
     this.bookWeight,
+    this.bookWeightExact,
     this.issuedWeightKg,
+    this.issuedWeightKgExact,
     this.issuedWeightEstimated = false,
   });
   final String? id;
@@ -167,19 +172,32 @@ class StockDocItem {
 
   /// 本行实称重量 (千克, ADR-135); null = 没称。
   final double? weight;
+  final String? weightExact;
+  final List<Map<String, dynamic>> weightInputEvidence;
+  String? get weightText =>
+      financeExactTrimmed(weightExact ?? weight?.toString());
 
   /// 本行数量是按称重折算的 (盘点时指实盘数量; 不参与单重学习)。
   final bool qtyFromWeight;
 
   /// 盘点实盘重量 (千克, 可选; 只有 CHECK 行有)。
   final double? countWeight;
+  final String? countWeightExact;
+  String? get countWeightText =>
+      financeExactTrimmed(countWeightExact ?? countWeight?.toString());
 
   /// 盘点保存时的账面重量快照 (千克, 只读; null = 账面重量未知)。
   final double? bookWeight;
+  final String? bookWeightExact;
+  String? get bookWeightText =>
+      financeExactTrimmed(bookWeightExact ?? bookWeight?.toString());
 
   /// 已出/已收重量 (千克, 服务端按本行库存流水累计, 恒为正数或 0): 领料行 = 发出减取消出库,
   /// 生产退料行 = 实收减红冲; 其余单据为 null; 有任一笔重量未知或还没有流水时也为 null。
   final double? issuedWeightKg;
+  final String? issuedWeightKgExact;
+  String? get issuedWeightKgText =>
+      financeExactTrimmed(issuedWeightKgExact ?? issuedWeightKg?.toString());
 
   /// 已出库重量里含估算 (显示「≈」)。
   final bool issuedWeightEstimated;
@@ -237,7 +255,16 @@ class StockDocItem {
     baseQtyText: receiptRecordedDecimal(json, 'baseQty'),
     price: (json['price'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-    weight: (json['weight'] as num?)?.toDouble(),
+    weight: double.tryParse(json['weight']?.toString() ?? ''),
+    weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
+    weightInputEvidence: json['weightInputEvidence'] is List
+        ? [
+            for (final value
+                in (json['weightInputEvidence'] as List)
+                    .whereType<Map<Object?, Object?>>())
+              Map<String, dynamic>.from(value),
+          ]
+        : const [],
     surplusQty: (json['surplusQty'] as num?)?.toDouble(),
     surplusQtyText: receiptRecordedDecimal(json, 'surplusQty'),
     countQty: (json['countQty'] as num?)?.toDouble(),
@@ -258,9 +285,18 @@ class StockDocItem {
         json['executionSegmentSalesAllocationId'] as String?,
     sourceDailyReportItemId: json['sourceDailyReportItemId'] as String?,
     qtyFromWeight: json['qtyFromWeight'] == true,
-    countWeight: (json['countWeight'] as num?)?.toDouble(),
-    bookWeight: (json['bookWeight'] as num?)?.toDouble(),
-    issuedWeightKg: (json['issuedWeightKg'] as num?)?.toDouble(),
+    countWeight: double.tryParse(json['countWeight']?.toString() ?? ''),
+    countWeightExact: financeExactDecimal(
+      json['countWeightExact'] ?? json['countWeight'],
+    ),
+    bookWeight: double.tryParse(json['bookWeight']?.toString() ?? ''),
+    bookWeightExact: financeExactDecimal(
+      json['bookWeightExact'] ?? json['bookWeight'],
+    ),
+    issuedWeightKg: double.tryParse(json['issuedWeightKg']?.toString() ?? ''),
+    issuedWeightKgExact: financeExactDecimal(
+      json['issuedWeightKgExact'] ?? json['issuedWeightKg'],
+    ),
     issuedWeightEstimated: json['issuedWeightEstimated'] == true,
   );
 }
@@ -488,6 +524,7 @@ class FinishedInLot {
     this.actualSurplusNote,
     this.shortageHint,
     this.weight,
+    this.weightExact,
   });
 
   final String lotId;
@@ -511,6 +548,9 @@ class FinishedInLot {
 
   /// 登记重量(千克)；未称重为空。
   final double? weight;
+  final String? weightExact;
+  String? get weightText =>
+      financeExactTrimmed(weightExact ?? weight?.toString());
 
   factory FinishedInLot.fromJson(Map<String, dynamic> json) => FinishedInLot(
     lotId: json['lotId'] as String? ?? '',
@@ -528,7 +568,8 @@ class FinishedInLot {
     splitText: json['splitText'] as String?,
     actualSurplusNote: json['actualSurplusNote'] as String?,
     shortageHint: json['shortageHint'] as String?,
-    weight: (json['weight'] as num?)?.toDouble(),
+    weight: double.tryParse(json['weight']?.toString() ?? ''),
+    weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
   );
 }
 

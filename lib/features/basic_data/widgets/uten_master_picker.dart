@@ -1,4 +1,6 @@
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import 'dart:async';
+import '../../../shared/paging/paged_read_intent.dart';
 // UtenMasterPicker - 「左分类树 + 右分页列表」主档选择面板的泛型实现(ADR-111 前端去重)。
 //
 // 客户选择器与供应商选择器原先各写一份 600+ 行、84% 相同的面板(统一搜索定位分类、
@@ -159,6 +161,11 @@ class _MasterPickerSheetState<TItem>
   bool _showingGlobalResults = false;
   String? _categoryContentKeyword;
   int _requestVersion = 0;
+  int? _activeQueryVersion;
+  String? _activeQuery;
+  bool _isQueryPending(String value) =>
+      _activeQueryVersion == _requestVersion && _activeQuery == value.trim();
+
   bool _acceptPendingSearch = false;
   int _page = 1;
   int _confirmedPage = 1;
@@ -273,6 +280,12 @@ class _MasterPickerSheetState<TItem>
     _applyGlobalSearch(v.trim());
   }
 
+  void _onKeywordSubmitted(String value) {
+    if (!_currentReader) return;
+    _acceptPendingSearch = false;
+    _applyGlobalSearch(value.trim());
+  }
+
   Future<void> _applyGlobalSearch(String query) async {
     if (!_currentReader) return;
     if (query.isEmpty) {
@@ -321,6 +334,8 @@ class _MasterPickerSheetState<TItem>
       _loading = true;
       _error = null;
     });
+    _activeQueryVersion = requestVersion;
+    _activeQuery = _globalQuery;
     try {
       final spec = _spec, keyword = _categoryContentKeyword;
       final r = await readScopedPage<TItem>(
@@ -347,6 +362,11 @@ class _MasterPickerSheetState<TItem>
         _error = humanErrorMessage(caughtError) ?? '加载${_spec.noun}失败，请稍后重试';
         _loading = false;
       });
+    } finally {
+      if (_activeQueryVersion == requestVersion) {
+        _activeQueryVersion = null;
+        _activeQuery = null;
+      }
     }
   }
 
@@ -376,7 +396,10 @@ class _MasterPickerSheetState<TItem>
     int? totalCategories, totalMatches;
     String? contextScope;
     while (page <= totalPages) {
-      final context = await _spec.searchContext(query, page);
+      final context = await PagedReadIntent.scopedRead(
+        () => !_stale(version, query, requestedPage),
+        () => _spec.searchContext(query, page),
+      );
       if (_stale(version, query, requestedPage)) {
         throw StateError('选择器读取已过期');
       }
@@ -413,6 +436,8 @@ class _MasterPickerSheetState<TItem>
       _loading = true;
       _error = null;
     });
+    _activeQueryVersion = requestVersion;
+    _activeQuery = _globalQuery;
     try {
       final spec = _spec;
       final result = await readScopedPage<TItem>(
@@ -425,18 +450,23 @@ class _MasterPickerSheetState<TItem>
       );
       if (_stale(requestVersion, query, requestedPage)) return;
       if (!_acceptScope(result.readScopeVersion)) return;
-      // Authorization proof cannot version category content. Cached business
-      // rows still revalidate complete category metadata before publication.
-      final context = await _readSearchContext(
-        query,
-        requestVersion,
-        requestedPage,
-        result.readScopeVersion,
-      );
+      // Authorization proof cannot version category content. Cached rows still
+      // wait for complete metadata revalidation before becoming actionable.
+      final verifiedContext = useCache
+          ? await _readSearchContext(
+              query,
+              requestVersion,
+              requestedPage,
+              result.readScopeVersion,
+            )
+          : null;
       if (_stale(requestVersion, query, requestedPage)) return;
-      // Rows and metadata are separate reads. A concurrent category move must
-      // not hide a category belonging to an actual row already on this page.
-      final categories = {...context, ...result.items.map(_spec.categoryIdOf)};
+      // A fresh network page can paint while the independent tree-location read
+      // continues. Every actual row's category remains visible after a move.
+      final categories = {
+        ...?verifiedContext,
+        ...result.items.map(_spec.categoryIdOf),
+      };
       final resolution = resolveHierarchySearch(
         roots: widget.tree,
         query: query,
@@ -444,7 +474,7 @@ class _MasterPickerSheetState<TItem>
       );
       setState(() {
         _visibleFilterIds = resolution.visibleIds;
-        _searchLocationLoading = false;
+        _searchLocationLoading = !useCache;
         _searchLocationError = null;
         _showingGlobalResults = true;
         _page = result.page;
@@ -453,12 +483,60 @@ class _MasterPickerSheetState<TItem>
         _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
         _loading = false;
       });
+      if (!useCache) {
+        unawaited(
+          _finishSearchLocation(query, requestVersion, requestedPage, result),
+        );
+      }
     } catch (caughtError) {
       if (!_currentReader || requestVersion != _requestVersion) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '搜索${_spec.noun}失败，请稍后重试';
         _loading = false;
         _searchLocationLoading = false;
+      });
+    } finally {
+      if (_activeQueryVersion == requestVersion) {
+        _activeQueryVersion = null;
+        _activeQuery = null;
+      }
+    }
+  }
+
+  Future<void> _finishSearchLocation(
+    String query,
+    int version,
+    int requestedPage,
+    PagedResult<TItem> result,
+  ) async {
+    try {
+      // Revalidate all category metadata even for cached rows. A scope change
+      // still retires the reader; an ordinary location failure keeps usable rows.
+      final context = await _readSearchContext(
+        query,
+        version,
+        requestedPage,
+        result.readScopeVersion,
+      );
+      if (_stale(version, query, requestedPage)) return;
+      final resolution = resolveHierarchySearch(
+        roots: widget.tree,
+        query: query,
+        contentCategoryIds: {
+          ...context,
+          ...result.items.map(_spec.categoryIdOf),
+        },
+      );
+      setState(() {
+        _visibleFilterIds = resolution.visibleIds;
+        _searchLocationLoading = false;
+        _searchLocationError = null;
+      });
+    } catch (error) {
+      if (_stale(version, query, requestedPage)) return;
+      setState(() {
+        _searchLocationLoading = false;
+        _searchLocationError = humanErrorMessage(error) ?? '分类定位失败，请重新搜索';
       });
     }
   }
@@ -648,6 +726,8 @@ class _MasterPickerSheetState<TItem>
         hint: '搜索分类/${_spec.noun}',
         onInputChanged: _onKeywordInputChanged,
         onChanged: _onKeywordChanged,
+        onSubmitted: _onKeywordSubmitted,
+        isQueryPending: _isQueryPending,
       ),
     );
   }

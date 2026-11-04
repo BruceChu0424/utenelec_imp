@@ -323,34 +323,36 @@ class _DeptEmployeePickerSheetState
     // 首屏先显示，树定位在后台继续汇总后续页；新输入会通过 request version 终止。
     Set<String>? contentDepartmentIds;
     try {
-      contentDepartmentIds =
-          await collectPagedHierarchyCategoryIds<EmployeeSummary>(
-            seedPage: firstPage,
-            loadPage: (page) => page == 2
-                ? PagedReadIntent.bufferSeed(
-                    () => _readEmployeePage(
-                      page,
-                      request: request,
-                      keyword: query,
-                      useCache: true,
-                      prepare: false,
-                    ),
-                  )
-                : repository.listWithColumnQuery(
-                    page: page,
-                    size: _pageSize,
-                    search: query,
-                    statuses: widget.statuses,
-                    includeSubtree: true,
-                    columnQuery: headers.searches,
-                    sort: headers.sort,
-                    order: headers.sort == null
-                        ? null
-                        : (headers.ascending ? 'asc' : 'desc'),
+      contentDepartmentIds = await PagedReadIntent.scopedRead(
+        () => _isCurrent(request),
+        () => collectPagedHierarchyCategoryIds<EmployeeSummary>(
+          seedPage: firstPage,
+          loadPage: (page) => page == 2
+              ? PagedReadIntent.bufferSeed(
+                  () => _readEmployeePage(
+                    page,
+                    request: request,
+                    keyword: query,
+                    useCache: true,
+                    prepare: false,
                   ),
-            categoryIdOf: (item) => item.departmentId,
-            isCurrent: () => _isCurrent(request),
-          );
+                )
+              : repository.listWithColumnQuery(
+                  page: page,
+                  size: _pageSize,
+                  search: query,
+                  statuses: widget.statuses,
+                  includeSubtree: true,
+                  columnQuery: headers.searches,
+                  sort: headers.sort,
+                  order: headers.sort == null
+                      ? null
+                      : (headers.ascending ? 'asc' : 'desc'),
+                ),
+          categoryIdOf: (item) => item.departmentId,
+          isCurrent: () => _isCurrent(request),
+        ),
+      );
     } catch (caughtError) {
       if (!_isCurrent(request)) return;
       setState(
@@ -605,7 +607,6 @@ class _DeptEmployeePickerSheetState
     final treePane = UtenDepartmentTreeView(
       nodes: widget.tree,
       mode: UtenDepartmentTreeMode.single,
-      flatLevelColors: true,
       expandOnRowTap: true,
       showSearch: false,
       header: Padding(

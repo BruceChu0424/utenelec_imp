@@ -84,6 +84,81 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.salesManagerReview) {
     return const [Perm.salesQuoteManagerView, Perm.salesOrderManagerView];
   }
+  if (location == '/approvals/settings') {
+    return const [Perm.approvalPolicyManage];
+  }
+  if (location.startsWith('/approvals/')) {
+    final code = location.substring('/approvals/'.length);
+    return switch (code) {
+      'FINANCE' => const [
+        Perm.expenseView,
+        Perm.expenseApprove,
+        Perm.expenseApproveFinanceInitial,
+        Perm.expenseApproveFinanceReview,
+        Perm.expensePay,
+        Perm.applicationView,
+        Perm.applicationApproveFinanceInitial,
+        Perm.applicationApproveFinanceReview,
+        Perm.applicationReceive,
+        Perm.applicationPay,
+        Perm.applicationPrepaymentLinkFinance,
+      ],
+      'GM' => const [
+        Perm.expenseApproveExecutive,
+        Perm.applicationApproveExecutive,
+        Perm.applicationApproveViceExecutive,
+      ],
+      'DEPT_SALES' => const [
+        Perm.expenseApproveDepartment,
+        Perm.applicationApproveDepartment,
+        Perm.salesQuoteManagerView,
+        Perm.salesOrderManagerView,
+      ],
+      'DEPT_PMC' => const [
+        Perm.expenseApproveDepartment,
+        Perm.applicationApproveDepartment,
+        Perm.applicationApproveProcurement,
+      ],
+      'GM_DEPARTMENT' ||
+      'DEPT_HR' ||
+      'DEPT_PROD' ||
+      'DEPT_ENG' ||
+      'DEPT_QA' ||
+      'DEPT_FIN' ||
+      'DEPT_NEWMEDIA' ||
+      'DEPT_RAIL' ||
+      'DEPT_SECURITY' => const [
+        Perm.expenseApproveDepartment,
+        Perm.applicationApproveDepartment,
+      ],
+      _ => const <String>[],
+    };
+  }
+  if (location == '/applications/new' ||
+      location == '/applications/mine' ||
+      RegExp(r'^/applications/[^/]+/edit$').hasMatch(location)) {
+    final kind = Uri.tryParse(rawLocation)?.queryParameters['kind'];
+    final kindPermission = Perm.applicationKindApplyPermissions[kind];
+    if (kind != null && kindPermission == null) return const <String>[];
+    return [
+      Perm.applicationApply,
+      if (kindPermission != null)
+        kindPermission
+      else
+        ...Perm.applicationKindApplyPermissions.values,
+    ];
+  }
+  if (location == '/applications/approval') {
+    return const [Perm.applicationView, ...Perm.applicationApprovalPermissions];
+  }
+  if (location.startsWith('/applications/')) {
+    return [
+      Perm.applicationApply,
+      ...Perm.applicationKindApplyPermissions.values,
+      Perm.applicationView,
+      ...Perm.applicationApprovalPermissions,
+    ];
+  }
   if (location == RouteName.clientReleasePublish) {
     return const [Perm.clientReleasePublish];
   }
@@ -184,12 +259,29 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.departmentView];
   }
   // 财务
+  if (location == '/finance/applications/settings') {
+    return const [Perm.expenseSettings];
+  }
+  if (location == '/finance/applications' ||
+      location.startsWith('/finance/applications/')) {
+    return const [
+      Perm.financeApplicationView,
+      Perm.financeApplicationApply,
+      Perm.expenseApply,
+      Perm.payrollGenerate,
+      Perm.expenseSettings,
+    ];
+  }
   if (location == '/expense/settings') {
     return const [Perm.expenseSettings];
   }
   if (location == '/expense/approval' ||
       location.startsWith('/expense/approval/')) {
-    return const [Perm.expenseView, Perm.expenseApprove, Perm.expensePay];
+    return const [
+      Perm.expenseView,
+      ...Perm.expenseApprovalPermissions,
+      Perm.expensePay,
+    ];
   }
   if (location == '/expense' ||
       location == '/expense/new' ||
@@ -418,6 +510,24 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.stockReportView];
   }
   // 独立称重计数页 (ADR-135)：库存查看即可进；保存抽样的称样权限由页面与后端另行把关。
+  if (location == '/workshop-material/close-retry') {
+    return const [Perm.workshopMaterialCount];
+  }
+  if (location == '/measurement/weigh-count-recovery') {
+    return const [
+      Perm.stockView,
+      Perm.warehouseInboundStockIn,
+      Perm.stockDocEdit,
+      Perm.stockWeightManage,
+    ];
+  }
+  if (location == '/measurement/weight-sample') {
+    return const [
+      Perm.warehouseInboundStockIn,
+      Perm.stockDocEdit,
+      Perm.stockWeightManage,
+    ];
+  }
   if (location == RouteName.warehouseWeighCount) {
     return const [Perm.stockView];
   }

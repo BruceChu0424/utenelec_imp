@@ -7,23 +7,34 @@
 // 单测：test/core/utils/rmb_amount_test.dart
 library;
 
+import '../formatters/exact_number_text.dart';
+
 const String _kDigits = '零壹贰叁肆伍陆柒捌玖';
 const List<String> _kFourUnits = ['', '拾', '佰', '仟'];
 const List<String> _kGroupUnits = ['', '万', '亿', '万亿'];
 
 /// 金额 → 「人民币壹万零贰佰零叁元伍角」形态的大写。
-/// 输入四舍五入到分；负数/非有限数返回空串（报销域不会出现）。
-String rmbCapital(num amount) {
-  if (!amount.isFinite || amount < 0 || amount >= 1e16) return '';
-  final int cents = (amount.toDouble() * 100).round();
-  if (cents == 0) return '人民币零元整';
+/// Original decimal facts remain intact. Sub-cent values keep their digits and
+/// explicitly leave uppercase pending, rather than changing a signed amount.
+String rmbCapital(Object amount) {
+  final exact = exactNumberDisplay(amount);
+  if (exact == null) return '';
+  final negative = exact.startsWith('-');
+  final parts = (negative ? exact.substring(1) : exact).split('.');
+  final fraction = parts.length > 1 ? parts[1] : '';
+  if (fraction.length > 2 || parts.first.length > 16) {
+    return '人民币$exact元（大写待核对）';
+  }
+  final cents =
+      BigInt.parse(parts.first) * BigInt.from(100) +
+      BigInt.parse(fraction.padRight(2, '0'));
+  if (cents == BigInt.zero) return '人民币零元整';
+  final yuan = cents ~/ BigInt.from(100);
+  final jiao = ((cents % BigInt.from(100)) ~/ BigInt.from(10)).toInt();
+  final fen = (cents % BigInt.from(10)).toInt();
 
-  final int yuan = cents ~/ 100;
-  final int jiao = (cents % 100) ~/ 10;
-  final int fen = cents % 10;
-
-  final buffer = StringBuffer('人民币');
-  if (yuan > 0) {
+  final buffer = StringBuffer(negative ? '人民币负' : '人民币');
+  if (yuan > BigInt.zero) {
     buffer
       ..write(_yuanText(yuan))
       ..write('元');
@@ -35,7 +46,7 @@ String rmbCapital(num amount) {
   }
   if (jiao > 0) {
     buffer.write('${_kDigits[jiao]}角');
-  } else if (fen > 0 && yuan > 0) {
+  } else if (fen > 0 && yuan > BigInt.zero) {
     // 角位为零、分位有数：元与分之间补「零」（壹拾元零伍分）。
     buffer.write('零');
   }
@@ -47,13 +58,13 @@ String rmbCapital(num amount) {
 
 /// 整数元部分（不含「元」字）：万亿以内按四位分段，段内零只补一个，
 /// 段间低位段不足一千或隔了整零段时补一个「零」（壹万零壹 / 壹佰万零壹拾）。
-String _yuanText(int yuan) {
-  if (yuan == 0) return '零';
+String _yuanText(BigInt yuan) {
+  if (yuan == BigInt.zero) return '零';
   final groups = <int>[];
   var rest = yuan;
-  while (rest > 0) {
-    groups.add(rest % 10000);
-    rest ~/= 10000;
+  while (rest > BigInt.zero) {
+    groups.add((rest % BigInt.from(10000)).toInt());
+    rest ~/= BigInt.from(10000);
   }
   final buffer = StringBuffer();
   var skippedZeroGroup = false;
@@ -101,7 +112,7 @@ int _pow10(int exponent) {
 }
 
 /// Parse a currency input without binary floating point rounding or exponent notation.
-/// Values are bounded to the expense database amount precision, numeric(12, 2).
+/// Legacy cent-only compatibility; current expense entry uses shared native exact decimals.
 int? parseExpenseAmountCents(String input, {bool allowZero = false}) {
   final text = input.trim();
   if (!RegExp(r'^\d{1,10}(?:\.\d{1,2})?$').hasMatch(text)) return null;
@@ -112,3 +123,6 @@ int? parseExpenseAmountCents(String input, {bool allowZero = false}) {
   if (cents > 999999999999 || (allowZero ? cents < 0 : cents <= 0)) return null;
   return cents;
 }
+
+/// Exact-text entry point used by current application printouts.
+String rmbCapitalExact(String amount) => rmbCapital(amount);

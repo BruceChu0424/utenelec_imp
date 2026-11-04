@@ -45,6 +45,7 @@ final class _MaterialPreparationDraftBudgetController {
             analysis.products[index].allocationPriority ?? index,
     };
     final pools = <String, double>{};
+    final poolExact = <String, String>{};
     final inputs = <MaterialPreparationBudgetLine>[];
     for (final material in analysis.materials) {
       if (!presentation.rootIdsByMaterial.containsKey(
@@ -73,32 +74,75 @@ final class _MaterialPreparationDraftBudgetController {
       // A pool must have one server-proven free balance. A smaller conflicting
       // observation is conservative; private per-row amounts are never maxed
       // together and relabelled as shared stock.
-      pools.update(
-        pool,
-        (current) => current < shared ? current : shared,
-        ifAbsent: () => shared,
+      final sharedText = materialPresentationFact(
+        material.quantityFactsExact,
+        'preparationSharedAvailableQty',
+        shared,
       );
+      if (sharedText == null) {
+        return _value = const MaterialPreparationDraftBudget(
+          rows: {},
+          pendingReason: '共同可用余量缺少完整原值，请重新读取来源',
+        );
+      }
+      final previous = poolExact[pool];
+      final selected =
+          previous == null ||
+              materialQuantityUnits(sharedText) <
+                  materialQuantityUnits(previous)
+          ? sharedText
+          : previous;
+      poolExact[pool] = selected;
+      pools[pool] = double.parse(selected);
       final previewed = owner._tablePreviewed(material);
       final estimated = owner._tableShownQty(material);
       final baseline = owner._tablePreviewedQty(material);
-      final need =
-          (previewed.preparationUncoveredBeforeSharedQty ?? beforeShared) +
-          estimated.required -
-          baseline.required;
+      // Local double cascades cannot publish rounded capacities. A server
+      // preview with equal requirement restores the exact source budget.
+      if (estimated.required != baseline.required) {
+        return _value = const MaterialPreparationDraftBudget(
+          rows: {},
+          pendingReason: '当前用量正在核对服务端预览，原输入已保留',
+        );
+      }
+      final ownedText = materialPresentationFact(
+        material.quantityFactsExact,
+        'preparationOwnedAvailableQty',
+        owned,
+      );
+      final needText = materialPresentationFact(
+        previewed.quantityFactsExact,
+        'preparationUncoveredBeforeSharedQty',
+        previewed.preparationUncoveredBeforeSharedQty ?? beforeShared,
+      );
+      final capText = materialPresentationFact(
+        material.quantityFactsExact,
+        'preparationAdoptableSharedQty',
+        material.preparationAdoptableSharedQty,
+      );
+      if (ownedText == null ||
+          needText == null ||
+          material.preparationAdoptableSharedQty != null && capText == null) {
+        return _value = const MaterialPreparationDraftBudget(
+          rows: {},
+          pendingReason: '备料数量缺少完整原值，请重新读取来源；原输入已保留',
+        );
+      }
       final aggregate = owner._aggregateTable;
       final draft =
           aggregate.drafts[aggregate._draftByLine[material.materialLineId]];
       final sourceAmount =
           draft?.sourceRequestedQtyByMaterialLineId?[material.materialLineId];
-      final requested = draft == null
-          ? owner._tableSubmitQtyOf(group)
-          : double.tryParse(sourceAmount ?? draft.totalText) ?? double.nan;
+      final requestedText = draft == null
+          ? owner._tableSubmitQtyTextOf(group)
+          : sourceAmount ?? draft.totalText;
+      final requested = double.tryParse(requestedText) ?? double.nan;
       inputs.add(
         MaterialPreparationBudgetLine(
           materialLineId: material.materialLineId,
           poolKey: pool,
           ownedAvailableQty: owned,
-          uncoveredBeforeSharedQty: need.clamp(0.0, double.infinity),
+          uncoveredBeforeSharedQty: double.parse(needText),
           requestedQty: requested,
           useAvailableQty: owner._preparationUseAvailableQty != false,
           selected: owner._selectedMaterialGroupKeys.contains(group.key),
@@ -108,12 +152,19 @@ final class _MaterialPreparationDraftBudgetController {
           priority: priorities[material.analysisLineId] ?? 0,
           adoptableSharedQty: material.preparationAdoptableSharedQty,
           supplySlices: material.preparationSharedSupplySlices,
+          quantityFactsExact: {
+            'ownedAvailableQty': ownedText,
+            'uncoveredBeforeSharedQty': needText,
+            'requestedQty': requestedText,
+            'adoptableSharedQty': ?capText,
+          },
         ),
       );
     }
     return _value = MaterialPreparationDraftBudget.project(
       lines: inputs,
       sharedAvailableByPool: pools,
+      sharedAvailableExactByPool: poolExact,
     );
   }
 

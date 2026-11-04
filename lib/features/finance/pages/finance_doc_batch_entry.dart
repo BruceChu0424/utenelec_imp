@@ -329,20 +329,12 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             ),
                           ),
                           if (_cfg.isAllocate) ...[
-                            _entryDropdown(
-                              label: _cfg.type == FinanceDocType.expense
-                                  ? '费用项目'
-                                  : '收入项目',
+                            FinanceStylePicker(
+                              names: names,
+                              category: _cfg.type == FinanceDocType.expense
+                                  ? 'EXPENSE'
+                                  : 'INCOME',
                               value: styleId,
-                              entries: {
-                                for (final style in names.stylesFor(
-                                  _cfg.type == FinanceDocType.otherIncome
-                                      ? 'INCOME'
-                                      : 'EXPENSE',
-                                ))
-                                  style.id:
-                                      style.name ?? style.code ?? style.id,
-                              },
                               onChanged: (value) =>
                                   update(() => styleId = value),
                             ),
@@ -387,7 +379,8 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             TextField(
                               controller: fee,
                               decoration: const UtenInputDecoration(
-                                InputDecoration(labelText: '总费用'),
+                                InputDecoration(labelText: '结算费用'),
+                                info: '收付款产生的手续费等费用，以账户币种填写，不是本次收付款金额。',
                               ),
                             ),
                           TextField(
@@ -485,6 +478,39 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                       padding: const EdgeInsets.all(UtenSpacing.s16),
                       child: UtenFormGrid(
                         children: [
+                          TextField(
+                            key: const ValueKey('finance-entry-settlement-fee'),
+                            controller: values.fee,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                labelText:
+                                    '结算费用（${names.currency(names.accountCurrencyId(values.accountId))}）',
+                              ),
+                              info: _cfg.isClient
+                                  ? '收款产生的手续费等费用。同币种从到账扣除时，实际入账＝本次收款金额－结算费用；费用另付不扣减到账金额。跨币种按银行实际金额填写。'
+                                  : '付款产生的手续费等费用。同币种时，实际扣款＝本次付款金额＋结算费用；跨币种按银行实际金额填写。',
+                            ),
+                          ),
+                          TextField(
+                            key: const ValueKey(
+                              'finance-entry-settlement-account-amount',
+                            ),
+                            controller: values.accountAmount,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                labelText:
+                                    '${_cfg.isClient ? '实际入账' : '实际扣款'}（${names.currency(names.accountCurrencyId(values.accountId))}）',
+                              ),
+                              info:
+                                  '银行账户实际发生的金额。同币种留空时根据本次收付款金额和费用自动计算；跨币种须按银行实际金额填写。',
+                            ),
+                          ),
                           if (_cfg.isClient) ...[
                             _entryDropdown(
                               label: '收款渠道',
@@ -682,7 +708,18 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
           context.appError(
             '第 ${_grid.rows.indexOf(row) + 1} 行：${error.message}',
           );
-          await _grid.revealError(row, columnKey: error.column);
+          final settlementError = const {
+            'entryFee',
+            'entryAccountAmount',
+            'entrySettings',
+          }.contains(error.column);
+          await _grid.revealError(
+            row,
+            columnKey: settlementError ? 'entrySettings' : error.column,
+          );
+          if (settlementError && _entryCurrent(row)) {
+            await _entrySettlementSettings(row);
+          }
           return;
         }
       }
@@ -786,14 +823,7 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       row.occurDate == null;
 
   Widget _entryBatchTotals(FinanceNameService names) => ListenableBuilder(
-    listenable: Listenable.merge([
-      _grid,
-      for (final row in _grid.rows) ...[
-        row.entry,
-        row.amount,
-        row.exchangeRate,
-      ],
-    ]),
+    listenable: Listenable.merge([_grid, _entryDraftRevision, names]),
     builder: (context, _) {
       final totals = <String, List<String>>{};
       final groups = <String>{};
@@ -819,23 +849,24 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
           incomplete++;
         }
       }
-      return Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Wrap(
-          spacing: UtenSpacing.s16,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            Text('明细 ${_grid.length} 行'),
-            Text(
-              '预计生成 ${groups.length} 张单据${incomplete == 0 ? '' : '，$incomplete 行待填写'}',
-            ),
-            for (final entry in totals.entries)
-              Text(
-                '${entry.key.isEmpty ? '未选币种' : names.currency(entry.key)} ${entry.value.every((amount) => financeAmountUnits(amount) != null) ? exactAmountSumText(entry.value) : '金额待填写'}',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+      return UtenTotalsSummaryBar(
+        key: const ValueKey('finance-entry-totals'),
+        compact: true,
+        rowCount: _grid.length,
+        entries: [
+          UtenTotalEntry('预计生成', '${groups.length} 张单据'),
+          if (incomplete > 0) UtenTotalEntry('待填写', '$incomplete 行'),
+          for (final entry in totals.entries)
+            UtenTotalEntry(
+              utenAmountTotalLabel(
+                entry.key.isEmpty ? '未选币种' : names.currency(entry.key),
               ),
-          ],
-        ),
+              entry.value.every((amount) => financeAmountUnits(amount) != null)
+                  ? exactAmountSumText(entry.value)
+                  : '待填写',
+              danger: true,
+            ),
+        ],
       );
     },
   );

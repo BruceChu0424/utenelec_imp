@@ -1,0 +1,257 @@
+{
+  "status": "complete-source-and-targeted-regressions",
+  "classification": "frontend presentation/interaction; Web and Flutter targets share Dart implementation; no WPF historical business migration added",
+  "commonEntrances": [
+    "lib/components/layout/uten_history_time_filter.dart: UtenHistoryTimeFilter and UtenHistoryTimePlaceholder.controls",
+    "lib/components/layout/uten_document_lifecycle_filter.dart: historyToolbarAction",
+    "lib/features/warehouse/widgets/warehouse_history_gate.dart: explicit builder(value,timeAction)",
+    "lib/components/layout/uten_table_action_scope.dart: medium/standard40 only for toolbar controls"
+  ],
+  "contract": {
+    "labels": "Only choose-date/all actions are visible; date facts are in the adjacent accessible hint.",
+    "dimensions": "Normal Uten button geometry; date and all share normal toolbar height; no text shrinking.",
+    "values": "none (no request), all (unbounded), range (China wall dates); default recent month retained.",
+    "fallback": "Unselected-time placeholders receive the same controls explicitly; no dead-end gate.",
+    "isolation": "Actions are passed explicitly to owning table adapters; no page-wide inherited injection into unrelated tables or dialogs.",
+    "removed": "Removed separate date-only header rows in table consumers. Existing non-table category rows retained."
+  },
+  "tableCallerCount": 16,
+  "tableCallers": [
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "symbol": "StockDocListPage",
+      "scope": "all configured StockDocType history tables",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        682
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "symbol": "WarehouseQualityResultsPage",
+      "scope": "purchase/subcontract physical quality history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        712
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "symbol": "WarehouseSalesOutboundWorkbench",
+      "scope": "sales-outbound history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        514
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "symbol": "WarehouseStockDocSegment",
+      "scope": "all configured stock-document history segments",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        788
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "symbol": "SubcontractBusinessListPage",
+      "scope": "all configured subcontract business document types",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        1098
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "symbol": "SubcontractDecompositionPage._buildTable",
+      "scope": "completed/history workbench; pending task table has no history date contract",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        2032
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "symbol": "SubcontractShortDeliveryPage",
+      "scope": "short-delivery history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        554
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "symbol": "SalesDocListPage",
+      "scope": "all configured sales document types",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        1280
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "symbol": "SalesOrderProgressPage",
+      "scope": "sales-order progress history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        748
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "symbol": "PurchaseDocListPage",
+      "scope": "all configured purchase document types",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        967
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "symbol": "ProductionWorkshopTasksPage",
+      "scope": "completed/cancelled/revoked workshop task history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        3020
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "symbol": "OperationsWorkbenchPage -> _DesktopTaskTable.historyTimeAction",
+      "scope": "four department workbench history views",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        1448,
+        1636
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "symbol": "FinanceDocListPage -> UtenDocumentLifecycleFilter.historyToolbarAction",
+      "scope": "receipt/payment/expense/otherIncome/bankTransfer history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        710
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/production/pages/production_plan_list_page.dart",
+      "symbol": "ProductionPlanListPage -> UtenDocumentLifecycleFilter.historyToolbarAction",
+      "scope": "production-plan history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        589
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "symbol": "ProductionDailyReportListPage -> UtenDocumentLifecycleFilter.historyToolbarAction",
+      "scope": "production-daily-report history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        407
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+      "symbol": "WarehouseTaskCenterPage -> WarehouseHistoryGate.builder(value,timeAction) -> WarehouseDocumentHistoryView.toolbarLeadingActions",
+      "scope": "subcontract finished-goods return physical history",
+      "status": "table-toolbar-migrated",
+      "sourceLines": [
+        337
+      ],
+      "entry": "MasterDataTableView.toolbarLeadingActions",
+      "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+    }
+  ],
+  "nonTableDifferences": [
+    {
+      "file": "lib/features/production/pages/production_board_page.dart",
+      "status": "card-list-category-action-row",
+      "entry": "UtenFilterToolbar.trailing",
+      "reason": "Production history panel is a card list; same controls use its existing category action row rather than an invented table toolbar."
+    },
+    {
+      "file": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "status": "card-list-category-action-row",
+      "entry": "UtenFilterToolbar.trailing",
+      "reason": "Supplier-return task cards retain their existing category row; no separate date-only row."
+    }
+  ],
+  "verification": [
+    {
+      "kind": "focused-analyze",
+      "result": "passed, no issues",
+      "files": 24
+    },
+    {
+      "kind": "first-component-and-lifecycle-run",
+      "result": "33 passed",
+      "tests": [
+        "test/components/uten_history_time_filter_semantics_test.dart",
+        "test/components/uten_app_bar_action_lifecycle_test.dart",
+        "test/features/warehouse/warehouse_history_gate_header_test.dart",
+        "test/features/operations_workbench/workbench_filter_loading_responsiveness_test.dart"
+      ]
+    },
+    {
+      "kind": "new-toolbar-and-response-regression-run",
+      "result": "42 passed",
+      "tests": [
+        "test/components/uten_history_time_filter_semantics_test.dart",
+        "test/components/uten_responsive_surface_test.dart",
+        "test/features/operations_workbench/workbench_filter_loading_responsiveness_test.dart",
+        "test/features/subcontract/subcontract_table_loading_responsiveness_test.dart",
+        "test/features/warehouse/category_table_loading_responsiveness_test.dart"
+      ]
+    },
+    {
+      "kind": "remaining-caller-regression-run",
+      "result": "60 passed",
+      "tests": [
+        "test/features/warehouse/warehouse_quality_results_page_test.dart",
+        "test/features/warehouse/warehouse_document_history_page_test.dart",
+        "test/features/warehouse/stock_doc_list_column_filters_test.dart",
+        "test/features/subcontract/subcontract_business_categories_test.dart",
+        "test/features/sales/pages/sales_doc_list_draft_segment_test.dart",
+        "test/features/sales/pages/sales_doc_status_clear_test.dart",
+        "test/features/purchase/purchase_doc_list_column_filters_test.dart",
+        "test/features/production/pages/production_plan_list_column_filters_test.dart",
+        "test/features/production/pages/production_daily_report_list_column_filters_test.dart",
+        "test/features/production/pages/production_board_simplification_test.dart"
+      ]
+    }
+  ],
+  "evidenceLimits": "Commands are separate runs with overlapping shared tests, not a sum of unique test counts. Widget interaction uses simulated APIs. This is not production UAT, Win7 target-machine acceptance, release CI, or formal packaging evidence."
+}

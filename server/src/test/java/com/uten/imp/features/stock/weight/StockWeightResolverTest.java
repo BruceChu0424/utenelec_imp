@@ -126,7 +126,8 @@ class StockWeightResolverTest {
     }
 
     @Test
-    void partialDrawCancelsMirrorProRataAndTheFinalCancelSweepsTheRemainder() {
+    void partialDrawCancelsMirrorProRataAndTheFinalCancelSweepsTheRemainder() throws Exception {
+        try(var explicit=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("weight.prorate",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")))){
         Book book = new Book();
         book.post(request(OTHER_IN, StockService.DIR_IN, MAIN, "100", CapturedWeight.measured(new BigDecimal("50"))));
         UUID draw = UUID.randomUUID();
@@ -145,6 +146,7 @@ class StockWeightResolverTest {
         assertThat(last.source()).isEqualTo(WeightSource.MEASURED);
         assertKg(book.dim(MAIN).weight, "50.0000");
         assertThat(book.dim(MAIN).estimated).isFalse();
+        }
     }
 
     @Test
@@ -219,24 +221,27 @@ class StockWeightResolverTest {
     }
 
     @Test
-    void exactGoodsRewriteTheBalanceAbsolutelyWithoutAnchorOrResidual() {
+    void exactGoodsPreserveKnownLedgerAndRejectAnImpossibleZeroQuantityPrefix() {
         Book book = new Book();
         book.goodsFactor = new BigDecimal("0.028349523125"); // 盎司
-        book.seed(MAIN, "0", "7.0000"); // 旧的错重量直接被整值改写, 不补起算行
+        book.seed(MAIN, "0", "0"); // 空库存从真实零重量起算
 
         var first = book.post(request(OTHER_IN, StockService.DIR_IN, MAIN, "1", CapturedWeight.measured(new BigDecimal("9"))));
         var second = book.post(request(OTHER_IN, StockService.DIR_IN, MAIN, "1", null));
 
-        assertKg(first.weightKg(), "0.0283");
+        assertKg(first.weightKg(), "0.028349523125");
         assertThat(first.source()).isEqualTo(WeightSource.EXACT);
-        assertKg(second.weightKg(), "0.0283");
+        assertKg(second.weightKg(), "0.028349523125");
         // 余额按总数量整值换算(0.0567), 不是逐笔累加(0.0566)。
-        assertKg(book.dim(MAIN).weight, "0.0567");
+        assertKg(book.dim(MAIN).weight, "0.05669904625");
         var out = book.post(request(SALES_OUT, StockService.DIR_OUT, MAIN, "2", null));
-        assertKg(out.weightKg(), "0.0567");
+        assertKg(out.weightKg(), "0.05669904625");
         assertKg(book.dim(MAIN).weight, "0");
         assertThat(first.before()).isEmpty();
         assertThat(out.before()).isEmpty();
+        Book impossible=new Book();impossible.goodsFactor=book.goodsFactor;impossible.seed(MAIN,"0","7");
+        assertThatThrownBy(()->impossible.post(request(OTHER_IN,StockService.DIR_IN,MAIN,"1",null)))
+            .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("不能自动归零");
         assertThat(book.dim(MAIN).estimated).isFalse();
     }
 
@@ -372,7 +377,7 @@ class StockWeightResolverTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new CapturedWeight(BigDecimal.ONE, WeightSource.AVERAGE))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(CapturedWeight.measured(new BigDecimal("1.234567")).kg()).isEqualByComparingTo("1.2346");
+        assertThat(CapturedWeight.measured(new BigDecimal("1.234567")).kg()).isEqualByComparingTo("1.234567");
         assertThat(CapturedWeight.measured(new BigDecimal("1.2300000")).kg().scale()).isLessThanOrEqualTo(4);
         assertThat(WeightSource.weakest(WeightSource.MEASURED, WeightSource.AVERAGE)).isEqualTo(WeightSource.AVERAGE);
         assertThat(WeightSource.weakest(WeightSource.SLICE, WeightSource.EXACT)).isEqualTo(WeightSource.EXACT);

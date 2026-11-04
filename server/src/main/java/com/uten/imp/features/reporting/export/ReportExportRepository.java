@@ -14,13 +14,18 @@ public class ReportExportRepository {
     public record Job(UUID id, UUID owner, long authVersion, long authEpoch, String request,
             String status, boolean cancelRequested, int attempt, int rows, OffsetDateTime createdAt, OffsetDateTime finishedAt,
             OffsetDateTime snapshotAt, OffsetDateTime expiresAt, String error, String sha256, long bytes,
-            String contract, String buildIdentity, String accessStamp) { }
+            String contract, String buildIdentity, String accessStamp,String precisionChoices,String precisionRequirement) {
+        public Job(UUID id,UUID owner,long authVersion,long authEpoch,String request,String status,boolean cancelRequested,int attempt,int rows,OffsetDateTime createdAt,OffsetDateTime finishedAt,
+                OffsetDateTime snapshotAt,OffsetDateTime expiresAt,String error,String sha256,long bytes,String contract,String buildIdentity,String accessStamp){
+            this(id,owner,authVersion,authEpoch,request,status,cancelRequested,attempt,rows,createdAt,finishedAt,snapshotAt,expiresAt,error,sha256,bytes,contract,buildIdentity,accessStamp,"{\"version\":1,\"choices\":{}}",null);
+        }
+    }
     private static final org.springframework.jdbc.core.RowMapper<Job> MAPPER = (r,n) -> new Job(
             r.getObject("id",UUID.class),r.getObject("submitted_by",UUID.class),r.getLong("submitted_auth_version"),
             r.getLong("submitted_auth_epoch"),r.getString("request"),r.getString("status"),r.getBoolean("cancel_requested"),r.getInt("attempt"),
             r.getInt("row_count"),r.getObject("created_at",OffsetDateTime.class),r.getObject("finished_at",OffsetDateTime.class),
             r.getObject("snapshot_at",OffsetDateTime.class),r.getObject("expires_at",OffsetDateTime.class),
-            r.getString("error_message"),r.getString("artifact_sha256"),r.getLong("artifact_bytes"),r.getString("read_contract"),r.getString("build_identity"),r.getString("access_stamp"));
+            r.getString("error_message"),r.getString("artifact_sha256"),r.getLong("artifact_bytes"),r.getString("read_contract"),r.getString("build_identity"),r.getString("access_stamp"),r.getString("precision_choices"),r.getString("precision_requirement"));
 
     public Optional<Job> find(UUID id) {
         return jdbc.query("SELECT * FROM report_export_jobs WHERE id=:id", Map.of("id",id),MAPPER).stream().findFirst();
@@ -32,7 +37,7 @@ public class ReportExportRepository {
         jdbc.query("SELECT pg_advisory_xact_lock(935,1)",Map.of(),r -> null);
     }
     public int active(UUID owner) {
-        return jdbc.queryForObject("SELECT count(*) FROM report_export_jobs WHERE status IN ('PENDING','RUNNING')"
+        return jdbc.queryForObject("SELECT count(*) FROM report_export_jobs WHERE status IN ('PENDING','RUNNING','WAITING_PRECISION')"
                 +(owner==null?"":" AND submitted_by=:owner"),owner==null?Map.of():Map.of("owner",owner),Integer.class);
     }
     public boolean hasRunning() {
@@ -40,9 +45,9 @@ public class ReportExportRepository {
     }
     public void insert(ReportExportRequest request, UUID owner, long version, long epoch, String json, String buildIdentity, String accessStamp) {
         jdbc.update("""
-            INSERT INTO report_export_jobs(id,submitted_by,submitted_auth_version,submitted_auth_epoch,request,read_contract,build_identity,access_stamp)
-            VALUES(:id,:owner,:version,:epoch,CAST(:json AS jsonb),:contract,:build,:access)
-            """, Map.of("id",request.id(),"owner",owner,"version",version,"epoch",epoch,"json",json,"contract",ReportExportBuildIdentity.CONTRACT,"build",buildIdentity,"access",accessStamp));
+            INSERT INTO report_export_jobs(id,submitted_by,submitted_auth_version,submitted_auth_epoch,request,read_contract,build_identity,access_stamp,precision_choices)
+            VALUES(:id,:owner,:version,:epoch,CAST(:json AS jsonb),:contract,:build,:access,CAST(:precision AS jsonb))
+            """, new MapSqlParameterSource("id",request.id()).addValue("owner",owner).addValue("version",version).addValue("epoch",epoch).addValue("json",json).addValue("contract",ReportExportBuildIdentity.CONTRACT).addValue("build",buildIdentity).addValue("access",accessStamp).addValue("precision",com.uten.imp.common.finance.BusinessPrecisionContext.json()));
     }
     public Optional<Job> claim() {
         lockQueue();
@@ -90,12 +95,30 @@ public class ReportExportRepository {
             WHERE id=:id AND status='RUNNING' AND attempt=:attempt
             """,args(job).addValue("message",message));
     }
+    public boolean waitForPrecision(Job job,String requirement){return jdbc.update("""
+        UPDATE report_export_jobs SET status=CASE WHEN cancel_requested THEN 'CANCELLED' ELSE 'WAITING_PRECISION' END,
+          precision_requirement=CASE WHEN cancel_requested THEN NULL ELSE CAST(:requirement AS jsonb) END,
+          error_message=CASE WHEN cancel_requested THEN NULL ELSE '尚未生成文件，请选择本次精度后继续原任务；重新读取会使用新的读取时点' END,
+          finished_at=clock_timestamp(),expires_at=clock_timestamp()+interval '1 hour',lease_until=NULL
+        WHERE id=:id AND status='RUNNING' AND attempt=:attempt AND artifact_sha256 IS NULL AND COALESCE(artifact_bytes,0)=0
+        """,args(job).addValue("requirement",requirement))==1;}
+    public Optional<Map<String,Object>> precisionReceipt(UUID request){return jdbc.queryForList("SELECT job_id,actor_id,expected_attempt,precision_choices::text AS precision_choices FROM report_export_precision_resumes WHERE request_id=:request",Map.of("request",request)).stream().findFirst();}
+    public boolean resumePrecision(Job job,UUID request,UUID actor,String choices){
+        jdbc.update("INSERT INTO report_export_precision_resumes(request_id,job_id,actor_id,expected_attempt,precision_choices) VALUES(:request,:id,:actor,:attempt,CAST(:choices AS jsonb))",args(job).addValue("request",request).addValue("actor",actor).addValue("choices",choices));
+        int updated=jdbc.update("""
+          UPDATE report_export_jobs SET status='PENDING',precision_choices=CAST(:choices AS jsonb),precision_requirement=NULL,
+            row_count=0,snapshot_at=NULL,snapshot_identity=NULL,finished_at=NULL,expires_at=NULL,error_message=NULL
+          WHERE id=:id AND status='WAITING_PRECISION' AND attempt=:attempt AND NOT cancel_requested
+            AND artifact_sha256 IS NULL AND COALESCE(artifact_bytes,0)=0 AND expires_at>clock_timestamp()
+          """,args(job).addValue("choices",choices));
+        if(updated!=1)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"原导出等待状态已变化，本次未重新进入队列");return true;
+    }
     public void cancel(UUID id, UUID owner) {
         jdbc.update("""
             UPDATE report_export_jobs SET cancel_requested=true,
-                status=CASE WHEN status='PENDING' THEN 'CANCELLED' ELSE status END,
-                finished_at=CASE WHEN status='PENDING' THEN clock_timestamp() ELSE finished_at END
-            WHERE id=:id AND submitted_by=:owner AND status IN ('PENDING','RUNNING')
+                status=CASE WHEN status IN('PENDING','WAITING_PRECISION') THEN 'CANCELLED' ELSE status END,
+                finished_at=CASE WHEN status IN('PENDING','WAITING_PRECISION') THEN clock_timestamp() ELSE finished_at END
+            WHERE id=:id AND submitted_by=:owner AND status IN ('PENDING','RUNNING','WAITING_PRECISION')
             """,Map.of("id",id,"owner",owner));
     }
     public void acknowledgeCancellation(Job job) {
@@ -106,12 +129,12 @@ public class ReportExportRepository {
     }
     public List<Job> expired() {
         return jdbc.query("""
-            SELECT * FROM report_export_jobs WHERE status='SUCCEEDED' AND expires_at<clock_timestamp()
+            SELECT * FROM report_export_jobs WHERE status IN('SUCCEEDED','WAITING_PRECISION') AND expires_at<clock_timestamp()
             ORDER BY expires_at,id LIMIT 50
             """,Map.of(),MAPPER);
     }
     public void expire(UUID id) {
-        jdbc.update("UPDATE report_export_jobs SET status='EXPIRED' WHERE id=:id AND status='SUCCEEDED' AND expires_at<clock_timestamp()",Map.of("id",id));
+        jdbc.update("UPDATE report_export_jobs SET status='EXPIRED' WHERE id=:id AND status IN('SUCCEEDED','WAITING_PRECISION') AND expires_at<clock_timestamp()",Map.of("id",id));
     }
     private static MapSqlParameterSource args(Job job) {
         return new MapSqlParameterSource("id",job.id()).addValue("attempt",job.attempt());

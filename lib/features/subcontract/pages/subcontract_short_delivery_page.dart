@@ -356,9 +356,9 @@ class _SubcontractShortDeliveryPageState
     final decided = row.status == 'WAITING_MORE'
         ? '已判定为分批到货，预计 ${row.expectedCompleteBy ?? '—'} 到齐；仓库继续等后面的批次'
         : row.status == 'ACCEPTED_LOSS'
-        ? '已接受损耗结清：订货 ${formatSubcontractQty(row.orderedQty, row.unitName)}'
-              '，累计回厂 ${formatSubcontractQty(row.deliveredQty, row.unitName)}'
-              '，核销损耗 ${row.lossQty == null ? '—' : formatSubcontractQty(row.lossQty!, row.unitName)}'
+        ? '已接受损耗结清：订货 ${formatSubcontractQty(row.orderedQtyValue, row.unitName)}'
+              '，累计回厂 ${formatSubcontractQty(row.deliveredQtyValue, row.unitName)}'
+              '，核销损耗 ${row.lossQty == null ? '—' : formatSubcontractQty(row.lossQtyValue!, row.unitName)}'
               '${row.wasteBillNo == null ? '' : '，损耗单 ${row.wasteBillNo} 已登记'}'
         : '案件已更新';
     if (mounted) context.appSuccess(decided);
@@ -520,14 +520,6 @@ class _SubcontractShortDeliveryPageState
                 )
               : null,
         ),
-        if (_seg == SubcontractShortDeliverySegment.history) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          UtenHistoryTimeFilter(
-            key: const Key('subcontract-short-delivery-history-time'),
-            value: _historyTime,
-            onChanged: _onHistoryTime,
-          ),
-        ],
       ],
     );
     // 2026-09-22 全站表格滚动口径：上滑先收分段/说明（表头随之顶到视口顶），
@@ -539,7 +531,13 @@ class _SubcontractShortDeliveryPageState
       ),
       body: Builder(
         builder: (context) => _historyBlocked
-            ? const UtenHistoryTimePlaceholder()
+            ? UtenHistoryTimePlaceholder(
+                controls: UtenHistoryTimeFilter(
+                  key: const Key('subcontract-short-delivery-history-time'),
+                  value: _historyTime,
+                  onChanged: _onHistoryTime,
+                ),
+              )
             : _buildTable(),
       ),
     );
@@ -553,6 +551,14 @@ class _SubcontractShortDeliveryPageState
     final openSeg =
         pendingSeg || _seg == SubcontractShortDeliverySegment.tolerant;
     return MasterDataTableView<SubcontractShortDeliveryCase>(
+      toolbarLeadingActions: [
+        if (_seg == SubcontractShortDeliverySegment.history)
+          UtenHistoryTimeFilter(
+            key: const Key('subcontract-short-delivery-history-time'),
+            value: _historyTime,
+            onChanged: _onHistoryTime,
+          ),
+      ],
       rowsController: _readingRows,
       expensiveRowMounts: false,
       tableKey:
@@ -622,7 +628,7 @@ class _SubcontractShortDeliveryPageState
           columnSearchEnabled: true,
           width: 100,
           type: 'number',
-          value: (c) => formatSubcontractQty(c.orderedQty, c.unitName),
+          value: (c) => formatSubcontractQty(c.orderedQtyValue, c.unitName),
         ),
         MasterColumnDef(
           key: 'allowedLossPct',
@@ -633,7 +639,7 @@ class _SubcontractShortDeliveryPageState
           type: 'number',
           value: (c) => c.allowedLossPct == null
               ? '未设'
-              : formatSubcontractPct(c.allowedLossPct),
+              : formatSubcontractPct(c.allowedLossPctValue),
         ),
         MasterColumnDef(
           key: 'floorQty',
@@ -644,7 +650,7 @@ class _SubcontractShortDeliveryPageState
           type: 'number',
           value: (c) => c.floorQty == null
               ? '—'
-              : formatSubcontractQty(c.floorQty!, c.unitName),
+              : formatSubcontractQty(c.floorQtyValue!, c.unitName),
         ),
         MasterColumnDef(
           key: 'deliveredQty',
@@ -653,7 +659,7 @@ class _SubcontractShortDeliveryPageState
           columnSearchEnabled: true,
           width: 100,
           type: 'number',
-          value: (c) => formatSubcontractQty(c.deliveredQty, c.unitName),
+          value: (c) => formatSubcontractQty(c.deliveredQtyValue, c.unitName),
         ),
         MasterColumnDef(
           key: 'shortfallQty',
@@ -662,7 +668,7 @@ class _SubcontractShortDeliveryPageState
           columnSearchEnabled: true,
           width: 100,
           type: 'number',
-          value: (c) => formatSubcontractQty(c.shortfallQty, c.unitName),
+          value: (c) => formatSubcontractQty(c.shortfallQtyValue, c.unitName),
         ),
         MasterColumnDef(
           key: 'shortfallPct',
@@ -671,7 +677,7 @@ class _SubcontractShortDeliveryPageState
           columnSearchEnabled: true,
           width: 90,
           type: 'number',
-          value: (c) => formatSubcontractPct(c.shortfallPct),
+          value: (c) => formatSubcontractPct(c.shortfallPctValue),
         ),
         MasterColumnDef(
           key: 'receiptBillNo',
@@ -721,7 +727,7 @@ class _SubcontractShortDeliveryPageState
             type: 'number',
             value: (c) => c.lossQty == null
                 ? '—'
-                : formatSubcontractQty(c.lossQty!, c.unitName),
+                : formatSubcontractQty(c.lossQtyValue!, c.unitName),
           ),
           MasterColumnDef(
             key: 'lossPct',
@@ -731,7 +737,7 @@ class _SubcontractShortDeliveryPageState
             width: 90,
             type: 'number',
             value: (c) =>
-                c.lossPct == null ? '—' : formatSubcontractPct(c.lossPct),
+                c.lossPct == null ? '—' : formatSubcontractPct(c.lossPctValue),
           ),
           MasterColumnDef(
             key: 'wasteBillNo',
@@ -1008,17 +1014,17 @@ class _CaseDetailDialog extends StatelessWidget {
               const SizedBox(height: UtenSpacing.s12),
               _kv('委外商', row.supplierName ?? '—'),
               _kv('货品', row.goodsLabel),
-              _kv('原订货量', formatSubcontractQty(row.orderedQty, unit)),
+              _kv('原订货量', formatSubcontractQty(row.orderedQtyValue, unit)),
               _kv(
                 '允许损耗',
-                '${row.allowedLossPct == null ? '未设' : formatSubcontractPct(row.allowedLossPct)}'
-                    '${row.floorQty == null ? '' : '(最少应到 ${formatSubcontractQty(row.floorQty!, unit)})'}',
+                '${row.allowedLossPct == null ? '未设' : formatSubcontractPct(row.allowedLossPctValue)}'
+                    '${row.floorQty == null ? '' : '(最少应到 ${formatSubcontractQty(row.floorQtyValue!, unit)})'}',
               ),
               _kv(
                 '累计回厂 / 短交',
-                '${formatSubcontractQty(row.deliveredQty, unit)} / '
-                    '${formatSubcontractQty(row.shortfallQty, unit)}'
-                    '(${formatSubcontractPct(row.shortfallPct)})',
+                '${formatSubcontractQty(row.deliveredQtyValue, unit)} / '
+                    '${formatSubcontractQty(row.shortfallQtyValue, unit)}'
+                    '(${formatSubcontractPct(row.shortfallPctValue)})',
               ),
               _kv('最近收货单', row.receiptBillNo ?? '—'),
               _kv('到货次数', row.arrivalCount.toString()),
@@ -1030,8 +1036,8 @@ class _CaseDetailDialog extends StatelessWidget {
               if (row.lossQty != null || row.lossPct != null)
                 _kv(
                   '核销损耗',
-                  '${row.lossQty == null ? '—' : formatSubcontractQty(row.lossQty!, unit)}'
-                      '${row.lossPct == null ? '' : '(${formatSubcontractPct(row.lossPct)})'}',
+                  '${row.lossQty == null ? '—' : formatSubcontractQty(row.lossQtyValue!, unit)}'
+                      '${row.lossPct == null ? '' : '(${formatSubcontractPct(row.lossPctValue)})'}',
                 ),
               if (row.wasteBillNo != null) _kv('损耗单', row.wasteBillNo!),
               const SizedBox(height: UtenSpacing.s12),

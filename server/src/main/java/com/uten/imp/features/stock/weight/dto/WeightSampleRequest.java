@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.weight.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -23,10 +24,10 @@ import java.util.UUID;
  * @param idempotencyKey 客户端幂等键 (重试时不重复登记)
  */
 public record WeightSampleRequest(
-        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 14, fraction = 4) BigDecimal qty,
-        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 14, fraction = 6) BigDecimal weight,
+        @NotNull @DecimalMin(value = "0", inclusive = false) @DocumentQuantity BigDecimal qty,
+        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 40, fraction = 48) BigDecimal weight,
         @NotBlank @Size(max = 8) String weightUnit,
-        @DecimalMin("0") @Digits(integer = 14, fraction = 6) BigDecimal tareKg,
+        @DecimalMin("0") @Digits(integer = 40, fraction = 48) BigDecimal tareKg,
         UUID supplierId,
         UUID warehouseId,
         Boolean newRegime,

@@ -91,12 +91,18 @@ public class TxSessionVars {
      * that identity from leaking to another transaction on the pooled connection.
      */
     public void bind() {
+        com.uten.imp.common.finance.BusinessPrecisionContext.ensureReady();
         // 没有账号 id 的主体(例如测试替身)只补请求元数据, 不绑空操作人。
         var user = currentUser.get().filter(value -> value.getId() != null);
         String actorId = user.map(value -> value.getId().toString()).orElse(null);
         String actorAccount = user.map(value -> truncate(value.getLoginAccount(), 200)).orElse(null);
         bindIdentity(actorId, actorAccount);
     }
+
+    /** Explicit request choices are local to this transaction and never shared by pooled sessions. */
+    public void bindBusinessPrecision(String choices){setConfig("app.business_precision_choices",choices);}
+    /** Mark the actual Hibernate transaction, so a failed binding cannot return a committed success. */
+    public void markBusinessPrecisionRollbackOnly(){em.unwrap(Session.class).getTransaction().markRollbackOnly();}
 
     public void bindActor(UUID actorId) {
         bindActor(actorId, null);

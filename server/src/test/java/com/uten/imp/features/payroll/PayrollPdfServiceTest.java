@@ -27,10 +27,10 @@ class PayrollPdfServiceTest {
                 2026,
                 7,
                 List.of(new PayrollItemDto(
-                        "基本工资", new BigDecimal("10000.00"), "EARNING", null)),
-                new BigDecimal("10000.00"),
-                new BigDecimal("500.00"),
-                new BigDecimal("9500.00"),
+                        "基本工资", new BigDecimal("10000.1234"), "EARNING", null)),
+                new BigDecimal("10000.1234"),
+                new BigDecimal("500.0001"),
+                new BigDecimal("9500.1233"),
                 "PUBLISHED",
                 Instant.now(),
                 null,
@@ -48,6 +48,8 @@ class PayrollPdfServiceTest {
         assertTrue(raw.endsWith("%%EOF\n"));
         assertEquals("payroll-2026-07-E001.pdf", pdf.filename());
         assertTrue(raw.contains(java.util.HexFormat.of().formatHex("甲方电器有限公司 - 工资条".getBytes(StandardCharsets.UTF_16BE))));
+        for(String amount:List.of("10000.1234","500.0001","9500.1233"))
+            assertTrue(raw.contains(java.util.HexFormat.of().formatHex(amount.getBytes(StandardCharsets.UTF_16BE))),"PDF must retain each exact payroll amount");
         branding.set("乙方电子有限公司");
         String changed = new String(renderer.render(slip).bytes(), StandardCharsets.ISO_8859_1);
         assertTrue(changed.contains(java.util.HexFormat.of().formatHex("乙方电子有限公司 - 工资条".getBytes(StandardCharsets.UTF_16BE))));

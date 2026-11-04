@@ -103,11 +103,11 @@ public final class WorkshopMaterialDtos {
 
     // ------------------------------------------------------------------ 机台与容器
 
-    public record ContainerView(UUID id, UUID machineId, String name, BigDecimal capacityQty, boolean enabled,
+    public record ContainerView(UUID id, UUID machineId, String name, @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal capacityQty, boolean enabled,
                                 int sortOrder, long rowVersion) {}
 
     public record MachineView(UUID id, UUID workshopDepartmentId, String code, String name, String model,
-                              BigDecimal tonnage, boolean enabled, int sortOrder, String remark, long rowVersion,
+                              @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal tonnage, boolean enabled, int sortOrder, String remark, long rowVersion,
                               List<ContainerView> containers) {}
 
     public record MachineList(List<MachineView> machines) {}
@@ -242,13 +242,13 @@ public final class WorkshopMaterialDtos {
 
     public record CountLineView(UUID id, String clientLineKey, String lineKind, String weighNote,
                                 UUID goodsId, String goodsCode, String goodsName, UUID colorId, String colorName,
-                                BigDecimal bagCount, BigDecimal bagNetQty, BigDecimal weighedQty,
+                                @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal bagCount, @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal bagNetQty, @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal weighedQty,
                                 UUID machineId, String machineName, UUID containerId, String containerName,
-                                BigDecimal capacityQty, String fillLevel, BigDecimal qtyBase,
+                                @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal capacityQty, String fillLevel, @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal qtyBase,
                                 String enteredByName, OffsetDateTime enteredAt, long rowVersion) {}
 
     /** 机台卡片上的一个容器; clientLineKey 是建议的行号, line 为已录的那一行 (没录为空)。 */
-    public record ContainerSlot(UUID containerId, String name, BigDecimal capacityQty, String clientLineKey,
+    public record ContainerSlot(UUID containerId, String name, @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal capacityQty, String clientLineKey,
                                 CountLineView line) {}
 
     /**
@@ -260,7 +260,7 @@ public final class WorkshopMaterialDtos {
 
     /** 这一期必须盘到的料 (有账或本期有进出); bagNetQty 预填每袋净重。 */
     public record MaterialSlot(UUID goodsId, String goodsCode, String goodsName, UUID colorId, String colorName,
-                               String unitName, BigDecimal bookQty, BigDecimal bagNetQty, String clientLineKey,
+                               String unitName, @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal bookQty, @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) BigDecimal bagNetQty, String clientLineKey,
                                int lineCount) {}
 
     public record CountDetail(UUID id, UUID periodId, int periodNo, LocalDate startDate, LocalDate endDate,

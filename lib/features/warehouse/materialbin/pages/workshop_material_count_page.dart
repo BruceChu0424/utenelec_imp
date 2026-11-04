@@ -1,3 +1,4 @@
+import '../widgets/workshop_material_close_retry_dialog.dart';
 import '../../../../components/layout/uten_section_header.dart';
 // 车间内料仓盘点页 (/workshop-material/count?periodId=, ADR-131 §5.7), 手机优先。
 //
@@ -10,6 +11,12 @@ import '../../../../components/layout/uten_section_header.dart';
 // - 已盘点: 可"更正盘点" (出新版本, 写原因); 盘点中可"撤回盘点"。
 // 按钮只看服务端下发的 allowedActions。
 import 'package:flutter/material.dart';
+import '../../../../shared/drafts/form_draft_mixin.dart';
+import '../../../../shared/drafts/form_draft_catalog.dart';
+import '../../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../../core/network/business_precision.dart';
+import '../../../../core/network/api_mutation_reload_safety.dart';
+import '../../../../shared/formatters/exact_decimal.dart';
 import '../../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../../components/layout/uten_segment_row.dart';
@@ -44,9 +51,14 @@ import '../widgets/workshop_material_labels.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WorkshopMaterialCountPage extends ConsumerStatefulWidget {
-  const WorkshopMaterialCountPage({super.key, required this.periodId});
+  const WorkshopMaterialCountPage({
+    super.key,
+    required this.periodId,
+    this.resumeDraftId,
+  });
 
   final String periodId;
+  final String? resumeDraftId;
 
   @override
   ConsumerState<WorkshopMaterialCountPage> createState() =>
@@ -54,7 +66,222 @@ class WorkshopMaterialCountPage extends ConsumerStatefulWidget {
 }
 
 class _WorkshopMaterialCountPageState
-    extends ConsumerState<WorkshopMaterialCountPage> {
+    extends ConsumerState<WorkshopMaterialCountPage>
+    with FormDraftMixin<WorkshopMaterialCountPage> {
+  final _rawInputs = <String, Map<String, String>>{};
+  final _inputSources = <String, Map<String, dynamic>>{};
+  final _lineCommands = <String, WmCountLine>{};
+  final _knownUnwritten = <String>{};
+  final _linePrecision = <String, BusinessPrecisionTransport>{};
+  bool _draftReadyForInput = false;
+
+  @override
+  String? get formDraftResumeId => widget.resumeDraftId;
+  @override
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.workshopMaterialCount
+      .spec(route: RoutePath.workshopMaterialCount(widget.periodId));
+  @override
+  bool get formDraftEnabled => ref.read(authenticatedScopeProvider) != null;
+  @override
+  bool get formDraftBusy => _saving.isNotEmpty || _busyTitle != null;
+  @override
+  bool get formDraftHasUnknownSubmission =>
+      _lineCommands.keys.any((key) => !_knownUnwritten.contains(key));
+  @override
+  bool get formDraftCanReplaySubmission => _lineCommands.isNotEmpty;
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'periodId': widget.periodId,
+    'countId': _count?.id,
+    'machineMaterials': Map<String, String?>.from(_machineMaterial),
+    'inputSources': {
+      for (final entry in _inputSources.entries)
+        entry.key: Map<String, dynamic>.from(entry.value),
+    },
+    'inputs': {
+      for (final entry in _rawInputs.entries)
+        entry.key: Map<String, String>.from(entry.value),
+    },
+    'draftWeighed': [for (final line in _draftWeighed) _lineSnapshot(line)],
+    'commands': {
+      for (final entry in _lineCommands.entries)
+        entry.key: {
+          'line': _lineSnapshot(entry.value),
+          'state': _knownUnwritten.contains(entry.key)
+              ? 'NOT_WRITTEN'
+              : 'UNKNOWN',
+          'precision': _linePrecision[entry.key]?.snapshot(),
+        },
+    },
+  };
+  Map<String, dynamic> _lineSnapshot(WmCountLine line) => {
+    ...line.toSaveJson(),
+    'clientLineKey': line.clientLineKey,
+    'id': line.id,
+    'rowVersion': line.rowVersion,
+    'goodsName': line.goodsName,
+    'colorName': line.colorName,
+    'capacityQtySnapshot': line.capacityQtySnapshot,
+    'qtyBase': line.qtyBase,
+  };
+  BusinessPrecisionTransport _precisionFor(String key) =>
+      _linePrecision.putIfAbsent(
+        key,
+        () => BusinessPrecisionTransport(
+          checkpoint: saveFormDraftNow,
+          isCurrent: () => mounted && formDraftIdentityIsCurrent,
+        ),
+      );
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if (data['periodId'] != widget.periodId || data['countId'] != _count?.id) {
+      throw StateError('原盘点单或期间已变化，草稿仍保留，请先核对原盘点单');
+    }
+    final materials = data['machineMaterials'];
+    if (materials is Map<Object?, Object?>) {
+      for (final entry in materials.entries) {
+        if (entry.key is String &&
+            (entry.value == null || entry.value is String)) {
+          _machineMaterial[entry.key as String] = entry.value as String?;
+        }
+      }
+    }
+    final inputs = data['inputs'];
+    if (inputs is Map<Object?, Object?>) {
+      for (final entry in inputs.entries) {
+        if (entry.key is! String || entry.value is! Map<Object?, Object?>) {
+          throw const FormatException('原输入资料不完整');
+        }
+        _rawInputs[entry.key as String] = {
+          for (final field in (entry.value as Map<Object?, Object?>).entries)
+            if (field.key is String && field.value is String)
+              field.key as String: field.value as String,
+        };
+      }
+    }
+    final unsaved = data['draftWeighed'];
+    if (unsaved is List) {
+      for (final row in unsaved.whereType<Map<Object?, Object?>>()) {
+        _draftWeighed.add(WmCountLine.fromJson(Map<String, dynamic>.from(row)));
+      }
+    }
+    final commands = data['commands'];
+    if (commands is Map<Object?, Object?>) {
+      for (final entry in commands.entries) {
+        final value = entry.value;
+        if (entry.key is! String ||
+            value is! Map<Object?, Object?> ||
+            value['line'] is! Map<Object?, Object?> ||
+            value['precision'] is! Map<Object?, Object?>) {
+          throw const FormatException('原保存请求资料不完整');
+        }
+        final key = entry.key as String;
+        final line = WmCountLine.fromJson(
+          Map<String, dynamic>.from(value['line'] as Map<Object?, Object?>),
+        );
+        if (key != line.clientLineKey) {
+          throw const FormatException('原行身份不一致');
+        }
+        _lineCommands[key] = line;
+        if (value['state'] == 'NOT_WRITTEN') {
+          _knownUnwritten.add(key);
+        }
+        _lines[key] = line;
+        _precisionFor(key).restore(value['precision']);
+        _errors[line.containerId ?? key] = _knownUnwritten.contains(key)
+            ? '本次精度尚未完成，请继续原请求'
+            : '保存结果待核对，请核对原请求';
+      }
+    }
+    final sources = data['inputSources'];
+    if (sources is Map<Object?, Object?>) {
+      for (final entry in sources.entries) {
+        if (entry.key is! String || entry.value is! Map<Object?, Object?>) {
+          throw const FormatException('原输入来源不完整');
+        }
+        final group = entry.key as String;
+        final source = Map<String, dynamic>.from(
+          entry.value as Map<Object?, Object?>,
+        );
+        _inputSources[group] = source;
+        final pending = _lineCommands.values.any(
+          (line) =>
+              group == 'weighed:${line.clientLineKey}' ||
+              group == 'container:${line.containerId}' ||
+              (line.lineKind == WmLineKind.fullBags &&
+                  group ==
+                      'bags:${wmMaterialKey(line.goodsId ?? '', line.colorId)}'),
+        );
+        final current = _sourceLineForInput(group);
+        if (!pending &&
+            (source['lineId'] != current?.id ||
+                source['rowVersion'] != current?.rowVersion)) {
+          throw StateError('这行盘点已被修改，原输入仍在草稿中，请核对来源后继续');
+        }
+      }
+    }
+  }
+
+  WmCountLine? _sourceLineForInput(String group) {
+    for (final line in [..._lines.values, ..._draftWeighed]) {
+      if (group == 'weighed:${line.clientLineKey}' ||
+          (line.containerId != null &&
+              group == 'container:${line.containerId}') ||
+          (line.lineKind == WmLineKind.fullBags &&
+              group ==
+                  'bags:${wmMaterialKey(line.goodsId ?? '', line.colorId)}')) {
+        return line;
+      }
+    }
+    return null;
+  }
+
+  void _inputChanged(String group, String field, String value) {
+    _inputSources.putIfAbsent(group, () {
+      final line = _sourceLineForInput(group);
+      return {'lineId': line?.id, 'rowVersion': line?.rowVersion};
+    });
+    _rawInputs[group] = {...?_rawInputs[group], field: value};
+    markFormDraftChanged();
+  }
+
+  void _clearConfirmedInputs(WmCountLine line, {WmCountLine? receipt}) {
+    void clear(String group, Map<String, Object?> values) {
+      final input = _rawInputs[group];
+      if (input != null &&
+          input.entries.every(
+            (entry) =>
+                wmParseExactQty(entry.value) ==
+                financeExactDecimal(values[entry.key]),
+          )) {
+        _rawInputs.remove(group);
+        _inputSources.remove(group);
+      } else if (input != null && receipt != null) {
+        _inputSources[group] = {
+          'lineId': receipt.id,
+          'rowVersion': receipt.rowVersion,
+        };
+      }
+    }
+
+    clear('bags:${wmMaterialKey(line.goodsId ?? '', line.colorId)}', {
+      'bags': line.bagCount,
+      'net': line.bagNetQty,
+    });
+    clear('weighed:${line.clientLineKey}', {'qty': line.weighedQty});
+    if (line.containerId != null) {
+      clear('container:${line.containerId}', {'qty': line.weighedQty});
+    }
+  }
+
+  Future<void> _retryOriginalLines() async {
+    if (!mounted || !formDraftIdentityIsCurrent || _saving.isNotEmpty) return;
+    for (final line in List<WmCountLine>.from(_lineCommands.values)) {
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      await _saveLine(line, replaying: true, errorKey: line.containerId);
+    }
+  }
+
   final _nonce = const Uuid().v4();
   WmPeriod? _period;
   WmCount? _count;
@@ -86,7 +313,7 @@ class _WorkshopMaterialCountPageState
   late final WmClosePoller _poller = WmClosePoller(
     load: () => _repo.closeStatus(widget.periodId),
     onStatus: (status) {
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       setState(() => _closeStatus = status);
       if (!status.settling) _refreshPeriod();
     },
@@ -97,13 +324,26 @@ class _WorkshopMaterialCountPageState
 
   bool get _editable {
     final count = _count;
-    return count != null && count.isDraft && count.can(WmAction.editCount);
+    return formDraftIdentityIsCurrent &&
+        !formDraftRestorationBlocked &&
+        (!formDraftEnabled || _draftReadyForInput) &&
+        count != null &&
+        count.isDraft &&
+        count.can(WmAction.editCount);
   }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    startFormDraftIdentityGuard();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _load();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      await initializeFormDraft();
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _draftReadyForInput = true);
+      }
+    });
   }
 
   @override
@@ -128,7 +368,7 @@ class _WorkshopMaterialCountPageState
               period.status == WmPeriodStatus.closed
           ? await _repo.closeStatus(widget.periodId)
           : null;
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       setState(() {
         _period = period;
         _applyCount(count, keepDrafts: false);
@@ -139,14 +379,14 @@ class _WorkshopMaterialCountPageState
         _poller.start();
       }
     } on ApiException catch (e) {
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         setState(() {
           _loading = false;
           _loadError = e.message;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         setState(() {
           _loading = false;
           _loadError = '加载失败, 请重试';
@@ -161,7 +401,7 @@ class _WorkshopMaterialCountPageState
       final period = await _repo.period(widget.periodId);
       final countId = period.currentCountId;
       final count = countId == null ? null : await _repo.count(countId);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       setState(() {
         _period = period;
         _applyCount(count, keepDrafts: true);
@@ -175,7 +415,7 @@ class _WorkshopMaterialCountPageState
     final count = _count;
     if (count == null) return;
     final fresh = await _repo.count(count.id);
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     setState(() => _applyCount(fresh, keepDrafts: true));
   }
 
@@ -250,10 +490,28 @@ class _WorkshopMaterialCountPageState
 
   // ------------------------------------------------------------ 逐行保存
 
-  Future<void> _saveLine(WmCountLine line, {String? errorKey}) async {
+  Future<void> _saveLine(
+    WmCountLine line, {
+    String? errorKey,
+    bool replaying = false,
+  }) async {
     final count = _count;
     if (count == null) return;
     final key = line.clientLineKey;
+    if (!formDraftIdentityIsCurrent) return;
+    if (_lineCommands.containsKey(key) &&
+        !_knownUnwritten.contains(key) &&
+        !_saving.contains(key) &&
+        !replaying) {
+      setState(
+        () => _errors[errorKey ?? line.containerId ?? key] = '原保存结果待核对，请先核对原请求',
+      );
+      return;
+    }
+    final wasUnknown =
+        replaying &&
+        _lineCommands.containsKey(key) &&
+        !_knownUnwritten.contains(key);
     final errKey = errorKey ?? key;
     setState(() {
       _lines[key] = line;
@@ -266,10 +524,29 @@ class _WorkshopMaterialCountPageState
     }
     _saving.add(key);
     var toSend = line;
+    var dispatched = false;
     try {
       while (true) {
-        final saved = await _repo.saveCountLine(count.id, toSend);
-        if (!mounted) return;
+        final original = toSend;
+        _lineCommands[key] = original;
+        _knownUnwritten.remove(key);
+        final precision = _precisionFor(key)..beginRun(unknown: wasUnknown);
+        final requestScope = formDraftEnabled
+            ? await captureFormDraftRequestScope()
+            : null;
+        if (formDraftEnabled) await saveFormDraftNow();
+        dispatched = true;
+        final saved = await precision.run(
+          () => requestScope == null
+              ? _repo.saveCountLine(count.id, original)
+              : requestScope.run(() => _repo.saveCountLine(count.id, original)),
+        );
+        if (!mounted || !formDraftIdentityIsCurrent) return;
+        _lineCommands.remove(key);
+        _knownUnwritten.remove(key);
+        _linePrecision.remove(key);
+        _clearConfirmedInputs(original, receipt: saved);
+        if (formDraftEnabled) await checkpointFormDraftAfterCreation();
         final next = _pending.remove(key);
         if (next == null) {
           setState(() {
@@ -281,7 +558,20 @@ class _WorkshopMaterialCountPageState
       }
     } on ApiException catch (e) {
       _pending.remove(key);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      if (!wasUnknown && ApiMutationReloadSafety.isDefiniteRejection(e)) {
+        if (_linePrecision[key]?.seenPrecision == true) {
+          _knownUnwritten.add(key);
+        } else {
+          _lineCommands.remove(key);
+          _linePrecision.remove(key);
+        }
+      }
+      if (_lineCommands.containsKey(key)) {
+        setState(() => _errors[errKey] = '保存结果待核对，原内容和精度已保留，请核对原请求');
+        if (formDraftEnabled) await checkpointFormDraftAfterCreation();
+        return;
+      }
       if (e.httpStatus == 409) {
         try {
           await _reloadCount();
@@ -294,28 +584,42 @@ class _WorkshopMaterialCountPageState
       }
     } catch (_) {
       _pending.remove(key);
-      if (mounted) {
-        setState(() => _errors[errKey] = '没保存上 (网络不稳定), 请再点一次');
+      if (!dispatched && !wasUnknown) {
+        _lineCommands.remove(key);
+        _linePrecision.remove(key);
+      }
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(
+          () => _errors[errKey] = dispatched
+              ? '保存结果待核对，原内容和精度已保留，请核对原请求'
+              : '本机草稿尚未保存，原输入仍保留，请重试',
+        );
       }
     } finally {
       _saving.remove(key);
-      if (mounted) setState(() {});
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() {});
+        if (formDraftEnabled) await checkpointFormDraftAfterCreation();
+      }
     }
   }
 
-  double? _localQty(String level, double capacity, double? weighed) =>
+  String? _localQty(String level, Object? capacity, Object? weighed) =>
       switch (level) {
-        WmFillLevel.full => capacity,
-        WmFillLevel.half => capacity * 0.5,
-        WmFillLevel.empty => 0,
-        _ => weighed,
+        WmFillLevel.full => financeExactDecimal(capacity),
+        WmFillLevel.half => financeExactMultiplyTexts([
+          financeExactDecimal(capacity),
+          '0.5',
+        ]),
+        WmFillLevel.empty => '0',
+        _ => financeExactDecimal(weighed),
       };
 
   void _setContainer(
     WmCountMachine machine,
     WmCountContainer container,
     String level, {
-    double? weighedQty,
+    Object? weighedQty,
   }) {
     final existing = _containerLine(container.containerId);
     final material = _materialByKey(_machineMaterial[machine.machineId]);
@@ -367,7 +671,7 @@ class _WorkshopMaterialCountPageState
     }
   }
 
-  void _saveBags(WmCountMaterial material, double bags, double net) {
+  void _saveBags(WmCountMaterial material, String bags, String net) {
     final existing = _bagLine(material);
     _saveLine(
       WmCountLine(
@@ -383,7 +687,7 @@ class _WorkshopMaterialCountPageState
         colorName: material.colorName,
         bagCount: bags,
         bagNetQty: net,
-        qtyBase: bags * net,
+        qtyBase: financeExactMultiplyTexts([bags, net]),
         rowVersion: existing?.rowVersion,
       ),
     );
@@ -405,7 +709,7 @@ class _WorkshopMaterialCountPageState
     );
   }
 
-  void _saveWeighed(WmCountLine line, double qty) {
+  void _saveWeighed(WmCountLine line, String qty) {
     final current = _lines[line.clientLineKey] ?? line;
     _saveLine(current.copyWith(weighedQty: qty, qtyBase: qty));
   }
@@ -542,6 +846,11 @@ class _WorkshopMaterialCountPageState
   );
 
   Future<void> _submit() async {
+    if (_lineCommands.isNotEmpty ||
+        _saving.isNotEmpty ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     final count = _count;
     if (count == null) return;
@@ -605,6 +914,11 @@ class _WorkshopMaterialCountPageState
   }
 
   Future<void> _withdraw() async {
+    if (_lineCommands.isNotEmpty ||
+        _saving.isNotEmpty ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     final period = _period;
     if (period == null) return;
@@ -633,6 +947,11 @@ class _WorkshopMaterialCountPageState
   }
 
   Future<void> _correct() async {
+    if (_lineCommands.isNotEmpty ||
+        _saving.isNotEmpty ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     final period = _period;
     if (period == null) return;
@@ -706,13 +1025,11 @@ class _WorkshopMaterialCountPageState
   Future<void> _retryClose() async {
     setState(() => _retrying = true);
     try {
-      final status = await _repo.closeRetry(
-        widget.periodId,
-        idempotencyKey: wmIdempotencyKey('close-retry', _nonce, {
-          'period': widget.periodId,
-          'at': DateTime.now().millisecondsSinceEpoch ~/ 60000,
-        }),
+      final status = await showWmCloseRetryDialog(
+        context,
+        periodId: widget.periodId,
       );
+      if (status == null) return;
       if (!mounted) return;
       setState(() => _closeStatus = status);
       _poller.start();
@@ -776,36 +1093,39 @@ class _WorkshopMaterialCountPageState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return PopScope(
-      canPop: _busyTitle == null,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          // 手机优先: 顶栏只放短标题与刷新, 期间与"打印空白盘点表"放正文顶部
-          // (窄屏大字体下顶栏放不下长副标题)。
-          title: l10n.wmCount,
-          leading: UtenBackButton(
-            onPressed: () =>
-                backTo(context, defaultPath: RouteName.workshopMaterialBin),
-          ),
-          actions: [
-            UtenRefreshButton(
-              key: const Key('wm-count-refresh'),
-              enabled: _busyTitle == null,
-              onRefresh: _load,
+    return withFormDraft(
+      PopScope(
+        canPop: _busyTitle == null,
+        child: Scaffold(
+          appBar: UtenAppBar(
+            // 手机优先: 顶栏只放短标题与刷新, 期间与"打印空白盘点表"放正文顶部
+            // (窄屏大字体下顶栏放不下长副标题)。
+            title: l10n.wmCount,
+            leading: UtenBackButton(
+              onPressed: () =>
+                  backTo(context, defaultPath: RouteName.workshopMaterialBin),
             ),
-          ],
-        ),
-        body: SafeArea(
-          child: Stack(
-            children: [
-              UtenContentContainer.narrow(child: _body(l10n, theme)),
-              if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),
+            actions: [
+              UtenRefreshButton(
+                key: const Key('wm-count-refresh'),
+                enabled: _busyTitle == null,
+                onRefresh: _load,
+              ),
             ],
           ),
+          body: SafeArea(
+            child: Stack(
+              children: [
+                UtenContentContainer.narrow(child: _body(l10n, theme)),
+                if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),
+              ],
+            ),
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton: _loading ? null : _floatingActions(l10n),
         ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: _loading ? null : _floatingActions(l10n),
       ),
     );
   }
@@ -984,6 +1304,14 @@ class _WorkshopMaterialCountPageState
                 c.containerId: _containerLine(c.containerId)!,
           },
           enabled: editable,
+          inputDrafts: {
+            for (final c in machine.containers)
+              if (_rawInputs['container:${c.containerId}']
+                  case final Map<String, String> value)
+                c.containerId: value['qty'] ?? '',
+          },
+          onInputChanged: (id, value) =>
+              _inputChanged('container:$id', 'qty', value),
           savingContainerIds: {
             for (final c in machine.containers)
               if (_saving.contains(
@@ -1022,6 +1350,17 @@ class _WorkshopMaterialCountPageState
               WmBagMaterialCard(
                 material: material,
                 enabled: editable,
+                bagInputDraft: _rawInputs['bags:${material.key}'],
+                weighedInputDrafts: {
+                  for (final line in _weighedLines(material))
+                    if (_rawInputs['weighed:${line.clientLineKey}']
+                        case final Map<String, String> value)
+                      line.clientLineKey: value['qty'] ?? '',
+                },
+                onBagInputChanged: (field, value) =>
+                    _inputChanged('bags:${material.key}', field, value),
+                onWeighedInputChanged: (key, value) =>
+                    _inputChanged('weighed:$key', 'qty', value),
                 bagLine: _bagLine(material),
                 weighedLines: _weighedLines(material),
                 savingKeys: _saving,
@@ -1043,6 +1382,12 @@ class _WorkshopMaterialCountPageState
     final count = _count;
     if (period == null) return null;
     final actions = <Widget>[
+      if (_lineCommands.isNotEmpty)
+        UtenButton(
+          key: const Key('wm-count-retry-original-lines'),
+          onPressed: _saving.isEmpty ? _retryOriginalLines : null,
+          child: const Text('核对未确认行'),
+        ),
       if (period.status == WmPeriodStatus.open &&
           period.can(WmAction.startCount))
         UtenButton(
@@ -1083,7 +1428,10 @@ class _WorkshopMaterialCountPageState
           key: const Key('wm-count-submit'),
           size: UtenButtonSize.large,
           icon: Icons.task_alt,
-          onPressed: _busyTitle == null ? _submit : null,
+          onPressed:
+              _busyTitle == null && _lineCommands.isEmpty && _saving.isEmpty
+              ? _submit
+              : null,
           child: Text(l10n.wmSubmitCount),
         ),
     ];

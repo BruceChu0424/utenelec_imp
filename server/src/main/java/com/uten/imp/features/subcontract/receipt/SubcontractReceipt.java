@@ -73,6 +73,12 @@ public class SubcontractReceipt extends SoftDeletableEntity {
     @Column(name = "ap_posted", nullable = false)
     private boolean apPosted = false;
 
+    /** Read the new financial lifecycle without taking native stock/header locks from finance approval. */
+    @org.hibernate.annotations.Formula("(SELECT candidate.status='CONFIRMED' FROM finance_procurement_payable_candidates candidate WHERE candidate.source_type='SUBCONTRACT_RECEIPT' AND candidate.source_id=id)")
+    @Getter(lombok.AccessLevel.NONE) @Setter(lombok.AccessLevel.NONE)
+    private Boolean reconcileFirstApPosted;
+    public boolean isApPosted(){return reconcileFirstApPosted==null?apPosted:reconcileFirstApPosted;}
+
     private String remark;
 
     @Column(name = "total_original", columnDefinition = "numeric")

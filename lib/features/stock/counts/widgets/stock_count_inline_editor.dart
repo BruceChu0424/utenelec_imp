@@ -25,18 +25,7 @@ bool _same(String? left, String? right) =>
     financeExactTrimmed(left) == financeExactTrimmed(right);
 
 String? _massWeight(String qty, String factor) {
-  final exact = financeExactMultiplyTexts([qty, factor]);
-  if (exact == null) return null;
-  final parts = exact.split('.');
-  final fraction = parts.length > 1 ? parts[1] : '';
-  if (fraction.length <= 4) return financeExactTrimmed(exact);
-  final coefficient = BigInt.parse('${parts[0]}$fraction');
-  final divisor = BigInt.from(10).pow(fraction.length - 4);
-  return financeExactTrimmed(
-    financeExactDecimalFromUnits(
-      (coefficient + divisor ~/ BigInt.two) ~/ divisor,
-    ),
-  );
+  return financeExactTrimmed(financeExactMultiplyTexts([qty, factor]));
 }
 
 class StockCountEditRow {
@@ -63,18 +52,19 @@ class StockCountEditRow {
   bool get changed => qtyChanged || weightChanged;
   String? get validation {
     if (!changed) return null;
-    if (!RegExp(r'^\d{1,14}(\.\d{1,4})?$').hasMatch(targetQty)) {
-      return '实盘数量须为非负数，最多 4 位小数';
+    if (!RegExp(r'^\d{1,40}(\.\d{1,24})?$').hasMatch(targetQty)) {
+      return '实盘数量须为非负数，最多40位整数、24位小数；原输入保留';
     }
     final value = targetWeightKg;
-    if (weightChanged &&
+    if (!snapshot.weightExact &&
+        weightChanged &&
         value != null &&
-        !RegExp(r'^\d{1,14}(\.\d{1,4})?$').hasMatch(value)) {
-      return '实盘重量须为非负数，最多 4 位小数';
+        !RegExp(r'^\d{1,40}(\.\d{1,24})?$').hasMatch(value)) {
+      return '实盘重量须为非负数，最多40位整数、24位小数；原输入保留';
     }
     if (snapshot.weightExact &&
         (!_same(targetQty, '0') && _same(value, '0') || value == null)) {
-      return '实盘重量小于 0.0001 kg，请核对单位精度后再送审';
+      return '数量和重量换算不可用，请核对来源单位；原输入保留';
     }
     if (!snapshot.weightExact &&
         !_same(targetQty, '0') &&

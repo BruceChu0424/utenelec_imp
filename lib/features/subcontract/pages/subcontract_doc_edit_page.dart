@@ -1,3 +1,4 @@
+import '../../../shared/formatters/financial_amount_validation.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
@@ -361,11 +362,17 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
         if (d.totalWeight != null) {
           _totalWeight.text =
-              financeExactTrimmed(d.totalWeight.toString()) ?? '';
+              financeExactTrimmed(
+                d.totalWeightText ?? d.totalWeight.toString(),
+              ) ??
+              '';
         }
         if (d.deductAmount != null) {
           _deductAmount.text =
-              financeExactTrimmed(d.deductAmount.toString()) ?? '';
+              financeExactTrimmed(
+                d.deductAmountText ?? d.deductAmount.toString(),
+              ) ??
+              '';
         }
         _settlementMethodId = d.settlementMethodId;
         _purchaserId = d.purchaserId;
@@ -404,14 +411,26 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           row.recordSourceAmount(it.amountOriginalText);
           row.remark.text = it.remark ?? '';
           row.endingQty.text =
-              financeExactTrimmed(it.endingQty?.toString()) ?? '';
+              financeExactTrimmed(
+                it.endingQtyText ?? it.endingQty?.toString(),
+              ) ??
+              '';
           row.standardQty.text =
-              financeExactTrimmed(it.standardQty?.toString()) ?? '';
+              financeExactTrimmed(
+                it.standardQtyText ?? it.standardQty?.toString(),
+              ) ??
+              '';
           row.wasteRate.text =
-              financeExactTrimmed(it.wasteRate?.toString()) ?? '';
+              financeExactTrimmed(
+                it.wasteRateText ?? it.wasteRate?.toString(),
+              ) ??
+              '';
           row.cause.text = it.cause ?? '';
-          row.girth.text = financeExactTrimmed(it.girthQty?.toString()) ?? '';
-          row.boxQty.text = financeExactTrimmed(it.boxQty?.toString()) ?? '';
+          row.girth.text =
+              financeExactTrimmed(it.girthQtyText ?? it.girthQty?.toString()) ??
+              '';
+          row.boxQty.text =
+              financeExactTrimmed(it.boxQtyText ?? it.boxQty?.toString()) ?? '';
           rows.add(row);
         }
         if (_cfg.itemHasStockPlace) {
@@ -805,26 +824,50 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       final w = weightText.isEmpty ? null : double.tryParse(weightText);
       if (_cfg.itemHasWeight &&
           weightText.isNotEmpty &&
-          (w == null || w <= 0)) {
+          (w == null || !w.isFinite || w <= 0)) {
         context.appError('${r.goods!.name} 的实际重量必须大于 0');
         await _grid.revealError(r, columnKey: 'weight');
         return;
       }
-      final ending = double.tryParse(r.endingQty.text);
-      final std = double.tryParse(r.standardQty.text);
-      final wr = double.tryParse(r.wasteRate.text);
+      final optionalValues = <String, ({String label, String raw})>{
+        if (_cfg.itemHasWasteFields) ...{
+          'endingQty': (label: '结存数', raw: r.endingQty.text.trim()),
+          'standardQty': (label: '标准用量', raw: r.standardQty.text.trim()),
+          'wasteRate': (label: '损耗率%', raw: r.wasteRate.text.trim()),
+        },
+        if (_cfg.itemHasGirth) 'girth': (label: '围数', raw: r.girth.text.trim()),
+        if (_cfg.itemHasBoxQty)
+          'boxQty': (label: '胶箱数', raw: r.boxQty.text.trim()),
+      };
+      for (final value in optionalValues.entries) {
+        if (value.value.raw.isEmpty) continue;
+        final error = validateSignedFinanceAmount(
+          value.value.raw,
+          label: value.value.label,
+        );
+        if (error != null) {
+          context.appError(error);
+          await _grid.revealError(r, columnKey: value.key);
+          return;
+        }
+      }
+      final ending = financeExactDecimal(r.endingQty.text);
+      final std = financeExactDecimal(r.standardQty.text);
+      final wr = financeExactDecimal(r.wasteRate.text);
       final remarkText = r.remark.text.trim();
       final line = <String, dynamic>{
         'goodsId': r.goods!.id,
         'qty': r.qty.text.trim(),
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.unitRateText != null || r.unitRate != null)
+          'unitRate': r.unitRateText ?? r.unitRate,
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (_cfg.itemHasPrice && price != null) 'price': r.price.text.trim(),
-        if (_cfg.itemHasWeight && w != null) 'weight': w,
-        if (_cfg.itemHasGirth) 'girthQty': double.tryParse(r.girth.text),
-        if (_cfg.itemHasBoxQty) 'boxQty': double.tryParse(r.boxQty.text),
+        if (_cfg.itemHasWeight && w != null)
+          'weight': financeExactDecimal(weightText),
+        if (_cfg.itemHasGirth) 'girthQty': financeExactDecimal(r.girth.text),
+        if (_cfg.itemHasBoxQty) 'boxQty': financeExactDecimal(r.boxQty.text),
         if (_cfg.itemHasWasteFields && ending != null) 'endingQty': ending,
         if (_cfg.itemHasWasteFields && std != null) 'standardQty': std,
         if (_cfg.itemHasWasteFields && wr != null) 'wasteRate': wr,
@@ -839,6 +882,26 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       itemsBody.add(line);
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
+    if (_cfg.hasDeductAmount && _deductAmount.text.trim().isNotEmpty) {
+      final error = validateSignedFinanceAmount(
+        _deductAmount.text,
+        label: '建议扣款金额',
+      );
+      if (error != null) {
+        context.appError(error);
+        return;
+      }
+    }
+    if (_cfg.hasTotalWeight && _totalWeight.text.trim().isNotEmpty) {
+      final weight = double.tryParse(_totalWeight.text.trim());
+      if (financeExactDecimal(_totalWeight.text) == null ||
+          weight == null ||
+          !weight.isFinite ||
+          weight < 0) {
+        context.appError('总重必须为非负数字');
+        return;
+      }
+    }
     final body = <String, dynamic>{
       'billDate': _fmt(_billDate),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
@@ -862,9 +925,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       if (_cfg.hasLastDate && _lastDate != null) 'lastDate': _fmt(_lastDate!),
       if (_cfg.hasBStyle) 'bStyle': int.tryParse(_bStyle.text),
       if (_cfg.hasTotalWeight)
-        'totalWeight': double.tryParse(_totalWeight.text),
+        'totalWeight': financeExactDecimal(_totalWeight.text),
       if (_cfg.hasDeductAmount)
-        'deductAmount': double.tryParse(_deductAmount.text),
+        'deductAmount': financeExactDecimal(_deductAmount.text),
       if (_cfg.hasSettlement &&
           !_commercialTermsInheritedFromSource &&
           _settlementMethodId != null)
@@ -1087,7 +1150,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                                   ),
                                   createBlankRow: () => SubcontractGridRow(),
                                   cloneRow: (r) => r.clone(),
-                                  footer: _gridFooter(theme),
+                                  footer: _gridFooter(),
                                 );
                               },
                             ),
@@ -1128,7 +1191,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   /// 明细表尾（原来挂在页面底部固定操作条里，2026-09-11 底部条改右下角悬浮后
   /// 合计跟着回到表尾）：有金额的单据报「数量+金额」，数量按单位分组绝不相加、
   /// 金额币种取表头；损耗单只有总重，其余单据报行数。
-  Widget _gridFooter(ThemeData theme) {
+  Widget _gridFooter() {
     if (_cfg.hasAmount) {
       return EditableGridTotalsBar<SubcontractGridRow>(
         key: const Key('subcontract-edit-totals'),
@@ -1169,26 +1232,27 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         },
       );
     }
-    final style = theme.textTheme.titleMedium?.copyWith(
-      fontWeight: FontWeight.w700,
-    );
     if (_cfg.hasTotalWeight) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Text(
-          '总重 ${_totalWeight.text.isEmpty ? "0.00" : _totalWeight.text}',
-          style: style,
-        ),
+      return UtenTotalsSummaryBar(
+        compact: true,
+        entries: [
+          UtenTotalEntry(
+            '总重',
+            _totalWeight.text.isEmpty ? '0.00' : _totalWeight.text,
+          ),
+        ],
       );
     }
     return ListenableBuilder(
       listenable: _grid,
-      builder: (_, _) => Align(
-        alignment: Alignment.centerRight,
-        child: Text(
-          '${_grid.rows.where((r) => r.goods != null).length} 行',
-          style: style,
-        ),
+      builder: (_, _) => UtenTotalsSummaryBar(
+        compact: true,
+        entries: [
+          UtenTotalEntry(
+            '总行数',
+            '${_grid.rows.where((r) => r.goods != null).length} 行',
+          ),
+        ],
       ),
     );
   }

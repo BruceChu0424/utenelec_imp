@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+  "implementationBaselineCommit": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "scope": "All existing platform searches and their required callers; stop after this batch.",
+  "status": "LOCAL_SEARCH_BATCH_COMPLETE_MAIN_INTEGRATED_STOPPED",
+  "sourceManifest": "source-manifest.json",
+  "codeFiles": 202,
+  "backendImplementationBaseline": {
+    "distinctTests": 258,
+    "classes": 40,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "interpretation": "Combined unique latest case results across explicitly recorded targeted runs/rechecks. Single-case XML replacement is supplemented by the prior verified case ledger/class failure list; not a single full-project CI or production UAT claim."
+  },
+  "combinedMainVerification": {
+    "result": "PASS",
+    "evidence": "combined-validation.json",
+    "backendUniqueTests": 52,
+    "flutterFinalCombinedTests": 196,
+    "fullDartAnalyze": "No issues",
+    "wpfBothArchitectures": "PASS"
+  },
+  "queryWorkProof": {
+    "accountRows": 120,
+    "accountPageSizes": [
+      1,
+      20,
+      100
+    ],
+    "accountPageStatements": 2,
+    "largeCandidateRows": 5005,
+    "candidatePageRows": 100,
+    "overlappingGoodsRoots": 41,
+    "auditNameMatches": 1201,
+    "auditMaxBindingIndex": 39,
+    "interpretation": "Isolated fixtures and work bounds, not production p95/SLA."
+  },
+  "flutter": {
+    "sourceAndTestsAnalyze": "PASS: lib, test, integration_test; no issues",
+    "recordedBatches": [
+      401,
+      115,
+      62,
+      111,
+      176,
+      201
+    ],
+    "overlap": "Do not sum batches; see owning reviews and selected test files.",
+    "personnelSources": 10,
+    "personnelPickerSites": 28,
+    "businessWrapperSites": 11
+  },
+  "interaction": {
+    "windows": "PASS: production ApiClient/repository + loopback HTTP; actual native window, cancellation and same-query Enter reread.",
+    "windowsPicker": "PASS: fresh first-page visibility and cached category revalidation in a real native window.",
+    "web": "PASS: release JS/CanvasKit, real Chrome, nine interactions, no browser exceptions.",
+    "ddcTestHost": "BLOCKED: zero assertions executed; resource/module loading failure preserved, not called passed.",
+    "companyNetworkOrTargetDeviceUat": false
+  },
+  "website": {
+    "localSearchPublicationTests": 26,
+    "realDatabaseProviders": [
+      "isolated SQLite",
+      "isolated PostgreSQL 16"
+    ],
+    "typescriptAndChangedEslint": "PASS"
+  },
+  "wpf": {
+    "architectures": [
+      "x86",
+      "x64"
+    ],
+    "existingNativeSearchChecks": "PASS",
+    "fullErpEquivalent": false,
+    "win7Accepted": false
+  },
+  "safety": {
+    "sharedBusinessDatabaseWritten": false,
+    "databaseSchemaMigrationAdded": false,
+    "hotColdMovePerformed": false,
+    "genericTaskLoadingPhaseStarted": false,
+    "formalPackageCreated": false,
+    "publishedOrActivated": false,
+    "mainPubspecLockAndTmpPreserved": true,
+    "gitStageOrCommitPerformed": false
+  },
+  "integration": {
+    "performed": true,
+    "mainBaseCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+    "taskPathsCopiedAndVerified": 247,
+    "receipt": "main-integration-receipt.json"
+  },
+  "limits": [
+    "Company deployment/latency, full CI, formal artifacts and target-device/staff UAT remain separate pending work.",
+    "Static candidate counts are not accepted workflow counts. Each review records its actual test scope.",
+    "Cached local dependency resolution was reused; no SDK/lock upgrade was introduced.",
+    "Screenshots precede the final empty-state caption-only edit; search and permission logic are unchanged."
+  ]
+}

@@ -1245,6 +1245,7 @@ public class GoodsImportService {
         try {
             BigDecimal value = new BigDecimal(cleaned);
             validateDecimal(value);
+            if(value.signum()<0) throw new NumberFormatException("negative goods price");
             return value;
         } catch (NumberFormatException e) {
             errors.add(new GoodsImportError(rowNum, "价格", "价格「" + raw + "」不是有效数字"));
@@ -1276,17 +1277,12 @@ public class GoodsImportService {
     }
 
     private static void validateDecimal(BigDecimal value) {
-        if (value.precision() > 64 || value.scale() < -18 || value.scale() > 64) {
-            throw new NumberFormatException("numeric(18,4) representation limit");
+        if (value.precision() > 1100 || value.scale() < -1000 || value.scale() > 1000) {
+            throw new NumberFormatException("native decimal representation limit");
         }
-        // Reject overflowing integer exponents before stripping zeros can
-        // overflow BigDecimal's scale or expand an impossible business value.
-        if (value.signum() != 0 && (long) value.precision() - value.scale() > 14) {
-            throw new NumberFormatException("numeric(18,4) limit");
-        }
-        BigDecimal normalized = value.stripTrailingZeros();
-        if (normalized.scale() > 4 || (long) normalized.precision() - normalized.scale() > 14) {
-            throw new NumberFormatException("numeric(18,4) limit");
+        try { com.uten.imp.common.util.FinancialExactAmount.require(value,"导入数值"); }
+        catch (com.uten.imp.common.web.ApiException outsideNativeRange) {
+            throw new NumberFormatException("native exact 40/24 limit");
         }
     }
 
@@ -1297,7 +1293,7 @@ public class GoodsImportService {
         var type = cell.getCellType() == org.apache.poi.ss.usermodel.CellType.FORMULA
                 ? cell.getCachedFormulaResultType() : cell.getCellType();
         if (type == org.apache.poi.ss.usermodel.CellType.NUMERIC) {
-            return com.uten.imp.common.importing.ExcelImportNumbers.numericText(cell, 4);
+            return com.uten.imp.common.importing.ExcelImportNumbers.numericText(cell, 24);
         }
         if (type == org.apache.poi.ss.usermodel.CellType.ERROR) {
             return org.apache.poi.ss.usermodel.FormulaError.forInt(cell.getErrorCellValue()).getString();

@@ -6,7 +6,7 @@
   "scope": "Native C# WPF .NET Framework 4.8 client; no embedded browser",
   "sourceFingerprints": {
     "lib/core/router/route_names.dart": "a937d00327f4eb55e746c1d0245944b8f8a0f396f96ee5a6e729d47955ee34db",
-    "lib/core/router/app_router.dart": "28b6d405829f8d9a556cce789619e4282a84553384cadfe443ce21d5aac7f6c2"
+    "lib/core/router/app_router.dart": "3dde654e48bc04ce307e021d2b9bce544e284eba1d37c4a8807541c7ead6cc0e"
   },
   "summary": {
     "declaredRouteConstants": 206,
@@ -2730,245 +2730,245 @@
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2199,
+      "line": 2203,
       "expression": "RouteName.financeReconciliations",
       "path": "/finance/reconciliations",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2204,
+      "line": 2208,
       "expression": "RouteName.financeChecks",
       "path": "/finance/checks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2210,
+      "line": 2214,
       "expression": "RouteName.financeAssets",
       "path": "/finance/assets",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2215,
+      "line": 2219,
       "expression": "'/finance/assets/new'",
       "path": "/finance/assets/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2233,
+      "line": 2237,
       "expression": "'/finance/:seg/new'",
       "path": "/finance/:seg/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2243,
+      "line": 2247,
       "expression": "'/finance/:seg/:id/edit'",
       "path": "/finance/:seg/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2253,
+      "line": 2257,
       "expression": "'/finance/:seg/:id'",
       "path": "/finance/:seg/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2262,
+      "line": 2266,
       "expression": "'/finance/:seg'",
       "path": "/finance/:seg",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2274,
+      "line": 2278,
       "expression": "RouteName.visitorApproval",
       "path": "/visitor-approval",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2279,
+      "line": 2283,
       "expression": "RouteName.visitorApprovalDetail",
       "path": "/visitor-approval/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2286,
+      "line": 2290,
       "expression": "RouteName.myVisitors",
       "path": "/my-visitors",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2291,
+      "line": 2295,
       "expression": "RouteName.securityScan",
       "path": "/security/scan",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2296,
+      "line": 2300,
       "expression": "RouteName.securityBlacklist",
       "path": "/security/blacklist",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2303,
+      "line": 2307,
       "expression": "RouteName.profileEdit",
       "path": "/profile/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2312,
+      "line": 2316,
       "expression": "RouteName.formDrafts",
       "path": "/form-drafts/:categoryId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2318,
+      "line": 2322,
       "expression": "RouteName.profileMyChanges",
       "path": "/profile/me/changes",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2323,
+      "line": 2327,
       "expression": "RouteName.profileMyDepartment",
       "path": "/profile/me/department",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2332,
+      "line": 2336,
       "expression": "RouteName.hrTaskCenter",
       "path": "/hr/tasks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2343,
+      "line": 2347,
       "expression": "'reconcile'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2348,
+      "line": 2352,
       "expression": "':type'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2362,
+      "line": 2366,
       "expression": "RouteName.hrProfileChanges",
       "path": "/hr/profile-changes",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2367,
+      "line": 2371,
       "expression": "RouteName.hrProfileChangeDetail",
       "path": "/hr/profile-changes/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2375,
+      "line": 2379,
       "expression": "RouteName.adminPermissions",
       "path": "/admin/permissions",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2383,
+      "line": 2387,
       "expression": "RouteName.adminAuditLogs",
       "path": "/admin/audit-logs",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2390,
+      "line": 2394,
       "expression": "RouteName.adminAuditSession",
       "path": "/admin/audit-logs/sessions/:sessionId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2403,
+      "line": 2407,
       "expression": "RouteName.adminSystemSettings",
       "path": "/admin/system-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2408,
+      "line": 2412,
       "expression": "RouteName.adminSmsSettings",
       "path": "/admin/sms-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2413,
+      "line": 2417,
       "expression": "RouteName.adminPlatformSettings",
       "path": "/admin/platform-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2418,
+      "line": 2422,
       "expression": "RouteName.adminServerStatus",
       "path": "/admin/server-status",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2423,
+      "line": 2427,
       "expression": "RouteName.adminServerOperations",
       "path": "/admin/server-operations",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2428,
+      "line": 2432,
       "expression": "RouteName.adminServerStorage",
       "path": "/admin/server-storage",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2434,
+      "line": 2438,
       "expression": "RouteName.adminAiSettings",
       "path": "/admin/ai-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2440,
+      "line": 2444,
       "expression": "RouteName.adminAiUsage",
       "path": "/admin/ai-usage",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2445,
+      "line": 2449,
       "expression": "RouteName.adminAiUsagePersonRoute",
       "path": "/admin/ai-usage/:userId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2453,
+      "line": 2457,
       "expression": "RouteName.adminAiUsageRecords",
       "path": "/admin/ai-usage-records",
       "status": "not-migrated"

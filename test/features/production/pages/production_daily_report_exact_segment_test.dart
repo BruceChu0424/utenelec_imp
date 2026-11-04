@@ -15,6 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/business_precision.dart';
+import 'package:uten_imp/core/network/business_precision_coordinator.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -45,6 +47,7 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 import 'package:uten_imp/features/production/repositories/production_actual_output_supplement_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/master_dictionary_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -1497,6 +1500,9 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           apiClientProvider.overrideWithValue(_api()),
+          masterDictionaryRepositoryProvider.overrideWithValue(
+            MasterDictionaryRepository(_api()),
+          ),
           departmentRepositoryProvider.overrideWithValue(
             _FakeDepartmentRepository(),
           ),
@@ -2451,18 +2457,21 @@ void main() {
       '不良数',
     );
     expect(_defectField(row), findsOneWidget);
-    // 输入只接受非负数、最多 4 位小数。
+    // 输入保留非负十进制原文；超24位原文也保留，保存明确提示。
     await tester.enterText(_defectField(row), '-2');
     expect(row.defectQty.text, '');
-    await tester.enterText(_defectField(row), '1.23456');
-    expect(row.defectQty.text, '');
+    await tester.enterText(_defectField(row), '1.2345678901234567890123456');
+    expect(row.defectQty.text, '1.2345678901234567890123456');
     // 绕过输入框的值(例如恢复的草稿)由保存校验拦下。
-    row.defectQty.text = '1.23456';
+    row.defectQty.text = '1.2345678901234567890123456';
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
     await tester.pumpAndSettle();
     expect(saved, isEmpty);
-    expect(find.textContaining('第 1 行不良数请填写不小于 0、最多 4 位小数的数量'), findsOneWidget);
+    expect(
+      find.textContaining('第 1 行不良数请填写不小于 0、最多 24 位小数的数量'),
+      findsOneWidget,
+    );
     await tester.enterText(_defectField(row), '2.5');
     await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
     await tester.pumpAndSettle();
@@ -2505,7 +2514,7 @@ void main() {
       expect(productionReportDefectQty(row), isNull, reason: raw);
     }
     row.defectQty.text = '.';
-    expect(productionReportDefectIssue(row), contains('最多 4 位小数'));
+    expect(productionReportDefectIssue(row), contains('最多 24 位小数'));
     // 复制行照带不良数(良品数也照带)。
     row
       ..executionSegmentId = 'segment-1'
@@ -2891,6 +2900,7 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
   ProductionMaterialRepository Function(ApiClient api)? materialRepository,
   Map<String, dynamic>? candidatesOverride,
   bool attachmentUpload = false,
+  Map<String, dynamic> sourceOverrides = const {},
   GlobalKey? captureKey,
   ThemeData? theme,
 }) async {
@@ -2899,7 +2909,7 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final api = _api(
-    sourceOverrides: const {'planId': 'plan-1'},
+    sourceOverrides: {'planId': 'plan-1', ...sourceOverrides},
     onCreate: onCreate,
     responseOverride: (request) => request.path.endsWith('/units/dict')
         ? const [

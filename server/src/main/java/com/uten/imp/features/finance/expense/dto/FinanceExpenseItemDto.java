@@ -25,6 +25,12 @@ public class FinanceExpenseItemDto {
     /** Current name of this persisted reference; not an historical name snapshot. */
     @lombok.Setter
     private String departmentName;
+    @lombok.Getter(lombok.AccessLevel.NONE)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private final PostingMetadata postingMetadata=new PostingMetadata();
+    private static final class PostingMetadata { private String purpose="ORDINARY_EXPENSE"; }
+    public String getPostingPurpose(){return postingMetadata.purpose;}
+    public void setPostingPurpose(String value){postingMetadata.purpose=value;}
 
     // Additive exact text never passes through a binary floating-point value.
     public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }

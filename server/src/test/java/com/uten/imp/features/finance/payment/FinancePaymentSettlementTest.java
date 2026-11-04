@@ -191,7 +191,8 @@ class FinancePaymentSettlementTest {
                 paymentRepo, lineRepo, ledgerRepo, tx,
                 currentUser, names, em, references, numbers, access, glPostingService,
                 accountFlowLedger,
-                mock(com.uten.imp.features.finance.payables.SupplierPayableHoldGuard.class));
+                mock(com.uten.imp.features.finance.payables.SupplierPayableHoldGuard.class),
+                mock(com.uten.imp.features.finance.payables.FinanceSupplierSettlementDependencies.class));
         new ImportedDocumentFixture()
                 .documents("finance_payments", payments::values)
                 .wire(service, em);

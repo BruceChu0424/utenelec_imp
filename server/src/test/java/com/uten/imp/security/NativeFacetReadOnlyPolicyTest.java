@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class NativeFacetReadOnlyPolicyTest {
     @Test void impersonationRetainsOnlyTheExactExistingReadContractWithAValidFormMarker() {
-        assertEquals(21,NativeFacetRoutes.paths().size());
+        assertEquals(22,NativeFacetRoutes.paths().size());
         for(String path:NativeFacetRoutes.paths()) {
             var request=new MockHttpServletRequest("POST",path);
             request.setContentType("application/x-www-form-urlencoded;charset=UTF-8");

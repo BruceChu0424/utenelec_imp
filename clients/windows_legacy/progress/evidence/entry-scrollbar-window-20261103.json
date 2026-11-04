@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "id": "E-ENTRY-SCROLLBAR-WINDOW-20261103",
+  "branch": "uimp/modal-scroll-scope-20261103",
+  "classification": "frontend",
+  "runtimeFamily": "wpf_legacy",
+  "host": "Windows 11 development host",
+  "targetWin7Accepted": false,
+  "fullErpMigrated": false,
+  "formalPackageCreated": false,
+  "published": false,
+  "contract": {
+    "owner": "lib/core/responsive/breakpoint.dart#UtenBreakpoints.desktopStart",
+    "generatedResource": "Uten.Breakpoint.DesktopStart",
+    "hiddenBelow": 1280,
+    "scope": "DashboardView only; touch panning and mouse wheel stay enabled; document/editor viewers retain their own rails"
+  },
+  "nativeCallers": [
+    "MainWindow.OnDashboard",
+    "MainWindow.ApplySession",
+    "MainWindow.OnReadScopeChanged",
+    "MainWindow permission-revocation fallback"
+  ],
+  "preservedDifferences": [
+    "WPF owned dialogs use Window.ShowDialog and the authenticated root has system SingleBorderWindow chrome; there is no routed 36-dp custom caption gap to bridge.",
+    "Notification/profile/settings/purchase/warehouse hubs are still not migrated; no placeholder write entry was added."
+  ],
+  "pendingWorkItems": [
+    "W7-BIZ-042",
+    "W7-SHELL-002",
+    "W7-SHELL-004",
+    "W7-BIZ-085",
+    "W7-BIZ-147",
+    "W7-BIZ-124",
+    "W7-BIZ-192",
+    "W7-BIZ-120",
+    "W7-BIZ-148"
+  ],
+  "checks": [
+    {
+      "architecture": "x86",
+      "command": "Uten.Legacy.Tests.exe --entry-scrollbar-contracts",
+      "exitCode": 0,
+      "build": "MSBuild Debug Rebuild /warnaserror, separate intermediate/output paths",
+      "log": "build/entry-scrollbar-wpf/x86/tests.log",
+      "logSha256": "6a58deff8afed3cf93507ff160b6d09b754a310c8bc5076e033b77f0e845c59e",
+      "result": "PASS native dashboard entry scrollbar widths/wheel/touch policy/editor isolation/60 resize/unload contracts; process=x86",
+      "widths": [
+        390,
+        599,
+        600,
+        839,
+        840,
+        1024,
+        1279,
+        1280,
+        1366
+      ],
+      "contentRows": 400,
+      "rapidResizeCount": 60,
+      "mouseWheelVerified": true,
+      "touchPanningConfigured": true,
+      "touchDeviceGestureVerified": false,
+      "editorIsolationVerified": true,
+      "unloadReloadVerified": true,
+      "inputAndPositionPreserved": true
+    },
+    {
+      "architecture": "x64",
+      "command": "Uten.Legacy.Tests.exe --entry-scrollbar-contracts",
+      "exitCode": 0,
+      "build": "MSBuild Debug Rebuild /warnaserror, separate intermediate/output paths",
+      "log": "build/entry-scrollbar-wpf/x64/tests.log",
+      "logSha256": "b31fa1f408b8f74cb10d1a6a0368ebbfaf2b5c60e3437c4f7e00903faede2029",
+      "result": "PASS native dashboard entry scrollbar widths/wheel/touch policy/editor isolation/60 resize/unload contracts; process=x64",
+      "widths": [
+        390,
+        599,
+        600,
+        839,
+        840,
+        1024,
+        1279,
+        1280,
+        1366
+      ],
+      "contentRows": 400,
+      "rapidResizeCount": 60,
+      "mouseWheelVerified": true,
+      "touchPanningConfigured": true,
+      "touchDeviceGestureVerified": false,
+      "editorIsolationVerified": true,
+      "unloadReloadVerified": true,
+      "inputAndPositionPreserved": true
+    },
+    {
+      "command": "python -B -m unittest discover -s clients/windows_legacy/tools -p test_design_tokens.py",
+      "exitCode": 0,
+      "tests": 16,
+      "scope": "Dart-owner extraction, generated WPF resources and fail-closed drift contracts"
+    }
+  ],
+  "sources": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenEntryPageScrollBehavior.cs",
+      "sha256": "566035b984af5edfb77a0e2f193ab86ce47b09feb1061acaea7dc909b9acb32e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Views/DashboardView.cs",
+      "sha256": "c8662dd90e5ec695d9bcf5b3f0ac71342e935abc234d79578812605141f5ba96"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "448a1be99842a4a9dd7aec5aa351d9aa58cb03693fd57afdb234a3b931c5efb0"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "b16947eee38d8dd4f78cb9d84583699d9a264d2ca22fa0fb4350847acddb4205"
+    },
+    {
+      "path": "clients/windows_legacy/tools/sync_design_tokens.py",
+      "sha256": "d25fd5beea0cbd6aa574ba88cd624852ed7a80e15a80bd489cfebee377aabf22"
+    },
+    {
+      "path": "clients/windows_legacy/tools/test_design_tokens.py",
+      "sha256": "9d63f2da1411cd9646c64985b2ada4877eaf9d9be897e50fade7ca5b7744929c"
+    }
+  ]
+}

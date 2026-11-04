@@ -26,6 +26,8 @@ public record FinishedInLotView(
         String shortageHint,
         BigDecimal weight) {
 
+    public String getWeightExact() { return com.uten.imp.common.util.DecimalText.of(weight); }
+
     public FinishedInLotView {
         itemIds = List.copyOf(itemIds);
     }

@@ -10,6 +10,13 @@ final class _MaterialAggregateTableController {
   final rateEditors = <String, TextEditingController>{};
   final _draftByLine = <String, String>{};
   final drafts = <String, _MaterialAggregateDraft>{};
+  final draftPulse = ValueNotifier<int>(0);
+  _MaterialPrecisionDraftState? draftHost;
+  String? precisionOwnerScope;
+  _MaterialAggregateDraft? precisionDraft;
+  String? precisionReason;
+  final precisionAsked = <String>{};
+  bool precisionBusy = false;
   Timer? _debounce;
   CancelToken? _cancelToken;
   Future<void>? _flight;
@@ -64,12 +71,24 @@ final class _MaterialAggregateTableController {
 
   Widget? toolbarAction() => drafts.isEmpty
       ? null
-      : UtenButton(
-          key: const Key('material-aggregate-cancel-drafts'),
-          type: UtenButtonType.ghost,
-          height: UtenTableToolbar.controlHeight,
-          onPressed: saving ? null : () => unawaited(cancelAll()),
-          child: Text('撤销汇总草稿(${drafts.length})'),
+      : Wrap(
+          spacing: 8,
+          children: [
+            if (precisionDraft != null)
+              UtenButton(
+                onPressed: saving || uncertain
+                    ? null
+                    : () => unawaited(chooseAllocationPrecision()),
+                child: const Text('选择本次分配精度'),
+              ),
+            UtenButton(
+              key: const Key('material-aggregate-cancel-drafts'),
+              type: UtenButtonType.ghost,
+              height: UtenTableToolbar.controlHeight,
+              onPressed: saving ? null : () => unawaited(cancelAll()),
+              child: Text('撤销汇总草稿(${drafts.length})'),
+            ),
+          ],
         );
 
   /// 数量展示文本 + 单位（2026-10-10 T9：单位列退役）：原文是四位精确数量，
@@ -333,10 +352,13 @@ final class _MaterialAggregateTableController {
     schedulePreview();
   }
 
-  bool validText(String value) =>
-      RegExp(r'^\d+(?:\.\d{0,4})?$').hasMatch(value.trim()) &&
-      (double.tryParse(value)?.isFinite ?? false) &&
-      (double.tryParse(value) ?? -1) >= 0;
+  bool validText(String value) {
+    try {
+      return materialQuantityUnits(value) < BigInt.from(10).pow(64);
+    } on FormatException {
+      return false;
+    }
+  }
 
   String sumQuantityTexts(Iterable<String> values) {
     var total = BigInt.zero;
@@ -406,11 +428,13 @@ final class _MaterialAggregateTableController {
     // 总量落整数份额，83.3334 这类服务端分摊尾巴不再层层上屏。
     final List<String> shares;
     try {
-      shares = splitTypedTotalText(draft.totalText, [
+      shares = splitWithCurrentPrecision(draft, [
         for (final group in groups) owner._tableGroupResidualText(group),
       ]);
-    } on FormatException {
-      error = '来源缺少可核对的精确数量，请刷新后重试';
+    } on FormatException catch (failure) {
+      error = failure is MaterialQuantityPrecisionRequired
+          ? failure.message
+          : '来源缺少可核对的精确数量，请刷新后重试';
       return;
     }
     for (var i = 0; i < groups.length; i++) {
@@ -468,6 +492,7 @@ final class _MaterialAggregateTableController {
   }
 
   void schedulePreview() {
+    draftPulse.value++;
     if (saving ||
         uncertain ||
         drafts.isEmpty ||
@@ -601,7 +626,7 @@ final class _MaterialAggregateTableController {
   /// 各张工单本次的数量(与 [parts] 同序)，合计恰为草稿总量。
   /// - 逐行带数的草稿(按产品全选下单、汇总前各行已有数)：每张工单 = 它那几行
   ///   自己的数，逐行数量原样随这张工单提交；
-  /// - 手输总量的草稿：先按平分规则([splitTypedTotal])把总量落到
+  /// - 手输总量的草稿：先按平分规则([splitTypedTotalText])把总量落到
   ///   各来源行，再按工单相加。
   /// 按万分之一 BigInt 精确累加，各张合计必须等于原始总量。
   List<({String qty, Map<String, String>? sourceRequested})> partQuantities(
@@ -626,7 +651,7 @@ final class _MaterialAggregateTableController {
       ];
     }
     final sources = draftSources(draft);
-    final shares = splitTypedTotalText(draft.totalText, [
+    final shares = splitWithCurrentPrecision(draft, [
       for (final source in sources)
         owner._tableGroupResidualText(source.group, authoritative: true),
     ]);
@@ -997,9 +1022,11 @@ final class _MaterialAggregateTableController {
       final request = requestFor(selected, skipAutoClaim: skipAutoClaim);
       final token = CancelToken();
       _cancelToken = token;
-      final preview = await owner.ref
-          .read(productionPlanRepositoryProvider)
-          .previewAggregateOrders(request, cancelToken: token);
+      final preview = await withDraftPrecisionRead(
+        () => owner.ref
+            .read(productionPlanRepositoryProvider)
+            .previewAggregateOrders(request, cancelToken: token),
+      );
       if (!owner.mounted ||
           owner._sessionScopeKey() != sessionScope ||
           revision != _revision ||
@@ -1343,6 +1370,8 @@ final class _MaterialAggregateTableController {
       _submittedSessionScope = sessionScope;
     }
     final request = _submittedRequest!;
+    final priorUnknown = uncertain;
+    final originalFingerprint = _submittedFingerprint!;
     final makesPlans = request.groups.any(
       (group) => group.departmentId != null,
     );
@@ -1359,12 +1388,14 @@ final class _MaterialAggregateTableController {
                 ? '正在生成并审核下达'
                 : '正在生成生产计划'
           : '正在下达物料';
-      final result = await owner.ref
-          .read(productionPlanRepositoryProvider)
-          .submitAggregateOrders(
-            request,
-            previewFingerprint: _submittedFingerprint!,
-          );
+      final result = await withDraftMutation(
+        () => owner.ref
+            .read(productionPlanRepositoryProvider)
+            .submitAggregateOrders(
+              request,
+              previewFingerprint: originalFingerprint,
+            ),
+      );
       lastStageResult = result;
       if (!owner.mounted || !stillCurrent()) {
         _retainDetachedSubmission(received: true);
@@ -1408,6 +1439,20 @@ final class _MaterialAggregateTableController {
         refreshAfterProductionPlanGenerated(owner.ref);
       }
       refreshBadges(owner.ref);
+      try {
+        if (drafts.isEmpty) {
+          await draftHost?.resetFormDraftAfterSubmission();
+        } else {
+          await draftHost?.checkpointFormDraftAfterConfirmedMutation();
+        }
+      } catch (_) {
+        if (owner.mounted) {
+          owner.context.appWarning('本次已实际办理，原草稿接续尚未写好，请保留回执并重新核对');
+        }
+      }
+      if (!owner.mounted || owner._sessionScopeKey() != sessionScope) {
+        return true;
+      }
       owner.context.appSuccess(
         result.batches.isEmpty
             ? result.analysis.materials.any(
@@ -1430,12 +1475,18 @@ final class _MaterialAggregateTableController {
         return false;
       }
       final rejected =
+          !priorUnknown &&
           failure is ApiException &&
           failure.httpStatus != null &&
           failure.httpStatus! >= 400 &&
           failure.httpStatus! < 500;
       owner._mutateAggregateTable(() {
         uncertain = !rejected;
+        if (!rejected) {
+          _submittedRequest = request;
+          _submittedFingerprint = originalFingerprint;
+          _submittedSessionScope = sessionScope;
+        }
         error = rejected
             ? failure.message
             : '${productionErrorMessage(failure, fallback: '服务器没有返回确定的结果')}；'
@@ -1726,36 +1777,25 @@ final class _MaterialAggregateTableController {
     final picked = await showUtenEmployeePickerPanel(
       owner.context,
       presentation: UtenEmployeePickerPresentation.businessReference,
+      cancelDepartmentTreeReadOnClose: true,
       departmentTreeLoader: () => owner.ref
           .read(employeeReferenceRepositoryProvider)
           .departments(EmployeeReferencePurpose.productionMaterialOwner),
       title: '选择生产负责人',
       departmentName: workshop.name,
-      loader: (keyword) async {
-        final result = await owner.ref
+      pagedLoader: (query) async {
+        final keyword = query.keyword;
+        return await owner.ref
             .read(employeeReferenceRepositoryProvider)
-            .listPickerCandidates(
+            .listPickerPage(
+              query,
               purpose: EmployeeReferencePurpose.productionMaterialOwner,
               size: 30,
-              search: keyword,
               departmentId: keyword?.trim().isEmpty != false
                   ? workshop.id
                   : null,
               includeSubtree: true,
             );
-        return [
-          for (final employee in result)
-            UtenEmployeePickerItem(
-              id: employee.id,
-              name: employee.fullName,
-              employeeCode: employee.code,
-              accountStatus: employee.accountStatus,
-              employmentStatus: employee.status,
-              departmentId: employee.departmentId,
-              departmentName: employee.departmentName,
-              positionName: employee.positionName,
-            ),
-        ];
       },
     );
     if (!owner.mounted || picked == null || revision != _revision) return;
@@ -2066,10 +2106,9 @@ final class _MaterialAggregateTableController {
                 scale: 6,
               )
             : '1';
-        final units = financeExactProductUnits(qty, rate);
-        anchors[anchor.analysisLineId] = units == null
-            ? null
-            : financeExactTrimmed(financeExactDecimalFromUnits(units));
+        anchors[anchor.analysisLineId] = financeExactTrimmed(
+          financeExactMultiplyTexts([qty, rate]),
+        );
       }
       return materialPresentationSum(anchors.values);
     }
@@ -2321,7 +2360,7 @@ final class _MaterialAggregateMakeParams {
 
   /// 拆单键：车间 + 负责人 + 比例(数值，六位小数与服务端比例精度一致)。
   String get key =>
-      '${workshop.id ?? ''}|${worker.id ?? ''}|${rate?.toStringAsFixed(6) ?? ''}';
+      '${workshop.id ?? ''}|${worker.id ?? ''}|${rate?.toExactString(minimumFractionDigits: 6) ?? ''}';
 
   String get label {
     final value = rate;

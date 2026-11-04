@@ -44,6 +44,7 @@ import static org.assertj.core.api.Assertions.*;
         "uten.crypto.hmac-key=asset-review-only-hmac-key-0123456789",
         "uten.bootstrap.admin-login=asset-review-harness-admin",
         "uten.bootstrap.admin-password=AssetReviewHarnessAdmin-1!"})
+@org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation.class)
 class FinanceAssetReviewRevisionPostgresTest {
     private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("asset_review").withUsername("fixture_admin").withPassword("uten");
@@ -56,14 +57,204 @@ class FinanceAssetReviewRevisionPostgresTest {
     @Autowired FinanceAssetPostingService posting;
     @Autowired FinanceAssetQueryService queries;
     @Autowired FinanceAssetRecognitionReversalService recognitionReversals;
+    @Autowired FinanceAssetOpeningGroupService openingGroups;
+    @Autowired com.uten.imp.features.finance.asset.api.FinanceAssetOpeningGroupController openingGroupController;
+    @Autowired com.uten.imp.features.finance.report.FinanceTemplateSourceController templateSourceController;
+    @Autowired com.uten.imp.features.finance.cost.FinanceCostInputService costInputs;
     @Autowired com.uten.imp.features.finance.gl.GlReportService financialReports;
     @Autowired com.uten.imp.features.finance.gl.GlReportLineBindingService reportBindings;
     @Autowired com.uten.imp.features.finance.asset.FixedAssetService assetReports;
     @Autowired ObjectMapper json;
+    @Autowired org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter httpMessageHandlers;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.uten.imp.features.purchase.report.PurchaseReportService purchaseReports;
     @Autowired com.uten.imp.features.subcontract.report.SubcontractReportService subcontractReports;
+    @org.junit.jupiter.api.BeforeEach
+    void isolateCompanyWidePostingFacts() {
+        // This private Testcontainers database contains anonymous fixtures only.
+        // Monthly posting and report completeness are company-wide: another test's
+        // posted run or unassigned GL must not become this test's business input.
+        jdbc.execute("TRUNCATE finance_asset_posting_runs,finance_asset_books,finance_deferral_schedule_versions,finance_asset_opening_groups,finance_asset_template_metadata,finance_gl_opening_baselines,finance_accounting_period_coverage,gl_vouchers CASCADE");
+    }
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    @Test @org.springframework.transaction.annotation.Transactional
+    void financialExactAmountsSaveReadAndScheduleWithoutSilentFourPlaceRounding() {
+        Actor maker=actor("exact-amount-maker"),reviewer=actor("exact-amount-reviewer");
+        String exact="1234567890123456789012345.123456789012345678901234";
+        BigDecimal amount=new BigDecimal(exact);
+        UUID client=UUID.randomUUID();jdbc.update("INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,?,?,'使用',987654321)",client,"EXACT-"+client,"匿名精确客户");
+        login(maker,financialPermissions());
+        var command=new com.uten.imp.features.finance.cost.FinanceCostInputContracts.Sales(UUID.randomUUID(),"2026-09",client,-1,"OEM",amount,new BigDecimal("1.000000000000000000000001"),"匿名精度依据",true,new BigDecimal(".1"),"匿名精确客户","","","");
+        var saved=costInputs.saveSales(command);assertThat(costInputs.saveSales(command)).isEqualTo(saved);
+        assertThat(new BigDecimal(costInputs.sales("2026-09",client).get("freightLocal").toString())).isEqualByComparingTo(amount);
+        assertThat(jdbc.queryForObject("SELECT freight_local FROM finance_sales_cost_inputs WHERE client_id=?",BigDecimal.class,client)).isEqualByComparingTo(amount);
+        for(boolean deferred:List.of(false,true)) {
+            UUID category=category(deferred);login(maker,financialPermissions());
+            var draft=create(deferred,category,maker,"EXACT-"+UUID.randomUUID(),"匿名精确金额",exact,null);
+            assertThat(deferred?detail(draft.id(),true).summary().totalAmount():detail(draft.id(),false).summary().originalValue()).isEqualByComparingTo(amount);
+            var submitted=workflow.submit(draft.id(),draft.version(),deferred);login(reviewer,financialPermissions());
+            workflow.approve(draft.id(),submitted.version(),"按原金额核对",deferred);
+            if(deferred) {
+                assertThat(jdbc.queryForObject("SELECT sum(l.amount) FROM finance_deferral_schedule_lines l JOIN finance_deferral_schedule_versions v ON v.id=l.schedule_version_id WHERE v.deferred_id=?",BigDecimal.class,draft.id())).isEqualByComparingTo(amount);
+            } else {
+                var book=jdbc.queryForMap("SELECT original_value,residual_amount,depreciable_amount FROM finance_asset_books WHERE asset_id=?",draft.id());
+                assertThat((BigDecimal)book.get("original_value")).isEqualByComparingTo(amount);
+                assertThat((BigDecimal)book.get("residual_amount")).isEqualByComparingTo(amount.multiply(new BigDecimal(".05")));
+                assertThat(queries.fixedAsset(draft.id()).schedule().stream().map(com.uten.imp.features.finance.asset.api.AssetWorkbenchResponses.ScheduleLine::amount).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo((BigDecimal)book.get("depreciable_amount"));
+            }
+        }
+        assertThatThrownBy(()->costInputs.saveSales(new com.uten.imp.features.finance.cost.FinanceCostInputContracts.Sales(UUID.randomUUID(),"2026-09",client,0,"OEM",new BigDecimal(".0000000000000000000000001"),null,"不能舍入",false,null,null,null,null,null))).isInstanceOf(ApiException.class);
+        assertThat(new BigDecimal(costInputs.sales("2026-09",client).get("freightLocal").toString())).isEqualByComparingTo(amount);
+    }
+
+    @Test @org.junit.jupiter.api.Order(0) @org.springframework.transaction.annotation.Transactional
+    void openingGroupAcceptsVerifiedZeroWithoutAnArtificialVoucherAndRejectsMissingEvidence()throws Exception {
+        Actor maker=actor("zero-group-maker"),reviewer=actor("zero-group-reviewer"),poster=actor("zero-group-poster");
+        UUID category=category(true);var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
+        var benefit=YearMonth.from(asOf).minusMonths(11).atDay(1);String period=YearMonth.from(asOf).toString();
+        login(maker,financialPermissions());
+        var draft=workflow.createDeferred(new AssetWorkbenchRequests.DeferredExpenseDraft(null,"匿名已摊完",category,maker.department(),maker.employee(),"一楼",null,
+                new BigDecimal("1000"),12,YearMonth.from(benefit).toString(),benefit,benefit.plusMonths(11),"MANUAL",null,"ZERO-"+UUID.randomUUID(),"HEADER",benefit,null,null));
+        UUID imported=UUID.randomUUID();String hash=com.uten.imp.common.storage.ImmutableDocumentStore.digest(imported.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var cells=List.of(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(3,"匿名已摊完","TEXT",null),
+                new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(7,"1000","NUMBER","1000"),
+                new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(9,"83.3333333333333","NUMBER","83.3333333333333"),
+                new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(24,"1000","NUMBER","1000"),
+                new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(10+12-asOf.getMonthValue(),"1000","NUMBER","1000"));
+        var preview=new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Preview(imported,"amortization",period,"匿名已摊完原表.xlsx",hash,"费用摊销",List.of(),List.of(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Row(3,cells)),List.of(),true);
+        jdbc.update("INSERT INTO finance_template_sources(id,actor_id,template_key,period,source_name,sha256,storage_provider,storage_key,storage_size,preview) VALUES(?,?,'amortization',?, ?,?,'local','anonymous-zero-source.xlsx',1,?::jsonb)",imported,maker.user(),period,"匿名已摊完原表.xlsx",hash,json.writeValueAsString(preview));
+        UUID request=UUID.randomUUID();var input=new com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Create(request,imported,null,asOf,List.of(),
+                List.of(new com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Member("DEFERRED_EXPENSE",draft.id(),3,0,draft.version())),"已全部摊销，必须核对真实零余额");
+        assertThatThrownBy(()->openingGroups.create(input)).isInstanceOf(ApiException.class).hasMessageContaining("零余额来源");
+        UUID batch=UUID.randomUUID();
+        jdbc.update("INSERT INTO finance_accounting_import_batches(id,actor_id,source_name,storage_provider,storage_key,storage_size,sha256,source_system,preview,status,result,kind,submitted_by,approved_by) VALUES(?,?,'匿名零余额账套','local','anonymous-balance.xlsx',1,?,'匿名账套','{}','POSTED','{}','BALANCE',?,?)",batch,maker.user(),hash,maker.user(),reviewer.user());
+        jdbc.update("INSERT INTO finance_gl_opening_baselines(effective_from,import_batch_id,source_sha256,verified_by) VALUES(?,?,?,?)",asOf.plusDays(1),batch,hash,reviewer.user());
+        int before=jdbc.queryForObject("SELECT count(*) FROM gl_entries",Integer.class),vouchers=jdbc.queryForObject("SELECT count(*) FROM gl_vouchers",Integer.class);
+        var created=openingGroups.create(input);assertThat((List<?>)created.get("zero_balance_evidence")).hasSize(1);
+        assertThat((List<?>)created.get("source_entry_snapshot")).isEmpty();
+        login(reviewer,financialPermissions());openingGroups.approve(request,new com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Action(0,"核对原额、累计及来源版本"));
+        login(maker,financialPermissions());var submitted=workflow.submit(draft.id(),queries.deferredExpense(draft.id()).summary().version(),true);
+        login(reviewer,financialPermissions());var approved=workflow.approve(draft.id(),submitted.version(),"无剩余期限，不生成未来计提",true);
+        login(poster,financialPermissions());workflow.activate(draft.id(),approved.version(),true);
+        var detail=queries.deferredExpense(draft.id());assertThat(detail.summary().status()).isEqualTo("COMPLETED");assertThat(detail.summary().totalAmount()).isEqualByComparingTo("1000");
+        assertThat(detail.summary().remainingAmount()).isZero();assertThat(detail.schedule()).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM gl_entries",Integer.class)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM gl_vouchers",Integer.class)).isEqualTo(vouchers);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM da_amortization_log WHERE deferred_id=?",Integer.class,draft.id())).isZero();
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true}) @org.junit.jupiter.api.Order(1)
+    void openingGroupUsesExistingGlKeepsDaOriginalAmountAndCanBeRevokedAfterMonthlyReversal(boolean deferred)throws Exception {
+        Actor maker=actor("group-maker"),reviewer=actor("group-reviewer"),poster=actor("group-poster");
+        UUID category=category(deferred);var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
+        var benefit=YearMonth.from(asOf).minusMonths(5).atDay(1);String sourcePeriod=YearMonth.from(asOf).toString();
+        String type=deferred?"DEFERRED_EXPENSE":"FIXED_ASSET",template=deferred?"amortization":"depreciation";
+        BigDecimal cumulative=new BigDecimal(deferred?"500":"475");
+        login(maker,financialPermissions());
+        var drafts=new java.util.ArrayList<AssetWorkbenchResponses.WorkflowResult>();
+        var rows=new java.util.ArrayList<com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Row>();
+        for(int i=0;i<2;i++) {
+            String name="匿名接续"+i,ref="GROUP-"+UUID.randomUUID();
+            var draft=deferred?workflow.createDeferred(new AssetWorkbenchRequests.DeferredExpenseDraft(null,name,category,maker.department(),maker.employee(),"一楼",null,
+                    new BigDecimal("1000"),12,YearMonth.from(benefit).toString(),benefit,benefit.plusMonths(11),"MANUAL",null,ref,"HEADER",benefit,null,null)):
+                workflow.createFixed(new AssetWorkbenchRequests.FixedAssetDraft(null,name,category,maker.department(),maker.employee(),"一楼",null,null,null,
+                    new BigDecimal("1000"),new BigDecimal(".05"),12,YearMonth.from(benefit).plusMonths(1).toString(),benefit,benefit,benefit,"MANUAL",null,ref,"HEADER",benefit,null,null));
+            drafts.add(draft);
+            var cells=new java.util.ArrayList<com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell>();
+            cells.add(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(deferred?3:6,name,"TEXT",null));
+            cells.add(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(deferred?7:9,"1000","NUMBER","1000"));
+            cells.add(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(deferred?9:11,deferred?"83.3333333333333":"79.1666666666667","NUMBER",deferred?"83.3333333333333":"79.1666666666667"));
+            cells.add(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(deferred?24:36,cumulative.toPlainString(),"NUMBER",cumulative.toPlainString()));
+            cells.add(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell((deferred?10:12)+12-asOf.getMonthValue(),cumulative.toPlainString(),"NUMBER",cumulative.toPlainString()));
+            cells.add(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Cell(deferred?6:8,benefit.toString(),"DATE",null));
+            rows.add(new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Row(3+i,List.copyOf(cells)));
+        }
+        UUID imported=UUID.randomUUID();String hash=com.uten.imp.common.storage.ImmutableDocumentStore.digest(imported.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var preview=new com.uten.imp.features.finance.report.FinanceTemplateSourceReader.Preview(imported,template,sourcePeriod,"匿名原表.xlsx",hash,"匿名资产原表",List.of(),List.copyOf(rows),List.of(),true);
+        jdbc.update("INSERT INTO finance_template_sources(id,actor_id,template_key,period,source_name,sha256,storage_provider,storage_key,storage_size,preview) VALUES(?,?,?,?,?,?,'local','anonymous-source.xlsx',1,?::jsonb)",imported,maker.user(),template,sourcePeriod,"匿名原表.xlsx",hash,json.writeValueAsString(preview));
+        var styles=jdbc.queryForMap("SELECT cost_style_id,accumulated_style_id,clearing_style_id FROM finance_asset_categories WHERE id=?",category);
+        UUID voucher=UUID.randomUUID(),costEntry=UUID.randomUUID(),creditEntry=UUID.randomUUID();
+        jdbc.update("INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status) VALUES(?,?,?,?,'MANUAL','MANUAL',1)",voucher,"GROUP-"+voucher,sourcePeriod,asOf);
+        BigDecimal original=new BigDecimal("2000"),accumulated=cumulative.multiply(BigDecimal.valueOf(2)),net=original.subtract(accumulated);
+        jdbc.update("INSERT INTO gl_entries(id,voucher_id,line_no,style_id,direction,amount,entry_date,period) VALUES(?,?,1,?,1,?,?,?)",costEntry,voucher,styles.get("cost_style_id"),deferred?net:original,asOf,sourcePeriod);
+        if(!deferred)jdbc.update("INSERT INTO gl_entries(id,voucher_id,line_no,style_id,direction,amount,entry_date,period) VALUES(?,?,2,?,-1,?,?,?)",creditEntry,voucher,styles.get("accumulated_style_id"),accumulated,asOf,sourcePeriod);
+        jdbc.update("INSERT INTO gl_entries(voucher_id,line_no,style_id,direction,amount,entry_date,period) VALUES(?,3,?,-1,?,?,?)",voucher,styles.get("clearing_style_id"),net,asOf,sourcePeriod);
+        int journalBefore=jdbc.queryForObject("SELECT count(*) FROM gl_entries WHERE voucher_id=?",Integer.class,voucher);
+        var members=new java.util.ArrayList<com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Member>();
+        for(int i=0;i<2;i++)members.add(new com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Member(type,drafts.get(i).id(),3+i,6,drafts.get(i).version()));
+        UUID request=UUID.randomUUID();var command=new com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Create(request,imported,voucher,asOf,deferred?List.of(costEntry):List.of(costEntry,creditEntry),members,"匿名原表与分科目GL一致");
+        var created=openingGroups.create(command);assertThat(openingGroups.create(command).get("id")).isEqualTo(request);
+        // Real migrated PostgreSQL + real secured controller/service proxies, two
+        // users. Standalone MVC only replaces transport/JWT admission, not the
+        // method-authority, company data, immutable source or group lifecycle.
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(openingGroupController,templateSourceController)
+            .setControllerAdvice(new com.uten.imp.common.web.GlobalExceptionHandler())
+            .setMessageConverters(httpMessageHandlers.getMessageConverters().toArray(new org.springframework.http.converter.HttpMessageConverter<?>[0])).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/finance/template-imports/"+imported))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.importId").value(imported.toString()));
+        login(reviewer,financialPermissions());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/finance/template-imports/"+imported))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/finance/asset-opening-groups/"+request+"/source")
+                .queryParam("sourceImportId",UUID.randomUUID().toString()))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.importId").value(imported.toString()))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.sha256").value(hash))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.rows.length()").value(2));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/finance/asset-opening-groups/"+UUID.randomUUID()+"/source"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound());
+        login(reviewer,Set.of("finance_asset:approve"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/finance/asset-opening-groups/"+request+"/source"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        login(maker,financialPermissions());
+        assertThatThrownBy(()->openingGroups.approve(request,new com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Action(((Number)created.get("version")).longValue(),"不能自批"))).isInstanceOf(ApiException.class);
+        login(reviewer,financialPermissions());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/finance/asset-opening-groups/"+request+"/approve")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{\"expectedVersion\":0,\"reason\":\"另一人核对原组原件\"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("APPROVED"));
+        assertThatThrownBy(()->jdbc.update("UPDATE gl_entries SET amount=amount+1 WHERE id=?",costEntry)).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        for(var draft:drafts){
+            login(maker,financialPermissions());var current=detail(draft.id(),deferred).summary();var submitted=workflow.submit(draft.id(),current.version(),deferred);
+            login(reviewer,financialPermissions());var approved=workflow.approve(draft.id(),submitted.version(),"按原表累计及剩余期",deferred);
+            login(poster,financialPermissions());workflow.activate(draft.id(),approved.version(),deferred);
+            var active=detail(draft.id(),deferred);assertThat(active.summary().openingBalance().groupId()).isEqualTo(request);
+            assertThat(active.schedule()).hasSize(6);assertThat(active.schedule().getFirst().openingBalance()).isEqualByComparingTo(new BigDecimal("1000").subtract(cumulative));
+            if(deferred)assertThat(active.summary().totalAmount()).isEqualByComparingTo("1000");
+            login(maker,financialPermissions());assertThatThrownBy(()->recognitionReversals.request(draft.id(),deferred,new AssetWorkbenchRequests.ReasonCommand(active.summary().version(),"不能冲整张源凭证"))).isInstanceOf(ApiException.class).hasMessageContaining("整组");
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM gl_entries WHERE voucher_id=?",Integer.class,voucher)).isEqualTo(journalBefore);
+        String period=YearMonth.from(asOf).plusMonths(1).toString();login(maker,financialPermissions());
+        var postingPreview=posting.preview(new AssetWorkbenchRequests.PostingPreviewCommand(deferred?"AMORTIZATION":"DEPRECIATION","CORPORATE",period));
+        var postingSubmitted=posting.submit(postingPreview.id(),new AssetWorkbenchRequests.PostingActionCommand(postingPreview.version(),postingPreview.token()));
+        login(reviewer,financialPermissions());var postingApproved=posting.approve(postingSubmitted.id(),new AssetWorkbenchRequests.ApprovalCommand(postingSubmitted.version(),"实际非零计提"));
+        login(poster,financialPermissions());var posted=posting.post(postingApproved.id(),new AssetWorkbenchRequests.PostingActionCommand(postingApproved.version(),null));
+        assertThat(posted.totalAmount()).isPositive();
+        login(maker,financialPermissions());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/finance/asset-opening-groups/"+request+"/revoke")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{\"expectedVersion\":1,\"reason\":\"更正原表对应\"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("REVOKE_PENDING"));
+        login(reviewer,financialPermissions());assertThatThrownBy(()->openingGroups.approveRevoke(request,new com.uten.imp.features.finance.asset.api.AssetOpeningGroupContracts.Action(2,"必须先红冲"))).isInstanceOf(ApiException.class).hasMessageContaining("先按期间倒序");
+        reverseMonth(posted,reviewer,maker,poster);
+        login(reviewer,financialPermissions());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/finance/asset-opening-groups/"+request+"/approve-revoke")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{\"expectedVersion\":2,\"reason\":\"保留原GL，释放本次认领\"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("REVOKED"));
+        var revoked=openingGroups.get(request);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/finance/asset-opening-groups/"+request+"/source"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.sha256").value(hash));
+        assertThat(revoked.get("status")).isEqualTo("REVOKED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_asset_opening_entry_claims WHERE group_id=?",Integer.class,request)).isZero();
+        assertThat(jdbc.queryForObject("SELECT status FROM gl_vouchers WHERE id=?",Integer.class,voucher)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM gl_entries WHERE voucher_id=?",Integer.class,voucher)).isEqualTo(journalBefore);
+        for(var draft:drafts)assertThat(detail(draft.id(),deferred).summary().status()).isEqualTo("DRAFT");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_asset_template_history WHERE group_id=?",Integer.class,request)).isEqualTo(2);
+    }
 
     @ParameterizedTest @CsvSource({"false,false", "false,true", "true,false", "true,true"})
     void sourceIdentityKeepsSelfExclusionCrossKindChecksAndDeletedHistory(boolean deferred,boolean hasUuid) {
@@ -423,8 +614,8 @@ class FinanceAssetReviewRevisionPostgresTest {
             json.writeValue(directory.resolve("profit.json").toFile(),com.uten.imp.features.finance.gl.FinancialStatementPresentation.apply("PROFIT","template",financialReports.profitMonthly(end.getYear(),end.getMonthValue())));
         } catch(java.io.IOException failure){throw new AssertionError(failure);}
         var historical=assetReports.depreciationSchedule(1,50,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE,asOf);
-        assertThat(historical.rows().stream().filter(r->"接续资产".equals(r.get("name"))).findFirst().orElseThrow().get("netValue"))
-                .isEqualTo(new BigDecimal("660.00"));
+        assertThat((BigDecimal)historical.rows().stream().filter(r->"接续资产".equals(r.get("assetName"))).findFirst().orElseThrow().get("netValue"))
+                .isEqualByComparingTo("660");
         assertThatThrownBy(()->posting.post(posted.id(),new AssetWorkbenchRequests.PostingActionCommand(posted.version(),null)))
                 .isInstanceOf(ApiException.class);
         login(reverseMaker,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
@@ -570,7 +761,7 @@ class FinanceAssetReviewRevisionPostgresTest {
     }
 
     @Test
-    void fullyDepreciatedOpeningUsesTheSameRoundedResidualInValidationAndDatabase() {
+    void fullyDepreciatedOpeningRetainsTheExactResidualProductInValidationAndDatabase() {
         Actor maker=actor("opening-rounded-maker"), reviewer=actor("opening-rounded-reviewer"), poster=actor("opening-rounded-poster");
         UUID category=category(false);
         var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
@@ -578,13 +769,13 @@ class FinanceAssetReviewRevisionPostgresTest {
         login(maker,financialPermissions());
         var draft=workflow.createFixed(new AssetWorkbenchRequests.FixedAssetDraft(null,"四位精度提足资产",category,maker.department(),maker.employee(),"一楼",null,null,null,
                 new BigDecimal("100.0001"),new BigDecimal("0.05"),12,period,asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,null,
-                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("95.0001"),0,null)));
+                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("95.000095"),0,null)));
         var submitted=workflow.submit(draft.id(),draft.version(),false);
         login(reviewer,financialPermissions());
-        var approved=workflow.approve(draft.id(),submitted.version(),"核对舍入残值",false);
+        var approved=workflow.approve(draft.id(),submitted.version(),"核对精确残值",false);
         login(poster,financialPermissions());
         workflow.activate(draft.id(),approved.version(),false);
-        assertThat(queries.fixedAsset(draft.id()).summary().netBookValue()).isEqualByComparingTo("5.0000");
+        assertThat(queries.fixedAsset(draft.id()).summary().netBookValue()).isEqualByComparingTo("5.000005");
         assertThat(jdbc.queryForObject("SELECT depreciable_amount-opening_accumulated_amount FROM finance_asset_books WHERE asset_id=?",BigDecimal.class,draft.id()))
                 .isEqualByComparingTo("0.0000");
         // Keep the shared application fixture clear of another test's company-wide posting candidates.

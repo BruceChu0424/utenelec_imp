@@ -1,13 +1,21 @@
 import '../../../shared/formatters/exact_decimal.dart';
 
-/// The existing quantity and rate columns both have 18 decimal storage digits.
-/// Quantities use four fractional places; unit rates use six.
-final productionQuantityMaxUnits = BigInt.from(10).pow(18) - BigInt.one;
+/// Actual quantity/rate inputs retain 24 fractional and 40 integer digits.
+/// Intermediate products use both complete input scales, never a stored scale.
+const productionQuantityScale = 24;
+const productionProductScale = productionQuantityScale * 2;
+final productionQuantityMaxUnits = BigInt.from(10).pow(64) - BigInt.one;
+final productionProductFactor = BigInt.from(10).pow(productionQuantityScale);
+final productionProductMaxUnits =
+    BigInt.from(10).pow(40 + productionProductScale) - BigInt.one;
 
 /// Review facts retain their original decimal text. Already-rounded large
 /// legacy JSON numbers remain unknown instead of being reconstructed.
-String? productionExactQuantityText(Object? value, {int scale = 4}) {
-  final safeLimit = scale > 4 ? 1000000 : 10000000000;
+String? productionExactQuantityText(
+  Object? value, {
+  int scale = productionQuantityScale,
+}) {
+  final safeLimit = scale == 6 ? 1000000 : 10000000000;
   if (value is num && (!value.isFinite || value.abs() >= safeLimit)) {
     return null;
   }
@@ -29,13 +37,18 @@ String? productionExactQuantityText(Object? value, {int scale = 4}) {
 
 /// A trusted quantity in fixed decimal units. Large legacy JSON numbers remain
 /// unknown; only their original exact text can participate in a capacity check.
-BigInt? productionExactQuantityUnits(Object? value, {int scale = 4}) {
+BigInt? productionExactQuantityUnits(
+  Object? value, {
+  int scale = productionQuantityScale,
+}) {
   final text = productionExactQuantityText(value, scale: scale);
   return text == null ? null : financeExactDecimalUnits(text, scale: scale);
 }
 
-String productionQuantityTextFromUnits(BigInt units, {int scale = 4}) =>
-    _canonical(financeExactDecimalFromUnits(units, scale: scale));
+String productionQuantityTextFromUnits(
+  BigInt units, {
+  int scale = productionQuantityScale,
+}) => _canonical(financeExactDecimalFromUnits(units, scale: scale));
 
 String? productionQuantityWithUnit(Object? value, String? unit) {
   final text = productionExactQuantityText(value);
@@ -47,7 +60,10 @@ String? productionQuantityWithUnit(Object? value, String? unit) {
 /// Small legacy wire values remain numbers. Large authoritative decimal text
 /// crosses JSON as text, including on JavaScript clients; never recover it from
 /// an already-rounded number. The server binds both forms to BigDecimal.
-Object productionQuantityWire(Object? value, {int scale = 4}) {
+Object productionQuantityWire(
+  Object? value, {
+  int scale = productionQuantityScale,
+}) {
   final text = productionExactQuantityText(value, scale: scale);
   if (text == null) throw const FormatException('数量缺少精确原文，请重新读取或填写');
   final number = double.parse(text);
@@ -57,7 +73,7 @@ Object productionQuantityWire(Object? value, {int scale = 4}) {
 }
 
 String? productionExactPercentageText(Object? rate) {
-  final value = productionExactQuantityText(rate, scale: 6);
+  final value = productionExactQuantityText(rate);
   return value == null
       ? null
       : _canonical(financeExactMultiplyTexts([value, '100'])!);

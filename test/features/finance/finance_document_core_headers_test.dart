@@ -171,7 +171,7 @@ void main() {
         type: type,
       );
       if (type == FinanceDocType.payment) {
-        expect(create.map((column) => column.label), ['应付单号', '本次付款(原币)']);
+        expect(create.map((column) => column.label), ['应付单号', '本次付款金额']);
         expect(detail['bill'], create.first.label);
         expect(detail['amountOriginal'], create.last.label);
         expect(table.columns.map((column) => column.key), [
@@ -189,6 +189,7 @@ void main() {
         );
       } else {
         expect(create.map((column) => column.label), [
+          if (type == FinanceDocType.expense) '支出类型',
           type == FinanceDocType.expense ? '费用项目' : '收入项目',
           '部门',
           '数量',
@@ -196,6 +197,10 @@ void main() {
           '金额',
         ]);
         expect(detail.values, create.map((column) => column.label));
+        if(type==FinanceDocType.expense){
+          expect(detail['postingPurpose'],'支出类型');
+          expect(table.columns.singleWhere((column)=>column.key=='postingPurpose').value(table.items.single),row.postingPurpose.label);
+        }
         expect(
           table.columns
               .singleWhere((column) => column.key == 'qty')

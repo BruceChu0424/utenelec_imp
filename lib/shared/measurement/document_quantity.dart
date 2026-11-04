@@ -9,25 +9,37 @@ String? recordedDocumentDecimal(Map<String, dynamic> json, String key) {
   return value is String ? financeExactDecimal(value) : null;
 }
 
+/// Read compatibility only. Native commands use [recordedDocumentDecimal] so
+/// an older binary numeric response cannot authorize a new exact write.
+Map<String, String?> recordedDecimalFields(
+  Map<String, dynamic> json,
+  Iterable<String> keys,
+) => Map.unmodifiable({
+  for (final key in keys)
+    key: financeExactDecimal(
+      json.containsKey('${key}Exact') ? json['${key}Exact'] : json[key],
+    ),
+});
+
 String? nonNegativeDocumentQuantityText(String raw) {
-  final text = financeExactDecimal(raw);
-  final units = financeExactDecimalUnits(text);
+  final text = financeExactTrimmed(financeExactDecimal(raw));
+  final units = financeExactDecimalUnits(text, scale: 24);
   if (units == null ||
       units < BigInt.zero ||
-      units >= BigInt.from(10).pow(18)) {
+      units >= BigInt.from(10).pow(64)) {
     return null;
   }
   return financeExactTrimmed(text!);
 }
 
-/// NUMERIC(18,4) input remains decimal text until the server validates it.
-/// A binary number cannot preserve every valid 14-integer/4-fraction quantity.
+/// 40-integer/24-fraction input remains decimal text until the server validates it.
+/// A binary number cannot preserve every valid 40-integer/24-fraction quantity.
 String? positiveDocumentQuantityText(String raw) {
-  final text = financeExactDecimal(raw);
-  final units = financeExactDecimalUnits(text);
+  final text = financeExactTrimmed(financeExactDecimal(raw));
+  final units = financeExactDecimalUnits(text, scale: 24);
   if (units == null ||
       units <= BigInt.zero ||
-      units >= BigInt.from(10).pow(18)) {
+      units >= BigInt.from(10).pow(64)) {
     return null;
   }
   return financeExactTrimmed(text);

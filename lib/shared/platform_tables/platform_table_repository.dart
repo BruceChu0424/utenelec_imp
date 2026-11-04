@@ -101,6 +101,26 @@ class PlatformTableRepository {
     await api.post('/platform-columns/$scope/definitions/$id/use');
   }
 
+  /// Saved native history, with the original definitions and frozen results.
+  /// Never substitute a live batch read or recalculate missing formulas.
+  Future<PlatformRowValues> latestHistory(String scope, String recordId) async {
+    final versions = await api.getList(
+      '/platform-columns/$scope/values/$recordId/history',
+      query: {'size': 1},
+    );
+    if (versions.isEmpty) return PlatformRowValues(recordId: recordId);
+    final value = versions.first['row'];
+    if (value is! Map) throw const FormatException('历史扩展字段未完整返回，请重新读取');
+    final row = PlatformRowValues.fromJson({
+      ...Map<String, dynamic>.from(value),
+      'canWrite': false,
+    });
+    if (row.recordId != recordId) {
+      throw const FormatException('历史扩展字段不属于当前明细，暂不能显示');
+    }
+    return row;
+  }
+
   Future<void> deleteDefinition(String scope, String id) =>
       api.delete('/platform-columns/$scope/definitions/$id');
 

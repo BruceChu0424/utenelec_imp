@@ -168,6 +168,7 @@ class ReportMetadataRead {
       totalPages: metadata.source.totalPages,
       total: metadata.source.total,
       meta: response.meta,
+      documentMetadata: response.documentMetadata,
       totals: metadata.source.totals,
       columnSearchKeys: response.columnSearchKeys,
       readScopeVersion: response.readScopeVersion,

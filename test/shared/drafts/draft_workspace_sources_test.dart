@@ -90,7 +90,9 @@ class _Snapshot extends SessionSnapshotNotifier {
 }
 
 class _PurchaseRepository extends PurchaseRepository {
-  _PurchaseRepository() : super(ApiClient(Dio()), PurchaseDocType.order);
+  _PurchaseRepository({this.exactAmount})
+    : super(ApiClient(Dio()), PurchaseDocType.order);
+  final String? exactAmount;
   final deleted = <String>[];
   void Function()? afterDelete;
   @override
@@ -104,7 +106,13 @@ class _PurchaseRepository extends PurchaseRepository {
     final rows = [
       for (final id in ['one', 'two'])
         if (!deleted.contains(id))
-          PurchaseDocListItem(id: id, billNo: id, status: 0, totalLocal: 42.0),
+          PurchaseDocListItem(
+            id: id,
+            billNo: id,
+            status: 0,
+            totalLocal: 42.0,
+            totalLocalText: exactAmount,
+          ),
     ];
     return PagedResult(
       items: rows,
@@ -127,7 +135,9 @@ class _PurchaseRepository extends PurchaseRepository {
 }
 
 class _SubcontractRepository extends SubcontractRepository {
-  _SubcontractRepository() : super(ApiClient(Dio()), SubcontractDocType.order);
+  _SubcontractRepository({this.exactAmount})
+    : super(ApiClient(Dio()), SubcontractDocType.order);
+  final String? exactAmount;
   @override
   Future<PagedResult<SubcontractDocListItem>> list({
     int page = 1,
@@ -136,7 +146,14 @@ class _SubcontractRepository extends SubcontractRepository {
     String? sort,
     String? order,
   }) async => PagedResult(
-    items: const [SubcontractDocListItem(id: 'one', status: 0, totalLocal: 42)],
+    items: [
+      SubcontractDocListItem(
+        id: 'one',
+        status: 0,
+        totalLocal: 42,
+        totalLocalText: exactAmount,
+      ),
+    ],
     page: page,
     size: size,
     total: 1,
@@ -256,6 +273,46 @@ void main() {
       );
       expect(purchase.map((row) => row.amount), ['***', '***']);
       expect(subcontract.single.amount, '***');
+    },
+  );
+
+  test(
+    'draft workspace retains original amount tails across source families',
+    () async {
+      const large =
+          '1234567890123456789012345678901234567890.000000000000000000000007';
+      const tiny = '0.000000000000000000000001';
+      final container = ProviderContainer(
+        overrides: [
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'draft-exact-test'),
+          ),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.purchaseOrderView,
+            Perm.purchaseOrderPriceView,
+            Perm.subcontractOrderView,
+            Perm.subcontractOrderPriceView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          sessionSnapshotProvider.overrideWith(_Snapshot.new),
+          masterNameServiceProvider.overrideWith((ref) => _Names()),
+          purchaseRepositoryProvider(
+            PurchaseDocType.order,
+          ).overrideWithValue(_PurchaseRepository(exactAmount: large)),
+          subcontractRepositoryProvider(
+            SubcontractDocType.order,
+          ).overrideWithValue(_SubcontractRepository(exactAmount: tiny)),
+        ],
+      );
+      addTearDown(container.dispose);
+      final purchase = await container.read(
+        draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder).future,
+      );
+      final subcontract = await container.read(
+        draftWorkspaceRowsProvider(DraftDocKind.subcontractOrder).future,
+      );
+      expect(purchase.map((r) => r.amount), [large, large]);
+      expect(subcontract.single.amount, tiny);
     },
   );
 

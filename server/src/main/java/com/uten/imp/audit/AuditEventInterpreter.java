@@ -121,6 +121,8 @@ public class AuditEventInterpreter {
             Map.entry("view_finance_procurement_arrival_exception_detail",
                     "查看采购到货异常财务审批详情"),
             Map.entry("view_expense_claim_detail", "查看费用报销详情"),
+            Map.entry("view_business_application_detail", "查看行政财务申请详情"),
+            Map.entry("configure_department_approval_substitute", "配置部门负责人回避审批人"),
             Map.entry("view_fixed_asset_detail", "查看固定资产详情"),
             Map.entry("view_deferred_expense_detail", "查看递延费用详情"),
             Map.entry("view_asset_posting_run_detail", "查看资产过账批次详情"),
@@ -1125,6 +1127,10 @@ public class AuditEventInterpreter {
         values.put("expense_claim_invoices", "报销凭证登记");
         values.put("expense_claim_events", "报销流转记录");
         values.put("expense_claim_settings", "报销业务设置");
+        values.put("business_applications", "行政财务申请");
+        values.put("department_approval_policies", "负责人回避审批设置");
+        values.put("business_application_events", "申请流转记录");
+        values.put("business_application_submissions", "申请提交历史");
         // 公共 AI 平台与客户文件识别(ADR-133 / ADR-134)
         values.put("ai_providers", "AI 服务配置");
         values.put("platform_record_fields", "业务扩展字段");

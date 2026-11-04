@@ -108,11 +108,11 @@ class _AddDestinationDialogState extends State<_AddDestinationDialog> {
     final maximum = productionExactQuantityUnits(
       widget.maximumByDemand[_demandId],
     );
-    final rateText = productionExactQuantityText(widget.unitRateText, scale: 6);
-    final rate = productionExactQuantityUnits(rateText, scale: 6);
+    final rateText = productionExactQuantityText(widget.unitRateText);
+    final rate = productionExactQuantityUnits(rateText);
     String? quantityError;
     if (qty == null || qty <= BigInt.zero) {
-      quantityError = '请填写大于 0、最多 4 位小数的去向数量';
+      quantityError = '请填写大于 0、最多 24 位小数的去向数量';
     } else if (qty > productionQuantityMaxUnits) {
       quantityError = '去向数量超过系统计量范围，请核对原输入';
     } else if (available == null || available <= BigInt.zero) {
@@ -130,8 +130,8 @@ class _AddDestinationDialogState extends State<_AddDestinationDialog> {
     } else {
       final base = financeExactProductUnits(text, rateText!)!;
       if (base <= BigInt.zero) {
-        quantityError = '换算后的基本量为 0，请核对去向数量；基本量精度为 0.0001';
-      } else if (base > productionQuantityMaxUnits) {
+        quantityError = '换算后的基本量必须大于 0，请核对去向数量和换算率';
+      } else if (base > productionProductMaxUnits) {
         quantityError = '换算后的基本量超过系统计量范围，请核对数量和单位换算率';
       }
     }

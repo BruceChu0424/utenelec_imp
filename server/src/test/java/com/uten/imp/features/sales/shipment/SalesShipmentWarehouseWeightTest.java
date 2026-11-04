@@ -20,21 +20,34 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SalesShipmentWarehouseWeightTest {
 
     @Test
-    void lineWeightIsNonNegativeFourDecimalKilogramsAndZeroMeansNotWeighed() {
+    void lineWeightPreservesNativeKilogramsAndZeroMeansNotWeighed() {
         assertThat(SalesShipmentService.normalizedLineWeightKg(null)).isNull();
         assertThat(SalesShipmentService.normalizedLineWeightKg(new BigDecimal("0.0000"))).isNull();
         assertThat(SalesShipmentService.normalizedLineWeightKg(new BigDecimal("12.5000")))
                 .isEqualByComparingTo("12.5")
                 .hasToString("12.5");
         // 负标度(1E+1)转成普通小数, 出库事件 JSON 里是 10 而不是 1E+1。
-        assertThat(SalesShipmentService.normalizedLineWeightKg(new BigDecimal("1E+1")))
-                .hasToString("10");
-        for (String invalid : List.of("-0.0001", "1.00001", "100000000000000")) {
+        assertThat(SalesShipmentService.normalizedLineWeightKg(new BigDecimal("1E+1")).toPlainString())
+                .isEqualTo("10");
+        for(String exact:List.of("1.00001","100000000000000","0.000000000000000000000001"))
+            assertThat(SalesShipmentService.normalizedLineWeightKg(new BigDecimal(exact))).isEqualByComparingTo(exact);
+        for (String invalid : List.of("-0.0001", "10000000000000000000000000000000000000000")) {
             assertThatThrownBy(() -> SalesShipmentService.normalizedLineWeightKg(new BigDecimal(invalid)))
                     .isInstanceOfSatisfying(ApiException.class, error -> {
                         assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
-                        assertThat(error.getMessage()).contains("千克");
+                        assertThat(error.getMessage()).contains("重量");
                     });
+        }
+    }
+
+    @Test void excessiveRawPrecisionRequiresThisOperationChoiceAndRetainsItsOriginal() throws Exception {
+        var raw=new BigDecimal("0.1234567890123456789012345");
+        assertThatThrownBy(()->SalesShipmentService.normalizedLineWeightKg(raw))
+                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of("weight.kg-field",
+                new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))){
+            assertThat(SalesShipmentService.normalizedLineWeightKg(raw)).isEqualByComparingTo("0.123456789012345678901234");
+            assertThat(raw.toPlainString()).isEqualTo("0.1234567890123456789012345");
         }
     }
 
@@ -47,8 +60,8 @@ class SalesShipmentWarehouseWeightTest {
         int ar = source.indexOf("立应收", approve);
         assertThat(approve).isGreaterThanOrEqualTo(0);
         assertThat(source.substring(approve, ar))
-                .contains("applyMovement(s, it, StockService.DIR_OUT, now, null, lineWeights.get(it.getId()))")
-                .contains("recordShipmentObservation(s, it, posted, now);");
+                .contains("applyMovement(s, it, StockService.DIR_OUT, now, null, lineWeights.get(it.getId()),requireBaseQuantity(baseQuantities,it))")
+                .contains("recordShipmentObservation(s, it, posted, now,requireBaseQuantity(baseQuantities,it));");
         // 只有按实称记账的流水才登记观测; 按重量计的行在建表时已丢弃。
         assertThat(source)
                 .contains("posted.weightSource() != WeightSource.MEASURED")

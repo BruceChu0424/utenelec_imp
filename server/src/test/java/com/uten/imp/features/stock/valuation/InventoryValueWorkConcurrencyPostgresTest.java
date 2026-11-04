@@ -56,7 +56,7 @@ class InventoryValueWorkConcurrencyPostgresTest {
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();factory=bean.getObject();
         manager=new JpaTransactionManager(factory);manager.setDataSource(source);
         jdbc.execute("CREATE TABLE stock_value_pools(id uuid PRIMARY KEY,goods_id uuid NOT NULL,color_id uuid)");
-        jdbc.execute("CREATE TABLE stock_value_production_cost_objects(execution_segment_id uuid PRIMARY KEY,product_pool_id uuid,source_kind text,version bigint,state text,business_refresh_pending boolean,business_refresh_event_id uuid,business_refresh_actor_id uuid)");
+        jdbc.execute("CREATE TABLE stock_value_production_cost_objects(execution_segment_id uuid PRIMARY KEY,product_pool_id uuid,source_kind text,current_revision_id uuid,version bigint,state text,business_refresh_pending boolean,business_refresh_event_id uuid,business_refresh_actor_id uuid,business_refresh_precision_version smallint DEFAULT 2,business_refresh_precision_policy jsonb DEFAULT jsonb_build_object('version',1,'choices','{}'::jsonb),business_refresh_precision_root_id uuid)");
         jdbc.execute("CREATE TABLE stock_value_nodes(id uuid PRIMARY KEY,pool_id uuid,owner_kind text,owner_id uuid,active boolean, reference_root_id uuid,origin_identity_snapshot jsonb)");
         jdbc.execute("CREATE TABLE stock_value_production_cost_inputs(input_node_id uuid,execution_segment_id uuid)");
         jdbc.execute("CREATE TABLE stock_value_production_cost_outputs(source_node_id uuid,execution_segment_id uuid)");
@@ -233,13 +233,13 @@ class InventoryValueWorkConcurrencyPostgresTest {
         UUID scope=UUID.randomUUID(),pool=UUID.randomUUID(),event=UUID.randomUUID(),actor=UUID.randomUUID();
         InventoryKey key=new InventoryKey(UUID.fromString("f0000000-0000-4000-8000-000000000001"),null);
         jdbc.update("INSERT INTO stock_value_pools VALUES(?,?,NULL)",pool,key.goodsId());
-        jdbc.update("INSERT INTO stock_value_production_cost_objects VALUES(?,?,?,0,'PROVISIONAL',?,?,?)",scope,pool,kind,pending,event,actor);
+        jdbc.update("INSERT INTO stock_value_production_cost_objects(execution_segment_id,product_pool_id,source_kind,current_revision_id,version,state,business_refresh_pending,business_refresh_event_id,business_refresh_actor_id) VALUES(?,?,?,?,0,'PROVISIONAL',?,?,?)",scope,pool,kind,UUID.randomUUID(),pending,event,actor);
         return new Seed(scope,key,event,actor);
     }
     private UUID node(UUID scope,InventoryKey key,String owner,boolean active) {
         UUID pool=UUID.randomUUID(),node=UUID.randomUUID();
         jdbc.update("INSERT INTO stock_value_pools VALUES(?,?,?)",pool,key.goodsId(),key.colorId());
-        jdbc.update("INSERT INTO stock_value_nodes VALUES(?,?,?,?,?)",node,pool,owner,scope,active);
+        jdbc.update("INSERT INTO stock_value_nodes(id,pool_id,owner_kind,owner_id,active) VALUES(?,?,?,?,?)",node,pool,owner,scope,active);
         return node;
     }
     private void applyBusiness(UUID scope,UUID event,UUID actor) {

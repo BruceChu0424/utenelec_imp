@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 
@@ -416,7 +417,7 @@ String _display(Object? value) {
   if (value is num) {
     if (value == value.roundToDouble()) return value.toInt().toString();
     return value
-        .toStringAsFixed(4)
+        .toExactString(minimumFractionDigits: 4)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
   }

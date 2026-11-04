@@ -46,7 +46,10 @@ public final class GoodsPeriodicMaterialDtos {
             List<InProgressSegment> inProgressSegments,
             List<ActiveChoice> activeChoices,
             List<String> blockers,
-            boolean canSwitch) {}
+            boolean canSwitch) {
+        @JsonProperty("bulkPackageQtyExact") public String bulkPackageQtyExact() { return com.uten.imp.common.util.DecimalText.of(bulkPackageQty); }
+        @JsonProperty("suggestedBulkPackageQtyExact") public String suggestedBulkPackageQtyExact() { return com.uten.imp.common.util.DecimalText.of(suggestedBulkPackageQty); }
+    }
 
     /**
      * 用到这种料的一行 BOM 在切换时怎么处理。
@@ -59,7 +62,11 @@ public final class GoodsPeriodicMaterialDtos {
     public record AffectedBomRow(UUID bomItemId, UUID productGoodsId, String productCode, String productName,
                                  BigDecimal qty, BigDecimal basisOutputQty, String controlStage,
                                  String consumptionBasis, boolean hardGate, BigDecimal unitWeightGrams,
-                                 String action, String note) {}
+                                 String action, String note) {
+        @JsonProperty("qtyExact") public String qtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+        @JsonProperty("basisOutputQtyExact") public String basisOutputQtyExact() { return com.uten.imp.common.util.DecimalText.of(basisOutputQty); }
+        @JsonProperty("unitWeightGramsExact") public String unitWeightGramsExact() { return com.uten.imp.common.util.DecimalText.of(unitWeightGrams); }
+    }
 
     /**
      * 按工单领了这种料、还没核清的需求 (改为整批领料的前提是一条都没有)。
@@ -69,17 +76,28 @@ public final class GoodsPeriodicMaterialDtos {
     public record UnclearedDemand(UUID demandId, String planNo, String segmentCode, String productCode,
                                   String productName, String status, BigDecimal requiredQty,
                                   BigDecimal issuedQty, BigDecimal returnedQty, BigDecimal settledQty,
-                                  BigDecimal wipQty, BigDecimal unclearedQty, String note) {}
+                                  BigDecimal wipQty, BigDecimal unclearedQty, String note) {
+        @JsonProperty("requiredQtyExact") public String requiredQtyExact() { return com.uten.imp.common.util.DecimalText.of(requiredQty); }
+        @JsonProperty("issuedQtyExact") public String issuedQtyExact() { return com.uten.imp.common.util.DecimalText.of(issuedQty); }
+        @JsonProperty("returnedQtyExact") public String returnedQtyExact() { return com.uten.imp.common.util.DecimalText.of(returnedQty); }
+        @JsonProperty("settledQtyExact") public String settledQtyExact() { return com.uten.imp.common.util.DecimalText.of(settledQty); }
+        @JsonProperty("wipQtyExact") public String wipQtyExact() { return com.uten.imp.common.util.DecimalText.of(wipQty); }
+        @JsonProperty("unclearedQtyExact") public String unclearedQtyExact() { return com.uten.imp.common.util.DecimalText.of(unclearedQty); }
+    }
 
     /** 车间内料仓里这种料的账面 (不为 0 时不能改回按工单领料或改分摊方式)。 */
-    public record BinBalance(UUID warehouseId, String warehouseName, BigDecimal qty) {}
+    public record BinBalance(UUID warehouseId, String warehouseName, BigDecimal qty) {
+        @JsonProperty("qtyExact") public String qtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    }
 
     /** 还没结算、用到这种料 (有期间行或进出) 的内料仓期间。 */
     public record OpenPeriodUsage(UUID periodId, UUID binWarehouseId, String binName, int periodNo,
                                   LocalDate startDate, LocalDate endDate, String status) {}
 
     /** 还没结算的日子里按这种料算了理论用量的产品 (按内料仓汇总)。 */
-    public record UnsettledTheory(UUID binWarehouseId, String binName, int productCount, BigDecimal theoryQty) {}
+    public record UnsettledTheory(UUID binWarehouseId, String binName, int productCount, BigDecimal theoryQty) {
+        @JsonProperty("theoryQtyExact") public String theoryQtyExact() { return com.uten.imp.common.util.DecimalText.of(theoryQty); }
+    }
 
     /** 按整批领料用着这种料、还在生产中的工单段。 */
     public record InProgressSegment(UUID segmentId, String segmentCode, String productCode, String productName) {}
@@ -125,7 +143,9 @@ public final class GoodsPeriodicMaterialDtos {
     public record IssueMethodItemResult(UUID goodsId, String issueMethod, String periodicCostBasis,
                                         BigDecimal bulkPackageQty, boolean recycledMaterial,
                                         int bomRowsConverted, int bomRowsRemoved, int bomRowsRestored,
-                                        int choicesSuperseded) {}
+                                        int choicesSuperseded) {
+        @JsonProperty("bulkPackageQtyExact") public String bulkPackageQtyExact() { return com.uten.imp.common.util.DecimalText.of(bulkPackageQty); }
+    }
 
     // ================================================================ 上线准备
 
@@ -158,7 +178,10 @@ public final class GoodsPeriodicMaterialDtos {
                                  String legacyMaterial, int recentRuns, UUID bomItemId,
                                  UUID materialGoodsId, String materialCode, String materialName, UUID materialColorId,
                                  String materialSource, BigDecimal unitWeightGrams, BigDecimal goodsWeightGrams,
-                                 String status, boolean alsoOrderMaterials, boolean hasOrderBom) {}
+                                 String status, boolean alsoOrderMaterials, boolean hasOrderBom) {
+        @JsonProperty("unitWeightGramsExact") public String unitWeightGramsExact() { return com.uten.imp.common.util.DecimalText.of(unitWeightGrams); }
+        @JsonProperty("goodsWeightGramsExact") public String goodsWeightGramsExact() { return com.uten.imp.common.util.DecimalText.of(goodsWeightGrams); }
+    }
 
     /** @param gramsConvertible 基本单位能按克填 (千克、克) */
     public record MaterialOption(UUID goodsId, String code, String name, UUID colorId, String colorName,

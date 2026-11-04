@@ -28,7 +28,16 @@ public final class WorkshopMaterialCloseDtos {
                                   LocalDate startDate, LocalDate endDate, String status, String closeState,
                                   int attempts, int failures, OffsetDateTime attemptedAt, String lastErrorMessage,
                                   List<Map<String, Object>> blockers, OffsetDateTime heldUntil, LastClose lastClose,
-                                  long rowVersion, List<String> allowedActions) {}
+                                  long rowVersion, List<String> allowedActions,Map<String,Object> precisionRequirement) {
+        public CloseStatusView(UUID periodId, UUID binWarehouseId, UUID workshopDepartmentId, int periodNo,
+                LocalDate startDate, LocalDate endDate, String status, String closeState,
+                int attempts, int failures, OffsetDateTime attemptedAt, String lastErrorMessage,
+                List<Map<String,Object>> blockers,OffsetDateTime heldUntil,LastClose lastClose,
+                long rowVersion,List<String> allowedActions){
+            this(periodId,binWarehouseId,workshopDepartmentId,periodNo,startDate,endDate,status,closeState,
+                attempts,failures,attemptedAt,lastErrorMessage,blockers,heldUntil,lastClose,rowVersion,allowedActions,null);
+        }
+    }
 
     /** "立即重试" / "重新结算"。 */
     public record RetryRequest(String idempotencyKey) {}

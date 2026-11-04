@@ -169,15 +169,15 @@ Map<String, String?>? additionalPlatformDisplayFacts(Object? row) {
   }
   if (row is SubcontractShortDeliveryCase) {
     return {
-      'orderedQty': _raw(row.orderedQty),
-      'allowedLossPct': _raw(row.allowedLossPct),
-      'floorQty': _raw(row.floorQty),
-      'deliveredQty': _raw(row.deliveredQty),
-      'shortfallQty': _raw(row.shortfallQty),
-      'shortfallPct': _raw(row.shortfallPct),
+      'orderedQty': _raw(row.orderedQtyValue),
+      'allowedLossPct': _raw(row.allowedLossPctValue),
+      'floorQty': _raw(row.floorQtyValue),
+      'deliveredQty': _raw(row.deliveredQtyValue),
+      'shortfallQty': _raw(row.shortfallQtyValue),
+      'shortfallPct': _raw(row.shortfallPctValue),
       'arrivalCount': _raw(row.arrivalCount),
-      'lossQty': _raw(row.lossQty),
-      'lossPct': _raw(row.lossPct),
+      'lossQty': _raw(row.lossQtyValue),
+      'lossPct': _raw(row.lossPctValue),
     };
   }
   if (row is SubcontractSupplierLedgerLine) {

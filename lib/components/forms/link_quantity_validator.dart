@@ -1,3 +1,5 @@
+import '../../core/formatters/exact_number_text.dart';
+
 /// Validates a quantity entered while linking an upstream document item.
 ///
 /// [remaining] must be calculated from the quantity and cumulative counters
@@ -32,7 +34,7 @@ String? validateLinkQuantity(
 
 /// Formats quantities without unnecessary trailing zeroes.
 String formatLinkQuantity(double value) {
-  final fixed = value.toStringAsFixed(6);
+  final fixed = value.toExactString(minimumFractionDigits: 6);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
 }
 

@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // FQC（自制产成品）质检办理页——2026-09-12 对齐采购/委外 IQC 处置页范式。
 //
 // 用户口径：待检处置与生产成品质检里，自制产成品不管是双击还是右下角批量审批，
@@ -70,7 +71,7 @@ import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// 数量展示（去尾零，保留实际精度）——与 production_fqc_dialogs.fqcQtyText 同口径。
 String fqty(double value) => value
-    .toStringAsFixed(4)
+    .toExactString(minimumFractionDigits: 4)
     .replaceFirst(RegExp(r'0+$'), '')
     .replaceFirst(RegExp(r'\.$'), '');
 

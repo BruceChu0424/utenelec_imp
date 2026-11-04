@@ -168,15 +168,15 @@ class _BusinessEmployeePickerState extends ConsumerState<BusinessEmployeePicker>
     }
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadCandidates(String? keyword) async {
+  Future<UtenEmployeePickerPage> _loadCandidates(
+    UtenEmployeePickerQuery request,
+  ) async {
     // Disabled detail fields retain their recorded label without requesting a
     // new write-purpose candidate list just to enhance its display.
-    if (!widget.enabled) return const [];
-    final ticket = pickerAccess.capture();
-    final generation = _generation;
+    if (!widget.enabled) return const UtenEmployeePickerPage.empty();
     final repository = ref.read(employeeReferenceRepositoryProvider);
     final purpose = widget.purpose;
-    final query = keyword?.trim() ?? '';
+    final query = request.keyword?.trim() ?? '';
     return _read(() async {
       String? departmentId;
       if (query.isEmpty) {
@@ -202,19 +202,13 @@ class _BusinessEmployeePickerState extends ConsumerState<BusinessEmployeePicker>
           }
         }
       }
-      final rows = await repository.listPickerCandidates(
+      return repository.listPickerPage(
+        request,
         purpose: purpose,
-        search: query.isEmpty ? null : query,
         statuses: widget.statuses,
         departmentId: departmentId,
         includeSubtree: query.isEmpty,
-        isCurrent: () =>
-            mounted &&
-            !_invalidated &&
-            generation == _generation &&
-            ticket.isCurrent,
       );
-      return rows.map((row) => row.toPickerItem()).toList(growable: false);
     });
   }
 
@@ -230,6 +224,7 @@ class _BusinessEmployeePickerState extends ConsumerState<BusinessEmployeePicker>
         required: widget.required,
         enabled: widget.enabled && !_invalidated,
         initial: _invalidated ? null : _resolved,
+        hydrateInitialSelection: false,
         candidateScopeKey: (
           widget.purpose,
           widget.departmentId,
@@ -238,7 +233,7 @@ class _BusinessEmployeePickerState extends ConsumerState<BusinessEmployeePicker>
         departmentName: widget.departmentName,
         departmentTreeLoader: _loadDepartments,
         presentation: UtenEmployeePickerPresentation.businessReference,
-        loader: _loadCandidates,
+        pagedLoader: _loadCandidates,
         onChanged: (value) {
           setState(() {
             _resolved = value;

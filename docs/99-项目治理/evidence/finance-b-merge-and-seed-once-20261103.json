@@ -1,0 +1,408 @@
+{
+  "scope": "B-directed-34-file-merge-and-manual-source-directory-tool",
+  "branch": "uimp/finance-latest-integration-20261103",
+  "workspace": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103",
+  "sourceManifestSha256": "a34bcd77294686bf74f678d1a468fc0a48cc9d0301da658c8120a900d67cb1bf",
+  "noPushDeployCompanyWrite": true,
+  "win7Excluded": true,
+  "merge": [
+    {
+      "file": "lib/core/network/business_submission_headers.dart",
+      "before": "5ebd6ec958387a8586aeb85ac4656603984340f2e03f9e7481ece431a005e933",
+      "source": "982bc566f9630140bcf578b841327f71b6e8c8483a2d9d32014b7516f3c1006a",
+      "after": "982bc566f9630140bcf578b841327f71b6e8c8483a2d9d32014b7516f3c1006a",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "lib/core/network/api_client.dart",
+      "before": "d7275ccecbc0ab1b1848b48ef177d1284b0a748d72f99d5cae84e888b6fe534a",
+      "source": "d7275ccecbc0ab1b1848b48ef177d1284b0a748d72f99d5cae84e888b6fe534a",
+      "after": "d7275ccecbc0ab1b1848b48ef177d1284b0a748d72f99d5cae84e888b6fe534a",
+      "action": "same"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "before": "a7ba36f8cfe7be7a676bbdaf7bb253662073cde15daf7538147d0f065ed711d3",
+      "source": "aa43b24f974d54092b9c507c6a7f38b4b69c42c2bd2aeec79ce541769952d9bb",
+      "after": "604342dac6cd14e2c5996fa899ce4e763bacba81779e9ec1e0e78eb522a6eb11",
+      "action": "three-way-before-v1028-zero-conflict"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+      "before": "5aaf70a6423c94123eb8994c3367ab3c3e6620558cf7f310aa4130e699f381c3",
+      "source": "704a9e4ec484d4f47495d9edf291b813d14216a69fe7825fd6eee1cb5c7514f4",
+      "after": "704a9e4ec484d4f47495d9edf291b813d14216a69fe7825fd6eee1cb5c7514f4",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart",
+      "before": "1b05328157de33ac6841563ea93c0e8ae63e537da2da349346a2cd6086568ba8",
+      "source": "9a98fd2e5a587dc0e62574943e17faf8cee59d4e99dea3ff02f9e408b6c8ffd3",
+      "after": "9a98fd2e5a587dc0e62574943e17faf8cee59d4e99dea3ff02f9e408b6c8ffd3",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_subcontract_quantity_evidence_dialog.dart",
+      "before": "e60813b098ac09b84ff41058c8dada2528f0183184e5dab0575ac5d324e36edc",
+      "source": "96e39251daa1c9cb1d64259503d8f50103b4658a5105246dcf80ba5c1b42690b",
+      "after": "96e39251daa1c9cb1d64259503d8f50103b4658a5105246dcf80ba5c1b42690b",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_subcontract_loss_policy_dialog.dart",
+      "before": "5358ebbb61c40f80c2abe4f8a34b0d7b6a908dc66433f61f96c8b9dfb8fe374e",
+      "source": "5358ebbb61c40f80c2abe4f8a34b0d7b6a908dc66433f61f96c8b9dfb8fe374e",
+      "after": "5358ebbb61c40f80c2abe4f8a34b0d7b6a908dc66433f61f96c8b9dfb8fe374e",
+      "action": "same"
+    },
+    {
+      "file": "lib/shared/drafts/form_draft_catalog.dart",
+      "before": "82433581e2a3df2f938884bf0bc4192c1418701c2bf1638723b5e988d8c4990e",
+      "source": "c86db414a4308696d1a14c9c4248cd315f20ef31d4e934bb1cfbacd4a202c2b4",
+      "after": "4bb34e76513e118f838b92dd9af08f120dba824293395fe9465b78e9b1589d44",
+      "action": "four-descriptors-and-byKind-only-preserve-root-and-C"
+    },
+    {
+      "file": "test/features/finance/finance_attachment_recovery_test.dart",
+      "before": null,
+      "source": "d7afc396c00f38d3a90ccde45b4c2e6e7ccf5c45292bb9f6ad221a496d710033",
+      "after": "d7afc396c00f38d3a90ccde45b4c2e6e7ccf5c45292bb9f6ad221a496d710033",
+      "action": "copy-new"
+    },
+    {
+      "file": "test/features/finance/finance_statement_document_dialog_test.dart",
+      "before": "c37b8ff627e4c7630e95ea113c59bcc430119fe7021224b34db439505162709f",
+      "source": "d07d2b0137c07ba5aff030c25ec03ca8382f89cdf5d998a645c24b1db01aa625",
+      "after": "5244024de3f5e8547fe770364b636b4ae9edbfab3b9bd1ac217eae6a26e15568",
+      "action": "add-B-hard-reopen-test-and-private-picker-preserve-root-tests"
+    },
+    {
+      "file": "test/features/finance/finance_procurement_confirmation_dialog_test.dart",
+      "before": "afcad82e65c005256164cfbf2546e44a14e2ed12cb3311202619adbf4baa7301",
+      "source": "afcad82e65c005256164cfbf2546e44a14e2ed12cb3311202619adbf4baa7301",
+      "after": "afcad82e65c005256164cfbf2546e44a14e2ed12cb3311202619adbf4baa7301",
+      "action": "same"
+    },
+    {
+      "file": "test/features/finance/finance_auxiliary_import_dialog_test.dart",
+      "before": "d67a1269bb1b0c9a649088b1c68a1af89f8fe27e5f7b8a5cac79e7ec85471065",
+      "source": "cb1fad583b63d343fed9945dc2a527c0a0e391e1c0205fbe5149a218855df97b",
+      "after": "cb1fad583b63d343fed9945dc2a527c0a0e391e1c0205fbe5149a218855df97b",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "test/features/finance/finance_chart_dialog_test.dart",
+      "before": "4d24eeed28f3059cf3b46b129b23bd27a6a4ff394f4265bace40537b67b6316f",
+      "source": "4d24eeed28f3059cf3b46b129b23bd27a6a4ff394f4265bace40537b67b6316f",
+      "after": "4d24eeed28f3059cf3b46b129b23bd27a6a4ff394f4265bace40537b67b6316f",
+      "action": "same"
+    },
+    {
+      "file": "test/features/finance/finance_subcontract_quantity_evidence_dialog_test.dart",
+      "before": null,
+      "source": "15fa07b916e097a5d91b5b02e757768638075128ed4d4aa603b27c2c7fef896e",
+      "after": "15fa07b916e097a5d91b5b02e757768638075128ed4d4aa603b27c2c7fef896e",
+      "action": "copy-new"
+    },
+    {
+      "file": "test/features/finance/finance_subcontract_loss_policy_dialog_test.dart",
+      "before": "1fc0fce5719d05dc53166c44290b4a1914d6f7038fd3067741c62ef55bdd8a08",
+      "source": "1fc0fce5719d05dc53166c44290b4a1914d6f7038fd3067741c62ef55bdd8a08",
+      "after": "1fc0fce5719d05dc53166c44290b4a1914d6f7038fd3067741c62ef55bdd8a08",
+      "action": "same"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/FinanceDocumentIntakeOperations.java",
+      "before": null,
+      "source": "259ebb6100c0b5b08cd70ce7b1c10974a61a31ca625bc19ce6ee82010ba8e502",
+      "after": "259ebb6100c0b5b08cd70ce7b1c10974a61a31ca625bc19ce6ee82010ba8e502",
+      "action": "copy-new"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportService.java",
+      "before": "fe1e233ba69004be9beaa8df316c634479bb67d1087cfc21f7b52d3059b15678",
+      "source": "547d1e2bda6289ab6c19f0fd09f19473ee4453d9554ba57ef4767afc96ef9f2d",
+      "after": "547d1e2bda6289ab6c19f0fd09f19473ee4453d9554ba57ef4767afc96ef9f2d",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportController.java",
+      "before": "8504fdff37d6eabbe52604ef51b330e61aba8863f83af4844795a49c002cb007",
+      "source": "ec70df5430e515d68265c204e014a44359fa02da4a32259aea464fbf014a15b9",
+      "after": "ec70df5430e515d68265c204e014a44359fa02da4a32259aea464fbf014a15b9",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "server/src/main/resources/db/migration/V1030__finance_document_intake_operations.sql",
+      "before": null,
+      "source": "1ba82c86a7cd09c4e1b546cd113707ee49582540cd6ddb8758018d3e9ac5a6ab",
+      "after": "1ba82c86a7cd09c4e1b546cd113707ee49582540cd6ddb8758018d3e9ac5a6ab",
+      "action": "copy-new"
+    },
+    {
+      "file": "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentIntakeOperationsPostgresTest.java",
+      "before": null,
+      "source": "9767bd18d25bb90488eae2ca15599a5e8864cd8ea0c706db789824ef750488ba",
+      "after": "38b36abc5d3a1a44417894ee138354da5735c45df6e367c7913034ec5466e2d5",
+      "action": "copy-new",
+      "integrationAddition": "real Spring controller/DB multipart, operation, original-file, directory and repeated-zero-business-write smoke"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/application/port/FinanceSubcontractQuantityEvidenceReadPort.java",
+      "before": "ea60eddaf1ec525f8329b5266883bbec67176285760fb08aa09f921b9177301f",
+      "source": "14392cc691a242244c728827c1c0aec5767bbbd456c53586552f0c0df1be06fd",
+      "after": "14392cc691a242244c728827c1c0aec5767bbbd456c53586552f0c0df1be06fd",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractQuantityEvidenceContracts.java",
+      "before": "37b85d1d0aae48998be43582a694b3df13f95bed9a4027fa5ff1df348b0d0aeb",
+      "source": "37b85d1d0aae48998be43582a694b3df13f95bed9a4027fa5ff1df348b0d0aeb",
+      "after": "37b85d1d0aae48998be43582a694b3df13f95bed9a4027fa5ff1df348b0d0aeb",
+      "action": "same"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractQuantityEvidenceController.java",
+      "before": "be3d2c7b84447284cfe61763e7fa05c5539d44c34e4eaa53e49b0d4af0a3e546",
+      "source": "be3d2c7b84447284cfe61763e7fa05c5539d44c34e4eaa53e49b0d4af0a3e546",
+      "after": "be3d2c7b84447284cfe61763e7fa05c5539d44c34e4eaa53e49b0d4af0a3e546",
+      "action": "same"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractQuantityEvidenceService.java",
+      "before": "da43da7309aef8af263a90805aef37c202a904fdc3d5223e479be25ff7357eaa",
+      "source": "acd2a46e42977f8c0a96b824585d15f70458fda17a063d3e6c2a5a8df64df863",
+      "after": "acd2a46e42977f8c0a96b824585d15f70458fda17a063d3e6c2a5a8df64df863",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractLossPolicyService.java",
+      "before": "73d9d64b77962c769ee9cbde4cf1cfcc7411fa0cffdc8eb1f63d3c6cd92f5d91",
+      "source": "73d9d64b77962c769ee9cbde4cf1cfcc7411fa0cffdc8eb1f63d3c6cd92f5d91",
+      "after": "73d9d64b77962c769ee9cbde4cf1cfcc7411fa0cffdc8eb1f63d3c6cd92f5d91",
+      "action": "same"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractLossPolicyController.java",
+      "before": "59d77cd68007989e8e7b2d542795296eb6c5d4bb16621d1a31fc67613757636f",
+      "source": "59d77cd68007989e8e7b2d542795296eb6c5d4bb16621d1a31fc67613757636f",
+      "after": "59d77cd68007989e8e7b2d542795296eb6c5d4bb16621d1a31fc67613757636f",
+      "action": "same"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractTemplateSql.java",
+      "before": "344bd531de82d9790f2a90516a4b2ddc074eeb8ff4bc701820e2531da2d45cc2",
+      "source": "d72544715b9cdf341a5b5b20c9b4908bde8d5f829a8701def58161c88f330a65",
+      "after": "d72544715b9cdf341a5b5b20c9b4908bde8d5f829a8701def58161c88f330a65",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementService.java",
+      "before": "ca6effeef6b40e54ee7711c29a9927b81e7ea9fb328a039db3740e39f2a8f480",
+      "source": "48b0ac24f1875cf6527066579e158e600dad04dd4e64ef40a2495bf896534f89",
+      "after": "12566e64909ad875dff6de04304c7a324ae357e4badfc4615f372285e836c5d6",
+      "action": "three-way-overlap-finance-zero-conflict-normalized-EOL"
+    },
+    {
+      "file": "server/src/main/resources/db/migration/V1022__subcontract_original_loss_rate_policies.sql",
+      "before": "aa1544197097d235240be6d140c63ba3869aaa3a876f7fdd80db6fd915bde199",
+      "source": "aa1544197097d235240be6d140c63ba3869aaa3a876f7fdd80db6fd915bde199",
+      "after": "aa1544197097d235240be6d140c63ba3869aaa3a876f7fdd80db6fd915bde199",
+      "action": "same"
+    },
+    {
+      "file": "server/src/main/resources/db/migration/V1027__subcontract_statement_quantity_evidence.sql",
+      "before": "08582fa23ba5583b3c2b6f64cc3ee537ef1372ca297d6fb319390cc33365bb39",
+      "source": "08582fa23ba5583b3c2b6f64cc3ee537ef1372ca297d6fb319390cc33365bb39",
+      "after": "08582fa23ba5583b3c2b6f64cc3ee537ef1372ca297d6fb319390cc33365bb39",
+      "action": "same"
+    },
+    {
+      "file": "server/src/test/java/com/uten/imp/businesschain/FinanceSubcontractOriginalPostgresTest.java",
+      "before": "3864070fb33ccf33d4c718e9948e6907f831b081fd3fde83c268628a6ec4ddc4",
+      "source": "a5a1f7f13693e96732c46d690a8ae9a19ca11444ec69796f2c65b9fb4fb3eaea",
+      "after": "a5a1f7f13693e96732c46d690a8ae9a19ca11444ec69796f2c65b9fb4fb3eaea",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "server/src/test/java/com/uten/imp/businesschain/FinanceSubcontractQuantityEvidencePostgresTest.java",
+      "before": "bd93b608b9930f5ecab4ff58418e9954289b8d7209de13d57cb95b7711a6a7d7",
+      "source": "fad97cd8eee7f0f8e54e0e499005e4e89cb22d446aa98c0e73b6e250ae9ffe6e",
+      "after": "fad97cd8eee7f0f8e54e0e499005e4e89cb22d446aa98c0e73b6e250ae9ffe6e",
+      "action": "apply-from-verified-initial-result"
+    },
+    {
+      "file": "server/src/test/java/com/uten/imp/features/finance/report/FinanceProjectedReportTablePostgresTest.java",
+      "before": "a72cc64d1154252d45d3f0bd077e342b8a0545403770e40c174c61d7e7730315",
+      "source": "a284870c560848d4661e37590f13bcf80d796fca9fac344edcf7ca7a448a91c1",
+      "after": "a72cc64d1154252d45d3f0bd077e342b8a0545403770e40c174c61d7e7730315",
+      "action": "preserved-latest-root-client-name-test-no-B-delta-missing"
+    },
+    {
+      "file": "docs/99-项目治理/2026-11-03-FIN02允许损耗率与原19列来源时序实施记录.md",
+      "before": "d2598816f9e92471eb6b31043ce6dfb5be6a1628f15dbed7e2f01a576fdce698",
+      "source": "5fae7c9f5d26710007b56e7369da0663f8da89ea53d1fb51bca6eb7fc5b303fd",
+      "after": "5fae7c9f5d26710007b56e7369da0663f8da89ea53d1fb51bca6eb7fc5b303fd",
+      "action": "apply-from-verified-initial-result"
+    }
+  ],
+  "validation": {
+    "pythonFrozen13": "passed",
+    "pythonLog": "tmp/finance-research/seed-once-integration/python-frozen-13-final.log",
+    "realProvidedPackageOffline": {
+      "offlineOnly": true,
+      "networkCalls": 0,
+      "companyWrite": false,
+      "files": 20,
+      "steps": 24,
+      "templateSheetChecks": [
+        {
+          "template": "depreciation",
+          "sheet": "2026年固定资产清单",
+          "exists": true,
+          "evidenceRole": "ACTUAL_SOURCE"
+        },
+        {
+          "template": "amortization",
+          "sheet": "费用摊销",
+          "exists": true,
+          "evidenceRole": "ACTUAL_SOURCE"
+        },
+        {
+          "template": "depreciationCompleted",
+          "sheet": "2025年前折旧完清单",
+          "exists": true,
+          "evidenceRole": "ACTUAL_SOURCE"
+        },
+        {
+          "template": "copperFee",
+          "sheet": "附件7",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "copperDetail",
+          "sheet": "附件7-1",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "plasticUsage",
+          "sheet": "附件8",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "plasticIssue",
+          "sheet": "附件8-1领料",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "plasticReturn",
+          "sheet": "附件8-2退料",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "plasticFinished",
+          "sheet": "附件8-3产品入库",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "salesCostSummary",
+          "sheet": "附件15",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "otherReceivableStatement",
+          "sheet": "附件4",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "subcontractStatement",
+          "sheet": "附件1",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "supplierStatement",
+          "sheet": "附件2",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "clientStatement",
+          "sheet": "附件5",
+          "exists": true,
+          "evidenceRole": "REQUIREMENT_SAMPLE_NOT_ACTUAL_LEDGER"
+        },
+        {
+          "template": "salesCostSummary",
+          "sheet": "销售汇总表",
+          "exists": true,
+          "evidenceRole": "ACTUAL_SOURCE"
+        }
+      ],
+      "rawArchivesMatchZIP": true,
+      "allOriginalSHARecorded": true,
+      "filePurposes": {
+        "2026年9月份科目余额表代码.xls": "ACTUAL_ORIGINAL_SOURCE_EVIDENCE",
+        "ERP财务部门需求汇总.xlsx": "REQUIREMENT_TEMPLATE_AND_SAMPLE_ONLY",
+        "5380e0e9591d6269a0c67dfcc5ef7e38.png": "REFERENCE_ONLY_NO_LEDGER",
+        "e4bebb7591a44ee7406fa583727bdefa.png": "REFERENCE_ONLY_NO_LEDGER",
+        "40a4302aba9c0bbf3944864af49b56d2.png": "REFERENCE_ONLY_NO_LEDGER",
+        "3493d7fb03a3a1a2e3dc638d915a481d.png": "REFERENCE_ONLY_NO_LEDGER",
+        "codex-clipboard-b9371d07-a9af-47c0-8424-f6437c29aabc.png": "REFERENCE_ONLY_NO_LEDGER",
+        "codex-clipboard-91335811-82b0-4e1c-89df-bff07421b4e9.png": "REFERENCE_ONLY_NO_LEDGER",
+        "september/codex-clipboard-84ac21e0-6539-4ebd-bba6-9358ad11ae41.png": "REFERENCE_ONLY_NO_LEDGER",
+        "september/2026年9月份报表.zip": "REFERENCE_ONLY_NO_LEDGER",
+        "september/2026年9月份会计分录凭证.xls": "ACTUAL_ORIGINAL_SOURCE_EVIDENCE",
+        "september/2026年9月份报表/2026年9月固定资产明细表.xlsx": "ACTUAL_ORIGINAL_SOURCE_EVIDENCE",
+        "september/2026年9月份报表/2026年9月优腾公司经营指标基本信息表.xls": "REFERENCE_ONLY_NO_LEDGER",
+        "september/2026年9月份报表/2026年9月份销售出库成本核算表.xls": "ACTUAL_ORIGINAL_SOURCE_EVIDENCE",
+        "september/2026年9月份报表/2026年9月份费用明细表.xlsx": "REFERENCE_ONLY_NO_LEDGER",
+        "september/2026年9月份报表/2026年9月份财务报表.xlsx": "REFERENCE_ONLY_NO_LEDGER",
+        "september/2026年9月份报表/2026年9月份科目余额表.xls": "ACTUAL_ORIGINAL_SOURCE_EVIDENCE",
+        "september/2026年9月份报表/2026年9月份应收账款明细表.xls": "ACTUAL_ORIGINAL_SOURCE_EVIDENCE",
+        "september/2026年9月份报表/2026年9月份应付账款明细表.xls": "ACTUAL_ORIGINAL_SOURCE_EVIDENCE",
+        "september/2026年9月份报表/2026年9月份公司经营损益表.xlsx": "REFERENCE_ONLY_NO_LEDGER"
+      },
+      "stateLocation": "OS-private-temporary-directory-outside-repository",
+      "originalFilesUnchanged": true
+    },
+    "spring": "passed-15-zero-failure-error-skip",
+    "springLog": "tmp/finance-research/seed-once-integration/spring-b-final-integration-v1.log",
+    "migrationCount": 966,
+    "schema": "1031",
+    "compileMainSources": 3096,
+    "compileTestSources": 2462,
+    "springTests": 15,
+    "springIntakeAndHttpSmoke": 4,
+    "springOriginalTimeline": 5,
+    "springQuantityEvidence": 4,
+    "springOriginal19Oracles": 2
+  },
+  "toolFiles": [
+    {
+      "file": "tool/finance_seed_once.py",
+      "sha256": "2369164292c66ea85a6ae9ac5d1badb06eb97d4ce160c2e54def78ad31cd6819"
+    },
+    {
+      "file": "tool/test_finance_seed_once.py",
+      "sha256": "8e153fbbcb404ad39af7807a54f73aedfc54a4c259cd2bc9be7822ccc712c47c"
+    },
+    {
+      "file": "docs/99-项目治理/2026-11-03-财务来源一次性手动导入说明.md",
+      "sha256": "dc00ee0cd59f1a1eeb705d1e077dc25bab06385e2cd6ed039a9ab85cee84fb85"
+    }
+  ],
+  "remaining": [
+    "Root joint source freeze, all twenty requirement/source reconciliation and actual Web/Flutter stress/UAT",
+    "Manual operator account/target/sourceSystem/currency mapping and original accounting continuation workflow",
+    "No company source/directory import has been executed; no GL/cash/stock/ARAP posting by this script"
+  ]
+}

@@ -1,3 +1,4 @@
+import '../formatters/exact_decimal.dart';
 // 单货品库存面板模型 (ADR-135 §6.3/§7.1/§7.4): 出入库流水页 + 单货品 KPI 条。
 //
 // - 流水行 = 库存流水 (rowKind 'M') 与重量调整 (rowKind 'W') 按过账顺序合并;
@@ -123,10 +124,12 @@ class StockLedgerRow {
     this.qtySigned,
     this.unitName,
     this.weightKgSigned,
+    this.weightKgSignedExact,
     this.weightSource,
     this.adjustmentKind,
     this.balanceQtyAfter,
     this.balanceWeightKgAfter,
+    this.balanceWeightKgAfterExact,
     this.remark,
     this.operatorName,
     this.amountLocal,
@@ -164,6 +167,9 @@ class StockLedgerRow {
 
   /// 带符号重量 (千克); null = 没称/未知。
   final double? weightKgSigned;
+  final String? weightKgSignedExact;
+  String? get weightKgSignedText =>
+      financeExactDecimal(weightKgSignedExact ?? weightKgSigned);
 
   /// MEASURED / EXACT / SLICE / AVERAGE / ESTIMATE (重量来历; 重量未知或重量调整行为 null)。
   final String? weightSource;
@@ -174,6 +180,9 @@ class StockLedgerRow {
 
   /// 本行之后的结存重量 (千克); null = 未知。
   final double? balanceWeightKgAfter;
+  final String? balanceWeightKgAfterExact;
+  String? get balanceWeightKgAfterText =>
+      financeExactDecimal(balanceWeightKgAfterExact ?? balanceWeightKgAfter);
   final String? remark;
   final String? operatorName;
   final double? amountLocal;
@@ -212,11 +221,23 @@ class StockLedgerRow {
     colorName: _str(j['colorName']),
     qtySigned: _num(j['qtySigned']),
     unitName: _str(j['unitName']),
-    weightKgSigned: _num(j['weightKgSigned']),
+    weightKgSigned: double.tryParse(
+      (j['weightKgSignedExact'] ?? j['weightKgSigned'])?.toString() ?? '',
+    ),
+    weightKgSignedExact: financeExactDecimal(
+      j['weightKgSignedExact'] ?? j['weightKgSigned'],
+    ),
     weightSource: _str(j['weightSource']),
     adjustmentKind: _str(j['adjustmentKind']),
     balanceQtyAfter: _num(j['balanceQtyAfter']),
-    balanceWeightKgAfter: _num(j['balanceWeightKgAfter']),
+    balanceWeightKgAfter: double.tryParse(
+      (j['balanceWeightKgAfterExact'] ?? j['balanceWeightKgAfter'])
+              ?.toString() ??
+          '',
+    ),
+    balanceWeightKgAfterExact: financeExactDecimal(
+      j['balanceWeightKgAfterExact'] ?? j['balanceWeightKgAfter'],
+    ),
     remark: _str(j['remark']),
     operatorName: _str(j['operatorName']),
     amountLocal: _num(j['amountLocal']),
@@ -233,12 +254,17 @@ class StockLedgerSummary {
     this.outQty,
     this.internalTransferQty,
     this.openingWeightKg,
+    this.openingWeightKgExact,
     this.closingWeightKg,
+    this.closingWeightKgExact,
     this.inWeightKg,
+    this.inWeightKgExact,
     this.outWeightKg,
+    this.outWeightKgExact,
     this.inWeightUnknownRows = 0,
     this.outWeightUnknownRows = 0,
     this.residualKg,
+    this.residualKgExact,
   });
 
   final double? openingQty;
@@ -251,14 +277,29 @@ class StockLedgerSummary {
 
   /// 期初/期末结存重量; null = 未知。
   final double? openingWeightKg;
+  final String? openingWeightKgExact;
+  String? get openingWeightKgText =>
+      financeExactDecimal(openingWeightKgExact ?? openingWeightKg);
   final double? closingWeightKg;
+  final String? closingWeightKgExact;
+  String? get closingWeightKgText =>
+      financeExactDecimal(closingWeightKgExact ?? closingWeightKg);
   final double? inWeightKg;
+  final String? inWeightKgExact;
+  String? get inWeightKgText =>
+      financeExactDecimal(inWeightKgExact ?? inWeightKg);
   final double? outWeightKg;
+  final String? outWeightKgExact;
+  String? get outWeightKgText =>
+      financeExactDecimal(outWeightKgExact ?? outWeightKg);
   final int inWeightUnknownRows;
   final int outWeightUnknownRows;
 
   /// 本期重量尾差调整合计 (千克)。
   final double? residualKg;
+  final String? residualKgExact;
+  String? get residualKgText =>
+      financeExactDecimal(residualKgExact ?? residualKg);
 
   factory StockLedgerSummary.fromJson(Map<String, dynamic> j) =>
       StockLedgerSummary(
@@ -267,13 +308,38 @@ class StockLedgerSummary {
         inQty: _num(j['inQty']),
         outQty: _num(j['outQty']),
         internalTransferQty: _num(j['internalTransferQty']),
-        openingWeightKg: _num(j['openingWeightKg']),
-        closingWeightKg: _num(j['closingWeightKg']),
-        inWeightKg: _num(j['inWeightKg']),
-        outWeightKg: _num(j['outWeightKg']),
+        openingWeightKg: double.tryParse(
+          (j['openingWeightKgExact'] ?? j['openingWeightKg'])?.toString() ?? '',
+        ),
+        openingWeightKgExact: financeExactDecimal(
+          j['openingWeightKgExact'] ?? j['openingWeightKg'],
+        ),
+        closingWeightKg: double.tryParse(
+          (j['closingWeightKgExact'] ?? j['closingWeightKg'])?.toString() ?? '',
+        ),
+        closingWeightKgExact: financeExactDecimal(
+          j['closingWeightKgExact'] ?? j['closingWeightKg'],
+        ),
+        inWeightKg: double.tryParse(
+          (j['inWeightKgExact'] ?? j['inWeightKg'])?.toString() ?? '',
+        ),
+        inWeightKgExact: financeExactDecimal(
+          j['inWeightKgExact'] ?? j['inWeightKg'],
+        ),
+        outWeightKg: double.tryParse(
+          (j['outWeightKgExact'] ?? j['outWeightKg'])?.toString() ?? '',
+        ),
+        outWeightKgExact: financeExactDecimal(
+          j['outWeightKgExact'] ?? j['outWeightKg'],
+        ),
         inWeightUnknownRows: _int(j['inWeightUnknownRows']) ?? 0,
         outWeightUnknownRows: _int(j['outWeightUnknownRows']) ?? 0,
-        residualKg: _num(j['residualKg']),
+        residualKg: double.tryParse(
+          (j['residualKgExact'] ?? j['residualKg'])?.toString() ?? '',
+        ),
+        residualKgExact: financeExactDecimal(
+          j['residualKgExact'] ?? j['residualKg'],
+        ),
       );
 }
 
@@ -326,8 +392,10 @@ class GoodsStockInsight {
     this.qty,
     this.unitName,
     this.weightKg,
+    this.weightKgExact,
     this.weightEstimated = false,
     this.unitWeightKg,
+    this.unitWeightKgExact,
     this.tier,
     this.relHalfWidth,
     this.lastInAt,
@@ -341,10 +409,15 @@ class GoodsStockInsight {
   final double? qty;
   final String? unitName;
   final double? weightKg;
+  final String? weightKgExact;
+  String? get weightKgText => financeExactDecimal(weightKgExact ?? weightKg);
   final bool weightEstimated;
 
   /// 当前单重 (千克/基本单位)。
   final double? unitWeightKg;
+  final String? unitWeightKgExact;
+  String? get unitWeightKgText =>
+      financeExactDecimal(unitWeightKgExact ?? unitWeightKg);
   final WeightTier? tier;
 
   /// 单重 95% 区间相对半宽 (小数, 0.018 = ±1.8%)。
@@ -366,9 +439,17 @@ class GoodsStockInsight {
       GoodsStockInsight(
         qty: _num(j['qty']),
         unitName: _str(j['unitName']),
-        weightKg: _num(j['weightKg']),
+        weightKg: double.tryParse(
+          (j['weightKgExact'] ?? j['weightKg'])?.toString() ?? '',
+        ),
+        weightKgExact: financeExactDecimal(j['weightKgExact'] ?? j['weightKg']),
         weightEstimated: j['weightEstimated'] == true,
-        unitWeightKg: _num(j['unitWeightKg']),
+        unitWeightKg: double.tryParse(
+          (j['unitWeightKgExact'] ?? j['unitWeightKg'])?.toString() ?? '',
+        ),
+        unitWeightKgExact: financeExactDecimal(
+          j['unitWeightKgExact'] ?? j['unitWeightKg'],
+        ),
         tier: WeightTier.parse(j['tier']?.toString()),
         relHalfWidth: _num(j['relHalfWidth']),
         lastInAt: _str(j['lastInAt']),

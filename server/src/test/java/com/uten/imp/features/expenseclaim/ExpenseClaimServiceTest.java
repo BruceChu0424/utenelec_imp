@@ -101,9 +101,11 @@ class ExpenseClaimServiceTest {
         actorId = UUID.randomUUID();
 
         when(currentUser.get()).thenReturn(Optional.of(authUser));
+        when(applicantQuery.findEligible(any())).thenAnswer(call->Optional.of(new ExpenseApplicantQuery.ApplicantSnapshot("员工甲",UUID.randomUUID())));
         when(authUser.isVisitor()).thenReturn(false);
         when(authUser.isSuperAdmin()).thenReturn(false);
         when(authUser.getEmployeeId()).thenReturn(actorId);
+        when(authUser.getId()).thenReturn(UUID.randomUUID());
         when(authUser.getUsername()).thenReturn("actor-login");
         when(docNumber.nextNumber(DocNumberPrefix.EXPENSE_CLAIM))
                 .thenReturn("BX20260919000001");
@@ -124,6 +126,19 @@ class ExpenseClaimServiceTest {
                 notices,
                 docNumber,
                 paymentLabels,settings);
+        var departments=mock(com.uten.imp.application.policy.DepartmentApprovalScope.class);
+        when(departments.isCurrent(any())).thenReturn(true);
+        var policy=org.mockito.Mockito.spy(new ExpenseApprovalPolicy(departments));
+        org.mockito.Mockito.doNothing().when(policy).requireNext(any(),any(),anyString());
+        org.mockito.Mockito.doNothing().when(policy).requirePaymentOperator(any(),anyString(),org.mockito.ArgumentMatchers.anyBoolean());
+        var owners=mock(com.uten.imp.security.OwnerVisibility.class);
+        when(owners.evaluate(anyString(),anyString())).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(false,Set.of(),Set.of()));
+        var readers=new ExpenseClaimReadPolicy(owners);
+        org.springframework.test.util.ReflectionTestUtils.setField(readers,"approvalPolicy",policy);
+        org.springframework.test.util.ReflectionTestUtils.setField(readers,"events",eventRepository);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"approvalPolicy",policy);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"departmentRouting",mock(com.uten.imp.application.policy.DepartmentApprovalRouting.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"readAccess",readers);
     }
 
     @Test
@@ -240,7 +255,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void approveRecordsApprovalEvent() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve","attachment:view","attachment:download"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive","attachment:view","attachment:download"));
         ExpenseClaim claim = claim(UUID.randomUUID(), "SUBMITTED");
         when(claimRepository.findByIdForUpdate(claim.getId())).thenReturn(Optional.of(claim));
         when(itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(any()))
@@ -257,7 +272,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void approveBatchDecidesEveryClaimInStableOrder() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve","attachment:view","attachment:download"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive","attachment:view","attachment:download"));
         ExpenseClaim first = claim(UUID.randomUUID(), "SUBMITTED");
         ExpenseClaim second = claim(UUID.randomUUID(), "SUBMITTED");
         when(claimRepository.findByIdForUpdate(first.getId())).thenReturn(Optional.of(first));
@@ -280,7 +295,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void rejectBatchRequiresReason() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
 
         ApiException error = assertThrows(ApiException.class, () -> service.rejectBatch(
                 new ExpenseClaimBatchRequest(List.of(UUID.randomUUID()), "  ")));
@@ -291,7 +306,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void applicantCannotApproveOwnClaim() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
         ExpenseClaim claim = claim(actorId, "SUBMITTED");
         when(claimRepository.findByIdForUpdate(claim.getId())).thenReturn(Optional.of(claim));
 
@@ -374,7 +389,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void approverCannotReadSomeoneElsesDraft() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
         ExpenseClaim claim = claim(UUID.randomUUID(), "DRAFT");
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
 
@@ -429,13 +444,12 @@ class ExpenseClaimServiceTest {
 
     @Test
     void pendingFacetsAggregateDepartmentsAndMonthsForApprovalStatuses() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
         UUID departmentId = UUID.randomUUID();
-        when(applicantQuery.departmentFacets(Set.of("SUBMITTED", "REVIEWING"),actorId,false))
-                .thenReturn(List.of(new ExpenseApplicantQuery.FacetRow(
-                        departmentId.toString(), "研发部", 3)));
-        when(applicantQuery.monthFacets(Set.of("SUBMITTED", "REVIEWING"),actorId,false))
-                .thenReturn(List.of(new ExpenseApplicantQuery.FacetRow("2026-09", "2026-09", 3)));
+        when(applicantQuery.workflowFacets(any(),any(),org.mockito.ArgumentMatchers.eq("pending"),any(),any()))
+                .thenReturn(new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(
+                    List.of(new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket(departmentId.toString(),"研发部",3)),
+                    List.of(new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket("2026-09","2026-09",3)),List.of(),List.of()));
 
         var facets = service.facets("pending");
 
@@ -449,7 +463,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void payableFacetsRequirePayPermission() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
 
         ApiException error = assertThrows(ApiException.class, () -> service.facets("payable"));
 
@@ -459,7 +473,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void facetsRejectUnknownQueue() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve", "expense:pay"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive", "expense:pay"));
 
         ApiException error = assertThrows(ApiException.class, () -> service.facets("unknown-queue"));
 
@@ -469,7 +483,7 @@ class ExpenseClaimServiceTest {
 
     @Test
     void mineFacetsRequireApplyPermissionEvenForAnApproverAndPayer() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve", "expense:pay"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive", "expense:pay"));
 
         ApiException error = assertThrows(ApiException.class, () -> service.facets("mine"));
 
@@ -598,7 +612,7 @@ class ExpenseClaimServiceTest {
 
 
     @Test void rejectionResolvesPreviousTaskBeforePublishingApplicantsCorrectionTask() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
         var claim=claim(UUID.randomUUID(),"SUBMITTED");
         when(claimRepository.findByIdForUpdate(claim.getId())).thenReturn(Optional.of(claim));
         service.reject(claim.getId(),"补充原件");
@@ -634,7 +648,7 @@ class ExpenseClaimServiceTest {
     }
 
     @Test void staleVersionCannotApproveAWithdrawnAndResubmittedRevision() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
         var claim=claim(UUID.randomUUID(),"SUBMITTED");claim.setVersion(3);
         when(claimRepository.findByIdForUpdate(claim.getId())).thenReturn(Optional.of(claim));
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->service.approve(claim.getId(),1L)).getCode());
@@ -667,9 +681,8 @@ class ExpenseClaimServiceTest {
         verify(postingPort,never()).postEmployeeClaim(any());
     }
     @Test void summaryDoesNotQueryOrRevealUnauthorizedPaymentAmounts() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
-        when(claimRepository.aggregateActionable(Set.of("SUBMITTED","REVIEWING"),actorId,false))
-            .thenReturn(new Object[]{new Object[]{2L,new BigDecimal("123.00")}});
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
+        stubWorkflowSummary();
         var result=service.summary();assertEquals(2,result.pendingCount());
         assertEquals(2,result.actionablePendingCount());assertEquals(0,result.actionablePayableCount());
         assertEquals(new BigDecimal("123.00"),result.pendingAmount());assertEquals(0,result.payableCount());
@@ -677,17 +690,16 @@ class ExpenseClaimServiceTest {
         verify(claimRepository,never()).aggregatePaidBetween(any(),any());
     }
     @Test void summaryUsesTheSharedTaskAudienceInsteadOfPromotingAdministrativeBrowsing() {
-        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
-        when(claimRepository.aggregateActionable(Set.of("SUBMITTED","REVIEWING"),actorId,false))
-            .thenReturn(new Object[]{2L,new BigDecimal("123.00")});
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve:executive"));
+        stubWorkflowSummary();
         var audience=mock(com.uten.imp.application.port.TaskAudiencePort.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"taskAudience",audience);
         doAnswer(call->{
             when(authUser.getPermissions()).thenReturn(Set.of());
             return call.<com.uten.imp.application.port.TaskAudiencePort.ReadQuery<?>>getArgument(0).read();
         }).when(audience).read(any());
-        when(applicantQuery.queueCounts(actorId,false,false,false))
-            .thenReturn(new ExpenseApplicantQuery.QueueCounts(0,0,0,0,0));
+        when(applicantQuery.workflowCounts(any(),any(),org.mockito.ArgumentMatchers.eq(false),org.mockito.ArgumentMatchers.eq(false)))
+            .thenReturn(new com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto(0,0,0,0,0));
         var summary=service.summary();
         assertEquals(2,summary.pendingCount());
         assertEquals(new BigDecimal("123.00"),summary.pendingAmount());
@@ -708,6 +720,14 @@ class ExpenseClaimServiceTest {
             .thenReturn(java.util.Collections.singletonList(new Object[]{UUID.randomUUID(),"PRIVATE","DRAFT","PRIVATE"}));
         var result=service.checkInvoiceDuplicate("26310000000000000001",null,null);
         assertEquals(true,result.duplicated());assertNull(result.heldByClaimNo());assertNull(result.heldByApplicantName());
+    }
+
+    private void stubWorkflowSummary() {
+        Query aggregate=mock(Query.class);
+        when(em.createNativeQuery(contains("SELECT COUNT(*),COALESCE(SUM"))).thenReturn(aggregate);
+        when(aggregate.getSingleResult()).thenReturn(new Object[]{2L,new BigDecimal("123.00")});
+        when(applicantQuery.observerSummary(any(),any())).thenReturn(new com.uten.imp.features.expenseclaim.dto.ExpenseClaimSummaryDto(
+                2,new BigDecimal("123.00"),0,BigDecimal.ZERO,0,BigDecimal.ZERO,0,BigDecimal.ZERO));
     }
 
     private static ExpenseClaimInvoiceInput invoice(String invoiceNo, String code) {
@@ -740,6 +760,7 @@ class ExpenseClaimServiceTest {
         claim.setRemark("合法凭证及业务证明见附件");
         claim.setTotalAmount(new BigDecimal("100.00"));
         claim.setStatus(status);
+        claim.setApprovalStage(ExpenseApprovalPolicy.EXECUTIVE);
         return claim;
     }
 

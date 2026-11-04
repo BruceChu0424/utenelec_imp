@@ -37,7 +37,7 @@ public final class ProductionFinishedArrivalContracts {
              * 服务端按各份数量比例分摊(余数落在最后一份), 合格入库草稿再按放行数量从份上分摊。
              */
             @DecimalMin(value = "0", inclusive = true)
-            @Digits(integer = 14, fraction = 4) BigDecimal weight) {
+            @Digits(integer = 40, fraction = 48) BigDecimal weight) {
     }
 
     public record ArrivalRegistrationView(
@@ -196,6 +196,10 @@ public final class ProductionFinishedArrivalContracts {
              * 报工数量 x unitRate 核对实称重量与换算按重量计的精确重量(ADR-135 §3.2)。
              */
             BigDecimal unitRate) {
+
+        public String getReportedQtyExact(){return com.uten.imp.common.util.DecimalText.of(reportedQty);}
+        public String getUnitRateExact(){return com.uten.imp.common.util.DecimalText.of(unitRate);}
+        public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
 
         public ArrivalLotView {
             members = List.copyOf(members);

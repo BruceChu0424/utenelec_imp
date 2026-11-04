@@ -74,4 +74,7 @@ public record HealthRow(
     public String getAmountLocalExact() {
         return costMasked || amountLocal == null ? null : amountLocal.toPlainString();
     }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightKgExact")
+    public String getWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(weightKg);}
 }

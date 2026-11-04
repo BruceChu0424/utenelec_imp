@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/layout/uten_section_header.dart';
 // 开工确认表 (ADR-131 §5.4, 合并 ADR-093/096 的生产路线确认)。
@@ -1078,7 +1079,7 @@ class _StartConfirmationSheetState
   }
 
   static String _grams(double value) {
-    final fixed = value.toStringAsFixed(3);
+    final fixed = value.toExactString(minimumFractionDigits: 3);
     final trimmed = fixed.replaceFirst(RegExp(r'0+$'), '');
     return trimmed.endsWith('.')
         ? trimmed.substring(0, trimmed.length - 1)

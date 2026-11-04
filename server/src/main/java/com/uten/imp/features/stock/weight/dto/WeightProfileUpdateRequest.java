@@ -24,12 +24,12 @@ import java.math.BigDecimal;
  */
 public record WeightProfileUpdateRequest(
         @NotNull Long expectedVersion,
-        @DecimalMin("0") @Digits(integer = 14, fraction = 6) BigDecimal defaultTareKg,
-        @DecimalMin(value = "0", inclusive = false) @DecimalMax("100") @Digits(integer = 3, fraction = 3)
+        @DecimalMin("0") @Digits(integer = 40, fraction = 48) BigDecimal defaultTareKg,
+        @DecimalMin(value = "0", inclusive = false) @DecimalMax("100") @Digits(integer = 3, fraction = 24)
         BigDecimal tolerancePct,
-        @DecimalMin(value = "0", inclusive = false) @DecimalMax("50") @Digits(integer = 3, fraction = 3)
+        @DecimalMin(value = "0", inclusive = false) @DecimalMax("50") @Digits(integer = 3, fraction = 24)
         BigDecimal pieceCvPct,
-        @DecimalMin(value = "0", inclusive = false) @Digits(integer = 12, fraction = 12) BigDecimal manualUnitWeightKg,
+        @DecimalMin(value = "0", inclusive = false) @Digits(integer = 40, fraction = 48) BigDecimal manualUnitWeightKg,
         @Size(max = 200) String manualReason,
         Boolean learningEnabled,
         @Pattern(regexp = "AUTO|MANUAL") String regimeMode) {

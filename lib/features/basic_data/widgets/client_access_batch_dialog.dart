@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../repositories/client_repository.dart';
@@ -80,9 +81,9 @@ class _ClientAccessBatchDialogState
   }
 
   /// 候选口径与单客户面板一致：只列在职且有启用账号的员工（服务端同款过滤）。
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) {
-    Future<List<UtenEmployeePickerItem>> load() =>
-        loadClientAccessEmployees(ref.read(clientRepositoryProvider), keyword);
+  Future<UtenEmployeePickerPage> _loadEmployees(UtenEmployeePickerQuery query) {
+    Future<UtenEmployeePickerPage> load() =>
+        loadClientAccessEmployeePage(ref.read(clientRepositoryProvider), query);
     return widget.submissionOwner == null
         ? load()
         : widget.submissionOwner!.run(load);
@@ -108,11 +109,20 @@ class _ClientAccessBatchDialogState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final title = widget.assignOwner ? '批量设置负责人' : '批量设置可见人';
     return UtenAlertDialog(
       scrollable: false,
-      title: Text('$title（${widget.clientCount} 个客户）'),
+      title: Row(
+        children: [
+          Flexible(child: Text('$title（${widget.clientCount} 个客户）')),
+          UtenFieldHintIcon(
+            info: widget.assignOwner
+                ? '选中客户的负责人会全部替换成下面这组人；各客户原有的可见人不受影响。原负责人若仍在职，会自动保留为可见人以便处理在途单据。'
+                : '选中客户的可见人会全部替换成下面这组人；各客户的负责人不受影响。留空 = 清空这些客户的额外可见人。',
+            dense: true,
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -120,24 +130,12 @@ class _ClientAccessBatchDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                widget.assignOwner
-                    ? '选中客户的负责人会全部替换成下面这组人；各客户原有的可见人不受影响。'
-                          '原负责人若仍在职，会自动保留为可见人以便处理在途单据。'
-                    : '选中客户的可见人会全部替换成下面这组人；各客户的负责人不受影响。'
-                          '留空 = 清空这些客户的额外可见人。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
               if (widget.assignOwner)
                 UtenEmployeeMultiPicker(
                   key: const ValueKey('client-batch-owner-picker'),
                   label: '负责人',
                   required: true,
-                  loader: _loadEmployees,
+                  pagedLoader: _loadEmployees,
                   initialSelection: _owners,
                   panelScopeBuilder: widget.submissionOwner?.ownDialog,
                   hint: '选择一位或多位负责人',
@@ -148,7 +146,7 @@ class _ClientAccessBatchDialogState
                 UtenEmployeeMultiPicker(
                   key: const ValueKey('client-batch-viewers-picker'),
                   label: '可见人',
-                  loader: _loadEmployees,
+                  pagedLoader: _loadEmployees,
                   initialSelection: _viewers,
                   panelScopeBuilder: widget.submissionOwner?.ownDialog,
                   onChanged: (selection) =>

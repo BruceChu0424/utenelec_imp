@@ -13,6 +13,12 @@ import 'route_names.dart';
 
 /// hub 路径 → 该 hub 上全部卡片落点(只含路径，不含查询参数)。
 final Map<String, List<String>> hubCardLocations = <String, List<String>>{
+  RouteName.myApplications: const [
+    '/expense/new',
+    '/expense',
+    '/applications/new',
+    '/applications/mine',
+  ],
   RouteName.basicinfo: const [
     RouteName.basicinfoGoods,
     RouteName.basicinfoMould,
@@ -46,11 +52,13 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.workshopMaterialSetup,
   ],
   RouteName.finance: [
+    '/finance/applications',
     '/finance/expenses',
     RouteName.financeAudits,
     RouteName.financeQuoteReview,
     RouteName.financeStockCountReview,
     '/expense/approval',
+    '/approvals/FINANCE',
     '/expense/settings',
     RoutePath.financeDocNew('receipts'),
     RoutePath.financeDocNew('payments'),

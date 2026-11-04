@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'dart:math' as math;
@@ -654,6 +655,6 @@ String? _omitPlaceholder(String? value) {
 }
 
 String _number(double value) => value
-    .toStringAsFixed(4)
+    .toExactString(minimumFractionDigits: 4)
     .replaceFirst(RegExp(r'0+$'), '')
     .replaceFirst(RegExp(r'\.$'), '');

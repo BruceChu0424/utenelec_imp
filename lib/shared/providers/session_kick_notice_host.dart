@@ -1,96 +1,125 @@
 // 被顶号下线提示（不渲染，app 根常驻）。
 //
-// SessionEventBus 发出「账号在其他设备登录」的结束通知时，sessionProvider 已把状态
-// 置为未登录、路由跳回登录页；本宿主在同一事件的下一帧弹出居中说明弹窗，把服务端
-// 给出的完整原因（在哪台设备登录）讲清楚，用户不再只看到含混的「登录已失效」。
-import 'dart:async';
+// 只展示 sessionProvider 已确认结束的本次可见会话。启动读取旧凭据失败不弹窗。
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/feedback/uten_motion.dart';
-import '../../core/network/session_event_bus.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/uten_anim.dart';
+import 'session_kick_notice_provider.dart';
+import 'session_provider.dart';
 
-class SessionKickNoticeHost extends StatefulWidget {
+class SessionKickNoticeHost extends ConsumerStatefulWidget {
   const SessionKickNoticeHost({super.key});
 
   @override
-  State<SessionKickNoticeHost> createState() => _SessionKickNoticeHostState();
+  ConsumerState<SessionKickNoticeHost> createState() =>
+      _SessionKickNoticeHostState();
 }
 
-class _SessionKickNoticeHostState extends State<SessionKickNoticeHost> {
-  StreamSubscription<SessionExpiryNotice?>? _subscription;
+class _SessionKickNoticeHostState extends ConsumerState<SessionKickNoticeHost> {
   bool _showing = false;
+  Route<void>? _dialogRoute;
+  NavigatorState? _dialogNavigator;
+  SessionKickNotice? _visibleNotice;
 
   @override
   void initState() {
     super.initState();
-    _subscription = SessionEventBus.instance.onSessionExpired.listen(
-      _onExpired,
-    );
+    ref.listenManual(sessionKickNoticeProvider, (_, next) => _onNotice(next));
+    ref.listenManual(sessionProvider, (_, next) {
+      final notice = _visibleNotice;
+      if (notice != null && !_isCurrent(notice)) {
+        final route = _dialogRoute;
+        if (route != null && route.isActive) {
+          _dialogNavigator?.removeRoute(route);
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    final route = _dialogRoute;
+    if (route != null && route.isActive) _dialogNavigator?.removeRoute(route);
     super.dispose();
   }
 
-  void _onExpired(SessionExpiryNotice? notice) {
-    if (notice == null || !notice.replacedByOtherDevice || _showing) return;
+  bool _isCurrent(SessionKickNotice notice) =>
+      mounted &&
+      ref.read(sessionProvider).status == AuthStatus.unauthenticated &&
+      ref.read(sessionProvider.notifier).requestIntentEpoch ==
+          notice.intentEpoch;
+
+  void _onNotice(SessionKickNotice? notice) {
+    if (notice == null) return;
+    ref.read(sessionKickNoticeProvider.notifier).consume(notice);
+    if (_showing || !_isCurrent(notice)) return;
     _showing = true;
+    _visibleNotice = notice;
     // 下一帧再弹：让登出置位与跳转先落地，弹窗浮在已就位的登录页上。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
+      if (!_isCurrent(notice)) {
         _showing = false;
+        _visibleNotice = null;
         return;
       }
       _show(notice);
     });
   }
 
-  Future<void> _show(SessionExpiryNotice notice) async {
+  Future<void> _show(SessionKickNotice notice) async {
     final dialogContext = appNavigatorKey.currentContext ?? context;
-    final scheme = Theme.of(dialogContext).colorScheme;
-    await showDialog<void>(
-      context: dialogContext,
-      // 与全站确认框同一入场节奏。
-      animationStyle: AnimationStyle(
-        duration: utenMotionDurationOf(dialogContext, UtenAnim.fast),
-        reverseDuration: utenMotionDurationOf(dialogContext, UtenAnim.fast),
-        curve: UtenAnim.standard,
-        reverseCurve: UtenAnim.exit,
-      ),
-      builder: (dialogContext) => SelectionArea(
-        child: UtenAlertDialog(
-          maxWidth: 400,
-          showCloseButton: true,
-          onClose: () => Navigator.pop(dialogContext),
-          title: const UtenDialogHeading(
-            title: Text('当前设备已下线'),
-            // 主色而非错误红：这是单设备登录保护在生效，不是故障告警。
-            icon: Icons.phonelink_erase_rounded,
+    try {
+      await UtenBusyOverlay.yieldWhile(
+        () => showDialog<void>(
+          context: dialogContext,
+          // 与全站确认框同一入场节奏。
+          animationStyle: AnimationStyle(
+            duration: utenMotionDurationOf(dialogContext, UtenAnim.fast),
+            reverseDuration: utenMotionDurationOf(dialogContext, UtenAnim.fast),
+            curve: UtenAnim.standard,
+            reverseCurve: UtenAnim.exit,
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(notice.message ?? '账号已在其他设备登录，本设备已自动下线'),
-              const SizedBox(height: 12),
-              Text(
-                '同一账号同时只能在一处在线；在新设备登录后，先前登录的设备会自动退出。',
-                style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
+          builder: (dialogContext) {
+            _dialogRoute = ModalRoute.of(dialogContext);
+            _dialogNavigator = Navigator.of(dialogContext);
+            return SelectionArea(
+              child: UtenAlertDialog(
+                maxWidth: 400,
+                showCloseButton: true,
+                onClose: () => Navigator.pop(dialogContext),
+                title: const UtenDialogHeading(
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(child: Text('当前设备已下线')),
+                      UtenFieldHintIcon(
+                        dense: true,
+                        info: '同一账号同时只能在一处在线；在新设备登录后，先前登录的设备会自动退出。',
+                      ),
+                    ],
+                  ),
+                  // 主色而非错误红：这是单设备登录保护在生效，不是故障告警。
+                  icon: Icons.phonelink_erase_rounded,
                 ),
+                content: Text(notice.message ?? '账号已在其他设备登录，本设备已自动下线'),
               ),
-            ],
-          ),
+            );
+          },
         ),
-      ),
-    );
-    _showing = false;
+      );
+    } finally {
+      _showing = false;
+      _visibleNotice = null;
+      _dialogRoute = null;
+      _dialogNavigator = null;
+    }
   }
 
   @override

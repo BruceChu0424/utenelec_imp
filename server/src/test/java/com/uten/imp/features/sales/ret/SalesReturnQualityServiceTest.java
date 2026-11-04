@@ -1,6 +1,9 @@
 package com.uten.imp.features.sales.ret;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import com.uten.imp.common.finance.BusinessPrecisionRequiredException;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -30,7 +33,9 @@ class SalesReturnQualityServiceTest {
     }
 
     @Test
-    void cumulativeProrationHasNoFinalReleaseRoundingDrift() {
+    void cumulativeProrationHasNoFinalReleaseRoundingDrift() throws Exception {
+        assertThrows(BusinessPrecisionRequiredException.class,()->SalesReturnQualityService.proratedIncrement(BigDecimal.ONE,new BigDecimal("3"),BigDecimal.ZERO,BigDecimal.ONE));
+        try(var selected=BusinessPrecisionContext.use(Map.of("quantity.slice",new BusinessPrecisionContext.Choice(4,"HALF_UP")))){
         BigDecimal first = SalesReturnQualityService.proratedIncrement(
                 new BigDecimal("1.0000"), new BigDecimal("3"),
                 BigDecimal.ZERO, BigDecimal.ONE);
@@ -42,10 +47,12 @@ class SalesReturnQualityServiceTest {
                 new BigDecimal("2"), BigDecimal.ONE);
 
         assertEquals(new BigDecimal("1.0000"), first.add(second).add(third));
+        }
     }
 
     @Test
-    void optionalActualWeightUsesTheSameCumulativeProration() {
+    void optionalActualWeightUsesTheSameCumulativeProration() throws Exception {
+        try(var selected=BusinessPrecisionContext.use(Map.of("quantity.slice",new BusinessPrecisionContext.Choice(4,"HALF_UP")))){
         BigDecimal first = SalesReturnQualityService.proratedIncrementNullable(
                 new BigDecimal("10.0000"), new BigDecimal("3"),
                 BigDecimal.ZERO, BigDecimal.ONE);
@@ -59,6 +66,7 @@ class SalesReturnQualityServiceTest {
         assertEquals(new BigDecimal("10.0000"), first.add(second).add(third));
         assertEquals(null, SalesReturnQualityService.proratedIncrementNullable(
                 null, new BigDecimal("3"), BigDecimal.ZERO, BigDecimal.ONE));
+        }
     }
 
     @Test
@@ -96,12 +104,11 @@ class SalesReturnQualityServiceTest {
         assertEquals(new BigDecimal("1.0000"),
                 SalesReturnQualityService.normalizeDispositionQty(
                         new BigDecimal("1.00000")));
+        assertEquals(new BigDecimal("1e-24"),SalesReturnQualityService.normalizeDispositionQty(new BigDecimal("1e-24")));
+        assertThrows(ApiException.class,()->SalesReturnQualityService.normalizeDispositionQty(new BigDecimal("1e-25")));
         assertThrows(ApiException.class,
                 () -> SalesReturnQualityService.normalizeDispositionQty(
-                        new BigDecimal("0.00001")));
-        assertThrows(ApiException.class,
-                () -> SalesReturnQualityService.normalizeDispositionQty(
-                        new BigDecimal("123456789012345")));
+                        new BigDecimal("1e40")));
     }
 
     @Test

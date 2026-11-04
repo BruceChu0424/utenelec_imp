@@ -143,7 +143,7 @@ class WorkshopMaterialRepository {
     required int count,
     required String codePrefix,
     required int startNo,
-    required List<({String name, double capacityQty})> containers,
+    required List<({String name, Object capacityQty})> containers,
     required String idempotencyKey,
   }) async {
     final json = await api.post(

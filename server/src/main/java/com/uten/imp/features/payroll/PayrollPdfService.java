@@ -123,7 +123,7 @@ public class PayrollPdfService {
     }
 
     private static String money(java.math.BigDecimal amount) {
-        return amount.setScale(2).toPlainString();
+        return com.uten.imp.common.finance.ExactDecimalText.plain(amount,2);
     }
 
     private static String safeFilenamePart(String value) {

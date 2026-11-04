@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "result": "PASS",
+  "mainWorkItems": 368,
+  "statusOwnerDoDDependenciesPreserved": true,
+  "priorEvidencePreserved": true,
+  "allPageTextsEqualToValidatedTree": true,
+  "canonicalChecks": "PASS on main owning business_inventory and progress_tracker",
+  "reason": "Existing untouched git-equivalent files use different LF/CRLF bytes in main. Regenerated target-local fingerprints; no source newline rewrite or permission/DoD change.",
+  "codeFilesStillExact": 202
+}

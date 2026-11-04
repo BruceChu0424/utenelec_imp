@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 
 import '../step_up_coordinator.dart';
 import '../user_activity.dart';
+import '../request_reload_semantics.dart';
 
 class StepUpInterceptor extends Interceptor {
   StepUpInterceptor(
@@ -33,6 +34,14 @@ class StepUpInterceptor extends Interceptor {
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    if (_isSessionWatch(options)) {
+      // Passive observation uses the staff token even during impersonation.
+      // It must not replace the business identity, cancel a pending password
+      // confirmation, carry a step-up token, or start a new confirmation.
+      options.headers.remove(header);
+      handler.next(options);
+      return;
+    }
     _coordinator.bindIdentity(_identityOf(options));
     final path = options.uri.path;
     final exchange =
@@ -40,7 +49,8 @@ class StepUpInterceptor extends Interceptor {
         path.endsWith('/auth/refresh') ||
         path.endsWith('/auth/logout') ||
         path.endsWith('/auth/step-up');
-    if (exchange) {
+    if (exchange ||
+        (options.method == 'POST' && isSearchReadPost(options.path))) {
       options.headers.remove(header);
     } else if (!const {'GET', 'HEAD', 'OPTIONS'}.contains(options.method)) {
       final token = _coordinator.cachedToken;
@@ -72,7 +82,12 @@ class StepUpInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final response = err.response;
     final options = err.requestOptions;
-    if (response?.statusCode != 403 ||
+    if (options.method == 'POST' && isSearchReadPost(options.path)) {
+      handler.next(err);
+      return;
+    }
+    if (_isSessionWatch(options) ||
+        response?.statusCode != 403 ||
         _code(response?.data) != 'REAUTH_REQUIRED') {
       handler.next(err);
       return;
@@ -115,4 +130,8 @@ class StepUpInterceptor extends Interceptor {
     if (data is Map && data['code'] is String) return data['code'] as String;
     return null;
   }
+
+  static bool _isSessionWatch(RequestOptions options) =>
+      options.method == 'GET' &&
+      options.uri.path.endsWith('/auth/session/watch');
 }

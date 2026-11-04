@@ -211,7 +211,7 @@ void main() {
       await saveBomEdit(tester);
       expect(repo.pasteCalls.single.items.map((item) => item['price']), [
         null,
-        .2,
+        '0.2',
       ]);
       expect(tester.takeException(), isNull);
     },
@@ -345,7 +345,7 @@ void main() {
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
     await saveBomEdit(tester);
-    expect(repo.pasteCalls.single.items.map((i) => i['qty']), [1.0, 0.25]);
+    expect(repo.pasteCalls.single.items.map((i) => i['qty']), ['1', '0.25']);
   });
 
   testWidgets('浮窗是页面内浮层：可缩成悬浮球再展开（现场不丢），关闭即清', (tester) async {

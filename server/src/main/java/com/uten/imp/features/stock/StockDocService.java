@@ -179,6 +179,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<StockWeightAdjustmentService> weightAdjustments;
     @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.BusinessNumericInputEvidencePort> numericInputEvidence;
+    @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     private com.fasterxml.jackson.databind.ObjectMapper retentionJson;
@@ -489,7 +491,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
 
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:create')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="stock_doc_item", quantityFields={"countWeight","countQty","qty"})
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="stock_doc_item", quantityFields={"countQty","qty"})
     public StockDocDetail create(StockDocSaveRequest req) {
         return createInternal(req, null);
     }
@@ -627,7 +629,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
 
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:edit')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="stock_doc_item", requestArgument=1, documentIdArgument=0, quantityFields={"countWeight","countQty","qty"})
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="stock_doc_item", requestArgument=1, documentIdArgument=0, quantityFields={"countQty","qty"})
     public StockDocDetail update(UUID id, StockDocSaveRequest req) {
         tx.bind();
         // 编辑认领只保护草稿修改，不授予审核能力。
@@ -5511,10 +5513,29 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
+            captureWeightOperand(d,it,"WEIGHT_KG",l.getOriginalWeightInputKg(),it.getWeight());
+            captureWeightOperand(d,it,"COUNT_WEIGHT_KG",l.getOriginalCountWeightInputKg(),it.getCountWeight());
             out.add(toItemDto(it));
             auto++;
         }
         return out;
+    }
+
+    private void captureWeightOperand(StockDocument document,StockDocumentItem row,String field,BigDecimal raw,BigDecimal recorded){
+        // Intact values already live in the owning field. Do not invent extra
+        // historic raw values from a normalized stored result.
+        if(raw==null||recorded==null||raw.compareTo(recorded)==0)return;
+        if(numericInputEvidence==null)throw new IllegalStateException("Numeric input evidence adapter is unavailable");
+        itemRepo.flush();
+        Object[] saved=(Object[])em.createNativeQuery("SELECT xmin::text,weight,count_weight FROM stock_document_items WHERE id=:id").setParameter("id",row.getId()).getSingleResult();
+        String version=saved[0].toString();
+        BigDecimal actual=(BigDecimal)saved["WEIGHT_KG".equals(field)?1:2];
+        if(actual==null||actual.compareTo(recorded)!=0)throw new ApiException(ErrorCode.CONFLICT,"实际重量存储与本次已确认精度不一致，请保留原输入核对；本次未保存");
+        var choice=com.uten.imp.common.finance.BusinessPrecisionContext.usedChoices().get("weight.kg-field");
+        if(choice==null)throw new IllegalStateException("Changed kilogram input has no actual explicit precision choice");
+        var unit=new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("MASS","KG",null);
+        numericInputEvidence.getObject().record(new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture(
+            "STOCK_DOCUMENT",document.getId(),row.getId(),field,"xmin:"+version,raw,unit,recorded,unit,java.util.Map.of("weight.kg-field",choice)));
     }
 
     /**
@@ -5698,6 +5719,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         int auto = 1;
         for (StockDocItemLine line : lines) {
             String label = "第 " + (line.getLineNo() == null ? auto : line.getLineNo()) + " 行";
+            line.setOriginalWeightInputKg(line.getWeight());
+            line.setOriginalCountWeightInputKg(line.getCountWeight());
             line.setWeight(check ? null : WeightInput.kg(line.getWeight(), label + "实称重量"));
             line.setCountWeight(check ? WeightInput.kg(line.getCountWeight(), label + "实盘重量") : null);
             if (line.getCountWeight() != null
@@ -5852,6 +5875,15 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         List<StockDocItemDto> visibleItems = canViewCost
                 ? items
                 : items.stream().map(StockDocService::maskItemCost).toList();
+        if(numericInputEvidence!=null&&!visibleItems.isEmpty()){
+            var reader=numericInputEvidence.getObject();
+            for(int from=0;from<visibleItems.size();from+=5000){
+                var page=visibleItems.subList(from,Math.min(from+5000,visibleItems.size()));
+                var evidence=reader.readForAuthorizedOwner("STOCK_DOCUMENT",d.getId(),page.stream().map(StockDocItemDto::getId).filter(java.util.Objects::nonNull).toList());
+                for(var item:page)item.setWeightInputEvidence(evidence.getOrDefault(item.getId(),java.util.List.of()).stream()
+                    .filter(value->java.util.Set.of("WEIGHT_KG","COUNT_WEIGHT_KG").contains(value.fieldKey())).toList());
+            }
+        }
         boolean productionLinked = isProductionLinked(d.getId());
         boolean authorizedBalanceAdjustment = isAuthorizedBalanceAdjustment(d);
         boolean canEdit = !productionLinked && !authorizedBalanceAdjustment && d.getStatus() != null

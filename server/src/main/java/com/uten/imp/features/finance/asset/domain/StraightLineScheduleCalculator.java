@@ -1,16 +1,14 @@
 package com.uten.imp.features.finance.asset.domain;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.util.FinancialExactAmount;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** Deterministic straight-line schedule; the final period absorbs all currency rounding. */
+/** Deterministic straight-line schedule; source installments stay frozen and the final period retains the exact remainder. */
 public final class StraightLineScheduleCalculator {
-
-    /** Subledger and GL facts use NUMERIC(18,4); display layers may format fewer decimals. */
-    private static final int MONEY_SCALE = 4;
 
     private StraightLineScheduleCalculator() {}
 
@@ -31,12 +29,24 @@ public final class StraightLineScheduleCalculator {
         if (residualRate.signum() < 0 || residualRate.compareTo(BigDecimal.ONE) > 0) {
             throw new IllegalArgumentException("residualRate must be between 0 and 1");
         }
+        return calculateFrozen(originalAmount,originalAmount.multiply(residualRate),usefulMonths,startPeriod,openingAccumulated);
+    }
+
+    /** Existing approved books own their frozen residual; never rederive it from a later policy. */
+    public static Schedule calculateFrozen(BigDecimal originalAmount,BigDecimal residualAmount,int usefulMonths,
+            AssetPeriod startPeriod,BigDecimal openingAccumulated) {
+        return calculateFrozen(originalAmount,residualAmount,usefulMonths,startPeriod,openingAccumulated,null);
+    }
+    public static Schedule calculateFrozen(BigDecimal originalAmount,BigDecimal residualAmount,int usefulMonths,
+            AssetPeriod startPeriod,BigDecimal openingAccumulated,BigDecimal frozenRegularAmount) {
+        requirePositive(originalAmount,"originalAmount");Objects.requireNonNull(startPeriod,"startPeriod");
         if (usefulMonths < 1 || usefulMonths > 1200) {
             throw new IllegalArgumentException("usefulMonths must be between 1 and 1200");
         }
 
         BigDecimal original = money(originalAmount);
-        BigDecimal residual = money(original.multiply(residualRate));
+        BigDecimal residual = money(Objects.requireNonNull(residualAmount));
+        if(residual.signum()<0||residual.compareTo(original)>0)throw new IllegalArgumentException("residual amount exceeds original");
         BigDecimal depreciable = original.subtract(residual);
         BigDecimal accumulated = money(Objects.requireNonNull(openingAccumulated));
         if(accumulated.signum()<0||accumulated.compareTo(depreciable)>0)
@@ -46,7 +56,7 @@ public final class StraightLineScheduleCalculator {
 
         for (int sequence = 1; sequence <= usefulMonths; sequence++) {
             BigDecimal opening = accumulated;
-            BigDecimal amount = periodAmount(depreciable,initialAccumulated,usefulMonths,sequence,accumulated);
+            BigDecimal amount = periodAmount(depreciable,initialAccumulated,usefulMonths,sequence,accumulated,frozenRegularAmount);
             accumulated = money(accumulated.add(amount));
             lines.add(new ScheduleLine(
                     sequence,
@@ -62,12 +72,21 @@ public final class StraightLineScheduleCalculator {
     /** O(1) posting calculation shared with schedule generation; last period absorbs the exact remainder. */
     public static BigDecimal periodAmount(BigDecimal depreciable,BigDecimal openingAccumulated,int months,
             int sequence,BigDecimal accumulatedBefore) {
+        return periodAmount(depreciable,openingAccumulated,months,sequence,accumulatedBefore,null);
+    }
+    public static BigDecimal periodAmount(BigDecimal depreciable,BigDecimal openingAccumulated,int months,
+            int sequence,BigDecimal accumulatedBefore,BigDecimal frozenRegularAmount) {
         if(months<1||months>1200||sequence<1||sequence>months||openingAccumulated.signum()<0
                 ||accumulatedBefore.compareTo(openingAccumulated)<0||depreciable.compareTo(accumulatedBefore)<0)
             throw new IllegalArgumentException("Invalid depreciation period or accumulated balance");
         BigDecimal remaining=depreciable.subtract(accumulatedBefore);
-        BigDecimal regular=depreciable.subtract(openingAccumulated).divide(BigDecimal.valueOf(months),MONEY_SCALE,RoundingMode.HALF_UP);
+        BigDecimal regular=frozenRegularAmount==null?regularAmount(depreciable.subtract(openingAccumulated),months):money(frozenRegularAmount);
+        if(regular.signum()<0)throw new IllegalArgumentException("Invalid frozen installment");
         return money(sequence==months?remaining:regular.min(remaining));
+    }
+    public static BigDecimal regularAmount(BigDecimal remaining,int months){
+        if(months<1||months>1200||remaining.signum()<0)throw new IllegalArgumentException("Invalid straight-line amount or months");
+        return MoneyPolicy.cumulativeShare(remaining,BigDecimal.ONE,BigDecimal.valueOf(months));
     }
 
     public static Schedule calculateDeferred(
@@ -78,7 +97,7 @@ public final class StraightLineScheduleCalculator {
     }
 
     private static BigDecimal money(BigDecimal amount) {
-        return amount.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        return FinancialExactAmount.canonicalMoney(amount,"资产账面金额");
     }
 
     private static void requirePositive(BigDecimal amount, String field) {

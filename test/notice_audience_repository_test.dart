@@ -63,30 +63,51 @@ void main() {
     expect(result.recipientCount, 12);
   });
 
-  test('employee audience search only sends a non-empty keyword', () async {
-    late RequestOptions captured;
-    final repository = DioNoticeRepository(
-      _api((request) {
-        captured = request;
-        return [
-          {
-            'id': 'employee-1',
-            'name': '张三',
-            'code': 'E001',
-            'departmentName': '生产部',
-          },
-        ];
-      }),
-    );
+  test(
+    'employee audience search uses one scoped page without loading all recipients',
+    () async {
+      late RequestOptions captured;
+      final repository = DioNoticeRepository(
+        _api((request) {
+          captured = request;
+          return {
+            'items': [
+              {
+                'id': 'employee-1',
+                'name': '张三',
+                'code': 'E001',
+                'departmentName': '生产部',
+              },
+            ],
+            'page': 2,
+            'size': 100,
+            'total': 6001,
+            'totalPages': 61,
+          };
+        }),
+      );
 
-    final result = await repository.searchAudienceEmployees(search: ' 张三 ');
+      final result = await repository.audienceEmployeesPage(
+        search: ' 张三 ',
+        page: 2,
+        departmentId: 'department-1',
+        includeSubtree: true,
+      );
 
-    expect(captured.method, 'GET');
-    expect(captured.path, '/notices/audience/employees');
-    expect(captured.queryParameters, {'search': '张三'});
-    expect(result.single.name, '张三');
-    expect(result.single.departmentName, '生产部');
-  });
+      expect(captured.method, 'GET');
+      expect(captured.path, '/notices/audience/employees/page');
+      expect(captured.queryParameters, {
+        'search': '张三',
+        'page': 2,
+        'size': 100,
+        'departmentId': 'department-1',
+        'includeSubtree': true,
+      });
+      expect(result.totalPages, 61);
+      expect(result.items.single.name, '张三');
+      expect(result.items.single.departmentName, '生产部');
+    },
+  );
 
   test(
     'arrival feed uses the recent-order endpoint and forwards its limit',

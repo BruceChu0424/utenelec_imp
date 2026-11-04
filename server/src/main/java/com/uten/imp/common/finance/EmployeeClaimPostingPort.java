@@ -20,7 +20,9 @@ public interface EmployeeClaimPostingPort {
             UUID accountId,
             UUID expenseStyleId,
             UUID departmentId,
-            BigDecimal amount
+            BigDecimal amount,
+            AccountingExpensePurpose postingPurpose
     ) {
+        public EmployeeClaimPosting(UUID claimId,LocalDate paymentDate,UUID accountId,UUID expenseStyleId,UUID departmentId,BigDecimal amount){this(claimId,paymentDate,accountId,expenseStyleId,departmentId,amount,AccountingExpensePurpose.ORDINARY_EXPENSE);}
     }
 }

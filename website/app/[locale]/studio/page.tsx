@@ -35,7 +35,7 @@ export default async function StudioPage({
   const pageValue = Number(resolvedSearchParams.page);
   const page = Number.isInteger(pageValue) ? Math.max(1, Math.min(4167, pageValue)) : 1;
   const variantId = typeof resolvedSearchParams.variant === 'string' ? resolvedSearchParams.variant.trim().slice(0, 120) : '';
-  const [sceneRecords, result] = await Promise.all([getScenePresets(), queryStudioProducts({ query, offset: (page - 1) * 24, variantId })]);
+  const [sceneRecords, result] = await Promise.all([getScenePresets(), queryStudioProducts({ query, offset: (page - 1) * 24, variantId, locale })]);
   if (variantId && !result.selected) notFound();
   const pages = Math.max(1, Math.ceil(result.total / 24));
   const pageHref = (target: number) => { const params = new URLSearchParams(); if (query) params.set('q', query); if (target > 1) params.set('page', String(target)); return `/studio${params.size ? '?' + params : ''}#studio`; };

@@ -60,16 +60,15 @@ class GoodsCategoryRootScopeTest {
         UUID rootB = UUID.randomUUID();
         UUID leafA = UUID.randomUUID();
         UUID leafB = UUID.randomUUID();
-        when(categoryRepo.findSubtree(rootA)).thenReturn(List.of(category(rootA), category(leafA)));
-        when(categoryRepo.findSubtree(rootB)).thenReturn(List.of(category(rootB), category(leafB)));
+        when(categoryRepo.findSubtreeIdsFromRoots(any())).thenReturn(List.of(rootA, leafA, rootB, leafB));
         when(goodsRepo.findAll(anyGoodsSpecification(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
         Set<UUID> roots = new LinkedHashSet<>(List.of(rootA, rootB));
         service.list(filter(null, roots, null), 1, 20, null, null);
 
-        verify(categoryRepo).findSubtree(rootA);
-        verify(categoryRepo).findSubtree(rootB);
+        verify(categoryRepo).findSubtreeIdsFromRoots(roots.stream().sorted().toList());
+        verify(categoryRepo, never()).findSubtree(any(UUID.class));
         ArgumentCaptor<Specification<Goods>> captor = ArgumentCaptor.forClass(Specification.class);
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         verify(goodsRepo).findAll(captor.capture(), pageableCaptor.capture());
@@ -93,7 +92,7 @@ class GoodsCategoryRootScopeTest {
     @SuppressWarnings({"rawtypes", "unchecked"})
     void invalidExplicitRootsFailClosedInsteadOfFallingBackToAllGoods() {
         UUID missingRoot = UUID.randomUUID();
-        when(categoryRepo.findSubtree(missingRoot)).thenReturn(List.of());
+        when(categoryRepo.findSubtreeIdsFromRoots(List.of(missingRoot))).thenReturn(List.of());
         when(goodsRepo.findAll(anyGoodsSpecification(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
@@ -117,6 +116,7 @@ class GoodsCategoryRootScopeTest {
                 filter(null, oversized, "G-"), 1, 20, null, null));
 
         verify(categoryRepo, never()).findSubtree(any(UUID.class));
+        verify(categoryRepo, never()).findSubtreeIdsFromRoots(any());
         verify(goodsRepo, never()).findAll(anyGoodsSpecification(), any(Pageable.class));
     }
 
@@ -124,7 +124,7 @@ class GoodsCategoryRootScopeTest {
     @SuppressWarnings({"rawtypes", "unchecked"})
     void explicitCategoryIntersectsTheAllowedRootUnion() {
         UUID rootId = UUID.randomUUID(), selected = UUID.randomUUID(), child = UUID.randomUUID(), outside = UUID.randomUUID();
-        when(categoryRepo.findSubtree(rootId)).thenReturn(List.of(category(rootId), category(selected), category(child)));
+        when(categoryRepo.findSubtreeIdsFromRoots(List.of(rootId))).thenReturn(List.of(rootId, selected, child));
         when(categoryRepo.findSubtree(selected)).thenReturn(List.of(category(selected), category(child), category(outside)));
         when(goodsRepo.findAll(anyGoodsSpecification(), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
         service.list(filter(selected, Set.of(rootId), null), 1, 20, null, null);

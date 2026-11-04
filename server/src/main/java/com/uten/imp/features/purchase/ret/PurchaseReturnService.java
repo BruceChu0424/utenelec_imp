@@ -90,6 +90,8 @@ public class PurchaseReturnService {
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final PurchaseReturnAmountAuthority returnAmountAuthority;
     private final ArApLedgerService arApService;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ProcurementPayableRecognitionPort firstPayables;
     private final SupplierPaymentTermService paymentTerms;
     private final SupplierPeriodIdentityGuard periodIdentityGuard;
     private final TxSessionVars tx;
@@ -281,6 +283,7 @@ public class PurchaseReturnService {
     @PreAuthorize("hasAuthority('purchase_return:approve')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
+        if(firstPayables!=null)firstPayables.beginApproval(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RETURN",id));
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RETURN, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "采购退货审核");
@@ -347,7 +350,7 @@ public class PurchaseReturnService {
                 ? BigDecimal.ZERO : r.getTotalOriginal().negate();
         LocalDate dueDate = paymentTerms.resolveDueDate(
                 r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
-        if(returnOriginal.signum()!=0||returnLocal.signum()!=0)arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+        postOrDefer(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RETURN, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
                 returnLocal, (short) 17, null, returnOriginal, dueDate,
@@ -379,6 +382,7 @@ public class PurchaseReturnService {
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
     }
     private void requireReversibleBusiness(PurchaseReturn r){UUID id=r.getId();
+        if(firstPayables!=null)firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RETURN",id));
         var items=itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireNonNegativeStoredCommercial(r,items);
         if(r.getTotalOriginal().signum()!=0||r.getTotalLocal().signum()!=0)requireReversibleArAp(id,StockService.SRC_PURCHASE_RETURN);
@@ -395,7 +399,11 @@ public class PurchaseReturnService {
         unapprovalValues.requireIssueReturnsAvailable(sources);
         requireReturnCounterBalances(id);
     }
+    private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
+        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+    }
     private void requireReversibleArAp(UUID id,String type){
+        if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;
         try{arApService.requireReversibleSource(id,type);}
         catch(IllegalStateException denied){throw new ApiException(ErrorCode.CONFLICT,denied.getMessage());}
     }
@@ -417,6 +425,7 @@ public class PurchaseReturnService {
     private String unapprovalDependencyFacts(UUID id){return String.valueOf(em.createNativeQuery("""
         SELECT jsonb_build_object(
             'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM purchase_return_items line WHERE line.return_id=:id),
+            'firstPayable',(SELECT to_jsonb(candidate) FROM finance_procurement_payable_candidates candidate WHERE candidate.source_type='PURCHASE_RETURN' AND candidate.source_id=:id),
             'arAp',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger WHERE ledger.source_doc_id=:id),
             'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
             'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch JOIN purchase_returns doc ON doc.supplier_id=batch.supplier_id AND doc.currency_id=batch.currency_id WHERE doc.id=:id),
@@ -449,12 +458,13 @@ public class PurchaseReturnService {
                 .toList());
         arApService.reverseReturnCostProjection(r.getId(),StockService.SRC_PURCHASE_RETURN,r.getBillNo(),r.getBillDate());
         if(r.getTotalOriginal().signum()!=0||r.getTotalLocal().signum()!=0)
-            arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
+            if(firstPayables==null||!firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RETURN",r.getId())))arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReturnItem it : items) {
             reverseOriginalMovement(r,it,now);
             writeback(it, -1);
         }
+        if(firstPayables!=null)firstPayables.sourceReversed(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RETURN",id));
         r.setStatus(STATUS_REVERSED);
         returnRepo.save(r);
         arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.PURCHASE,
@@ -479,11 +489,8 @@ public class PurchaseReturnService {
     }
 
     private void applyMovement(PurchaseReturn r, PurchaseReturnItem it, short direction, OffsetDateTime ts, BigDecimal overrideAmount) {
-        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        var q=com.uten.imp.common.finance.ProcurementQuantities.of(it.getQuantitySemantics(),it.getQty(),it.getGiftQty(),rate);
-        BigDecimal baseQty = com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(it.getQuantitySemantics())
-                && it.getChargedBaseQty()!=null && it.getGiftBaseQty()!=null
-                ? it.getChargedBaseQty().add(it.getGiftBaseQty()) : q.physicalBase();
+        var q=com.uten.imp.common.finance.ProcurementQuantities.frozen(it.getQuantitySemantics(),it.getQty(),it.getGiftQty(),it.getUnitRate(),it.getChargedBaseQty(),it.getGiftBaseQty());
+        BigDecimal baseQty=q.physicalBase();
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
         stockService.recordMovement(new StockService.MovementRequest(
                 ts, StockService.TYPE_PURCHASE_RETURN, StockService.SRC_PURCHASE_RETURN,
@@ -723,7 +730,7 @@ public class PurchaseReturnService {
         NonNegativeCommercialSignGuard.requireStoredTotals(
                 "采购退货", purchaseReturn.getTotalOriginal(), purchaseReturn.getTotalLocal());
         for (PurchaseReturnItem item : items) {
-            com.uten.imp.common.finance.ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
+            com.uten.imp.common.finance.ProcurementQuantities.frozen(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate(),item.getChargedBaseQty(),item.getGiftBaseQty());
             if(item.getPrice()!=null&&item.getPrice().signum()<0 || item.getAmountOriginal()!=null&&item.getAmountOriginal().signum()<0 || item.getAmountLocal()!=null&&item.getAmountLocal().signum()<0)
                 throw new ApiException(ErrorCode.CONFLICT,"采购退货金额异常");
         }

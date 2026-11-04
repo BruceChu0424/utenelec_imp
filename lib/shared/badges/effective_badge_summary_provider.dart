@@ -34,7 +34,15 @@ BadgeEntry? _draftEntry(FormDraft draft) => switch (draft.module) {
   BadgeModule.subcontract => BadgeEntry.subcontractDrafts,
   BadgeModule.production => BadgeEntry.productionDrafts,
   BadgeModule.warehouse => BadgeEntry.warehouseDrafts,
+  BadgeModule.finance
+      when const {
+        'business_application_payment',
+        'business_application_prepayment_finance',
+      }.contains(draft.draftKind) =>
+    BadgeEntry.applicationFinance,
   BadgeModule.finance => BadgeEntry.financeDrafts,
+  BadgeModule.people when draft.route.startsWith('/applications/') =>
+    BadgeEntry.applicationMine,
   BadgeModule.people when draft.route.startsWith('/expense/') =>
     BadgeEntry.expenseMine,
   BadgeModule.people => BadgeEntry.hrTaskCenter,

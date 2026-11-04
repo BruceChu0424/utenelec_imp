@@ -33,6 +33,7 @@ import static com.uten.imp.features.finance.receivables.CustomerPrepaymentContra
 @Service
 @RequiredArgsConstructor
 public class CustomerPrepaymentOffsetService {
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativeAccounts;
     public static final String GL_SOURCE_TYPE = "CUSTOMER_PREPAYMENT_OFFSET";
 
     private final EntityManager em;
@@ -60,6 +61,7 @@ public class CustomerPrepaymentOffsetService {
 
         LocalDate effectiveDate = BusinessTime.today();
         glPosting.lockAutoProjectionPeriod(effectiveDate);
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
         List<UUID> ledgerIds = java.util.stream.Stream.concat(
                         java.util.stream.Stream.of(request.sourceLedgerId()),
                         targets.stream().map(Target::receivableLedgerId))
@@ -188,6 +190,7 @@ public class CustomerPrepaymentOffsetService {
                     .setParameter("targetRefBeforeLocal", ref.availableLocal())
                     .setParameter("targetRefAfterLocal", money(ref.availableLocal().subtract(targetSlice)))
                     .setParameter("effectiveDate", effectiveDate).setParameter("actor", actor).executeUpdate();
+            if(nativeAccounts!=null)nativeAccounts.captureCustomerOffset(allocationId);
             sourceOriginal = sourceAfterOriginal;
             sourceLocal = sourceAfterLocal;
             items.put(source.id(), source.withBalances(sourceAfterOriginal, sourceAfterLocal));
@@ -208,6 +211,8 @@ public class CustomerPrepaymentOffsetService {
         long version = number(batch[4]).longValue();
         if (version != request.expectedVersion()) throw conflict("批次版本已变化，请刷新后重试");
         LocalDate effectiveDate = NativeValueConverters.toLocalDate(batch[2]);
+        glPosting.lockAutoProjectionPeriod(effectiveDate);
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
         glPosting.removeAutoProjection(GL_SOURCE_TYPE, batchId, voucherNo(batchId), effectiveDate);
 
         @SuppressWarnings("unchecked")

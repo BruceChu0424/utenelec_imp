@@ -38,7 +38,7 @@ import static org.mockito.Mockito.*;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class TaskClaimMutationConcurrencyPostgresTest {
     private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
-    private static final List<String> TYPES = List.of("EXPENSE_APPROVE", "SALES_ORDER_FINANCE_CONFIRM");
+    private static final List<String> TYPES = List.of("PURCHASE_DECOMPOSE", "SALES_ORDER_FINANCE_CONFIRM");
     private static EntityManagerFactory emf;
     private static EntityManager em;
     private static JdbcTemplate jdbc;
@@ -233,7 +233,7 @@ class TaskClaimMutationConcurrencyPostgresTest {
 
     private <T> T as(String label, UUID employee, Callable<T> action) {
         AuthUser user = new AuthUser(employee, employee, "test",
-                Set.of("expense:approve", "sales_order_finance:view","sales_order_finance:confirm"), false, true, false);
+                Set.of("purchase_order:decompose", "sales_order_finance:view","sales_order_finance:confirm"), false, true, false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
         try { return transactions.execute(status -> {
             em.createNativeQuery("SELECT set_config('application_name', :name, true)").setParameter("name", "claim-test-" + label).getSingleResult();

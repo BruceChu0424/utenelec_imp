@@ -329,7 +329,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
 
     private void lockReviewTargets(String targetType,List<String> keys,boolean requireReviewable) {
         TaskClaimPolicy policy=TaskClaimPolicy.of(targetType);
-        if (policy.requiredViewPermission()==null) return;
+        if (policy.requiredViewPermission()==null && !"EXPENSE_APPROVE".equals(targetType)) return;
         ReviewTaskTargetLockPort port=reviewTargetLocks.stream().filter(value -> value.targetType().equals(targetType))
                 .findFirst().orElseThrow(() -> new IllegalStateException("Financial review target lock adapter missing: "+targetType));
         List<ReviewTaskTargetLockPort.Target> targets=port.resolve(keys,requireReviewable).stream()
@@ -350,8 +350,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
     @Transactional(readOnly = true)
     public Map<String, TaskClaim> activeClaimsByTargetKey(String targetType) {
         requireReviewView(TaskClaimPolicy.of(targetType));
-        return claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType).stream()
-                .filter(TaskClaim::isActive)
+        return readableClaims(targetType,claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType)).stream()
                 .collect(Collectors.toMap(TaskClaim::getTargetKey, Function.identity(), (a, b) -> a));
     }
 
@@ -360,8 +359,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
     public Map<String, TaskClaimView> activeClaimViewsByTargetKey(String targetType) {
         requireReviewView(TaskClaimPolicy.of(targetType));
         UUID me = currentUser.employeeId().orElse(null);
-        return claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType).stream()
-                .filter(TaskClaim::isActive)
+        return readableClaims(targetType,claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType)).stream()
                 .collect(Collectors.toMap(TaskClaim::getTargetKey, c -> toView(c, me), (a, b) -> a));
     }
 
@@ -372,8 +370,16 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
         UUID me = currentUser.employeeId().orElse(null);
         return claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
                 .filter(TaskClaim::isActive)
+                .filter(c->!readableClaims(targetType,List.of(c)).isEmpty())
                 .map(c -> toView(c, me));
     }
+    private List<TaskClaim> readableClaims(String type,List<TaskClaim> candidates){
+        var active=candidates.stream().filter(TaskClaim::isActive).toList();if(active.isEmpty())return active;
+        var port=reviewTargetLocks.stream().filter(p->p.targetType().equals(type)).findFirst().orElse(null);
+        if(port==null){if(TaskClaimPolicy.of(type).requiredViewPermission()!=null)throw new ApiException(ErrorCode.FORBIDDEN,"当前审核目标的读取范围尚未准备好");return active;}
+        var allowed=port.readableTargetKeys(active.stream().map(TaskClaim::getTargetKey).toList());return active.stream().filter(c->allowed.contains(c.getTargetKey())).toList();
+    }
+
 
     /** 通用任务认领用户操作显式审计：targetId = targetType/targetKey。 */
     private void auditExplicit(String action, String targetType, String targetKey) {

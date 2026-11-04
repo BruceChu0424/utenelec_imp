@@ -13,4 +13,6 @@ public interface ExpenseClaimEventRepository
     List<ExpenseClaimEvent> findByClaimIdOrderByCreatedAtAscIdAsc(UUID claimId);
 
     boolean existsByClaimIdAndEventType(UUID claimId, String eventType);
+
+    boolean existsByClaimIdAndActorEmployeeIdAndEventTypeIn(UUID claimId,UUID actorEmployeeId,java.util.Collection<String> eventTypes);
 }

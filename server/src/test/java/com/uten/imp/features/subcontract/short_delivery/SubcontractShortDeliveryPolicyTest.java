@@ -84,4 +84,28 @@ class SubcontractShortDeliveryPolicyTest {
     private static BigDecimal bd(String value) {
         return new BigDecimal(value);
     }
+
+    @Test void finiteThresholdAndOneQuantumShortfallRemainExact(){
+        assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("0.000000000000000000000001"),bd("0.000000000000000000000001")))
+                .isEqualByComparingTo("0.00000000000000000000000099999999999999999999999999");
+        assertThat(SubcontractShortDeliveryPolicy.shortfallQty(bd("1"),bd("0.999999999999999999999999")))
+                .isEqualByComparingTo("0.000000000000000000000001");
+    }
+
+    @Test void severityCannotFlipBecauseASelectedPercentRoundsToTheThreshold() throws Exception {
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                SubcontractShortDeliveryPolicy.PERCENT_PURPOSE,new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(0,"HALF_UP")))){
+            assertThat(SubcontractShortDeliveryPolicy.shortfallPct(bd("3"),bd("2.400000000000000000000001")))
+                    .isEqualByComparingTo("20");
+            assertThat(SubcontractShortDeliveryPolicy.severity(bd("3"),bd("5"),bd("2.400000000000000000000001")))
+                    .isEqualTo(SubcontractShortDeliveryPolicy.BELOW_FLOOR);
+            assertThat(SubcontractShortDeliveryPolicy.severity(bd("3"),bd("5"),bd("2.4")))
+                    .isEqualTo(SubcontractShortDeliveryPolicy.SEVERE);
+        }
+    }
+
+    @Test void repeatingPercentHasNoImplicitTwoPlaceDefault(){
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->SubcontractShortDeliveryPolicy.shortfallPct(bd("3"),bd("2")))
+                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+    }
 }

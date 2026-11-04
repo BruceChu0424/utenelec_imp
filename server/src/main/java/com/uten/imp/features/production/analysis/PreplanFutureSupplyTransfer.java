@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,12 +23,12 @@ public final class PreplanFutureSupplyTransfer {
         }
     }
     public record Create(@NotNull UUID sourceAllocationId,@NotNull UUID targetMaterialId,
-                         @NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,
+                         @NotNull @DecimalMin(value="0",inclusive=false) @DocumentQuantity BigDecimal qty,
                          @NotNull Long sourceVersion,@NotBlank String sourceFingerprint,
                          @NotNull Long targetVersion,@NotBlank String targetFingerprint,
                          boolean allowLateSupply,@Size(max=1000) String reason,
                          @NotBlank @Size(min=8,max=128) String idempotencyKey) {}
-    public record Cancel(@NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,
+    public record Cancel(@NotNull @DecimalMin(value="0",inclusive=false) @DocumentQuantity BigDecimal qty,
                          @NotNull Long sourceVersion,@NotBlank String sourceFingerprint,
                          @NotNull Long targetVersion,@NotBlank String targetFingerprint,
                          @NotBlank @Size(min=2,max=1000) String reason,@NotBlank @Size(min=8,max=128) String idempotencyKey,

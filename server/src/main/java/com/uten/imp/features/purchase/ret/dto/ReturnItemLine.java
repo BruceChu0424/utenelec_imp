@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.ret.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -17,10 +18,10 @@ public class ReturnItemLine extends com.uten.imp.common.platformcolumns.Platform
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;
-    @NotNull private BigDecimal qty;
+    @NotNull @DocumentQuantity private BigDecimal qty;
     private BigDecimal price;
     @jakarta.validation.constraints.DecimalMin("0")
-    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
+    @DocumentQuantity
     private BigDecimal giftQty;
     /** 关联收货明细（有则回写 receipt_items.returned_qty）。 */
     private UUID receiptItemId;

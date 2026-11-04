@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
@@ -297,5 +298,6 @@ class _MaterialSharedFutureClaimDialogState
   }
 }
 
-String _qty(double quantity) =>
-    quantity.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+String _qty(double quantity) => quantity
+    .toExactString(minimumFractionDigits: 4)
+    .replaceFirst(RegExp(r'\.?0+$'), '');

@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -1024,7 +1025,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         currencyCode: row.item.currencyCode,
       );
 
-  String _fmt(double? v) => v == null ? '—' : v.toStringAsFixed(2);
+  String _fmt(double? v) =>
+      v == null ? '—' : v.toExactString(minimumFractionDigits: 2);
 
   String _currencyLabel(String currencyId) {
     for (final item in _knownItems.values) {

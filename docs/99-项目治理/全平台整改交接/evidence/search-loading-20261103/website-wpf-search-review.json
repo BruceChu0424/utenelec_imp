@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "task": "platform-search-20261103",
+  "scope": "Existing website and implemented WPF text searches only",
+  "implementationStatus": "implemented_and_targeted_local_checks_passed",
+  "published": false,
+  "productionDatabaseWritten": false,
+  "businessDataMovedOrArchived": false,
+  "contract": {
+    "terms": "NFKC query normalization, whitespace-separated distinct lowercase terms; AND across terms and OR across allowed fields",
+    "punctuation": "Percent, underscore and backslash match literally in both SQLite and PostgreSQL",
+    "ranking": "Exact display name/model first, then prefix, then contains; retain stable tie order and CMS featured priority",
+    "architecture": "Fixed-field bound SQL page IDs/count/facets; existing publication checks hydrate bounded pages; no search engine, AI or schema migration"
+  },
+  "websiteSurfaces": [
+    {
+      "id": "public_catalog",
+      "sources": ["website/components/products/ProductExplorer.tsx", "website/app/[locale]/products/[code]/page.tsx", "website/app/api/catalog/route.ts", "website/lib/queries.ts"],
+      "queryOwner": "website/lib/product-search.ts",
+      "behavior": "URL GET/RSC and API share one literal multi-term ranked SQL search; pagination remains 24 with a bounded window; current-locale display names and reviewed models only; private series/unpublished products and variants remain excluded"
+    },
+    {
+      "id": "studio_server_and_embedded_filter",
+      "sources": ["website/app/[locale]/studio/page.tsx", "website/components/studio/SceneStudio.tsx", "website/lib/queries.ts"],
+      "behavior": "Server search uses the same fixed-field page query with scene/image/publication eligibility; existing optional in-memory filter uses shared text-search terms and rank; selected variant pinning and floor-socket exclusions remain"
+    },
+    {
+      "id": "cms_product_search",
+      "sources": ["website/app/admin/(protected)/products/page.tsx"],
+      "behavior": "Fix PostgreSQL case-sensitive contains and SQLite wildcard broadening; retain CMS authorization, typed filters, featured priority, 40-row page size and page clamping; internal SKU/slug/category search remains CMS-only"
+    }
+  ],
+  "websiteNonTextFiltersReviewed": [
+    "Public news category, resources document pagination, case/job pages",
+    "CMS series/news/settings/release pages, inquiry pagination and media source/page filters",
+    "Legacy route IDs and inquiry product/variant context are identity parameters, not text search; no new search UI added"
+  ],
+  "wpfSurfaces": [
+    {
+      "id": "goods",
+      "sources": ["clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs", "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs"],
+      "behavior": "Existing server keyword/UUID-category/page read retained; common DebouncedSearchInput suppresses incomplete IME queries and duplicate Enter while the same search runs; existing cancel/generation/session/read-revision fences and price masks remain"
+    },
+    {
+      "id": "units",
+      "sources": ["clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs", "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitQuery.cs"],
+      "behavior": "Same native search input helper; server keyword/filter/pagination and selected UUIDs remain authoritative; inline drafts and owner retirement guards retained"
+    },
+    {
+      "id": "unit_column_catalog",
+      "sources": ["clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/UnitColumnSettingsWindow.cs", "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/UnitColumnsService.cs"],
+      "behavior": "Existing explicit Search action and editor-operation lifetime guard; free text remains URI encoded; selected definitions and draft preserved; reviewed, no separate matching implementation added"
+    },
+    {
+      "id": "unit_retained_history",
+      "sources": ["clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecordHistoryWindow.cs", "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryModels.cs"],
+      "behavior": "Keyword/actor/summary filters retire old results and use explicit query with bounded cursor; encoded text and historical record identity retained; reviewed, no history lifecycle changes"
+    }
+  ],
+  "validation": {
+    "websiteTypeScript": {"command": "node node_modules/typescript/bin/tsc --noEmit --incremental false", "exitCode": 0},
+    "websiteChangedFilesEslint": {"exitCode": 0, "warnings": 0},
+    "websiteSearchPublicationCatalogTests": {"files": ["text-search.test.ts", "public-catalog-pagination.test.ts", "catalog-public-contract.test.ts", "publication-guards.test.ts"], "passed": 26, "failed": 0, "skipped": 0},
+    "websiteRealDatabaseContract": {"file": "website/tests/product-search.test.ts", "sqlitePassed": 1, "postgresql16Passed": 1, "failed": 0, "skipped": 0, "isolation": "New migrated temporary SQLite and random isolated PostgreSQL database; no running site/ERP database used", "ownedContainer": "uten-search-website-20261103-pg16", "ownedContainerStoppedAndAutoRemoved": true},
+    "wpfX86": {"debugBuildExitCode": 0, "command": "Uten.Legacy.Tests.exe --search-input-contracts", "inputImeDuplicateEnterRetirementAssertions": 5, "goodsAssertions": 66, "unitAssertions": 38, "log": "build/windows-wpf/search/logs/x86-search.log"},
+    "wpfX64": {"debugBuildExitCode": 0, "command": "Uten.Legacy.Tests.exe --search-input-contracts", "inputImeDuplicateEnterRetirementAssertions": 5, "goodsAssertions": 66, "unitAssertions": 38, "log": "build/windows-wpf/search/logs/x64-search.log"}
+  },
+  "limitations": [
+    "No production latency or throughput claim; local correctness contracts do not establish onsite performance",
+    "WPF fixtures exercise actual controls on this development host; no Win7 target-PC, installer/update or full ERP acceptance",
+    "Unported WPF search/pages remain unported; the unique work-items registry is owned by the root task and was not changed here",
+    "No deployment, upload, formal client package or task-center/cold-data implementation performed"
+  ]
+}

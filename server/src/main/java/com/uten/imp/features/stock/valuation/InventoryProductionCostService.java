@@ -14,6 +14,7 @@ import static com.uten.imp.features.stock.valuation.ValueMath.*;
 /** Per-execution approved allocation versions, never a second physical stock ledger. */
 @Service
 public class InventoryProductionCostService extends InventoryValueLedger implements InventoryProductionCostPort {
+    private static final Object PRECISION_PREFLIGHT_RESOURCE=new Object();
     private final InventoryValuationService values;
     private final boolean typedScopesInstalled;
     private final boolean frozenIdentityInstalled;
@@ -120,12 +121,16 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                 args("segment",command.executionSegmentId(),"pool",pool.id()));
         Map<String,Object> object=object(command.executionSegmentId(),true);
         replay=revisionReplay(c,request);if(replay!=null)return revisionResult(replay,true);
+        if(exactRevaluationProofInstalled&&!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_scope_precision_admitted(:scope,:event)",args("scope",command.executionSegmentId(),"event",c.sourceEventId()),Boolean.class)))
+            throw conflict("原成本核对尚未完成，请保留本次方案稍后重试；本次未确认");
         requireSameProduct(object,pool);
         if(number(object,"version")!=command.expectedVersion())throw conflict("执行段成本方案版本已变化");
         if(hasTasks((UUID)object.get("current_revision_id")))throw conflict("原成本版本正在分批执行，请先完成或重试原任务");
         for(Input input:inputs)registerInput(command.executionSegmentId(),input);
         for(Output output:outputs)bindOutput(command.executionSegmentId(),product,output);
         Map<String,Object> snapshot=snapshot(command.executionSegmentId());
+        if(exactRevaluationProofInstalled&&"PRODUCTION_SOURCE_RECALCULATE".equals(c.sourceDocType())&&!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_production_inputs_ready(:scope)",args("scope",command.executionSegmentId()),Boolean.class)))
+            throw conflict("原投入成本任务尚未完成，请保留当前方案稍后重试；本次未确认");
         BigDecimal outputQty=(BigDecimal)snapshot.get("output_qty");
         UUID revision=UUID.randomUUID();long version=command.expectedVersion()+1;
         db.update("""
@@ -142,7 +147,8 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                 "target",target,"outputQty",outputQty,"complete",command.scopeComplete(),"approval",command.approvalEvidenceId(),"approvalHash",command.approvalEvidenceHash(),
                 "inputs",snapshot.get("inputs").toString(),"outputs",snapshot.get("outputs").toString()));
         boolean invalidBasis=target.signum()>0&&outputQty.compareTo(target)>0;
-        db.update("""
+        if(exactRevaluationProofInstalled)createWholeTargetTasks(revision);
+        else db.update("""
                 INSERT INTO stock_value_production_cost_tasks(id,revision_id,execution_segment_id,input_node_id,output_source_node_id,
                     input_revision,input_value_local,input_pending,output_from,output_to,denominator,desired_value_local%s)
                 SELECT gen_random_uuid(),r.id,r.execution_segment_id,(i->>'node')::uuid,(o->>'source')::uuid,
@@ -151,15 +157,17 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                     CASE WHEN r.target_qty_base=0 THEN 0 WHEN r.output_qty_base>r.target_qty_base THEN
                         coalesce((SELECT allocated_value_local FROM stock_value_production_cost_shares
                             WHERE input_node_id=(i->>'node')::uuid AND output_source_node_id=(o->>'source')::uuid),0) ELSE
-                        round((i->>'value')::numeric*((i->>'quantityBasis')::numeric-(i->>'returnedQty')::numeric)*(o->>'to')::numeric/(r.target_qty_base*(i->>'quantityBasis')::numeric),4)
-                        -round((i->>'value')::numeric*((i->>'quantityBasis')::numeric-(i->>'returnedQty')::numeric)*(o->>'from')::numeric/(r.target_qty_base*(i->>'quantityBasis')::numeric),4) END%s
+                        %s END%s
                 FROM stock_value_production_cost_revisions r CROSS JOIN LATERAL jsonb_array_elements(r.input_snapshot) i
                     CROSS JOIN LATERAL jsonb_array_elements(r.output_snapshot) o WHERE r.id=:revision
                     AND ((o->>'to')::numeric>(o->>'from')::numeric OR EXISTS(
                         SELECT 1 FROM stock_value_production_cost_shares old WHERE old.input_node_id=(i->>'node')::uuid
                             AND old.output_source_node_id=(o->>'source')::uuid AND old.allocated_value_local<>0))
                 """.formatted(consumptionReturnsInstalled?",input_returned_qty,input_quantity_basis,input_return_cursor_id":"",
+                    exactPrecisionInstalled?"fn_inventory_value_interval((i->>'value')::numeric,(o->>'from')::numeric*((i->>'quantityBasis')::numeric-(i->>'returnedQty')::numeric),(o->>'to')::numeric*((i->>'quantityBasis')::numeric-(i->>'returnedQty')::numeric),r.target_qty_base*(i->>'quantityBasis')::numeric,r.value_precision_version,r.business_precision_policy,true)"
+                      :"round((i->>'value')::numeric*((i->>'quantityBasis')::numeric-(i->>'returnedQty')::numeric)*(o->>'to')::numeric/(r.target_qty_base*(i->>'quantityBasis')::numeric),4)-round((i->>'value')::numeric*((i->>'quantityBasis')::numeric-(i->>'returnedQty')::numeric)*(o->>'from')::numeric/(r.target_qty_base*(i->>'quantityBasis')::numeric),4)",
                     consumptionReturnsInstalled?",(i->>'returnedQty')::numeric,(i->>'quantityBasis')::numeric,(i->>'returnCursor')::uuid":""),args("revision",revision));
+        if(exactRevaluationProofInstalled)registerPrecisionPreflight(revision);
         long pending=taskCount(revision);CostState next=pending>0?CostState.APPLYING:invalidBasis?CostState.PENDING_BASIS:
                 target.signum()==0?CostState.PENDING_CLASSIFICATION:
                 command.scopeComplete()&&outputQty.signum()>0&&inputs.isEmpty()
@@ -177,12 +185,68 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
         return new Revised(revision,command.executionSegmentId(),version,pending,next,false);
     }
 
+    private void createWholeTargetTasks(UUID revision){
+        db.update("""
+            INSERT INTO stock_value_production_cost_tasks(id,revision_id,execution_segment_id,input_node_id,output_source_node_id,
+                input_revision,input_value_local,input_pending,output_from,output_to,denominator,desired_value_local,
+                input_returned_qty,input_quantity_basis,input_return_cursor_id,value_precision_version,business_precision_policy,restores_task_id,target_proof)
+            SELECT gen_random_uuid(),r.id,r.execution_segment_id,(i->>'node')::uuid,(o->>'source')::uuid,
+                (i->>'revision')::bigint,(i->>'value')::numeric,(i->>'pending')::integer,
+                (o->>'from')::numeric,(o->>'to')::numeric,r.target_qty_base,(allocation.proof->>'amount')::numeric,
+                (i->>'returnedQty')::numeric,(i->>'quantityBasis')::numeric,(i->>'returnCursor')::uuid,
+                (allocation.proof->>'version')::smallint,nullif(allocation.proof->'policy','null'::jsonb),(allocation.proof->>'restoresTaskId')::uuid,allocation.proof
+            FROM stock_value_production_cost_revisions r
+            CROSS JOIN LATERAL jsonb_array_elements(r.input_snapshot) WITH ORDINALITY inputs(i,input_order)
+            CROSS JOIN LATERAL jsonb_array_elements(r.output_snapshot) WITH ORDINALITY outputs(o,output_order)
+            CROSS JOIN LATERAL (SELECT fn_inventory_value_production_target_after(to_jsonb(r),i,o,'{}'::jsonb,
+                r.request_precision_policy,r.value_precision_version,fn_inventory_value_restores_event(r.source_event_id)) proof) allocation
+            LEFT JOIN stock_value_production_cost_tasks original ON original.id=(allocation.proof->>'restoresTaskId')::uuid
+            WHERE r.id=:revision AND ((o->>'to')::numeric>(o->>'from')::numeric OR EXISTS(
+              SELECT 1 FROM stock_value_production_cost_shares previous WHERE previous.input_node_id=(i->>'node')::uuid
+                AND previous.output_source_node_id=(o->>'source')::uuid AND previous.allocated_value_local<>0))
+            ORDER BY original.task_sequence DESC NULLS LAST,input_order,output_order
+            """,args("revision",revision));
+    }
+
+    /** Validate the complete transaction's pending matrices once before COMMIT.
+     * The resource holds IDs only; durable targets/policies remain in PostgreSQL. */
+    @SuppressWarnings("unchecked")
+    private void registerPrecisionPreflight(UUID revision){
+        if(!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_mark_plan_scope(:revision)",args("revision",revision),Boolean.class)))
+            throw conflict("生产累计成本后继已变化；本次未确认");
+        Set<UUID> revisions=(Set<UUID>)org.springframework.transaction.support.TransactionSynchronizationManager.getResource(PRECISION_PREFLIGHT_RESOURCE);
+        if(revisions==null){
+            revisions=new LinkedHashSet<>();Set<UUID> owned=revisions;
+            org.springframework.transaction.support.TransactionSynchronizationManager.bindResource(PRECISION_PREFLIGHT_RESOURCE,owned);
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
+                @Override public void suspend(){if(org.springframework.transaction.support.TransactionSynchronizationManager.getResource(PRECISION_PREFLIGHT_RESOURCE)==owned)
+                    org.springframework.transaction.support.TransactionSynchronizationManager.unbindResource(PRECISION_PREFLIGHT_RESOURCE);}
+                @Override public void resume(){org.springframework.transaction.support.TransactionSynchronizationManager.bindResource(PRECISION_PREFLIGHT_RESOURCE,owned);}
+                @Override public void beforeCommit(boolean readOnly){
+                    for(UUID representative:db.queryForList("""
+                            SELECT DISTINCT ON(coalesce(precision_origin_id,id)) id FROM stock_value_production_cost_revisions
+                            WHERE id IN(:ids) ORDER BY coalesce(precision_origin_id,id),id
+                            """,args("ids",owned),UUID.class))
+                        if(!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_preflight_plan(:revision)",args("revision",representative),Boolean.class)))
+                            throw conflict("生产累计成本尚未完成后继核对；本次未确认");
+                }
+                @Override public void afterCompletion(int status){if(org.springframework.transaction.support.TransactionSynchronizationManager.getResource(PRECISION_PREFLIGHT_RESOURCE)==owned)
+                    org.springframework.transaction.support.TransactionSynchronizationManager.unbindResource(PRECISION_PREFLIGHT_RESOURCE);}
+            });
+        }
+        revisions.add(revision);
+    }
+
     @Override @Transactional(propagation=Propagation.MANDATORY)
     public Revised recalculate(EventContext c,UUID segment,long expectedVersion){
         transaction();Map<String,Object> object=object(segment,false);
         Map<String,Object> plan=plan((UUID)object.get("current_revision_id"));Pool pool=poolById((UUID)object.get("product_pool_id"),false);
-        return revise(new Revision(c,segment,pool.key(),expectedVersion,(BigDecimal)plan.get("target_qty_base"),
+        Map<String,Object> causal=exactRevaluationProofInstalled
+            ?args("business_precision_policy",db.queryForObject("SELECT fn_inventory_value_revaluation_request_policy(:event)::text",args("event",c.sourceEventId()),String.class)):plan;
+        try(var precision=useFrozenPrecision(causal)) {
+            return revise(new Revision(c,segment,pool.key(),expectedVersion,(BigDecimal)plan.get("target_qty_base"),
                 (Boolean)plan.get("scope_complete"),(UUID)plan.get("approval_evidence_id"),plan.get("approval_evidence_hash").toString(),List.of(),List.of()));
+        }
     }
 
     @Override @Transactional(readOnly=true)
@@ -215,6 +279,9 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
         requireHeld(input.key());requireHeld(output.key());UUID segment=(UUID)observed.get("execution_segment_id");
         Map<String,Object> object=object(segment,true),task=task(taskId,true);
         if("APPLIED".equals(task.get("status")))return new Applied(false,true,!hasTasks((UUID)task.get("revision_id")));
+        if(exactRevaluationProofInstalled&&!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_can_apply_production(:task)",args("task",taskId),Boolean.class)))
+            return new Applied(false,false,false);
+        try(var precision=useFrozenPrecision(exactRevaluationProofInstalled?plan((UUID)task.get("revision_id")):task)) {
         if(!Objects.equals(task.get("revision_id"),object.get("current_revision_id")))throw conflict("旧分配任务不属于当前执行段成本版本");
         input=node(input.id(),true);output=node(output.id(),true);Map<String,Object> plan=plan((UUID)task.get("revision_id"));
         List<Map<String,Object>> previousShares=db.queryForList("SELECT allocated_value_local,last_task_id FROM stock_value_production_cost_shares WHERE input_node_id=:input AND output_source_node_id=:output",
@@ -281,13 +348,14 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
             db.update("UPDATE stock_value_production_cost_objects SET state=:state WHERE execution_segment_id=:segment AND current_revision_id=:revision",
                     args("segment",segment,"revision",plan.get("id"),"state",state.name()));}
         return new Applied(true,false,done);
+        }
     }
 
     @Override @Transactional(readOnly=true)
     public CostPosition position(UUID segment){
         Map<String,Object> object=object(segment,false),plan=plan((UUID)object.get("current_revision_id"));
         Map<String,Object> amount=db.queryForMap("""
-                SELECT coalesce(sum(n.basis_value_local-round(n.basis_value_local*coalesce((to_jsonb(n)->>'returned_consumption_qty')::numeric,0)/n.quantity_basis,4)),0) actual,coalesce(sum(n.distributed_value_local),0) allocated,
+                SELECT coalesce(sum(n.owned_value_local+n.distributed_value_local),0) actual,coalesce(sum(n.distributed_value_local),0) allocated,
                     coalesce(sum(greatest(n.owned_value_local,0)),0) held,coalesce(sum(least(n.owned_value_local,0)),0) adjustment,
                     coalesce(bool_or(n.pending_parents>0),false) unknown
                 FROM stock_value_production_cost_inputs i JOIN stock_value_nodes n ON n.id=i.input_node_id WHERE i.execution_segment_id=:segment
@@ -340,7 +408,7 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
     private Map<String,Object> snapshot(UUID segment){return db.queryForMap("""
             SELECT (SELECT coalesce(jsonb_agg(jsonb_build_object('node',n.id,'revision',n.revision,'value',n.basis_value_local,'pending',n.pending_parents,
                     'returnedQty',coalesce((to_jsonb(n)->>'returned_consumption_qty')::numeric,0),'quantityBasis',n.quantity_basis,
-                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id'%s) ORDER BY n.id),'[]'::jsonb)
+                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id','valuePrecisionVersion',coalesce((SELECT to_jsonb(applied)->>'value_precision_version' FROM stock_value_node_revisions applied WHERE applied.node_id=n.id AND applied.revision=n.revision),to_jsonb(n)->>'value_precision_version'),'bookedNetValue',n.owned_value_local+n.distributed_value_local%s) ORDER BY n.id),'[]'::jsonb)
                 FROM stock_value_production_cost_inputs i JOIN stock_value_nodes n ON n.id=i.input_node_id WHERE i.execution_segment_id=:segment) inputs,
                 coalesce(jsonb_agg(jsonb_build_object('source',s.source_node_id,'movement',s.movement_id,'qty',s.qty_base,
                     'withdrawnMovement',to_jsonb(s)->>'withdrawn_movement_id',

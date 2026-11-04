@@ -1,0 +1,1626 @@
+{
+  "subcontractStatement": {
+    "layout": {
+      "version": 1,
+      "templateKey": "subcontractStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 19,
+      "canvasColumns": 19,
+      "widths": [
+        9.0,
+        10.375,
+        30.5583,
+        14.6333,
+        8.8833,
+        18.25,
+        10.75,
+        10.3833,
+        9.5,
+        9.0,
+        12.8833,
+        9.1333,
+        11.5,
+        9.0,
+        9.0,
+        9.0,
+        19.225,
+        9.0,
+        7.75
+      ],
+      "hiddenColumns": [],
+      "fontName": "宋体",
+      "fontSize": 12,
+      "rowHeight": 18.0,
+      "headerStartRow": 2,
+      "headerRow": 3,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司\n2026年9月份对账单",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 1,
+          "bold": true,
+          "text": "客户：匿名往来公司",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 2,
+          "bold": true,
+          "text": "序号",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 2,
+          "bold": true,
+          "text": "物料编码",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 2,
+          "bold": true,
+          "text": "品名及规格",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 2,
+          "bold": true,
+          "text": "颜色",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 2,
+          "bold": true,
+          "text": "期初库存(PCS)",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 2,
+          "bold": true,
+          "text": "本月入库",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 3,
+          "bold": true,
+          "text": "材料单号",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 3,
+          "bold": true,
+          "text": "入库日期",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 3,
+          "bold": true,
+          "text": "入库数量",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 8,
+          "row": 3,
+          "bold": true,
+          "text": "数量合计",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 9,
+          "row": 2,
+          "bold": true,
+          "text": "允许生产损耗3%",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 10,
+          "row": 2,
+          "bold": true,
+          "text": "本月出货",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 10,
+          "row": 3,
+          "bold": true,
+          "text": "入库单号",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 11,
+          "row": 3,
+          "bold": true,
+          "text": "出货日期",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 12,
+          "row": 3,
+          "bold": true,
+          "text": "出货数量",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 13,
+          "row": 3,
+          "bold": true,
+          "text": "数量合计",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 14,
+          "row": 2,
+          "bold": true,
+          "text": "结存",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 15,
+          "row": 2,
+          "bold": true,
+          "text": "加工单价含税（元）",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 16,
+          "row": 2,
+          "bold": true,
+          "text": "金额（元）",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 17,
+          "row": 2,
+          "bold": true,
+          "text": "减扣材料款",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 17,
+          "row": 3,
+          "bold": true,
+          "text": "单价",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 18,
+          "row": 3,
+          "bold": true,
+          "text": "金额",
+          "fontSize": 12.0
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 0,
+          "lastColumn": 18
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 0,
+          "lastColumn": 18
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 0,
+          "lastColumn": 0
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 1,
+          "lastColumn": 1
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 2,
+          "lastColumn": 2
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 3,
+          "lastColumn": 3
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 4,
+          "lastColumn": 4
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 5,
+          "lastColumn": 8
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 9,
+          "lastColumn": 9
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 10,
+          "lastColumn": 13
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 14,
+          "lastColumn": 14
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 15,
+          "lastColumn": 15
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 16,
+          "lastColumn": 16
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 17,
+          "lastColumn": 18
+        }
+      ],
+      "headingRowHeights": {
+        "3": 32.0,
+        "2": 32.0,
+        "1": 32.0,
+        "0": 32.0
+      },
+      "footer": {
+        "minimumDataRows": 283,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 16,
+            "lastColumn": 16,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "人民币"
+          },
+          {
+            "rowOffset": 0,
+            "column": 18,
+            "lastColumn": 18,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "0",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "人民币"
+          },
+          {
+            "rowOffset": 1,
+            "column": 2,
+            "lastColumn": 15,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 1,
+            "column": 16,
+            "lastColumn": 16,
+            "rowSpan": 2,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 1,
+            "column": 17,
+            "lastColumn": 18,
+            "rowSpan": 2,
+            "type": "text",
+            "value": "",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际内部确认"
+          },
+          {
+            "rowOffset": 2,
+            "column": 2,
+            "lastColumn": 15,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本次约定扣款：无额外扣款（匿名演示数据）",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          }
+        ]
+      },
+      "landscape": false
+    },
+    "rows": [
+      [
+        "1",
+        "DEMO-001",
+        "匿名加工件",
+        "白色",
+        "100",
+        "演示发料001",
+        "2026-09-03",
+        "10",
+        "10",
+        "0.3",
+        "演示回厂001",
+        "2026-09-08",
+        "2",
+        "2",
+        "107.7",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234",
+        "0",
+        "0"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "序号",
+      "物料编码",
+      "品名及规格",
+      "颜色",
+      "期初库存(PCS)",
+      "本月入库 / 材料单号",
+      "本月入库 / 入库日期",
+      "本月入库 / 入库数量",
+      "本月入库 / 数量合计",
+      "允许生产损耗3%",
+      "本月出货 / 入库单号",
+      "本月出货 / 出货日期",
+      "本月出货 / 出货数量",
+      "本月出货 / 数量合计",
+      "结存",
+      "加工单价含税（元）",
+      "金额（元）",
+      "减扣材料款 / 单价",
+      "减扣材料款 / 金额"
+    ]
+  },
+  "supplierStatement": {
+    "layout": {
+      "version": 1,
+      "templateKey": "supplierStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 8,
+      "canvasColumns": 8,
+      "widths": [
+        9.65,
+        9.1,
+        47.9,
+        6.0,
+        8.0,
+        10.3917,
+        12.0,
+        18.0
+      ],
+      "hiddenColumns": [],
+      "fontName": "宋体",
+      "fontSize": 11,
+      "rowHeight": 30.0,
+      "headerStartRow": 5,
+      "headerRow": 5,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司",
+          "fontSize": 18.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 1,
+          "bold": false,
+          "text": "地址：演示联系地址",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 2,
+          "bold": false,
+          "text": "电话：演示联系电话",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 3,
+          "bold": true,
+          "text": "对 帐 表",
+          "fontSize": 18.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 4,
+          "bold": false,
+          "text": "客户：匿名往来公司                      对帐日期：2026-9-1 至 2026-9-30",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 5,
+          "bold": true,
+          "text": "送货日期",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 5,
+          "bold": true,
+          "text": "物料编码",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 5,
+          "bold": true,
+          "text": "物料名称",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 5,
+          "bold": true,
+          "text": "单位",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 5,
+          "bold": true,
+          "text": "数量",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 5,
+          "bold": true,
+          "text": "含税单价",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 5,
+          "bold": true,
+          "text": "含税金额",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 5,
+          "bold": true,
+          "text": "备注",
+          "fontSize": 11.0
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 1,
+          "lastColumn": 7
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 1,
+          "lastColumn": 6
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 1,
+          "lastColumn": 6
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 3,
+          "firstColumn": 1,
+          "lastColumn": 6
+        },
+        {
+          "lastRow": 4,
+          "firstRow": 4,
+          "firstColumn": 0,
+          "lastColumn": 6
+        }
+      ],
+      "headingRowHeights": {
+        "5": 30.0,
+        "4": 23.0,
+        "3": 23.0,
+        "2": 23.0,
+        "1": 23.0,
+        "0": 24.5
+      },
+      "footer": {
+        "minimumDataRows": 6,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 0,
+            "lastColumn": 2,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 0,
+            "column": 4,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "number",
+            "value": "2",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "PCS"
+          },
+          {
+            "rowOffset": 0,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "人民币"
+          },
+          {
+            "rowOffset": 1,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 1,
+            "column": 1,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本次约定扣款：无额外扣款（匿名演示数据）",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 1,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 1,
+            "column": 7,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际内部确认"
+          },
+          {
+            "rowOffset": 3,
+            "column": 4,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "匿名演示公司",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          },
+          {
+            "rowOffset": 4,
+            "column": 4,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "2026年10月1日",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          }
+        ]
+      },
+      "landscape": false
+    },
+    "rows": [
+      [
+        "2026-09-08",
+        "DEMO-001",
+        "匿名材料",
+        "PCS",
+        "2",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234",
+        "演示原单001"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "送货日期",
+      "物料编码",
+      "物料名称",
+      "单位",
+      "数量",
+      "含税单价",
+      "含税金额",
+      "备注"
+    ]
+  },
+  "otherReceivableStatement": {
+    "layout": {
+      "version": 1,
+      "templateKey": "otherReceivableStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 10,
+      "canvasColumns": 17,
+      "widths": [
+        10.4167,
+        22.875,
+        6.0,
+        10.0,
+        8.125,
+        8.3333,
+        10.9333,
+        10.5167,
+        7.9167,
+        19.125,
+        5.5,
+        24.0,
+        6.3,
+        9.0,
+        7.7,
+        9.8,
+        11.6
+      ],
+      "hiddenColumns": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "fontName": "宋体",
+      "fontSize": 10,
+      "rowHeight": 25.5,
+      "headerStartRow": 2,
+      "headerRow": 2,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司\n2026年9月份对账单",
+          "fontSize": 24.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 1,
+          "bold": true,
+          "text": "客户：匿名往来公司",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 4,
+          "row": 1,
+          "bold": false,
+          "text": "电话：演示联系电话",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 7,
+          "row": 1,
+          "bold": false,
+          "text": "传真：演示传真",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 9,
+          "row": 1,
+          "bold": false,
+          "text": "其他应收款  对账单",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 2,
+          "bold": true,
+          "text": "日期",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 2,
+          "bold": true,
+          "text": "产品名称（57#）",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 2,
+          "bold": true,
+          "text": "规格",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 2,
+          "bold": true,
+          "text": "进仓重量(KG)",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 2,
+          "bold": true,
+          "text": "发出重量(KG)",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 2,
+          "bold": true,
+          "text": "损耗0.5%",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 2,
+          "bold": true,
+          "text": "本月结余(KG）",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 2,
+          "bold": true,
+          "text": "发出数量(PCS)",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 8,
+          "row": 2,
+          "bold": true,
+          "text": "加工单价",
+          "fontSize": 10.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 9,
+          "row": 2,
+          "bold": true,
+          "text": "加工货款",
+          "fontSize": 10.0
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 0,
+          "lastColumn": 9
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 0,
+          "lastColumn": 3
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 4,
+          "lastColumn": 5
+        }
+      ],
+      "headingRowHeights": {
+        "2": 25.5,
+        "1": 32.0,
+        "0": 55.0
+      },
+      "footer": {
+        "minimumDataRows": 37,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本月加工费总金额：",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 0,
+            "column": 3,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 0,
+            "column": 5,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "人民币大写总金额：",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 0,
+            "column": 7,
+            "lastColumn": 9,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "金额含分以下小数，保留原数值待核",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 1,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "含税加工费金额",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 1,
+            "column": 3,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "113.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 2,
+            "column": 0,
+            "lastColumn": 3,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "截止2026年9月30日贵公司应付总金额：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 2,
+            "column": 4,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "200.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 3,
+            "column": 0,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "总欠金本材料",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 3,
+            "column": 5,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "number",
+            "value": "5.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 3,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "制表:匿名演示制表人",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          },
+          {
+            "rowOffset": 3,
+            "column": 8,
+            "lastColumn": 8,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "日期：2026年10月1日",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          },
+          {
+            "rowOffset": 5,
+            "column": 0,
+            "lastColumn": 9,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "备注：匿名演示：请核对原单和实际金额，未确认的签字区域保留空白。",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 7,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "客户确认:",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          },
+          {
+            "rowOffset": 7,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "优腾确认:",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          },
+          {
+            "rowOffset": 9,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "日    期:",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          },
+          {
+            "rowOffset": 9,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "日   期：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          }
+        ]
+      },
+      "landscape": false
+    },
+    "rows": [
+      [
+        "2026-09-08",
+        "匿名铜粒",
+        "演示规格",
+        "10",
+        "4",
+        "0.05",
+        "5.95",
+        "2",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "日期",
+      "产品名称（57#）",
+      "规格",
+      "进仓重量(KG)",
+      "发出重量(KG)",
+      "损耗0.5%",
+      "本月结余(KG）",
+      "发出数量(PCS)",
+      "加工单价",
+      "加工货款"
+    ]
+  },
+  "clientStatement": {
+    "layout": {
+      "version": 1,
+      "templateKey": "clientStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 8,
+      "canvasColumns": 8,
+      "widths": [
+        11.3667,
+        55.1667,
+        11.6667,
+        6.0,
+        8.0917,
+        9.5333,
+        14.1167,
+        14.2417
+      ],
+      "hiddenColumns": [],
+      "fontName": "宋体",
+      "fontSize": 9,
+      "rowHeight": 18.0,
+      "headerStartRow": 3,
+      "headerRow": 3,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司\n2026年9月份对账单",
+          "fontSize": 11.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 1,
+          "bold": true,
+          "text": "客户：匿名往来公司",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 4,
+          "row": 1,
+          "bold": false,
+          "text": "应收账款   客户对账",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 2,
+          "bold": true,
+          "text": "电话：演示联系电话",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "LEFT",
+          "column": 2,
+          "row": 2,
+          "bold": true,
+          "text": "传真：演示传真",
+          "fontSize": 12.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 3,
+          "bold": true,
+          "text": "开单日期",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 3,
+          "bold": true,
+          "text": "货品名称",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 3,
+          "bold": true,
+          "text": "颜色",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 3,
+          "bold": true,
+          "text": "单位",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 3,
+          "bold": true,
+          "text": "数量",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 3,
+          "bold": true,
+          "text": "含税单价",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 3,
+          "bold": true,
+          "text": "含税金额",
+          "fontSize": 9.0
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 3,
+          "bold": true,
+          "text": "备注",
+          "fontSize": 9.0
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 0,
+          "lastColumn": 7
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 4,
+          "lastColumn": 6
+        }
+      ],
+      "headingRowHeights": {
+        "3": 18.0,
+        "2": 18.0,
+        "1": 18.0,
+        "0": 33.0
+      },
+      "footer": {
+        "minimumDataRows": 89,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 1,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 0,
+            "column": 4,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "number",
+            "value": "2",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "PCS"
+          },
+          {
+            "rowOffset": 0,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "人民币"
+          },
+          {
+            "rowOffset": 1,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本月货款人民币大写金额：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": ""
+          },
+          {
+            "rowOffset": 1,
+            "column": 2,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "金额含分以下小数，保留原数值待核",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 2,
+            "column": 0,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "已扣质保金：0",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 3,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "截止2026年9月30日贵公司应付总金额：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 3,
+            "column": 2,
+            "lastColumn": 2,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "200.123456789012345678901234",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 3,
+            "column": 3,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": ""
+          },
+          {
+            "rowOffset": 4,
+            "column": 0,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "备注：匿名演示：请核对原单和实际金额，未确认的签字区域保留空白。",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据"
+          },
+          {
+            "rowOffset": 6,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "客户对账人签名盖章：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          },
+          {
+            "rowOffset": 6,
+            "column": 2,
+            "lastColumn": 2,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "     供应商对账人签名盖章：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          },
+          {
+            "rowOffset": 6,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "匿名演示制表人",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          },
+          {
+            "rowOffset": 9,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "              日期：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          },
+          {
+            "rowOffset": 9,
+            "column": 2,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "                 日期：",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实"
+          },
+          {
+            "rowOffset": 9,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "2026年10月1日",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          },
+          {
+            "rowOffset": 11,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "匿名演示公司",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          },
+          {
+            "rowOffset": 12,
+            "column": 6,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "2026年10月1日",
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "原件已冻结的实际资料"
+          }
+        ]
+      },
+      "landscape": false
+    },
+    "rows": [
+      [
+        "2026-09-08",
+        "匿名产品",
+        "白色",
+        "PCS",
+        "2",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234",
+        "演示原单001"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "开单日期",
+      "货品名称",
+      "颜色",
+      "单位",
+      "数量",
+      "含税单价",
+      "含税金额",
+      "备注"
+    ]
+  }
+}

@@ -54,6 +54,7 @@ class WorkbenchLayoutNotifier
   /// 默认分组顺序（与 workbench_module_area.dart 的分组定义一一对应）
   static const defaultOrder = <String>[
     'common',
+    'executive',
     'hr',
     'fin',
     'prod',

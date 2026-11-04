@@ -21,6 +21,27 @@ enum ApprovalFacetQueue {
   mineHistory,
 }
 
+/// Read scope is applied by the server before pagination, facets and row actions.
+/// A department code identifies its workbench department including child teams.
+final class ExpenseApprovalReadScope {
+  const ExpenseApprovalReadScope({this.approvalStage, this.departmentCode});
+  final String? approvalStage;
+  final String? departmentCode;
+  bool get isScoped => approvalStage != null || departmentCode != null;
+  bool get isFinance => approvalStage == 'FINANCE';
+  Map<String, dynamic> get query => {
+    'approvalStage': ?approvalStage,
+    'departmentCode': ?departmentCode,
+  };
+  @override
+  bool operator ==(Object other) =>
+      other is ExpenseApprovalReadScope &&
+      other.approvalStage == approvalStage &&
+      other.departmentCode == departmentCode;
+  @override
+  int get hashCode => Object.hash(approvalStage, departmentCode);
+}
+
 abstract interface class ExpenseRepository {
   /// 2026-09-25 单号列统一：[sort]/[order] 报销单号表头排序（claimNo 白名单）；
   /// [claimNo] 值筛选（服务端精确匹配）。
@@ -88,6 +109,8 @@ abstract interface class ExpenseRepository {
   /// 队列汇总（审批页统计卡：两队列单数/金额 + 本月提交/打款）。
   Future<ExpenseQueueSummary> summary();
   Future<ExpenseClaim> getById(String id);
+  Future<ExpenseClaim> getHistoryById(String id);
+  Future<ExpenseClaim?> abandon(String id, {int? expectedVersion});
   Future<ExpenseClaim> create(ExpenseClaimCreateInput input);
 
   /// 编辑（DRAFT/REJECTED；明细整组替换，V608）。
@@ -289,6 +312,43 @@ class DioExpenseRepository implements ExpenseRepository {
     claimNo: claimNo,
   );
 
+  Future<PagedResult<ExpenseClaim>> listMineActionRequired({
+    int page = 1,
+    int size = 24,
+    String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
+  }) => _list(
+    '$_claims/mine',
+    page: page,
+    size: size,
+    category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
+    actionRequired: true,
+  );
+
+  Future<PagedResult<ExpenseClaim>> listMineIncludingAbandoned({
+    int page = 1,
+    int size = 24,
+    String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
+  }) => _list(
+    '$_claims/mine',
+    statuses: const [ExpenseClaimStatus.paid],
+    page: page,
+    size: size,
+    category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
+    includeAbandoned: true,
+  );
+
   Future<PagedResult<ExpenseClaim>> _list(
     String path, {
     Iterable<ExpenseClaimStatus>? statuses,
@@ -301,6 +361,9 @@ class DioExpenseRepository implements ExpenseRepository {
     String? sort,
     String? order,
     String? claimNo,
+    ExpenseApprovalReadScope scope = const ExpenseApprovalReadScope(),
+    bool actionRequired = false,
+    bool includeAbandoned = false,
   }) async {
     final normalizedStatuses = statuses?.map((status) => status.apiValue);
     final json = await _api.get(
@@ -308,6 +371,9 @@ class DioExpenseRepository implements ExpenseRepository {
       query: <String, dynamic>{
         'page': page,
         'size': size,
+        ...scope.query,
+        if (actionRequired) 'actionRequired': true,
+        if (includeAbandoned) 'includeAbandoned': true,
         if (normalizedStatuses != null && normalizedStatuses.isNotEmpty)
           'status': normalizedStatuses.join(','),
         'year': ?year,
@@ -325,13 +391,58 @@ class DioExpenseRepository implements ExpenseRepository {
     return PagedResult.fromJsonResponsive(json, ExpenseClaim.fromJson);
   }
 
+  Future<PagedResult<ExpenseClaim>> listApprovalScoped(
+    ApprovalFacetQueue queue,
+    ExpenseApprovalReadScope scope, {
+    int page = 1,
+    int size = 24,
+    int? year,
+    int? month,
+    String? departmentId,
+    String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
+  }) => _list(
+    '$_claims/${queue.name}',
+    scope: scope,
+    page: page,
+    size: size,
+    year: year,
+    month: month,
+    departmentId: departmentId,
+    category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
+  );
+
+  Future<Map<String, List<MasterFacetBucket>>> facetsScoped(
+    ApprovalFacetQueue queue,
+    ExpenseApprovalReadScope scope,
+  ) async {
+    final json = await _api.get(
+      '$_claims/facets',
+      query: {'queue': queue.name, ...scope.query},
+    );
+    return {
+      'departmentName': parseFacetBuckets(json, 'departments'),
+      'yearMonth': parseFacetBuckets(json, 'months'),
+      'category': parseFacetBuckets(json, 'categories'),
+      'claimNo': parseFacetBuckets(json, 'claimNos'),
+    };
+  }
+
   @override
   Future<Map<String, List<MasterFacetBucket>>> facets(
     ApprovalFacetQueue queue,
   ) async {
     final json = await _api.get(
       '$_claims/facets',
-      query: <String, dynamic>{'queue': queue.name},
+      query: <String, dynamic>{
+        'queue': queue.name,
+        if (queue == ApprovalFacetQueue.mineHistory) 'includeAbandoned': true,
+      },
     );
     return {
       'departmentName': parseFacetBuckets(json, 'departments'),
@@ -354,6 +465,18 @@ class DioExpenseRepository implements ExpenseRepository {
     final json = await _api.get('$_claims/$id');
     return ExpenseClaim.fromJson(_requireJson(json, '报销单详情'));
   }
+
+  @override
+  Future<ExpenseClaim> getHistoryById(String id) async {
+    final json = await _api.get('$_claims/$id/history');
+    return ExpenseClaim.fromJson(_requireJson(json, '报销历史详情'));
+  }
+
+  @override
+  Future<ExpenseClaim?> abandon(String id, {int? expectedVersion}) => _action(
+    '$_claims/$id/abandon',
+    body: {'expectedVersion': expectedVersion},
+  );
 
   @override
   Future<ExpenseClaim> create(ExpenseClaimCreateInput input) async {

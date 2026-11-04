@@ -207,7 +207,7 @@ void main() {
       expect(WeightPredictor.roundQty(2.5, integer: true), 2);
       expect(WeightPredictor.roundQty(3.5, integer: true), 4);
       expect(WeightPredictor.roundQty(3.49, integer: true), 3);
-      expect(WeightPredictor.roundQty(1.23456, integer: false), 1.2346);
+      expect(WeightPredictor.roundQty(1.23456, integer: false), 1.23456);
       expect(WeightPredictor.tierOf(0.01), WeightTier.green);
       expect(WeightPredictor.tierOf(0.0101), WeightTier.yellow);
       expect(WeightPredictor.tierOf(0.05), WeightTier.yellow);

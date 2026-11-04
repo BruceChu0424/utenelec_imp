@@ -40,12 +40,59 @@ class ExpenseClaimChainPostgresTest {
                 PG::getUsername, PG::getPassword);
     }
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired ExpenseClaimService claims;
     @Autowired ExpenseClaimSettingsService settings;
     @Autowired FinanceExpenseService expenses;
+    @Autowired ExpensePaymentProofAttachmentAccessPolicy proofAccess;
+    @Autowired ExpenseClaimAttachmentAccessPolicy originalAccess;
     @Autowired com.uten.imp.common.platformcolumns.PlatformColumnService platformColumns;
     @Autowired com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @BeforeEach void configureIndependentApprovalPool() {
+        login(actor("configured-manager"),"expense:approve:department","attachment:view","attachment:download");
+        login(actor("configured-initial"),"expense:approve:finance_initial","attachment:view","attachment:download");
+        login(actor("configured-review"),"expense:approve:finance_review","attachment:view","attachment:download");
+        login(actor("configured-executive"),"expense:approve:executive","attachment:view","attachment:download");
+        login(actor("configured-cashier"),"expense:pay","attachment:view","attachment:download","attachment:upload");
+    }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
+
+    @Test void currentPrecisionClaimInvoiceSnapshotPaymentAndLedgerKeepEveryFiniteDigit() throws Exception {
+        Actor applicant=actor("exact-owner"),reviewer=actor("exact-reviewer"),executive=actor("exact-executive"),payer=actor("exact-payer");
+        var amount=new BigDecimal("100.123456789012345678901234");
+        login(applicant,"expense:apply");
+        var draft=claims.create(new ExpenseClaimCreateRequest("精确原始费用","原票据值",List.of(
+            new ExpenseClaimItemInput("TRAVEL",amount,BusinessTime.today(),"实际发生的完整原值")),null));
+        UUID evidence=attachment(draft.id());
+        var withInvoice=claims.addInvoiceVersioned(draft.id(),new ExpenseClaimInvoiceInput(
+            "DIGITAL",null,"26310000000000129876",BusinessTime.today(),"精确测试单位",null,"测试公司",
+            amount.subtract(new BigDecimal("0.000000000000000000000001")),new BigDecimal("0.000000000000000000000001"),amount,evidence,null,draft.version(),null));
+        assertThat(withInvoice.totalAmount()).isEqualByComparingTo(amount);
+        assertThat(claims.detail(draft.id()).invoices().getFirst().totalAmount()).isEqualByComparingTo(amount);
+        var submitted=claims.submit(draft.id(),withInvoice.version());
+        var snapshot=new com.fasterxml.jackson.databind.ObjectMapper().readTree(submitted.submissionSnapshot());
+        assertThat(snapshot.path("items").get(0).path("amount").asText()).isEqualTo(amount.toPlainString());
+        var initial=advanceTo(submitted,ExpenseApprovalPolicy.FINANCE_INITIAL);
+        login(reviewer,"expense:approve:finance_initial","attachment:view","attachment:download");
+        var checked=claims.verifyInvoice(draft.id(),jdbc.queryForObject("SELECT id FROM expense_claim_invoices WHERE claim_id=?",UUID.class,draft.id()),
+            new ExpenseClaimInvoiceVerifyRequest(initial.version(),"VERIFIED_MANUAL","原票据完整小数已逐项核对"));
+        var approved=approveFully(claims.approve(draft.id(),checked.version()),executive);
+        assertThat(approved.status()).isEqualTo("APPROVED");
+        assertThat(jdbc.queryForList("SELECT approval_stage FROM expense_claim_events WHERE claim_id=? AND event_type IN('STAGE_APPROVED','APPROVED') ORDER BY created_at,id",String.class,draft.id()))
+            .containsExactly("DEPARTMENT","FINANCE_INITIAL","FINANCE_REVIEW","EXECUTIVE");
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT actor_employee_id) FROM expense_claim_events WHERE claim_id=? AND event_type IN('STAGE_APPROVED','APPROVED')",Integer.class,draft.id())).isEqualTo(4);
+        login(payer,"expense:pay");attachment(draft.id(),"EXPENSE_PAYMENT_PROOF");UUID bank=account(),style=expenseStyle();
+        var payment=new ExpenseClaimPaymentRequest(bank,style,BusinessTime.today(),approved.version());
+        var paid=claims.payVersioned(draft.id(),payment);
+        assertThat(jdbc.queryForObject("SELECT total_amount FROM expense_claims WHERE id=?",BigDecimal.class,draft.id())).isEqualByComparingTo(amount);
+        assertThat(jdbc.queryForObject("SELECT amount_local FROM finance_expenses WHERE id=?",BigDecimal.class,paid.financeExpenseId())).isEqualByComparingTo(amount);
+        assertThat(jdbc.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,bank)).isEqualByComparingTo(new BigDecimal("1000").subtract(amount));
+        assertThat(jdbc.queryForObject("SELECT max(amount) FROM gl_entries WHERE source_doc_id=? AND NOT is_deleted",BigDecimal.class,paid.financeExpenseId())).isEqualByComparingTo(amount);
+        assertThat(jdbc.queryForObject("SELECT sum(direction*amount) FROM gl_entries WHERE source_doc_id=? AND NOT is_deleted",BigDecimal.class,paid.financeExpenseId())).isEqualByComparingTo("0");
+        assertThat(claims.payVersioned(draft.id(),payment).financeExpenseId()).isEqualTo(paid.financeExpenseId());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_expenses WHERE remark=?",Integer.class,"员工报销 "+draft.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,bank)).isEqualByComparingTo(new BigDecimal("1000").subtract(amount));
+    }
 
     @Test void softDeletedDraftLeavesTheListAndBadgeTogether() {
         Actor applicant=actor("deleted-count-owner");login(applicant,"expense:apply");
@@ -77,7 +124,7 @@ class ExpenseClaimChainPostgresTest {
         assertThat(first.path("platformFields").path("cells").get(0).path("value").asText()).isEqualTo("第一阶段");
         assertThat(first.path("items").get(0).path("platformFields").path("cells").get(0).path("value").asText()).isEqualTo("第一次说明");
         UUID originalItem=draft.items().getFirst().id();
-        login(reviewer,"expense:approve");var rejected=claims.reject(draft.id(),"补充",submitted.version());
+        login(reviewer,"expense:approve:department");var rejected=claims.reject(draft.id(),"补充",submitted.version());
         login(applicant,"expense:apply");
         var changed=new ExpenseClaimItemInput("TRAVEL",new BigDecimal("100.00"),BusinessTime.today(),"住宿费用",
                 new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(originalItem,1,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"第二次说明"))));
@@ -92,7 +139,7 @@ class ExpenseClaimChainPostgresTest {
     }
 
     @Test void actualClaimRejectResubmitVerifyPayIsAtomicAndIdempotent() throws Exception {
-        Actor applicant=actor("applicant"),reviewer=actor("reviewer"),cashier=actor("cashier");
+        Actor applicant=actor("applicant"),reviewer=actor("reviewer"),cashier=actor("cashier"),executive=actor("executive");
         login(applicant,"expense:apply");
         var draft=claims.create(request("员工出差住宿",null));
         UUID claimId=draft.id();
@@ -102,20 +149,20 @@ class ExpenseClaimChainPostgresTest {
         var invoice=claims.addInvoiceVersioned(claimId,new ExpenseClaimInvoiceInput(
             "DIGITAL",null,"26310000000000123456",BusinessTime.today(),"测试酒店","91310000123456789X","测试公司",
             new BigDecimal("94.34"),new BigDecimal("5.66"),new BigDecimal("100.00"),attachment,null,draft.version(),null));
-        var firstSubmitted=claims.submit(claimId,invoice.version());
+        var firstSubmitted=advanceTo(claims.submit(claimId,invoice.version()),"FINANCE_INITIAL");
         long submittedVersion=firstSubmitted.version();
         assertThat(firstSubmitted.resubmission()).isFalse();
         assertThat(firstSubmitted.previousSubmissionSnapshot()).isNull();
         var snapshots=new com.fasterxml.jackson.databind.ObjectMapper();
         assertThat(snapshots.readTree(firstSubmitted.submissionSnapshot()).path("items").get(0).path("amount").asText())
             .isEqualTo("100.00");
-        login(reviewer,"expense:approve","attachment:view","attachment:download");
+        login(reviewer,"expense:approve:finance_initial","attachment:view","attachment:download");
         assertThatThrownBy(()->claims.approve(claimId,submittedVersion)).isInstanceOf(ApiException.class)
             .hasMessageContaining("逐张核对");
         var rejected=claims.reject(claimId,"补充业务说明",submittedVersion);
         login(applicant,"expense:apply");
         var edited=claims.editVersioned(claimId,request("出差拜访客户住宿",rejected.version()));
-        var submitted=claims.submit(claimId,edited.version());
+        var submitted=advanceTo(claims.submit(claimId,edited.version()),"FINANCE_INITIAL");
         assertThat(submitted.resubmission()).isTrue();
         assertThat(snapshots.readTree(submitted.previousSubmissionSnapshot()))
             .isEqualTo(snapshots.readTree(firstSubmitted.submissionSnapshot()));
@@ -123,19 +170,40 @@ class ExpenseClaimChainPostgresTest {
             .isEqualTo("出差拜访客户住宿");
         assertThat(snapshots.readTree(submitted.submissionSnapshot()).path("invoices").get(0).has("checkState"))
             .isFalse();
-        login(reviewer,"expense:approve","attachment:view","attachment:download");
+        login(reviewer,"expense:approve:finance_initial","attachment:view","attachment:download");
         assertThatThrownBy(()->claims.approve(claimId,submittedVersion)).isInstanceOf(ApiException.class)
             .hasMessageContaining("已更新");
         UUID invoiceId=jdbc.queryForObject("SELECT id FROM expense_claim_invoices WHERE claim_id=?",UUID.class,claimId);
         var checked=claims.verifyInvoice(claimId,invoiceId,new ExpenseClaimInvoiceVerifyRequest(
             submitted.version(),"VERIFIED_MANUAL","测试票据原件与查验回执逐项核对一致"));
-        var approved=claims.approve(claimId,checked.version());
-        login(reviewer,"expense:pay");
+        var reviewed=advanceTo(claims.approve(claimId,checked.version()),"EXECUTIVE");
+        UUID reviewEmployee=jdbc.queryForObject("SELECT actor_employee_id FROM expense_claim_events WHERE claim_id=? AND approval_stage='FINANCE_REVIEW' AND event_type='STAGE_APPROVED' AND approval_round=?",UUID.class,claimId,reviewed.approvalRound());
+        var reviewAccount=jdbc.queryForMap("SELECT id,login_account FROM users WHERE employee_id=?",reviewEmployee);
+        Actor financeReview=new Actor((UUID)reviewAccount.get("id"),reviewEmployee,(String)reviewAccount.get("login_account"));
+        login(reviewer,"expense:approve:finance_initial","expense:pay","attachment:view","attachment:download","attachment:upload");
+        login(financeReview,"expense:approve:finance_review","expense:pay","attachment:view","attachment:download","attachment:upload");
+        login(cashier,"expense:pay","attachment:view","attachment:download","attachment:upload");
+        login(executive,"expense:approve:executive","attachment:view","attachment:download");
+        var approved=claims.approve(claimId,reviewed.version());
+        login(executive,"expense:approve:executive","expense:pay");
         var account=account();UUID style=expenseStyle();
         var pay=new ExpenseClaimPaymentRequest(account,style,BusinessTime.today(),approved.version());
         assertThatThrownBy(()->claims.payVersioned(claimId,pay)).isInstanceOf(ApiException.class)
             .hasMessageContaining("审批人与打款人");
+        for(Actor prior:List.of(reviewer,financeReview)) {
+            String permission=prior.equals(reviewer)?"expense:approve:finance_initial":"expense:approve:finance_review";
+            login(prior,permission,"expense:pay","attachment:view","attachment:download","attachment:upload");
+            assertThat(claims.detail(claimId).canPay()).isFalse();
+            assertThat(claims.listPayable(null,null,null,null,1,100,null,null,approved.claimNo()).getItems()).isEmpty();
+            assertThat(claims.facets("payable").claimNos()).extracting(ExpenseClaimFacetsDto.Bucket::value).doesNotContain(approved.claimNo());
+            assertThat(claims.counts().pendingPaymentCount()).isEqualTo(claims.listPayable(null,null,null,null,1,100).getTotal());
+            assertThatThrownBy(()->claims.payVersioned(claimId,pay)).isInstanceOf(ApiException.class).hasMessageContaining("本轮所有审批人");
+            var actor=new AuthUser(prior.user(),prior.employee(),prior.login(),Set.of("expense:pay","attachment:upload"),false,true,false);
+            assertThatThrownBy(()->new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->proofAccess.requireCanManageForUpdate(claimId,actor))).isInstanceOf(ApiException.class);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM notices WHERE audience_user_id=? AND aggregate_id=? AND source_event='EXPENSE_CLAIM_PENDING_PAYMENT'",Long.class,prior.user(),claimId)).isZero();
+        }
         login(cashier,"expense:pay","finance_expense:reverse","finance:view:all");
+        assertThat(claims.detail(claimId).canPay()).isTrue();
         assertThatThrownBy(()->claims.payVersioned(claimId,pay)).isInstanceOf(ApiException.class).hasMessageContaining("付款回单");
         attachment(claimId,"EXPENSE_PAYMENT_PROOF");
         UUID foreignAccount=account(false);
@@ -167,11 +235,14 @@ class ExpenseClaimChainPostgresTest {
         assertThat(claims.listHistory(null,null,null,null,1,20).getItems()).extracting(ExpenseClaimDto::id).contains(claimId);
         assertThat(claims.facets("history").categories()).isNotEmpty();
         assertThat(claims.summary().monthPaidAmount()).isGreaterThanOrEqualTo(new BigDecimal("100"));
-        login(reviewer,"expense:approve");
+        login(reviewer,"expense:approve:finance_initial");
         assertThat(claims.listHistory(null,null,null,null,1,20).getItems()).extracting(ExpenseClaimDto::id).contains(claimId);
-        login(actor("unrelated-reviewer"),"expense:approve");
+        login(actor("unrelated-reviewer"),"expense:approve:finance_initial");
         assertThat(claims.listHistory(null,null,null,null,1,20).getItems()).extracting(ExpenseClaimDto::id).doesNotContain(claimId);
         assertThatThrownBy(()->claims.detail(claimId)).isInstanceOf(ApiException.class);
+        login(applicant,"expense:apply");
+        assertThatThrownBy(()->claims.abandon(claimId,paid.version())).isInstanceOf(ApiException.class);
+        assertThat(claims.detail(claimId).status()).isEqualTo("PAID");
     }
 
     @Test void withdrawnEditsCompareTheLastSubmissionAndMissingLegacyBaselinesStayMissing() throws Exception {
@@ -203,7 +274,7 @@ class ExpenseClaimChainPostgresTest {
 
         // Already-editable legacy documents may have been changed before rollout;
         // their unrecorded old rows must never be fabricated from current values.
-        login(reviewer,"expense:approve");
+        login(reviewer,"expense:approve:department");
         var rejected=claims.reject(first.id(),"补充说明",third.version());
         jdbc.update("UPDATE expense_claims SET submission_snapshot=NULL, previous_submission_snapshot=NULL WHERE id=?",first.id());
         login(applicant,"expense:apply");
@@ -356,11 +427,11 @@ class ExpenseClaimChainPostgresTest {
         login(observer,"expense:view","expense:view:all");
         assertThat(claims.listBrowse(null,null,null,null,1,100,null,null,null).getItems()).extracting(ExpenseClaimDto::id).contains(outside.id());
         assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
-        login(observer,"expense:view","expense:approve");
+        login(observer,"expense:view","expense:approve:department");
         // The independent evidence permissions remain mandatory; reading alone never adds them.
         assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
-        login(observer,"expense:view","expense:approve","attachment:view","attachment:download");
-        assertThat(claims.approve(pendingId,pendingVersion).status()).isEqualTo("APPROVED");
+        login(observer,"expense:view","expense:approve:department","attachment:view","attachment:download");
+        assertThat(claims.approve(pendingId,pendingVersion).status()).isEqualTo("REVIEWING");
         login(observer,"expense:view");
         assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
     }
@@ -379,16 +450,16 @@ class ExpenseClaimChainPostgresTest {
         otherPending=claims.submit(otherPending.id(),otherPending.version());
         var otherPayable=claims.create(request("他人待付款",null)); attachment(otherPayable.id());
         otherPayable=claims.submit(otherPayable.id(),otherPayable.version());
-        login(mixed,"expense:approve","attachment:view","attachment:download");
-        approvedByMixed=claims.approve(approvedByMixed.id(),approvedByMixed.version());
-        login(reviewer,"expense:approve","attachment:view","attachment:download");
-        selfPayable=claims.approve(selfPayable.id(),selfPayable.version());
-        otherPayable=claims.approve(otherPayable.id(),otherPayable.version());
+        approvedByMixed=approveFully(approvedByMixed,mixed);
+        selfPayable=approveFully(selfPayable,reviewer);
+        otherPayable=approveFully(otherPayable,reviewer);
+        selfPending=advanceTo(selfPending,"EXECUTIVE");
+        otherPending=advanceTo(otherPending,"EXECUTIVE");
         login(mixed,"expense:view","expense:view:all");
         var readOnly=claims.summary();
         assertThat(readOnly.actionablePendingCount()).isZero();
         assertThat(readOnly.actionablePayableCount()).isZero();
-        login(mixed,"expense:view","expense:view:all","expense:approve","expense:pay");
+        login(mixed,"expense:view","expense:view:all","expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive","expense:pay");
         var summary=claims.summary();
         assertThat(summary.pendingCount()).isEqualTo(readOnly.pendingCount());
         assertThat(summary.payableCount()).isEqualTo(readOnly.payableCount());
@@ -405,8 +476,54 @@ class ExpenseClaimChainPostgresTest {
         UUID reviewedPayment=approvedByMixed.id();
         assertThatThrownBy(()->claims.pay(ownPayment,null)).hasMessageContaining("不能给自己");
         assertThatThrownBy(()->claims.pay(reviewedPayment,null)).hasMessageContaining("审批人与打款人必须分离");
-        assertThat(claims.detail(otherPending.id()).status()).isEqualTo("SUBMITTED");
+        assertThat(claims.detail(otherPending.id()).status()).isEqualTo("REVIEWING");
         assertThat(claims.detail(otherPayable.id()).status()).isEqualTo("APPROVED");
+    }
+
+    @Test void rejectedOwnerCanAbandonWithoutInventingSubmissionAndKeepLatestSavedPlatformHistory() throws Exception {
+        Actor owner=actor("abandon-owner"),reviewer=actor("abandon-reviewer");login(owner,"expense:apply","attachment:view","attachment:download");
+        var column=platformColumns.create("expense_claim",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("放弃前已保存说明","TEXT",false,null));
+        var draft=claims.create(request("放弃前保存修订",null));UUID original=attachment(draft.id());
+        var invoice=claims.addInvoiceVersioned(draft.id(),new ExpenseClaimInvoiceInput("OTHER",null,"AB-"+UUID.randomUUID(),BusinessTime.today(),"测试交通单位",null,null,null,null,new BigDecimal("100.00"),original,null,draft.version(),null));
+        platformColumns.write("expense_claim",draft.id(),new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(0,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"提交时说明"))));
+        var submitted=claims.submit(draft.id(),invoice.version());
+        login(reviewer,"expense:approve:department");var rejected=claims.reject(draft.id(),"该次申请不再继续",submitted.version());
+        login(owner,"expense:apply","attachment:view","attachment:download");
+        platformColumns.write("expense_claim",draft.id(),new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(1,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"驳回后最后保存说明"))));
+        var abandoned=claims.abandon(draft.id(),rejected.version());
+        assertThat(abandoned.abandoned()).isTrue();assertThat(abandoned.status()).isEqualTo("REJECTED");assertThat(abandoned.rejectReason()).isEqualTo("该次申请不再继续");
+        assertThat(claims.abandon(draft.id(),rejected.version()).id()).isEqualTo(draft.id());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type='ABANDONED'",Long.class,draft.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type IN('SUBMITTED','WITHDRAWN')",Long.class,draft.id())).isEqualTo(1);
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();assertThat(json.readTree(abandoned.submissionSnapshot())).isEqualTo(json.readTree(submitted.submissionSnapshot()));
+        assertThat(abandoned.invoices()).hasSize(1);assertThat(abandoned.attachments()).extracting(a->a.id()).contains(original);
+        assertThat(claims.listMine(null,null,null,null,null,1,100).getItems()).extracting(ExpenseClaimDto::id).doesNotContain(draft.id());
+        assertThat(claims.listMine("PAID",null,null,null,null,1,100,null,null,null,false,false,true).getItems()).extracting(ExpenseClaimDto::id).contains(draft.id());
+        assertThat(claims.facets("mineHistory",false,false,null,null,true).claimNos()).extracting(ExpenseClaimFacetsDto.Bucket::value).contains(draft.claimNo());
+        var history=platformColumns.history("expense_claim",draft.id(),null,1).getFirst();assertThat(history.historyReadOnly()).isTrue();assertThat(history.row().canWrite()).isFalse();
+        assertThat(history.row().cells()).anySatisfy(c->{assertThat(c.columnId()).isEqualTo(column.id());assertThat(c.value()).isEqualTo("驳回后最后保存说明");});
+        assertThatThrownBy(()->platformColumns.read("expense_claim",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.BatchRead(List.of(draft.id()),List.of(column.id())))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->platformColumns.write("expense_claim",draft.id(),new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(2,List.of()))).isInstanceOf(ApiException.class);
+        var own=new AuthUser(owner.user(),owner.employee(),owner.login(),Set.of("expense:apply","attachment:view","attachment:download"),false,true,false);
+        originalAccess.requireCanView(draft.id(),own);assertThatThrownBy(()->originalAccess.requireCanManage(draft.id(),own)).isInstanceOf(ApiException.class);
+        var fresh=claims.create(request("凭证重新申请",null));
+        String no=abandoned.invoices().getFirst().invoiceNo();
+        claims.addInvoiceVersioned(fresh.id(),new ExpenseClaimInvoiceInput("OTHER",null,no,BusinessTime.today(),"测试交通单位",null,null,null,null,new BigDecimal("100.00"),null,null,fresh.version(),null));
+    }
+
+    @Test void abandonRejectsForeignOwnerStaleVersionUnpaidApprovalAndUnknownPaymentFacts() {
+        Actor owner=actor("abandon-guards"),reviewer=actor("abandon-guards-reviewer"),other=actor("abandon-foreign");login(owner,"expense:apply");
+        var draft=claims.create(request("放弃权限边界",null));attachment(draft.id());var submitted=claims.submit(draft.id(),draft.version());
+        login(reviewer,"expense:approve:department");var rejected=claims.reject(draft.id(),"不继续办理",submitted.version());
+        login(other,"expense:apply");assertThatThrownBy(()->claims.abandon(draft.id(),rejected.version())).isInstanceOf(ApiException.class);
+        login(owner,"expense:apply");assertThatThrownBy(()->claims.abandon(draft.id(),rejected.version()-1)).isInstanceOf(ApiException.class).hasMessageContaining("已更新");
+        attachment(draft.id(),"EXPENSE_PAYMENT_PROOF");
+        assertThatThrownBy(()->claims.abandon(draft.id(),rejected.version())).isInstanceOf(ApiException.class).hasMessageContaining("付款凭据");
+        var second=claims.create(request("已经终批不可普通放弃",null));attachment(second.id());second=claims.submit(second.id(),second.version());
+        var approved=approveFully(second,reviewer);login(owner,"expense:apply");
+        assertThatThrownBy(()->claims.abandon(approved.id(),approved.version())).isInstanceOf(ApiException.class);
+        assertThat(claims.detail(approved.id()).status()).isEqualTo("APPROVED");
+        assertThat(jdbc.queryForObject("SELECT is_deleted FROM expense_claims WHERE id=?",Boolean.class,approved.id())).isFalse();
     }
 
     private ExpenseClaimCreateRequest request(String title,Long version) {
@@ -434,15 +551,38 @@ class ExpenseClaimChainPostgresTest {
             VALUES(?,?,'报销链测试账户','BANK',?,1000,0,0,1000,'使用',?)
             """,id,"EXP-"+id,currency,accountStyle);return id;
     }
-    private UUID expenseStyle(){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,'报销测试费用','EXPENSE','使用')",id,"EXP-"+id);return id;}
+    private UUID expenseStyle(){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,'EXPENSE','使用')",id,"EXP-"+id,"报销测试费用-"+id);return id;}
     private Actor actor(String label) {
         UUID employee=UUID.randomUUID(),user=UUID.randomUUID();String login="expense-"+label+"-"+user;
         UUID department=jdbc.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);
-        jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"E-"+employee,label,department);
+        jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"E-"+employee,label+"-"+employee.toString().substring(0,8),department);
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status) VALUES(?,?,?,'test-not-used',false,false,'active')",user,employee,login);
         return new Actor(user,employee,login);
     }
-    private void login(Actor actor,String... permissions){var user=new AuthUser(actor.user(),actor.employee(),actor.login(),Set.of(permissions),false,true,false);
-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));}
+    private ExpenseClaimDto advanceTo(ExpenseClaimDto doc,String targetStage) {
+        while(doc.approvalStage()!=null&&!targetStage.equals(doc.approvalStage())) {
+            Actor approver=actor("gate-"+UUID.randomUUID());
+            login(approver,ExpenseApprovalPolicy.permission(doc.approvalStage()),"attachment:view","attachment:download");
+            doc=claims.approve(doc.id(),doc.version());
+        }
+        return doc;
+    }
+    private ExpenseClaimDto approveFully(ExpenseClaimDto doc,Actor executive) {
+        doc=advanceTo(doc,"EXECUTIVE");login(executive,"expense:approve:executive","attachment:view","attachment:download");
+        return claims.approve(doc.id(),doc.version());
+    }
+    private void login(Actor actor,String... permissions){
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+            UUID administrator=jdbc.queryForObject("SELECT id FROM users WHERE login_account='expense-harness-admin'",UUID.class);
+            jdbc.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,administrator.toString());
+            for(String permission:permissions)jdbc.update("""
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source,source_actor_user_id)
+                SELECT ?,id,'grant','SUPER_ADMIN_CONFIRMED',? FROM permissions WHERE code=?
+                ON CONFLICT(user_id,permission_id) DO UPDATE SET effect='grant',authority_source='SUPER_ADMIN_CONFIRMED',source_actor_user_id=excluded.source_actor_user_id,active=true
+                """,actor.user(),administrator,permission);
+        });
+        var user=new AuthUser(actor.user(),actor.employee(),actor.login(),Set.of(permissions),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));
+    }
     record Actor(UUID user,UUID employee,String login) {}
 }

@@ -701,20 +701,18 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
               title: '选择保管人',
               selectedId: id,
               presentation: UtenEmployeePickerPresentation.businessReference,
+              cancelDepartmentTreeReadOnClose: true,
               departmentTreeLoader: () => ref
                   .read(employeeReferenceRepositoryProvider)
                   .departments(EmployeeReferencePurpose.mouldCustodian),
-              loader: (keyword) async {
-                final rows = await ref
+              pagedLoader: (query) async {
+                return await ref
                     .read(employeeReferenceRepositoryProvider)
-                    .listPickerCandidates(
+                    .listPickerPage(
+                      query,
                       purpose: EmployeeReferencePurpose.mouldCustodian,
-                      search: keyword,
                       statuses: const {'active', 'probation', 'onLeave'},
                     );
-                return rows
-                    .map((row) => row.toPickerItem())
-                    .toList(growable: false);
               },
             ),
           );

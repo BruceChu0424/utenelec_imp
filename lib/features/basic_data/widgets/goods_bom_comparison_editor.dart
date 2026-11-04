@@ -254,7 +254,7 @@ class GoodsBomComparisonEditor extends ChangeNotifier {
                 body.addAll(
                   periodicBomQuantityBody(
                     item.componentGoodsId,
-                    number!,
+                    raw,
                     item.componentUnitName,
                   ),
                 );
@@ -280,7 +280,7 @@ class GoodsBomComparisonEditor extends ChangeNotifier {
                   body.addAll(
                     periodicBomQuantityBody(
                       replacementGoods.id,
-                      double.parse(replacementQuantity),
+                      replacementQuantity,
                       replacementGoods.unitName,
                     ),
                   );

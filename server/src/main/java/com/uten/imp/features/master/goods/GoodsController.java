@@ -17,6 +17,7 @@ import com.uten.imp.features.master.goods.dto.GoodsDictItem;
 import com.uten.imp.features.master.goods.dto.GoodsFacets;
 import com.uten.imp.features.master.goods.dto.GoodsListItem;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
+import com.uten.imp.features.master.goods.dto.GoodsSearchRequest;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
@@ -108,6 +109,38 @@ public class GoodsController {
                 excludeStub, disabledOnly, stubOnly,
                 owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), page, size, sort, order);
+    }
+
+    /** Same authoritative list query; the JSON body avoids URL limits for large, explicit category scopes. */
+    @PostMapping("/search")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public PageResponse<GoodsListItem> search(@Valid @RequestBody GoodsSearchRequest query) {
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        return service.list(query.filter(), query.requestedPage(), query.requestedSize(), query.sort(), query.order());
+    }
+
+    @PostMapping("/search-category-ids")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public java.util.List<UUID> searchCategoryIdsBody(@Valid @RequestBody GoodsSearchRequest query) {
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        return service.matchingCategoryIds(query.filter());
+    }
+
+    @PostMapping("/facets")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public GoodsFacets facetsBody(@Valid @RequestBody GoodsSearchRequest query) {
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        return service.queryFacets(query.filter());
+    }
+
+    @PostMapping("/facet-values")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public com.uten.imp.features.master.goods.dto.GoodsFacetPage facetValuesBody(
+            @Valid @RequestBody GoodsSearchRequest query,
+            @RequestParam String field, @RequestParam(defaultValue = "") String search,
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size) {
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        return service.facetValues(query.filter(), field, search, page, size);
     }
 
     /** 统一选择器搜索定位：只返回受 scope/权限约束的命中货品分类 id，不下载全部货品页。 */

@@ -71,6 +71,13 @@ public class AttachmentController {
                                     @RequestParam(defaultValue="false") boolean onlyDeleted) {
         return service.list(ownerType,ownerId,includeDeleted,onlyDeleted);
     }
+
+    @GetMapping("/linked")
+    @PreAuthorize("hasAuthority('attachment:view')")
+    public List<com.uten.imp.application.port.AttachmentAccessPort.AttachmentView> linked(
+            @RequestParam String ownerType,@RequestParam UUID ownerId){
+        return service.listLinkedVisible(ownerType,ownerId);
+    }
     @GetMapping("/{id}/history") @PreAuthorize("hasAuthority('attachment:view')")
     public AttachmentDto history(@PathVariable UUID id){
         AttachmentDto resolved=service.history(id);

@@ -22,7 +22,7 @@ class ExpenseClaimTimeline extends StatelessWidget {
         : [
             for (final event in claim.events)
               _Node(
-                event.type.label +
+                event.displayLabel +
                     (event.remark == null ? '' : ' · ${event.remark}'),
                 event.actorName,
                 _fmt(event.occurredAt),
@@ -87,6 +87,7 @@ class ExpenseClaimTimeline extends StatelessWidget {
   }
 
   void _appendPendingNode(List<_Node> nodes, ExpenseClaim claim) {
+    if (claim.abandoned) return;
     switch (claim.status) {
       case ExpenseClaimStatus.draft:
         nodes.add(const _Node('补充凭证后提交审批', '', '', _TState.pending));
@@ -98,7 +99,7 @@ class ExpenseClaimTimeline extends StatelessWidget {
         break;
       case ExpenseClaimStatus.submitted:
       case ExpenseClaimStatus.reviewing:
-        nodes.add(const _Node('等待审批', '', '', _TState.pending));
+        nodes.add(_Node(claim.progressLabel, '', '', _TState.pending));
         break;
       case ExpenseClaimStatus.approved:
         nodes.add(const _Node('等待财务登记付款', '', '', _TState.pending));

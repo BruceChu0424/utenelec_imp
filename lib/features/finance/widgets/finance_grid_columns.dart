@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import '../../../core/formatters/exact_number_text.dart';
 // 钱流单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // FinanceGridRow：统一承载 3 种模式的字段（settle 核销 / allocate 分摊 / transfer 转入）。
@@ -28,7 +29,9 @@ import '../../../shared/pricing/line_pricing_controller.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
 import 'finance_entry_l10n.dart';
+import 'finance_style_picker.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
 
 /// 钱流明细行（3 模式超集）。控制器/通知器在行内持有，跨重建存活。
 class FinanceGridRow extends EditableGridRow with AmountRowMixin {
@@ -100,6 +103,16 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   /// 费用/收入项目（expenseStyleId / incomeStyleId）。ValueNotifier 承载：
   /// 下拉选完单元格即时刷新，且列宽随所选名称自动加宽（textOf/listenableOf）。
   final ValueNotifier<String?> styleIdNotifier = ValueNotifier<String?>(null);
+  final postingPurposeNotifier = ValueNotifier<AccountingExpensePurpose>(
+    AccountingExpensePurpose.ordinaryExpense,
+  );
+  late final Listenable styleSelectionListenable = Listenable.merge([
+    styleIdNotifier,
+    postingPurposeNotifier,
+  ]);
+  AccountingExpensePurpose get postingPurpose => postingPurposeNotifier.value;
+  set postingPurpose(AccountingExpensePurpose value) =>
+      postingPurposeNotifier.value = value;
   String? get styleId => styleIdNotifier.value;
   set styleId(String? v) => styleIdNotifier.value = v;
 
@@ -214,6 +227,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   FinanceGridRow clone() {
     final c = FinanceGridRow(mode: mode)
       ..styleId = styleId
+      ..postingPurpose = postingPurpose
       ..inAccountId = inAccountId
       ..occurDate = occurDate;
     c.setDepartment(department.text, departmentReferenceName);
@@ -250,6 +264,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     department.dispose();
     occurDateNotifier.dispose();
     styleIdNotifier.dispose();
+    postingPurposeNotifier.dispose();
     inAccountIdNotifier.dispose();
     super.dispose();
   }
@@ -363,10 +378,11 @@ Map<String, String?> financeGridReviewValues(
   'exchangeRate': row.exchangeRate.text,
   'writeOff': row.writeOff.text,
   'remark': row.remark.text,
-  'style': names.styleName(
-    row.styleId,
-    type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
-  ),
+  'style': type == FinanceDocType.expense
+      ? names.expenseStyleName(row.styleId, row.postingPurpose)
+      : names.styleName(row.styleId, 'INCOME'),
+  if (type == FinanceDocType.expense)
+    'postingPurpose': row.postingPurpose.label,
   'department': names.department(
     row.department.text,
     referencedName: row.departmentReferenceName,
@@ -522,7 +538,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
       label: '本次分配收款(原币)',
-      width: 180,
+      width: 220,
       numeric: true,
       frozenTextOf: (row) => row.amount.text,
       listenableOf: (row) => row.amount,
@@ -604,19 +620,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           ),
         ),
       ),
-    EditableGridColumn<FinanceGridRow>(
-      key: 'remark',
-      label: '备注',
-      width: 180,
-      textOf: (r) => r.remark.text,
-      listenableOf: (r) => r.remark,
-      cellBuilder: (context, row) => TextField(
-        controller: row.remark,
-        decoration: const UtenInputDecoration(
-          InputDecoration(isDense: true, labelText: '备注'),
-        ),
-      ),
-    ),
+    financeRemarkColumn(),
   ];
   if (showReconciliation) return columns;
   // Only presentation changes: rows retain source UUIDs, reconciliation
@@ -634,7 +638,25 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
   return columns.where((column) => entryKeys.contains(column.key)).toList();
 }
 
-String _money(double? value) => value == null ? '—' : value.toStringAsFixed(2);
+/// The trailing editable remark uses the same controller and presentation in
+/// single-document, grouped-entry and review grids.
+EditableGridColumn<FinanceGridRow> financeRemarkColumn() =>
+    EditableGridColumn<FinanceGridRow>(
+      key: 'remark',
+      label: '备注',
+      width: 180,
+      textOf: (row) => row.remark.text,
+      listenableOf: (row) => row.remark,
+      cellBuilder: (context, row) => TextField(
+        controller: row.remark,
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '备注'),
+        ),
+      ),
+    );
+
+String _money(double? value) =>
+    value == null ? '—' : value.toExactString(minimumFractionDigits: 2);
 
 String _moneyExact(String? text, double? fallback) =>
     text == null ? _money(fallback) : financeExactMoneyDisplay(text);
@@ -658,7 +680,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
       label: '本次付款(原币)',
-      width: 140,
+      width: 180,
       numeric: true,
       frozenTextOf: (row) => row.amount.text,
       listenableOf: (row) => row.amount,
@@ -687,7 +709,9 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
   final cat = type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
   // 所选项目的展示名（格内值与列宽测量共用同一份，所见即所量）。
   String styleLabelOf(FinanceGridRow row) {
-    final styles = names.stylesFor(cat);
+    final styles = type == FinanceDocType.expense
+        ? names.expenseStylesFor(row.postingPurpose)
+        : names.stylesFor(cat);
     for (final s in styles) {
       if (s.id == row.styleId) return s.name ?? s.id;
     }
@@ -695,6 +719,31 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
   }
 
   return [
+    if (type == FinanceDocType.expense)
+      EditableGridColumn<FinanceGridRow>(
+        key: 'postingPurpose',
+        label: '支出类型',
+        width: 150,
+        textOf: (r) => r.postingPurpose.label,
+        listenableOf: (r) => r.postingPurposeNotifier,
+        cellBuilder: (_, row) => UtenDropdownField(
+          dense: true,
+          value: row.postingPurpose.apiValue,
+          items: [
+            for (final p in AccountingExpensePurpose.values)
+              UtenDropdownItem(value: p.apiValue, label: p.label),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            row.postingPurpose = AccountingExpensePurpose.fromApi(value);
+            row.styleId = null;
+            if (row.postingPurpose ==
+                AccountingExpensePurpose.manufacturingCost) {
+              names.loadStyleCategory(row.postingPurpose.apiValue, force: true);
+            }
+          },
+        ),
+      ),
     EditableGridColumn<FinanceGridRow>(
       key: 'style',
       label: type == FinanceDocType.expense ? '费用项目' : '收入项目',
@@ -702,27 +751,21 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       // 随所选名称自动加宽（2026-09-16）：此前不接 textOf，选完长名称既不撑列
       // 又折成两行把整行撑高。展开箭头(20)一并计入。
       textOf: (row) => styleLabelOf(row),
-      listenableOf: (row) => row.styleIdNotifier,
+      listenableOf: (row) => row.styleSelectionListenable,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
-      cellBuilder: (context, row) {
-        final styles = names.stylesFor(cat);
-        return UtenDropdownField(
-          // dense：与同行数量/单价等输入格同高（2026-10-06 表格控件统一口径）。
+      cellBuilder: (context, row) => ListenableBuilder(
+        listenable: row.styleSelectionListenable,
+        builder: (context, _) => FinanceStylePicker(
+          names: names,
+          category: cat,
+          postingPurpose: type == FinanceDocType.expense
+              ? row.postingPurpose
+              : null,
           dense: true,
-          label: type == FinanceDocType.expense ? '费用项目' : '收入项目',
           value: row.styleId,
-          items: [
-            for (final s in styles)
-              UtenDropdownItem(value: s.id, label: s.name ?? s.id),
-            // 孤儿值兜底：当前 id 不在字典时补一条。
-            if (row.styleId != null &&
-                row.styleId!.isNotEmpty &&
-                !styles.any((s) => s.id == row.styleId))
-              UtenDropdownItem(value: row.styleId, label: row.styleId!),
-          ],
-          onChanged: (v) => row.styleId = v,
-        );
-      },
+          onChanged: (value) => row.styleId = value,
+        ),
+      ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'department',
@@ -860,20 +903,22 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
           : (names.accountEntries[row.inAccountId] ?? row.inAccountId!),
       listenableOf: (row) => row.inAccountIdNotifier,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
-      cellBuilder: (context, row) => UtenDropdownField(
-        // dense：与同行金额输入格同高（2026-10-06 表格控件统一口径）。
-        dense: true,
-        label: '转入账户',
-        value: row.inAccountId,
-        items: [
-          for (final e in names.accountEntries.entries)
-            UtenDropdownItem(value: e.key, label: e.value),
-          if (row.inAccountId != null &&
-              row.inAccountId!.isNotEmpty &&
-              !names.accountEntries.containsKey(row.inAccountId))
-            UtenDropdownItem(value: row.inAccountId, label: row.inAccountId!),
-        ],
-        onChanged: (v) => row.inAccountId = v,
+      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+        valueListenable: row.inAccountIdNotifier,
+        builder: (context, value, _) => UtenDropdownField(
+          dense: true,
+          label: '转入账户',
+          value: value,
+          items: [
+            for (final e in names.accountEntries.entries)
+              UtenDropdownItem(value: e.key, label: e.value),
+            if (value != null &&
+                value.isNotEmpty &&
+                !names.accountEntries.containsKey(value))
+              UtenDropdownItem(value: value, label: value),
+          ],
+          onChanged: (value) => row.inAccountId = value,
+        ),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(

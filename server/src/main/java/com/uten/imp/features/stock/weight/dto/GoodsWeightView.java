@@ -58,7 +58,29 @@ public record GoodsWeightView(
             String regimeMode,
             OffsetDateTime manualRegimeStartAt,
             long version,
-            OffsetDateTime updatedAt) {
+            OffsetDateTime updatedAt,java.util.List<com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value> inputEvidence) {
+    public Profile(
+            boolean exists,
+            BigDecimal defaultTareKg,
+            BigDecimal tolerancePct,
+            BigDecimal pieceCvPct,
+            BigDecimal manualUnitWeightKg,
+            boolean manualActive,
+            String manualReason,
+            UUID manualSetBy,
+            String manualSetByName,
+            OffsetDateTime manualSetAt,
+            boolean learningEnabled,
+            String regimeMode,
+            OffsetDateTime manualRegimeStartAt,
+            long version,
+            OffsetDateTime updatedAt){this(exists,defaultTareKg,tolerancePct,pieceCvPct,manualUnitWeightKg,manualActive,manualReason,manualSetBy,manualSetByName,manualSetAt,learningEnabled,regimeMode,manualRegimeStartAt,version,updatedAt,java.util.List.of());}
+    public Profile withInputEvidence(java.util.List<com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value> values){return new Profile(exists,defaultTareKg,tolerancePct,pieceCvPct,manualUnitWeightKg,manualActive,manualReason,manualSetBy,manualSetByName,manualSetAt,learningEnabled,regimeMode,manualRegimeStartAt,version,updatedAt,values);}
+
+        public String getDefaultTareKgExact(){return com.uten.imp.common.util.DecimalText.of(defaultTareKg);}
+        public String getTolerancePctExact(){return com.uten.imp.common.util.DecimalText.of(tolerancePct);}
+        public String getPieceCvPctExact(){return com.uten.imp.common.util.DecimalText.of(pieceCvPct);}
+        public String getManualUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(manualUnitWeightKg);}
     }
 
     /** 一行学习结果 (货品级)。 */
@@ -85,6 +107,7 @@ public record GoodsWeightView(
             Integer suggestedSampleSize,
             Short algorithmVersion,
             OffsetDateTime computedAt) {
+        public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
     }
 
     /**
@@ -109,6 +132,7 @@ public record GoodsWeightView(
             Double labelBiasPct,
             OffsetDateTime regimeStartedAt,
             OffsetDateTime regimeChangedAt) {
+        public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
     }
 
     /** 离群观测与提示 (UNIT_10/UNIT_100/UNIT_1000/JIN_KG/LB_KG/DEVIATION)。 */

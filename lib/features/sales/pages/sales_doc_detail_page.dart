@@ -1,3 +1,5 @@
+import '../../../core/formatters/exact_number_text.dart';
+import '../widgets/sales_shipment_print.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
@@ -1205,7 +1207,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           goodsLabel:
               '${names.goods(item.goodsId)}(${names.color(item.colorId)})',
           qtyLabel:
-              '订货 ${item.qty?.toStringAsFixed(2) ?? '-'} · 已发 ${item.shippedQty?.toStringAsFixed(2) ?? '-'} · 可发 ${item.reservedQty?.toStringAsFixed(2) ?? '-'}',
+              '订货 ${item.qty?.toExactString(minimumFractionDigits: 2) ?? '-'} · 已发 ${item.shippedQty?.toExactString(minimumFractionDigits: 2) ?? '-'} · 可发 ${item.reservedQty?.toExactString(minimumFractionDigits: 2) ?? '-'}',
           onSetPriority: (p, reason) => _setLinePriority(item.id!, p, reason),
           onYield: (qty, reason) => _yieldLine(item.id!, qty, reason),
         ),
@@ -1251,7 +1253,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           );
       if (!mounted || !ownsNative()) return;
       context.appSuccess(
-        '已让单 ${qty.toStringAsFixed(2)}，释放的库存已回可分配池，该订单行已回到计划需求池',
+        '已让单 ${qty.toExactString(minimumFractionDigits: 2)}，释放的库存已回可分配池，该订单行已回到计划需求池',
       );
       bumpListRefresh(ref, _cfg.refreshKey);
       setState(() => _detail = d);
@@ -1411,6 +1413,24 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
         actions: [
+          if (_cfg.type.isShipment &&
+              _detail?.financeAudit == 1 &&
+              (_detail?.status ?? -1) >= 0)
+            UtenButton(
+              icon: Icons.print_outlined,
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      try {
+                        await showSalesShipmentPrint(context, ref, widget.id);
+                      } catch (error) {
+                        if (context.mounted) {
+                          context.appApiError(error, fallback: '打印预览未读取完成');
+                        }
+                      }
+                    },
+              child: const Text('预览打印'),
+            ),
           // 整页刷新（2026-09-05 用户口径：右上角刷新=刷新整个页面）——2026-09-26
           // 起产品进度经 scope 一并重读（面板自带刷新按钮已随工具条退役）。
           UtenRefreshButton(
@@ -2521,7 +2541,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                     label: '围数',
                     width: 80,
                     type: 'number',
-                    value: (it) => it.circumference?.toStringAsFixed(2),
+                    value: (it) => it.circumference?.toExactString(
+                      minimumFractionDigits: 2,
+                    ),
                   ),
                   MasterColumnDef(
                     key: 'inboundQty',
@@ -3357,7 +3379,9 @@ class _LineActionSheetState extends State<_LineActionSheet> {
     _priority = widget.item.priority ?? 3;
     _priorityReason = TextEditingController();
     _yieldQty = TextEditingController(
-      text: (widget.item.reservedQty ?? 0).toStringAsFixed(2),
+      text: (widget.item.reservedQty ?? 0).toExactString(
+        minimumFractionDigits: 2,
+      ),
     );
     _yieldReason = TextEditingController();
   }

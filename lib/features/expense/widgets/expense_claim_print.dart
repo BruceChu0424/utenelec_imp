@@ -1,9 +1,14 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 // 公司内部费用报销展示及打印件：A4、多页明细、准确金额及真实流转历史。
 // 电子文件数与纸质张数分开呈现；付款信息只说明系统已登记事实。
 // 本件不替代原始凭证、税务查验、有效电子签名或法定电子档案。
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/widgets/sensitive_content_boundary.dart';
+import '../../../core/network/read_scope_revision.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +32,15 @@ import '../models/expense_item.dart';
 import 'expense_submission_revision.dart';
 import '../../../components/data_display/uten_revision_table.dart';
 
+const expenseClaimSignatureRoles = [
+  '报销人',
+  '部门负责人',
+  '财务初核',
+  '财务复核',
+  '总经办批准',
+  '出纳',
+];
+
 /// One projected item dataset drives both the live preview and downloadable PDF.
 /// Payment evidence, signed fields and flow history retain the claim's original print semantics.
 Future<UtenPrintTable> expensePrintItemsTable(
@@ -34,8 +48,8 @@ Future<UtenPrintTable> expensePrintItemsTable(
   TableColumnProjection? projection,
   PlatformTableRepository? repository,
 }) {
-  final frozen = expenseSubmittedPrintRows(claim);
-  final historical = expenseShowsSubmittedRevision(claim);
+  final frozen = claim.abandoned ? null : expenseSubmittedPrintRows(claim);
+  final historical = claim.abandoned || expenseShowsSubmittedRevision(claim);
   final sourceRows =
       frozen ??
       [
@@ -45,7 +59,8 @@ Future<UtenPrintTable> expensePrintItemsTable(
             'category': item.category.apiValue,
             'date': _fmtDate(item.date),
             'description': item.description,
-            'amount': item.amount.toString(),
+            'amount': item.amountText,
+            if (claim.abandoned) 'platformFields': item.platformFields,
           },
       ];
   // A missing legacy snapshot means no historical custom value. It must not
@@ -65,6 +80,7 @@ Future<UtenPrintTable> expensePrintItemsTable(
     if (cell == null) return '';
     if (cell.masked) return '***';
     if (cell.error != null) {
+      if (claim.abandoned) return '历史结果未保存';
       throw const FormatException('打印需要的部分数据没有算出来，请刷新页面后再试');
     }
     return cell.value ?? '';
@@ -145,47 +161,86 @@ Future<void> showExpenseClaimPrintPreview(
     context.appError('找不到报销明细的列设置，请刷新后重试');
     return;
   }
-  UtenPrintTable itemsTable;
+  final container = ProviderScope.containerOf(context, listen: false);
+  final boundary = container.read(sensitiveReadBoundaryProvider);
+  final revision = container.read(readScopeRevisionProvider);
+  var invalidated = false;
+  final subscription = container.listen(sensitiveReadBoundaryProvider, (
+    _,
+    next,
+  ) {
+    if (next != boundary) invalidated = true;
+  });
+  final revisionSubscription = container.listen(readScopeRevisionProvider, (
+    _,
+    next,
+  ) {
+    if (next != revision) invalidated = true;
+  });
   try {
-    itemsTable = await expensePrintItemsTable(
-      claim,
-      projection: projection,
-      repository:
-          !expenseShowsSubmittedRevision(claim) &&
-              projection?.columns.any(
-                    (column) => column.key.startsWith('platform:'),
-                  ) ==
-                  true
-          ? ProviderScope.containerOf(
-              context,
-              listen: false,
-            ).read(platformTableRepositoryProvider)
-          : null,
+    final materials = await UtenBusyOverlay.run(
+      context,
+      title: '正在准备报销打印资料',
+      action: () async {
+        final items = await expensePrintItemsTable(
+          claim,
+          projection: projection,
+          repository:
+              !claim.abandoned &&
+                  !expenseShowsSubmittedRevision(claim) &&
+                  projection?.columns.any(
+                        (column) => column.key.startsWith('platform:'),
+                      ) ==
+                      true
+              ? container.read(platformTableRepositoryProvider)
+              : null,
+        );
+        var company = '';
+        try {
+          company = (await container.read(
+            expenseSettingsProvider.future,
+          )).companyName;
+        } catch (_) {
+          /* A missing optional company heading does not remove claim facts. */
+        }
+        return (items: items, company: company);
+      },
+    );
+    if (!context.mounted || invalidated) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Consumer(
+        builder: (context, ref, _) {
+          final currentRevision = ref.watch(readScopeRevisionProvider);
+          return SensitiveContentBoundary(
+            boundary: boundary,
+            isCurrent: () => !invalidated && currentRevision == revision,
+            child: _ExpenseClaimPrintDialog(
+              claim: claim,
+              companyName: materials.company,
+              itemsTable: materials.items,
+            ),
+            invalidatedBuilder: (context) => UtenAlertDialog(
+              title: const Text('登录身份或权限已变化'),
+              actions: [
+                UtenButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   } catch (error) {
-    if (context.mounted) {
-      context.appError(humanErrorMessage(error) ?? '报销明细暂时读取不出来，请稍后重试');
+    if (context.mounted && !invalidated) {
+      context.appError(humanErrorMessage(error) ?? '打印资料暂时读取不出来，请稍后重试');
     }
-    return;
+  } finally {
+    subscription.close();
+    revisionSubscription.close();
   }
-  if (!context.mounted) return;
-  String companyName = '';
-  try {
-    companyName = (await ProviderScope.containerOf(
-      context,
-    ).read(expenseSettingsProvider.future)).companyName;
-  } catch (_) {
-    // Printing a readable claim remains possible when optional company settings cannot be loaded.
-  }
-  if (!context.mounted) return;
-  return showDialog<void>(
-    context: context,
-    builder: (_) => _ExpenseClaimPrintDialog(
-      claim: claim,
-      companyName: companyName,
-      itemsTable: itemsTable,
-    ),
-  );
 }
 
 class _ExpenseClaimPrintDialog extends StatefulWidget {
@@ -216,7 +271,10 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
         disclaimer: AppLocalizations.of(context).expenseFlowPrintDisclaimer,
         itemsTable: widget.itemsTable,
       );
-      await printPdfBytes(bytes, '费用报销单-${claim.claimNo}.pdf');
+      if (!mounted) return;
+      await UtenBusyOverlay.yieldWhile(
+        () => printPdfBytes(bytes, '费用报销单-${claim.claimNo}.pdf'),
+      );
     } catch (caughtError) {
       if (context.mounted) {
         context.appApiError(caughtError, fallback: '生成打印件失败，请稍后重试');
@@ -240,41 +298,50 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
           maxWidth: 980,
           maxHeight: MediaQuery.sizeOf(context).height * 0.92,
         ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              UtenDialogHeader(
-                title: Text('预览 · 费用报销单 ${claim.claimNo}'),
-                icon: Icons.receipt_long_outlined,
-                showCloseButton: true,
-                onClose: () => Navigator.of(context).pop(),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: Container(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(UtenSpacing.s16),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SelectionArea(child: _paper(theme)),
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  UtenDialogHeader(
+                    title: Text('预览 · 费用报销单 ${claim.claimNo}'),
+                    icon: Icons.receipt_long_outlined,
+                    showCloseButton: true,
+                    onClose: () => Navigator.of(context).pop(),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SelectionArea(child: _paper(theme)),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              UtenDialogActions(
-                children: [
-                  UtenButton(
-                    isLoading: _printing,
-                    icon: Icons.print_outlined,
-                    onPressed: _printing ? null : () => _print(context),
-                    child: const Text('打印'),
+                  UtenDialogActions(
+                    children: [
+                      UtenButton(
+                        isLoading: _printing,
+                        icon: Icons.print_outlined,
+                        onPressed: _printing ? null : () => _print(context),
+                        child: const Text('打印'),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+            if (_printing)
+              const UtenBusyOverlay(
+                title: '正在生成报销打印件',
+                showDoNotLeaveHint: false,
+              ),
+          ],
         ),
       ),
     );
@@ -363,7 +430,7 @@ class _PaperSheet extends StatelessWidget {
               TableRow(
                 children: [
                   _kv('部门', claim.departmentName ?? '—'),
-                  _kv('状态', claim.status.label),
+                  _kv('状态', claim.progressLabel),
                 ],
               ),
               TableRow(
@@ -393,7 +460,7 @@ class _PaperSheet extends StatelessWidget {
                     padding: const EdgeInsets.all(6),
                     child: Text(
                       '合计（${claim.items.length} 项）　小写：¥ '
-                      '${claim.totalAmount.toStringAsFixed(2)}',
+                      '${financeExactMoneyDisplay(claim.totalAmountText)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontFeatures: [FontFeature.tabularFigures()],
@@ -407,7 +474,7 @@ class _PaperSheet extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.all(6),
                     child: Text(
-                      '大写：${rmbCapital(claim.totalAmount)}',
+                      '大写：${rmbCapital(claim.totalAmountText)}',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -423,13 +490,7 @@ class _PaperSheet extends StatelessWidget {
             children: [
               TableRow(
                 children: [
-                  for (final role in const [
-                    '报销人',
-                    '部门负责人',
-                    '财务审核',
-                    '批准人',
-                    '出纳',
-                  ])
+                  for (final role in expenseClaimSignatureRoles)
                     SizedBox(
                       height: 56,
                       child: Center(
@@ -445,6 +506,15 @@ class _PaperSheet extends StatelessWidget {
                 ],
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            height: 48,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black54, width: .6),
+            ),
+            child: const Text('领款人签收：________________　日期：____________'),
           ),
           const SizedBox(height: 10),
           _auditTrail(grey),
@@ -582,7 +652,7 @@ List<String> expensePrintAuditLines(ExpenseClaim claim) => [
   '系统流转记录 (${claim.claimNo})',
   if (claim.events.isEmpty) '暂无系统流转记录',
   for (final event in claim.events)
-    '${event.type.label} · ${event.actorName} · ${_fmtDateTime(event.occurredAt)}${event.remark?.isNotEmpty == true ? ' · ${event.remark}' : ''}',
+    '${event.displayLabel} · ${event.actorName} · ${_fmtDateTime(event.occurredAt)}${event.remark?.isNotEmpty == true ? ' · ${event.remark}' : ''}',
 ];
 
 /// Build the same complete claim shown in preview. Tables split naturally over A4 pages.
@@ -662,6 +732,16 @@ class _ExpenseClaimPdf {
             _pdfPaymentTable(font),
             pw.SizedBox(height: 6),
             _pdfSignTable(font),
+            pw.SizedBox(height: 6),
+            pw.Container(
+              height: 44,
+              padding: const pw.EdgeInsets.all(8),
+              decoration: pw.BoxDecoration(border: pw.Border.all(width: .5)),
+              child: _pdfText(
+                font,
+                '领款人签收：________________    日期：____________',
+              ),
+            ),
           ],
         ),
       ),
@@ -736,7 +816,7 @@ class _ExpenseClaimPdf {
           pw.SizedBox(width: 18),
           _pdfText(font, '部门：${claim.departmentName ?? '—'}'),
           pw.SizedBox(width: 18),
-          _pdfText(font, '状态：${claim.status.label}'),
+          _pdfText(font, '状态：${claim.progressLabel}'),
         ],
       ),
       pw.SizedBox(height: 4),
@@ -822,13 +902,13 @@ class _ExpenseClaimPdf {
           _pdfText(font, '合计（${claim.items.length} 项）', bold: true),
           _pdfText(
             font,
-            '小写：¥ ${claim.totalAmount.toStringAsFixed(2)}',
+            '小写：¥ ${financeExactMoneyDisplay(claim.totalAmountText)}',
             bold: true,
           ),
         ],
       ),
       pw.SizedBox(height: 2),
-      _pdfText(font, '大写：${rmbCapital(claim.totalAmount)}', bold: true),
+      _pdfText(font, '大写：${rmbCapital(claim.totalAmountText)}', bold: true),
     ]);
   }
 
@@ -853,7 +933,7 @@ class _ExpenseClaimPdf {
   }
 
   pw.Widget _pdfSignTable(pw.Font font) {
-    const roles = ['报销人', '部门负责人', '财务审核', '批准人', '出纳'];
+    const roles = expenseClaimSignatureRoles;
     return pw.Table(
       border: pw.TableBorder.all(width: 0.5),
       children: [

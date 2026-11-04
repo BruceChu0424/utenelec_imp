@@ -381,7 +381,7 @@ abstract final class WeightPredictor {
   /// 估算件数取整: 按件计的单位 HALF_EVEN 到整数, 其余保留 4 位 (HALF_UP)。
   static double roundQty(double qty, {required bool integer}) {
     if (!qty.isFinite) return qty;
-    if (!integer) return (qty * 10000).roundToDouble() / 10000;
+    if (!integer) return qty;
     final floor = qty.floorToDouble();
     final diff = qty - floor;
     if (diff > 0.5) return floor + 1;

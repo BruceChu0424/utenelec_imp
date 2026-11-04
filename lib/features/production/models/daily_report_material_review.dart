@@ -1,4 +1,3 @@
-import '../../../shared/formatters/exact_decimal.dart';
 import 'production_exact_quantity.dart';
 
 enum DailyReportMaterialAction {
@@ -159,13 +158,13 @@ class DailyReportMaterialReviewRow {
   };
 
   bool get hasBalance =>
-      financeExactDecimalUnits(remainingIssuedQty)! > BigInt.zero ||
-      financeExactDecimalUnits(undrawnDirectQty)! > BigInt.zero;
+      productionExactQuantityUnits(remainingIssuedQty)! > BigInt.zero ||
+      productionExactQuantityUnits(undrawnDirectQty)! > BigInt.zero;
   bool get requiresDecision => canReturn && hasBalance;
   String get returnableQty => productionExactQuantityText(
-    financeExactDecimalFromUnits(
-      financeExactDecimalUnits(returnableIssuedQty)! +
-          financeExactDecimalUnits(returnableDirectQty)!,
+    productionQuantityTextFromUnits(
+      productionExactQuantityUnits(returnableIssuedQty)! +
+          productionExactQuantityUnits(returnableDirectQty)!,
     ),
   )!;
 

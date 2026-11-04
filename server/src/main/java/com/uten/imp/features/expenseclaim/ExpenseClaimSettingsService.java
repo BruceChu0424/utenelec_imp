@@ -22,7 +22,7 @@ public class ExpenseClaimSettingsService {
         var user=currentUser.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED));
         if(user.isVisitor() || user.getEmployeeId()==null || (!user.isSuperAdmin()
                 && user.getPermissions().stream().noneMatch(p->java.util.Set.of(
-                        "expense:apply","expense:approve","expense:pay","expense:settings").contains(p)))) {
+                        "expense:apply","expense:approve","expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive","expense:pay","expense:settings").contains(p)))) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
         Object[] row=(Object[])em.createNativeQuery("SELECT company_name, company_tax_no, submission_guide, require_invoice, version FROM expense_claim_settings WHERE id=1").getSingleResult();

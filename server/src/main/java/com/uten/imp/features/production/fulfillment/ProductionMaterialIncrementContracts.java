@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.fulfillment;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
@@ -10,7 +11,7 @@ import java.util.UUID;
 public final class ProductionMaterialIncrementContracts {
     private ProductionMaterialIncrementContracts() {}
     public record SubmitRequest(@NotNull UUID originalDemandId, @NotNull UUID targetSegmentId,
-            UUID supplementProofId, @NotNull @DecimalMin(value="0",inclusive=false) @Digits(integer=14,fraction=4) BigDecimal deltaQty,
+            UUID supplementProofId, @NotNull @DecimalMin(value="0",inclusive=false) @DocumentQuantity BigDecimal deltaQty,
             @NotBlank @Size(min=2,max=500) String reason, @NotNull @PositiveOrZero Long expectedDemandVersion,
             @NotBlank @Size(min=8,max=128) String idempotencyKey) {}
     public record DecisionRequest(@NotNull @PositiveOrZero Long expectedVersion,

@@ -20,10 +20,13 @@ TimeoutStopSec=30s
 KillMode=control-group
 NoNewPrivileges=true
 # Explicit root under NoNewPrivileges still needs capabilities across exec.
-# Bound the worker to identity delegation, private reads, release ownership and
-# child cleanup; runuser clears effective/permitted/ambient caps after setuid.
-CapabilityBoundingSet=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID
-AmbientCapabilities=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID
+# Bound the worker to identity delegation, private reads, release ownership,
+# child cleanup and /proc fd inspection before protected backup pruning.
+# /proc fd access uses ptrace checks; DAC_READ_SEARCH alone cannot establish
+# that another account's files are unused. Keep unknown process access closed.
+# runuser clears effective/permitted/ambient caps after setuid.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
+AmbientCapabilities=CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
 PrivateTmp=true
 PrivateDevices=true
 ProtectHome=true

@@ -140,8 +140,8 @@ public class WorkshopMaterialValuationService {
         return share((BigDecimal)recent.getFirst().get("amount_local"),qty,(BigDecimal)recent.getFirst().get("qty"));
     }
 
-    /** 已知总额按数量取份额, 4 位(与库存估值切片同一口径)。 */
+    /** Known book value retains finite digits; repeating shares require the common explicit choice. */
     private static BigDecimal share(BigDecimal value,BigDecimal qty,BigDecimal basis){
-        return value.multiply(qty).divide(basis,4,RoundingMode.HALF_UP);
+        return com.uten.imp.common.finance.MoneyPolicy.bookValueSlice(value,basis,BigDecimal.ZERO,qty);
     }
 }

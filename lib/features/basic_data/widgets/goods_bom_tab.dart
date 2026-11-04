@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/l10n/localized_text.dart';
 import 'bom_inline_edit_cell.dart';
 import '../providers/goods_bom_changes.dart';
@@ -448,7 +449,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           context.appWarning(error);
           return false;
         }
-        final entered = double.parse(values.qty.text.trim());
+        final entered = financeExactDecimal(values.qty.text)!;
         if (item.isPeriodicEdge) {
           body.addAll(
             _periodicEdgeBody(
@@ -458,9 +459,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             ),
           );
         } else {
-          body['qty'] = item.qtyExactText == null
-              ? entered
-              : financeExactDecimal(values.qty.text) ?? entered;
+          body['qty'] = entered;
         }
       }
       if (values.changed.contains('basisOutputQty')) {
@@ -469,9 +468,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           context.appWarning(_l10n.bomDesignQtyInvalid);
           return false;
         }
-        body['basisOutputQty'] = item.basisOutputQtyExactText == null
-            ? parsed
-            : financeExactDecimal(values.basis.text) ?? parsed;
+        body['basisOutputQty'] = financeExactDecimal(values.basis.text);
       }
       if (values.changed.contains('consumptionBasis')) {
         body['consumptionBasis'] = values.consumption.code;
@@ -2063,6 +2060,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         componentColorName: goods.colorName,
         colorId: goods.colorId,
         price: goods.baseCurrencyPrice,
+        priceExactText: goods.baseCurrencyPriceText,
         summary: original.summary,
         componentSourceType: goods.sourceType,
         componentIssueMethod: goods.issueMethod,
@@ -4317,7 +4315,7 @@ Future<bool> _confirmSecondPeriodicMaterial(BuildContext context) async {
 /// BOM 用量 (最多 5 位小数) 的输入框 / 表格文本：去掉补齐的 0，不出现科学计数法。
 String _plainQty(double? v) {
   if (v == null) return '';
-  final fixed = v.toStringAsFixed(5);
+  final fixed = v.toExactString(minimumFractionDigits: 5);
   return fixed
       .replaceFirst(RegExp(r'0+$'), '')
       .replaceFirst(RegExp(r'\.$'), '');
@@ -4327,7 +4325,7 @@ String _plainQty(double? v) {
 /// 不能换算时 [entered] 就是基本单位的用量，只提交 qty。形状字段不提交 (服务端固定)。
 Map<String, dynamic> _periodicEdgeBody(
   String componentGoodsId,
-  double entered,
+  Object entered,
   String? unitName,
 ) => periodicBomQuantityBody(componentGoodsId, entered, unitName);
 
@@ -4515,8 +4513,8 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
           unusual.add(_unusualLine(context, name, grams));
         }
         final body = <String, dynamic>{
-          ..._periodicEdgeBody(p.goods.id, entered, p.goods.unitName),
-          'price': p.goods.baseCurrencyPrice,
+          ..._periodicEdgeBody(p.goods.id, raw, p.goods.unitName),
+          'price': p.goods.baseCurrencyPriceText,
         };
         bodies.add(body);
         periodicBodies.add(body);
@@ -4530,8 +4528,8 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       }
       bodies.add({
         'componentGoodsId': p.goods.id,
-        'qty': double.parse(p.qtyCtl.text.trim()),
-        'price': p.goods.baseCurrencyPrice,
+        'qty': financeExactDecimal(p.qtyCtl.text),
+        'price': p.goods.baseCurrencyPriceText,
       });
     }
     // 单个重量异常 (小于 0.1 克或大于 5000 克) 二次确认；确认框弹出时不能有遮罩。
@@ -5042,19 +5040,16 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       'componentGoodsId': e.componentGoodsId,
       // 期间边按克提交 (服务端换成基本单位存，形状固定为开工前、按每件、不设齐套门槛)。
       if (e.isPeriodicEdge && submitQuantity)
-        ..._periodicEdgeBody(e.componentGoodsId, entered!, e.componentUnitName)
+        ..._periodicEdgeBody(e.componentGoodsId, raw, e.componentUnitName)
       else if (!e.isPeriodicEdge) ...{
-        if (submitQuantity)
-          'qty': e.qtyExactText == null
-              ? double.parse(raw)
-              : financeExactDecimal(raw) ?? double.parse(raw),
+        if (submitQuantity) 'qty': financeExactDecimal(raw),
       },
       if (confirmUnusual) periodicConfirmUnusualWeight: true,
       if (e.isPeriodicEdge &&
           submitQuantity &&
           e.unitWeightGramsExactText != null &&
           periodicGramsPerBaseUnit(e.componentUnitName) != null)
-        'unitWeightGrams': financeExactDecimal(raw) ?? entered,
+        'unitWeightGrams': financeExactDecimal(raw),
       'price': e.priceExactText ?? e.price,
       // 实时关联只回传 UUID；历史 legacy 快照缺少 UUID 时不解析、不覆盖。
       if (e.colorId != null) 'colorId': e.colorId,

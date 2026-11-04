@@ -107,7 +107,9 @@ abstract class _MaterialAnalysisPlanActionsState
     if (qty == null) return ' · 本次追加已并入原计划';
     final text = qty == qty.roundToDouble()
         ? qty.toInt().toString()
-        : qty.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+        : qty
+              .toExactString(minimumFractionDigits: 4)
+              .replaceFirst(RegExp(r'0+$'), '');
     return ' · 本次追加 $text 已并入原计划';
   }
 

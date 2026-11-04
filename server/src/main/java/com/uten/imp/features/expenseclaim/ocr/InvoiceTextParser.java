@@ -28,17 +28,17 @@ final class InvoiceTextParser {
     private static final Pattern ISSUE_DATE_ISO = Pattern.compile(
             "开票日期[:\\s：]*(\\d{4})-(\\d{2})-(\\d{2})");
     private static final Pattern TOTAL_AFTER_LABEL = Pattern.compile(
-            "价税合计[^¥￥0-9]{0,12}[¥￥]?\\s*([0-9][0-9,]*\\.\\d{2})");
+            "价税合计[^¥￥0-9]{0,12}[¥￥]?\\s*([0-9][0-9,]*\\.\\d{1,24})(?![0-9.])");
     private static final Pattern AMOUNT_WITH_SIGN = Pattern.compile(
-            "[¥￥]\\s*([0-9][0-9,]*\\.\\d{2})");
+            "[¥￥]\\s*([0-9][0-9,]*\\.\\d{1,24})(?![0-9.])");
     private static final Pattern TOTAL_LINE_CN = Pattern.compile(
-            "价税合计[^0-9]{0,6}[（(]小写[）)][:\\s：]*[¥￥]?\\s*([0-9][0-9,]*\\.\\d{2})");
+            "价税合计[^0-9]{0,6}[（(]小写[）)][:\\s：]*[¥￥]?\\s*([0-9][0-9,]*\\.\\d{1,24})(?![0-9.])");
     private static final Pattern SUMMARY_AMOUNTS = Pattern.compile(
-            "合\\s*计[^¥￥0-9]{0,8}[¥￥]?\\s*([0-9][0-9,]*\\.\\d{2})[^¥￥0-9]{0,10}[¥￥]?\\s*([0-9][0-9,]*\\.\\d{2})");
+            "合\\s*计[^¥￥0-9]{0,8}[¥￥]?\\s*([0-9][0-9,]*\\.\\d{1,24})(?![0-9.])[^¥￥0-9]{0,10}[¥￥]?\\s*([0-9][0-9,]*\\.\\d{1,24})(?![0-9.])");
     private static final Pattern EXPLICIT_AMOUNT = Pattern.compile(
-            "(?m)^(?:不含税金额|金额)[:：][¥￥]?([0-9][0-9,]*\\.\\d{2})$");
+            "(?m)^(?:不含税金额|金额)[:：][¥￥]?([0-9][0-9,]*\\.\\d{1,24})(?![0-9.])$");
     private static final Pattern EXPLICIT_TAX = Pattern.compile(
-            "(?m)^税额[:：][¥￥]?([0-9][0-9,]*\\.\\d{2})$");
+            "(?m)^税额[:：][¥￥]?([0-9][0-9,]*\\.\\d{1,24})(?![0-9.])$");
     private static final Pattern NAME_AFTER_LABEL = Pattern.compile(
             "[：:][\\t ]*([^\\r\\n:：]{2,200})");
     private static final Pattern TAX_NO = Pattern.compile(
@@ -238,7 +238,7 @@ final class InvoiceTextParser {
         }
         try {
             BigDecimal parsed = new BigDecimal(raw.replace(",", ""));
-            return parsed.signum() >= 0 ? parsed : null;
+            return parsed.signum() >= 0 ? com.uten.imp.common.util.FinancialExactAmount.require(parsed,"识别金额") : null;
         } catch (Exception exception) {
             return null;
         }

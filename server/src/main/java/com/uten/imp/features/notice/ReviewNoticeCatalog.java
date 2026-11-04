@@ -143,6 +143,9 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "EXPENSE_CLAIM_SUBMITTED",
                     new Entry("EXPENSE_CLAIM", "EXPENSE_APPROVE")),
+            Map.entry("FINANCE_APPLICATION_REVIEW_REQUIRED",new Entry("FINANCE_APPLICATION","FINANCE_APPLICATION_REVIEW")),
+            Map.entry("FINANCE_APPLICATION_PAYMENT_REQUIRED",new Entry("FINANCE_APPLICATION",null)),
+            Map.entry("FINANCE_APPLICATION_RETURNED",new Entry("FINANCE_APPLICATION",null)),
             // 报销审批通过 → 打款人接棒（单级；打款/撤回时撤卡）
             Map.entry(
                     "EXPENSE_CLAIM_PENDING_PAYMENT",

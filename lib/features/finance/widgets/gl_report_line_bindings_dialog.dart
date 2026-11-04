@@ -18,6 +18,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 
 /// 报表行绑定的一个目标(科目或部门)。
 class GlReportLineTarget {
@@ -52,6 +53,8 @@ class GlReportLineBinding {
     this.sheet,
     this.confirmedZero = false,
     this.defaultBasis,
+    this.allowedCategories = const [],
+    this.requiredFinanceCodePrefix,
   });
 
   factory GlReportLineBinding.fromJson(Map<String, dynamic> json) =>
@@ -63,6 +66,13 @@ class GlReportLineBinding {
         sheet: json['sheet']?.toString(),
         confirmedZero: json['confirmedZero'] == true,
         defaultBasis: json['defaultBasis']?.toString(),
+        allowedCategories: [
+          for (final item
+              in json['allowedCategories'] as List<dynamic>? ?? const [])
+            item.toString(),
+        ],
+        requiredFinanceCodePrefix: json['requiredFinanceCodePrefix']
+            ?.toString(),
         targets: [
           for (final item in (json['targets'] as List<dynamic>? ?? const []))
             if (item is Map<String, dynamic>) GlReportLineTarget.fromJson(item),
@@ -77,8 +87,12 @@ class GlReportLineBinding {
   final String? sheet;
   final bool confirmedZero;
   final String? defaultBasis;
+  final List<String> allowedCategories;
+  final String? requiredFinanceCodePrefix;
 
   bool get department => bindingKind == 'DEPARTMENT';
+  List<String> get effectiveCategories =>
+      allowedCategories.isEmpty ? [category] : allowedCategories;
   String get notConfigured => confirmedZero
       ? '财务已确认本行单独取数为零'
       : defaultBasis ?? (department ? '未配置部门' : '未配置科目');
@@ -140,11 +154,18 @@ class _GlReportLineBindingsDialogState
   bool _busy = false;
   bool _changed = false;
 
-  ApiClient get _api => ref.read(apiClientProvider);
+  late final ApiClient _api;
+  late final int _ownerEpoch;
+  bool get _current =>
+      mounted &&
+      _ownerEpoch == ref.read(exportContextEpochProvider) &&
+      identical(_api, ref.read(apiClientProvider));
 
   @override
   void initState() {
     super.initState();
+    _api = ref.read(apiClientProvider);
+    _ownerEpoch = ref.read(exportContextEpochProvider);
     _load();
   }
 
@@ -152,7 +173,7 @@ class _GlReportLineBindingsDialogState
     setState(() => _error = null);
     try {
       final rows = await _api.getList(GlReportLineBindingEndpoints.list);
-      if (!mounted) return;
+      if (!mounted || !_current) return;
       setState(() => _lines = rows.map(GlReportLineBinding.fromJson).toList());
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
@@ -162,6 +183,7 @@ class _GlReportLineBindingsDialogState
   }
 
   Future<void> _seedDefaults() async {
+    if (!_current) return;
     setState(() => _busy = true);
     try {
       // 带空 body: Web 端无 body 的 POST 受 15 秒连接上限影响。
@@ -169,7 +191,7 @@ class _GlReportLineBindingsDialogState
         GlReportLineBindingEndpoints.defaults,
         body: const <String, dynamic>{},
       );
-      if (!mounted) return;
+      if (!mounted || !_current) return;
       setState(() {
         _lines = rows.map(GlReportLineBinding.fromJson).toList();
         _changed = true;
@@ -185,20 +207,11 @@ class _GlReportLineBindingsDialogState
   }
 
   Future<void> _edit(GlReportLineBinding line) async {
+    if (!_current) return;
     setState(() => _busy = true);
     List<GlReportLineCandidate> candidates;
     try {
-      candidates = line.department
-          ? flattenDepartments(
-              await _api.getList(GlReportLineBindingEndpoints.departments),
-            )
-          : flattenExpenseLeaves(
-              await _api.getList(
-                GlReportLineBindingEndpoints.expenseStyles,
-                query: {'category': line.category},
-              ),
-              category: line.category,
-            );
+      candidates = await loadGlReportLineCandidates(_api, line);
     } on ApiException catch (error) {
       if (mounted) {
         setState(() => _busy = false);
@@ -212,7 +225,7 @@ class _GlReportLineBindingsDialogState
       }
       return;
     }
-    if (!mounted) return;
+    if (!mounted || !_current) return;
     setState(() => _busy = false);
     final picked = await showDialog<_BindingSelection>(
       context: context,
@@ -225,9 +238,10 @@ class _GlReportLineBindingsDialogState
         initial: {for (final target in line.targets) target.id},
         canConfirmZero: line.sheet != null,
         confirmedZero: line.confirmedZero,
+        ownerEpoch: _ownerEpoch,
       ),
     );
-    if (picked == null || !mounted) return;
+    if (picked == null || !mounted || !_current) return;
     setState(() => _busy = true);
     try {
       final saved = GlReportLineBinding.fromJson(
@@ -239,7 +253,7 @@ class _GlReportLineBindingsDialogState
           },
         ),
       );
-      if (!mounted) return;
+      if (!_current) return;
       setState(() {
         _lines = [
           for (final item in _lines ?? const <GlReportLineBinding>[])
@@ -258,6 +272,17 @@ class _GlReportLineBindingsDialogState
 
   @override
   Widget build(BuildContext context) {
+    if (ref.watch(exportContextEpochProvider) != _ownerEpoch) {
+      return AlertDialog(
+        title: const Text('访问范围已变化'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('关闭'),
+          ),
+        ],
+      );
+    }
     final theme = Theme.of(context);
     final lines = _lines;
     return UtenDialogFrame(
@@ -367,6 +392,50 @@ class _GlReportLineBindingsDialogState
   }
 }
 
+/// Same candidate contract for report settings and cost-expense selectors.
+Future<List<GlReportLineCandidate>> loadGlReportLineCandidates(
+  ApiClient api,
+  GlReportLineBinding line,
+) async {
+  if (line.department) {
+    return flattenDepartments(
+      await api.getList(GlReportLineBindingEndpoints.departments),
+    );
+  }
+  final categories = line.effectiveCategories;
+  final trees = await Future.wait([
+    for (final category in categories)
+      api.getList(
+        GlReportLineBindingEndpoints.expenseStyles,
+        query: {'category': category},
+      ),
+  ]);
+  Set<String>? costIds;
+  if (line.requiredFinanceCodePrefix != null &&
+      categories.contains('ACCOUNT')) {
+    final chart = await api.get('/finance/chart');
+    costIds = {
+      for (final row in chart['items'] as List<dynamic>? ?? const [])
+        if (row is Map<String, dynamic> &&
+            row['code'].toString().startsWith(line.requiredFinanceCodePrefix!))
+          for (final target in row['targets'] as List<dynamic>? ?? const [])
+            if (target is Map<String, dynamic>) target['id'].toString(),
+    };
+  }
+  return [
+    for (var i = 0; i < categories.length; i++)
+      for (final candidate in flattenExpenseLeaves(
+        trees[i],
+        category: categories[i],
+      ))
+        if ((categories[i] != 'ACCOUNT' &&
+                line.lineKey != 'MFG_LABOR_CONTROL') ||
+            costIds == null ||
+            costIds.contains(candidate.id))
+          candidate,
+  ];
+}
+
 /// 费用类科目树 → 末级科目(停用的也列出, 标注后可绑来统计历史发生额)。
 List<GlReportLineCandidate> flattenExpenseLeaves(
   List<Map<String, dynamic>> roots, {
@@ -434,13 +503,37 @@ List<GlReportLineCandidate> flattenDepartments(
   return result;
 }
 
+/// Shared UUID picker for both the original report settings and accounting-code mapping.
+Future<Set<String>?> showGlReportTargetPicker(
+  BuildContext context, {
+  required String title,
+  required List<GlReportLineCandidate> candidates,
+  required Set<String> initial,
+}) async {
+  final ownerEpoch = ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(exportContextEpochProvider);
+  final result = await showDialog<_BindingSelection>(
+    context: context,
+    builder: (_) => _TargetPickerDialog(
+      title: title,
+      hint: '对应真实系统末级科目；同名项目请同时核对编号与所属分类',
+      candidates: candidates,
+      initial: initial,
+      ownerEpoch: ownerEpoch,
+    ),
+  );
+  return result?.ids;
+}
+
 class _BindingSelection {
   const _BindingSelection(this.ids, this.zero);
   final Set<String> ids;
   final bool zero;
 }
 
-class _TargetPickerDialog extends StatefulWidget {
+class _TargetPickerDialog extends ConsumerStatefulWidget {
   const _TargetPickerDialog({
     required this.title,
     required this.hint,
@@ -448,6 +541,7 @@ class _TargetPickerDialog extends StatefulWidget {
     required this.initial,
     this.canConfirmZero = false,
     this.confirmedZero = false,
+    this.ownerEpoch,
   });
 
   final String title;
@@ -456,18 +550,33 @@ class _TargetPickerDialog extends StatefulWidget {
   final Set<String> initial;
   final bool canConfirmZero;
   final bool confirmedZero;
+  final int? ownerEpoch;
 
   @override
-  State<_TargetPickerDialog> createState() => _TargetPickerDialogState();
+  ConsumerState<_TargetPickerDialog> createState() =>
+      _TargetPickerDialogState();
 }
 
-class _TargetPickerDialogState extends State<_TargetPickerDialog> {
+class _TargetPickerDialogState extends ConsumerState<_TargetPickerDialog> {
+  late final int _ownerEpoch =
+      widget.ownerEpoch ?? ref.read(exportContextEpochProvider);
   late final Set<String> _selected = {...widget.initial};
   late bool _zero = widget.confirmedZero;
   String _keyword = '';
 
   @override
   Widget build(BuildContext context) {
+    if (ref.watch(exportContextEpochProvider) != _ownerEpoch) {
+      return AlertDialog(
+        title: const Text('访问范围已变化'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      );
+    }
     final theme = Theme.of(context);
     final keyword = _keyword.trim().toLowerCase();
     final visible = keyword.isEmpty

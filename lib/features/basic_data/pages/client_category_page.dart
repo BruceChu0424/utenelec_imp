@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/inputs/uten_table_cell_auto_width.dart';
 // 客户资料分类树管理页（基础资料）
 //
@@ -370,7 +371,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
             ),
             'creditFloor': MasterInlineField<ClientListItem>(
               key: 'creditFloor',
-              read: (row) => row.creditFloor,
+              read: (row) => row.creditFloorExactText ?? row.creditFloor,
               type: MasterFieldType.money,
             ),
             'defaultSettlementMethodName': MasterInlineField<ClientListItem>(
@@ -909,10 +910,20 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       width: 110,
       type: 'money',
       columnSearchEnabled: true,
-      info: '旧库信用额度快照，按本列两位显示值检索；不是实时应收或可用额度。',
+      info: '旧库信用额度快照，按完整原值检索；不是实时应收或可用额度。',
       sortable: true,
-      exactValueOf: (m) => m.creditDisplayText ?? m.credit?.toStringAsFixed(2),
-      value: (m) => m.creditDisplayText ?? m.credit?.toStringAsFixed(2),
+      exactValueOf: (m) =>
+          m.creditDisplayText ??
+          exactNumberDisplay(
+            m.creditExactText ?? m.credit,
+            minimumFractionDigits: 2,
+          ),
+      value: (m) =>
+          m.creditDisplayText ??
+          exactNumberDisplay(
+            m.creditExactText ?? m.credit,
+            minimumFractionDigits: 2,
+          ),
     ),
     MasterColumnDef(
       key: 'creditFloor',
@@ -920,12 +931,20 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       width: 110,
       type: 'money',
       columnSearchEnabled: true,
-      info: '按本列两位铺底额检索；跨币种不相加。',
+      info: '按铺底额完整原值检索；保持本币授信口径。',
       sortable: true,
       exactValueOf: (m) =>
-          m.creditFloorDisplayText ?? (m.creditFloor ?? 0).toStringAsFixed(2),
+          m.creditFloorDisplayText ??
+          exactNumberDisplay(
+            m.creditFloorExactText ?? m.creditFloor ?? 0,
+            minimumFractionDigits: 2,
+          ),
       value: (m) =>
-          m.creditFloorDisplayText ?? (m.creditFloor ?? 0).toStringAsFixed(2),
+          m.creditFloorDisplayText ??
+          exactNumberDisplay(
+            m.creditFloorExactText ?? m.creditFloor ?? 0,
+            minimumFractionDigits: 2,
+          ),
     ),
     MasterColumnDef(
       key: 'website',

@@ -49,6 +49,19 @@ class ProcurementCostSourceEvidenceTest {
         assertThat(ProcurementCostSourceEvidenceService.evidence(row)).isPresent();
     }
 
+    @Test
+    void realPendingReceiptRetainsItsExactAcquisitionIdentityWhenFinanceLaterRecognizesAp() {
+        var row=approvedPart();row.remove("ap_id");row.put("pending_candidate_id",UUID.randomUUID());
+        assertThat(ProcurementCostSourceEvidenceService.evidence(row)).isEmpty();
+        row.put("pending_fingerprint","a".repeat(64));
+        var pending=ProcurementCostSourceEvidenceService.evidence(row).orElseThrow();
+        assertThat(pending.knownValueLocal()).isEqualByComparingTo("400");
+        row.put("ap_id",UUID.randomUUID());
+        assertThat(ProcurementCostSourceEvidenceService.evidence(row).orElseThrow().evidenceHash()).isEqualTo(pending.evidenceHash());
+        row.put("pending_fingerprint","b".repeat(64));
+        assertThat(ProcurementCostSourceEvidenceService.evidence(row).orElseThrow().evidenceHash()).isNotEqualTo(pending.evidenceHash());
+    }
+
     private static Map<String, Object> approvedPart() {
         Map<String, Object> row = new HashMap<>();
         for (String field : new String[]{"id", "receipt_id", "receipt_item_id", "warehouse_id", "goods_id", "ap_id"}) {

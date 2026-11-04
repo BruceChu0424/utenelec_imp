@@ -130,6 +130,14 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource(securityProps)))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
+                        // Only the already-authenticated watch's internal result
+                        // dispatch can pass after its captured session was revoked.
+                        .requestMatchers(request -> request.getDispatcherType() == jakarta.servlet.DispatcherType.ASYNC
+                                && Boolean.TRUE.equals(request.getAttribute(
+                                    com.uten.imp.features.auth.SessionWatchController.AUTHENTICATED_WATCH))
+                                && "GET".equals(request.getMethod())
+                                && "/api/auth/session/watch".equals(
+                                    com.uten.imp.security.SecurityRequestPath.withinApplication(request))).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/platform/branding", "/api/platform/branding/logo", "/api/system/maintenance").permitAll()
                         .requestMatchers(publicPaths).permitAll()
@@ -255,6 +263,7 @@ public class SecurityConfig {
                 // ADR-133: 公共 AI 识别上传的文件名/类型(AiJobController); 跨源网页上传靠它们通过预检。
                 "X-Uten-File-Name",
                 "X-Uten-File-Type",
+                com.uten.imp.common.finance.BusinessPrecisionContext.HEADER,
                 com.uten.imp.security.StepUpInterceptor.HEADER,
                 com.uten.imp.security.AutomaticRequestPolicy.HEADER,
                 AuditDeviceContext.HEADER_CLIENT_EVENT_ID,

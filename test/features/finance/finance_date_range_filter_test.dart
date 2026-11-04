@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -37,7 +38,14 @@ void main() {
   );
 
   Future<void> openPicker(WidgetTester tester) async {
-    await tester.tap(find.widgetWithText(UtenButton, '选择日期'));
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(UtenDateRangeSelectionButton),
+            matching: find.byType(UtenButton),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
     expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
     expect(find.byType(UtenDateField), findsNothing);

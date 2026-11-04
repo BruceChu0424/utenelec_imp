@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 采购报表页（采购管理，purchase_report:view）：月度汇总（货品×供应商×类型，MV 上卷）
 // + 待交货订货汇总。明细报表复用 4 单据列表页（带日期/供应商/状态过滤）。
 import 'dart:math' as math;
@@ -303,7 +304,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                                     style: theme.textTheme.labelSmall,
                                   ),
                                   trailing: Text(
-                                    '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}',
+                                    '¥${r.amt.toExactString()} · ${r.qty.toExactString(minimumFractionDigits: 1)}',
                                   ),
                                 );
                               case _RowKind.pending:
@@ -316,7 +317,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                                     style: theme.textTheme.labelSmall,
                                   ),
                                   trailing: Text(
-                                    '待 ${r.qty.toStringAsFixed(1)}',
+                                    '待 ${r.qty.toExactString(minimumFractionDigits: 1)}',
                                   ),
                                 );
                             }

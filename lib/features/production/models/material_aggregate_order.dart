@@ -62,6 +62,7 @@ class MaterialAggregateOrderGroupInput {
     this.deliveryDate,
     this.productNo,
     this.allowedOverproductionRate,
+    this.allowedOverproductionRateExact,
     this.safetyQty = '0',
     this.sourceRequestedQtyByMaterialLineId,
   });
@@ -76,8 +77,39 @@ class MaterialAggregateOrderGroupInput {
       deliveryDate,
       productNo;
   final double? allowedOverproductionRate;
+  final String? allowedOverproductionRateExact;
   final String safetyQty;
   final Map<String, String>? sourceRequestedQtyByMaterialLineId;
+
+  factory MaterialAggregateOrderGroupInput.fromExactJson(
+    Map<String, dynamic> json,
+  ) {
+    final route = MaterialSupplyRoute.fromWire(json['route']);
+    if (route == null) throw const FormatException('原备料请求的供给方式无法核对');
+    final rate = json['allowedOverproductionRate'];
+    return MaterialAggregateOrderGroupInput(
+      clientGroupKey: json['clientGroupKey'] as String,
+      materialLineIds: List<String>.from(json['materialLineIds'] as List),
+      route: route,
+      qty: json['qty'] as String,
+      allowPublicExtra: json['allowPublicExtra'] == true,
+      departmentId: json['departmentId'] as String?,
+      workerId: json['workerId'] as String?,
+      teamDepartmentId: json['teamDepartmentId'] as String?,
+      billDate: json['billDate'] as String?,
+      deliveryDate: json['deliveryDate'] as String?,
+      productNo: json['productNo'] as String?,
+      allowedOverproductionRate: rate is num ? rate.toDouble() : null,
+      allowedOverproductionRateExact: rate is String ? rate : null,
+      safetyQty: json['safetyQty'] as String? ?? '0',
+      sourceRequestedQtyByMaterialLineId:
+          json['sourceRequestedQtyByMaterialLineId'] is Map
+          ? Map<String, String>.from(
+              json['sourceRequestedQtyByMaterialLineId'] as Map,
+            )
+          : null,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'clientGroupKey': clientGroupKey,
@@ -91,7 +123,8 @@ class MaterialAggregateOrderGroupInput {
     'billDate': ?billDate,
     'deliveryDate': ?deliveryDate,
     'productNo': ?productNo,
-    'allowedOverproductionRate': ?allowedOverproductionRate,
+    'allowedOverproductionRate':
+        ?(allowedOverproductionRateExact ?? allowedOverproductionRate),
     'safetyQty': safetyQty,
     'sourceRequestedQtyByMaterialLineId': ?sourceRequestedQtyByMaterialLineId,
   };
@@ -120,6 +153,27 @@ class MaterialAggregateOrderRequest {
   /// 缺省 false = 原行为（先认领、只为余量新下单）。
   final bool skipAutoClaim;
   final List<MaterialAggregateOrderGroupInput> groups;
+  factory MaterialAggregateOrderRequest.fromExactJson(
+    String analysisId,
+    Map<String, dynamic> json,
+  ) => MaterialAggregateOrderRequest(
+    analysisId: analysisId,
+    version: json['version'] as int,
+    fingerprint: json['fingerprint'] as String,
+    idempotencyKey: json['idempotencyKey'] as String,
+    warehouseId: json['warehouseId'] as String,
+    billDate: json['billDate'] as String,
+    deliveryDate: json['deliveryDate'] as String?,
+    approveNow: json['approveNow'] == true,
+    skipAutoClaim: json['skipAutoClaim'] == true,
+    groups: [
+      for (final item in json['groups'] as List)
+        MaterialAggregateOrderGroupInput.fromExactJson(
+          Map<String, dynamic>.from(item as Map),
+        ),
+    ],
+  );
+
   Map<String, dynamic> toJson({String? previewFingerprint}) => {
     'version': version,
     'fingerprint': fingerprint,

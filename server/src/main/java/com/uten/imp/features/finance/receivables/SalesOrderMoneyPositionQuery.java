@@ -170,9 +170,10 @@ public class SalesOrderMoneyPositionQuery {
     public FuturePosition future(UUID orderId) {
         Object[] row = (Object[]) em.createNativeQuery("""
                 SELECT COALESCE(SUM(CASE WHEN orders.is_stopped OR orders.status<>1 THEN 0
-                     WHEN item.qty>0 THEN ROUND(item.amount_original
+                     WHEN item.qty>0 THEN fn_business_exact_divide(item.amount_original
                        * GREATEST(item.qty-COALESCE(item.shipped_qty,0)+COALESCE(item.returned_qty,0)
-                                  -COALESCE(item.flag_qty,0),0)/item.qty,4)
+                                  -COALESCE(item.flag_qty,0),0),item.qty,
+                       'finance.sales-order.future-original','销售订单未交数量对应原币金额',30)
                      ELSE 0 END),0),
                        COUNT(*) FILTER(WHERE item.qty<=0 OR item.amount_original IS NULL
                          OR item.amount_original<0 OR item.shipped_qty<0 OR item.returned_qty<0

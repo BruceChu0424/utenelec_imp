@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 这张工单改用别的料 (ADR-131 §5.5, 段级换料, 少用)。
 //
 // 车间生产任务行菜单进入: 选原来用的哪种料 (或「加一种料」, 原来的料照用),
@@ -450,7 +451,7 @@ class _SegmentMaterialChangeDialogState
   }
 
   static String _grams(double value) {
-    final fixed = value.toStringAsFixed(3);
+    final fixed = value.toExactString(minimumFractionDigits: 3);
     final trimmed = fixed.replaceFirst(RegExp(r'0+$'), '');
     return trimmed.endsWith('.')
         ? trimmed.substring(0, trimmed.length - 1)

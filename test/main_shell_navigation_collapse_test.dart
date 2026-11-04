@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
+import 'package:uten_imp/components/layout/uten_page_scrollbar_host.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
@@ -33,6 +34,44 @@ import 'helpers/badge_summary_fixture.dart';
 import 'shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  testWidgets('real main tabs hide page rails on phones and tablets', (
+    tester,
+  ) async {
+    final router = await _pumpShell(
+      tester,
+      width: 1024,
+      height: 768,
+      dashboardFixture: true,
+    );
+    final tabTypes = <String, String>{
+      '/dashboard': 'DashboardPage',
+      '/notice': 'NoticeListPage',
+      '/profile': 'ProfilePage',
+      '/settings': 'SettingsPage',
+    };
+    for (final width in [1024.0, 390.0, 1366.0, 1024.0]) {
+      await _resize(tester, width);
+      for (final tab in tabTypes.entries) {
+        router.go(tab.key);
+        await tester.pumpAndSettle();
+        final page = find.byWidgetPredicate(
+          (widget) => widget.runtimeType.toString() == tab.value,
+        );
+        expect(page, findsOneWidget);
+        expect(
+          UtenPageScrollbarVisibilityScope.isHiddenOf(tester.element(page)),
+          width < 1280,
+          reason: '${tab.key} at $width',
+        );
+        if (width < 1280) {
+          expect(find.byKey(UtenPageScrollbarHost.railKey), findsNothing);
+        }
+        expect(tester.takeException(), isNull);
+      }
+    }
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'pushed compact child hides navigation and pop restores it without losing the entry',
     (tester) async {

@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -14,11 +15,12 @@ double? parseProductionOverproductionPercent(String text) {
       percent >= 100000) {
     return null;
   }
-  return double.parse((percent / 100).toStringAsFixed(6));
+  return double.parse((percent / 100).toExactString(minimumFractionDigits: 6));
 }
 
-String productionOverproductionPercentText(double rate) =>
-    (rate * 100).toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+String productionOverproductionPercentText(double rate) => (rate * 100)
+    .toExactString(minimumFractionDigits: 4)
+    .replaceFirst(RegExp(r'\.?0+$'), '');
 
 /// 系统按货品默认比例预填的比例格(ADR-129 §2.10)，物料分析页与计划编辑页共用。
 ///

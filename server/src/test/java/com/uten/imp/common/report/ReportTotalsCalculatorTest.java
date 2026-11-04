@@ -26,6 +26,16 @@ import static org.mockito.Mockito.when;
  * </ol>
  */
 class ReportTotalsCalculatorTest {
+    @Test void financialStrictTotalsRetainAnExplicitPendingGroupForAnyMissingAmount() {
+        var rows=new java.util.ArrayList<Map<String,Object>>();
+        rows.add(Map.of("amount",new BigDecimal("123")));
+        var unknown=new LinkedHashMap<String,Object>();unknown.put("amount",null);rows.add(unknown);
+        rows.add(Map.of("amount",new BigDecimal("456")));
+        var total=ReportTotalsCalculator.computeFromRows(rows,List.of(new ReportTotalsCalculator.Spec("amount","财务合计","money",null,null,true)));
+        assertThat(total).singleElement().satisfies(t->assertThat(t.groups()).containsExactly(new ReportTotalGroup(null,null)));
+        var legacy=ReportTotalsCalculator.computeFromRows(rows,List.of(new ReportTotalsCalculator.Spec("amount","已知部分","money",null)));
+        assertThat(legacy.getFirst().groups().getFirst().value()).isEqualByComparingTo("579");
+    }
 
     // ==================== SQL 版（服务端分页的报表） ====================
 

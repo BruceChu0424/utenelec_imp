@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
@@ -183,7 +184,7 @@ class PriceHistoryPainter extends CustomPainter {
   String _tick(double value) =>
       value != 0 && (value.abs() < .0001 || value.abs() >= 1000000000)
       ? value.toStringAsExponential(2)
-      : value.toStringAsFixed(value.abs() < 1 ? 4 : 2);
+      : value.toExactString(minimumFractionDigits: value.abs() < 1 ? 4 : 2);
 
   String _day(double time) => DateTime.fromMillisecondsSinceEpoch(
     time.toInt(),

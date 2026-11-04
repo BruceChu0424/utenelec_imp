@@ -36,4 +36,7 @@ public class GoodsStockRow {
         this(warehouseId,warehouseCode,warehouseName,colorId,colorName,qty,weight,weightEstimated,lineSide,defective,
                 false,null,true);
     }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightExact")
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
 }

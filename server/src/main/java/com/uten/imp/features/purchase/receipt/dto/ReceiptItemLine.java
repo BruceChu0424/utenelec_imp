@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.receipt.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -27,6 +28,7 @@ public class ReceiptItemLine extends com.uten.imp.common.platformcolumns.Platfor
     private BigDecimal unitRate;
 
     @NotNull
+    @DocumentQuantity
     private BigDecimal qty;
 
     @jakarta.validation.constraints.Pattern(regexp = "NORMAL|RETURN_REPLACEMENT")
@@ -36,7 +38,7 @@ public class ReceiptItemLine extends com.uten.imp.common.platformcolumns.Platfor
 
     private BigDecimal price;
     @jakarta.validation.constraints.DecimalMin("0")
-    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
+    @DocumentQuantity
     private BigDecimal giftQty;
 
     /** 关联订货明细（可选；有则审核时回写 received_qty）。 */

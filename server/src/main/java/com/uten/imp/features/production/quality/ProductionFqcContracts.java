@@ -1,8 +1,8 @@
 package com.uten.imp.features.production.quality;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -25,10 +25,10 @@ public final class ProductionFqcContracts {
                     message = "质检决定仅支持 PASS、PARTIAL 或 FAIL")
             String decision,
             @DecimalMin(value = "0", inclusive = false)
-            @Digits(integer = 14, fraction = 4)
+            @DocumentQuantity
             BigDecimal passQty,
             @DecimalMin(value = "0", inclusive = false)
-            @Digits(integer = 14, fraction = 4)
+            @DocumentQuantity
             BigDecimal failQty,
             @Size(max = 32) String dispositionCode,
             @Size(max = 1000) String reason,
@@ -195,11 +195,11 @@ public final class ProductionFqcContracts {
     public record LotDecisionRequest(
             @NotNull
             @DecimalMin(value = "0", inclusive = true)
-            @Digits(integer = 14, fraction = 4)
+            @DocumentQuantity
             BigDecimal passQty,
             @NotNull
             @DecimalMin(value = "0", inclusive = true)
-            @Digits(integer = 14, fraction = 4)
+            @DocumentQuantity
             BigDecimal failQty,
             @Size(max = 32) String dispositionCode,
             @Size(max = 1000) String reason,
@@ -226,8 +226,8 @@ public final class ProductionFqcContracts {
             @NotBlank @Pattern(regexp = "LOT|INSPECTION") String targetType,
             @NotNull UUID targetId,
             @Pattern(regexp = "PASS|PARTIAL|FAIL") String decision,
-            @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal passQty,
-            @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal failQty,
+            @DecimalMin("0") @DocumentQuantity BigDecimal passQty,
+            @DecimalMin("0") @DocumentQuantity BigDecimal failQty,
             @Size(max = 32) String dispositionCode,
             @Size(max = 1000) String reason,
             @NotBlank @Size(min = 8, max = 128)

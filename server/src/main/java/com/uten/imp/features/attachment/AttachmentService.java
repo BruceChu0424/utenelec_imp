@@ -69,6 +69,8 @@ public class AttachmentService implements AttachmentAccessPort {
     private final StorageProviderRegistry storageProviders;
     private final AttachmentDownloadVerifier downloadVerifier;
     private final com.uten.imp.audit.AuditActorDirectory actors;
+    @org.springframework.beans.factory.annotation.Autowired
+    private AttachmentLinkedEvidenceSupport linkedEvidence;
 
     @Override
     @Transactional(readOnly = true)
@@ -226,6 +228,7 @@ public class AttachmentService implements AttachmentAccessPort {
         policy(ownerType).requireCanView(ownerId, user);
         return repository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(
                         ownerType, ownerId, AttachmentLifecycleState.CLEAN).stream()
+                .filter(row->row.getDeleteRequestedAt()==null)
                 .map(this::toDto)
                 .toList();
     }
@@ -245,7 +248,7 @@ public class AttachmentService implements AttachmentAccessPort {
     public AttachmentDto history(UUID id) {
         AuthUser user=requireStaff();require(user,"attachment:view");
         Attachment row=repository.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
-        policy(row.getOwnerType()).requireCanViewHistory(row.getOwnerId(),user);
+        requireOriginalAccess(row,user,()->policy(row.getOwnerType()).requireCanViewHistory(row.getOwnerId(),user));
         return toDto(row,true);
     }
 
@@ -254,7 +257,7 @@ public class AttachmentService implements AttachmentAccessPort {
         AuthUser user=requireStaff();require(user,"attachment:download");
         if(user.getImpersonatedBy()!=null)throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);
         Attachment row=repository.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
-        policy(row.getOwnerType()).requireCanViewSensitiveOriginalHistory(row.getOwnerId(),user);
+        requireOriginalAccess(row,user,()->policy(row.getOwnerType()).requireCanViewSensitiveOriginalHistory(row.getOwnerId(),user));
         if(row.getLifecycleState()!=AttachmentLifecycleState.CLEAN&&row.getLifecycleState()!=AttachmentLifecycleState.RETAINED_HISTORY)
             throw new ApiException(ErrorCode.CONFLICT,"历史附件原件不可用，不能伪造恢复文件");
         InputStream input=downloadVerifier.open(row);
@@ -274,6 +277,21 @@ public class AttachmentService implements AttachmentAccessPort {
                         attachment.downloadUrl(), attachment.category(), attachment.avatar(),attachment.deleted(),attachment.deletedAt(),attachment.deletedBy(),attachment.deletedByName(),attachment.deletedReason(),
                         attachment.historyReadOnly(),attachment.originalAvailability(),attachment.historyDownloadUrl()))
                 .toList();
+    }
+
+    @Override @Transactional(readOnly=true)
+    public List<AttachmentView> listLinkedVisible(String rawOwnerType,UUID ownerId){
+        AuthUser user=requireStaff();require(user,"attachment:view");
+        String ownerType=normalizeOwnerType(rawOwnerType);
+        policy(ownerType).requireCanView(ownerId,user);
+        if(linkedEvidence==null)return List.of();
+        return linkedEvidence.visibleLinked(ownerType,ownerId).stream().map(row->{
+            var dto=toDto(row,true);
+            return new AttachmentView(dto.id(),dto.ownerType(),dto.ownerId(),dto.storageKey(),dto.originalName(),
+                    dto.contentType(),dto.sizeBytes(),dto.uploadedAt(),dto.uploadedBy(),dto.downloadUrl(),dto.category(),dto.avatar(),
+                    dto.deleted(),dto.deletedAt(),dto.deletedBy(),dto.deletedByName(),dto.deletedReason(),true,
+                    dto.originalAvailability(),dto.historyDownloadUrl());
+        }).toList();
     }
 
     @Override @Transactional(readOnly=true)
@@ -299,6 +317,7 @@ public class AttachmentService implements AttachmentAccessPort {
             throw new ApiException(ErrorCode.NOT_FOUND, "附件不存在");
         }
         requireClean(selected);
+        requireOriginalMutable(selected.getId());
         // 2026-09-11：不能只看 image/ 前缀。tiff/heic/svg 也是 image/*，但客户端解码不了，
         // 选成头像就是一个永远加载失败的空头像（读取侧本就只放行下面五种）。
         if (!StringUtils.hasText(selected.getContentType())
@@ -311,6 +330,7 @@ public class AttachmentService implements AttachmentAccessPort {
         repository.findByOwnerTypeAndOwnerIdOrderByCreatedAtAsc(ownerType, ownerId)
                 .forEach(candidate -> {
                     if (candidate.isAvatar() && !candidate.getId().equals(selected.getId())) {
+                        requireOriginalMutable(candidate.getId());
                         candidate.setAvatar(false);
                         repository.save(candidate);
                     }
@@ -328,7 +348,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
         requireDownloadAuthority(user, attachment);
-        policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(), user);
+        requireOriginalAccess(attachment,user,()->policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(),user));
 
         StorageService.PresignedDownload grant = storageProviders.require(attachment.getStorageProvider()).presignDownload(
                 attachment.getStorageKey(), attachment.getStorageVersion());
@@ -350,7 +370,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
         requireDownloadAuthority(user, attachment);
-        policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(), user);
+        requireOriginalAccess(attachment,user,()->policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(),user));
         // Opaque library originals are storage-only, even if later renamed to an Office suffix.
         // Never let an arbitrary binary enter LibreOffice through extension-based legacy fallback.
         if (AttachmentContentInspector.isOpaqueCompanyFile(
@@ -385,6 +405,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
         policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
+        requireOriginalMutable(attachment.getId());
 
         String category = normalizeCategory(rawCategory);
         attachment.setCategory(category);
@@ -416,6 +437,7 @@ public class AttachmentService implements AttachmentAccessPort {
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         policy(attachment.getOwnerType()).requireCanDeleteForUpdate(attachment.getOwnerId(), user);
+        requireOriginalMutable(attachment.getId());
         if (attachment.getLifecycleState() == AttachmentLifecycleState.DELETED
                 || attachment.getLifecycleState()==AttachmentLifecycleState.RETAINED_HISTORY
                 || attachment.getLifecycleState() == AttachmentLifecycleState.DELETE_PENDING
@@ -481,7 +503,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(metadata);
         requireDownloadAuthority(user, metadata);
-        policy(metadata.getOwnerType()).requireCanDownload(metadata.getOwnerId(), user);
+        requireOriginalAccess(metadata,user,()->policy(metadata.getOwnerType()).requireCanDownload(metadata.getOwnerId(),user));
 
         InputStream input = downloadVerifier.open(metadata);
         String fileName = metadata.getOriginalName() != null
@@ -553,6 +575,18 @@ public class AttachmentService implements AttachmentAccessPort {
         return matches.getFirst();
     }
 
+    /** Native source readers gain one pinned original only, after the usual global download/view gate. */
+    private void requireOriginalAccess(Attachment attachment,AuthUser user,Runnable originalPolicy){
+        try{originalPolicy.run();}
+        catch(ApiException denied){
+            if((denied.getCode()==ErrorCode.FORBIDDEN||denied.getCode()==ErrorCode.NOT_FOUND)
+                    &&linkedEvidence!=null&&linkedEvidence.mayRead(attachment,user))return;
+            throw denied;
+        }
+    }
+    /** Called after the original owner's mutation lock, so mapping confirmation cannot race deletion. */
+    private void requireOriginalMutable(UUID id){if(linkedEvidence!=null)linkedEvidence.requireMutable(id);}
+
     private void requireStorageEnabled() {
         if (!storage.isEnabled()) {
             throw new ApiException(ErrorCode.BUSINESS, "附件存储功能未开启，请联系管理员");
@@ -560,7 +594,7 @@ public class AttachmentService implements AttachmentAccessPort {
     }
 
     private static void requireClean(Attachment attachment) {
-        if (attachment.getLifecycleState() != AttachmentLifecycleState.CLEAN) {
+        if (attachment.getLifecycleState() != AttachmentLifecycleState.CLEAN||attachment.getDeleteRequestedAt()!=null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "附件已删除或不可用");
         }
     }

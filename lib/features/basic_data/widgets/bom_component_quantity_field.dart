@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 export '../models/goods_bom_copy.dart';
 import 'package:flutter/material.dart';
 
@@ -68,8 +69,10 @@ class BomComponentQuantityField extends StatelessWidget {
 }
 
 bool bomDesignQuantityValid(String raw) {
-  final value = double.tryParse(raw.trim());
-  return value != null && value.isFinite && value > 0;
+  final value = financeAmountUnits(raw);
+  return value != null &&
+      value > BigInt.zero &&
+      value < BigInt.from(10).pow(64);
 }
 
 String? bomDesignQtyError(AppLocalizations l10n, String raw) =>
@@ -91,15 +94,20 @@ String bomPeriodicQuantityLabel(BuildContext context, String? unitName) {
 /// A periodic edge is entered in grams when its base unit has a mass conversion.
 Map<String, dynamic> periodicBomQuantityBody(
   String componentId,
-  double entered,
+  Object entered,
   String? unitName,
 ) {
   final factor = periodicGramsPerBaseUnit(unitName);
+  final exact = financeExactDecimal(entered);
+  if (exact == null || !bomDesignQuantityValid(exact)) {
+    throw ArgumentError.value(
+      entered,
+      'entered',
+      'must be an exact positive native quantity',
+    );
+  }
   return {
     'componentGoodsId': componentId,
-    'qty': factor == null
-        ? entered
-        : double.parse((entered / factor).toStringAsFixed(5)),
-    if (factor != null) 'unitWeightGrams': entered,
+    if (factor == null) 'qty': exact else 'unitWeightGrams': exact,
   };
 }

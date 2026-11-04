@@ -1,3 +1,4 @@
+import '../../../core/network/api_mutation_reload_safety.dart';
 // 品质检查结果「批量入库」页（2026-09-12 弹窗改页，对齐品质批量审批页范式）。
 //
 // 用户口径：入库中心点击入库不要弹窗，都去对应页面。原 _BatchStockInDialog
@@ -416,6 +417,7 @@ class _WarehouseQualityBatchStockInPageState
         }),
         isDefiniteRejection: (error) =>
             previousPending == null &&
+            ApiMutationReloadSafety.isDefiniteRejection(error) &&
             (locallyRejected ||
                 error.httpStatus == 400 ||
                 error.httpStatus == 403 ||
@@ -444,6 +446,7 @@ class _WarehouseQualityBatchStockInPageState
     } on ApiException catch (error) {
       if (!mounted) return;
       if (previousPending == null &&
+          ApiMutationReloadSafety.isDefiniteRejection(error) &&
           (error.httpStatus == 400 ||
               error.httpStatus == 403 ||
               error.httpStatus == 422 ||
@@ -451,7 +454,7 @@ class _WarehouseQualityBatchStockInPageState
         _pendingCommand = null;
       }
       await _showFailureDialog(
-        previousPending != null
+        _pendingCommand != null
             ? '${error.message}；这次拒绝不能确认原提交结果，原批次、明细和幂等键继续保留待核对'
             : error.code == 'CONFLICT'
             ? '${error.message}（本次入库没有生效；你填的数量和库位都还在，刷新后重新核对再提交）'

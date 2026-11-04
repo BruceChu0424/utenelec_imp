@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销列表页（我的报销）
 // 文档：docs/03-页面/报销列表页.md
 //
@@ -208,10 +209,6 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                   UtenFilterToolbar<ExpenseFilter>(
                     segmentsKey: const Key('expense-list-segments'),
                     segments: [
-                      const UtenFilterSegment(
-                        value: ExpenseFilter.all,
-                        label: '待办与进行中',
-                      ),
                       UtenFilterSegment(
                         value: ExpenseFilter.draft,
                         label: '草稿',
@@ -222,10 +219,14 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                             ),
                         countForm: UtenSegmentCountForm.actionable,
                       ),
+                      const UtenFilterSegment(
+                        value: ExpenseFilter.all,
+                        label: '待办与进行中',
+                      ),
                       UtenFilterSegment(
                         value: ExpenseFilter.rejected,
                         label: '待修订',
-                        count: counts.rejectedCount,
+                        count: counts.actionRequiredCount,
                         countForm: UtenSegmentCountForm.actionable,
                       ),
                       UtenFilterSegment(
@@ -298,8 +299,11 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                         ascending;
                   },
                   // 双击行进入报销详情。
-                  onRowTap: (claim) =>
-                      context.push(RoutePath.expenseDetail(claim.id)),
+                  onRowTap: (claim) => context.push(
+                    claim.abandoned
+                        ? RoutePath.expenseHistoryDetail(claim.id)
+                        : RoutePath.expenseDetail(claim.id),
+                  ),
                   selectable: canApply && filter == ExpenseFilter.draft,
                   idOf: (claim) =>
                       !draftDeleteBusy && _isOwnDraft(claim) ? claim.id : null,
@@ -386,20 +390,25 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
     key: 'status',
     label: '状态',
     width: 72,
-    value: (claim) => claim.status.label,
+    value: (claim) => claim.progressLabel,
     // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 锚定
     // （14-徽章口径 §四：驳回需修订=红、处理中=warning/info、已完成=绿、
     // 草稿=灰）：草稿=灰 / 待审批·审批中=蓝（已提交流转）/
     // 已通过待打款=琥珀（等待外部付款，无异常）/ 驳回=红 / 已付款=绿。
-    cellColor: (context, claim) =>
-        utenStatusBadgeCellColor(switch (claim.status) {
-          ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
-          ExpenseClaimStatus.submitted ||
-          ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
-          ExpenseClaimStatus.approved => UtenStatusBadgeType.warning,
-          ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
-          ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
-        }),
+    cellColor: (context, claim) => utenStatusBadgeCellColor(
+      claim.abandoned
+          ? UtenStatusBadgeType.neutral
+          : claim.approvalRoutingStale
+          ? UtenStatusBadgeType.danger
+          : switch (claim.status) {
+              ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+              ExpenseClaimStatus.submitted ||
+              ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
+              ExpenseClaimStatus.approved => UtenStatusBadgeType.warning,
+              ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+              ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+            },
+    ),
   ),
   MasterColumnDef(
     key: 'claimNo',
@@ -429,12 +438,14 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
   ),
   MasterColumnDef(
     key: 'totalAmount',
+    exactValueOf: (claim) => claim.totalAmountText,
     label: '金额',
     width: 140,
     type: 'money',
     // 报销恒人民币（2026-10-10 金额带单位口径：数值后自动带「元」）。
-    value: (claim) =>
-        financeLocalMoneyWithUnitSuffix(claim.totalAmount.toStringAsFixed(2)),
+    value: (claim) => financeLocalMoneyWithUnitSuffix(
+      financeExactMoneyDisplay(claim.totalAmountText),
+    ),
   ),
   MasterColumnDef(
     key: 'submittedAt',
@@ -465,12 +476,14 @@ String _categoryText(ExpenseClaim claim) {
 
 /// 审批/打款信息列（无进展返回 null，单元格留空）。
 String? _progressText(ExpenseClaim claim) {
+  if (claim.abandoned) return '已放弃报销，原始记录只读归档';
+  if (claim.approvalRoutingStale) return '审批设置已调整，待撤回重提';
   switch (claim.status) {
     case ExpenseClaimStatus.draft:
       return null;
     case ExpenseClaimStatus.submitted:
     case ExpenseClaimStatus.reviewing:
-      return null;
+      return claim.effectiveStageLabel;
     case ExpenseClaimStatus.approved:
       return '${claim.approvedByName ?? ''} 审批通过 ${_formatTime(claim.approvedAt!)}'
           .trim();

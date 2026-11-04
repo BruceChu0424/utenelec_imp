@@ -24,24 +24,33 @@ class GoodsFacetRepository {
     bool excludeDisabled = false,
     bool excludeStub = false,
   }) async {
-    final json = await api.get(
-      '$queryBasePath/facet-values',
-      query: {
-        'field': goodsFacetField(field),
-        'search': search.trim(),
-        'page': page,
-        'size': 50,
-        'categoryId': ?categoryId,
-        if (categoryRootIds.isNotEmpty)
-          'categoryRootIds': categoryRootIds.toList(),
-        if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
-        if (includeRelated && keyword?.trim().isNotEmpty == true)
-          'includeRelated': true,
-        if (excludeDisabled) 'excludeDisabled': true,
-        if (excludeStub) 'excludeStub': true,
-        ...goodsFilterQueryParams(filters),
-      },
-    );
+    final roots = goodsSearchCategoryRoots(categoryRootIds);
+    final filter = <String, dynamic>{
+      'categoryId': ?categoryId,
+      if (roots.isNotEmpty) 'categoryRootIds': roots,
+      if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+      if (includeRelated && keyword?.trim().isNotEmpty == true)
+        'includeRelated': true,
+      if (excludeDisabled) 'excludeDisabled': true,
+      if (excludeStub) 'excludeStub': true,
+      ...goodsFilterQueryParams(filters),
+    };
+    final candidates = <String, dynamic>{
+      'field': goodsFacetField(field),
+      'search': search.trim(),
+      'page': page,
+      'size': 50,
+    };
+    final json = roots.length > 32
+        ? await api.post(
+            '$queryBasePath/facet-values',
+            body: goodsSearchReadBody(filter),
+            query: candidates,
+          )
+        : await api.get(
+            '$queryBasePath/facet-values',
+            query: {...filter, ...candidates},
+          );
     return MasterFacetPage.fromJson(json);
   }
 }

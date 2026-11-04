@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
+import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
@@ -341,7 +342,16 @@ void main() {
         );
         expect(find.byType(UtenRevisionStrike), findsOneWidget);
         expect(find.text('报销单修改'), findsOneWidget);
-        expect(find.text('本次共 1 项 · 合计 35.00 元'), findsOneWidget);
+        expect(find.text('总行数: '), findsOneWidget);
+        expect(find.text('1 行'), findsOneWidget);
+        expect(find.text('合计: '), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(UtenTotalsSummaryBar),
+            matching: find.text('35.00 元'),
+          ),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       },
     );

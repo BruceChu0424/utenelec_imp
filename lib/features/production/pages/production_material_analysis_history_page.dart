@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -641,7 +642,7 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   static String _qty(double value) {
     if (!value.isFinite) return '0';
-    final fixed = value.toStringAsFixed(4);
+    final fixed = value.toExactString(minimumFractionDigits: 4);
     return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 }

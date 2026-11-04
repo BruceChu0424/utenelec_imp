@@ -1,4 +1,7 @@
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
+import '../../../shared/formatters/money_display.dart';
 // 报销审批详情页（审批人/财务视角）
 // 文档：docs/03-页面/报销审批详情页.md · 审批流见 docs/05-架构/全局机制.md §3.3
 //
@@ -18,8 +21,10 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -36,7 +41,10 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/rmb_amount.dart';
 import '../../../shared/attachments/attachment_section.dart';
+import '../../finance/widgets/finance_native_original_section.dart';
 import '../../../shared/auth/sensitive_write.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/widgets/sensitive_content_boundary.dart';
 import '../../../core/network/read_scope_revision.dart';
 import '../../../shared/widgets/task_claim_badge.dart';
 import '../../../shared/widgets/task_claim_handle.dart';
@@ -50,6 +58,8 @@ import '../providers/expense_action_eligibility.dart';
 import '../repositories/expense_repository.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
+import '../widgets/expense_financial_application_link.dart';
+import '../widgets/expense_approval_progress.dart';
 import '../widgets/expense_invoice_section.dart';
 import '../widgets/expense_submission_revision.dart';
 
@@ -66,6 +76,7 @@ class _ExpenseApprovalDetailPageState
     extends ConsumerState<ExpenseApprovalDetailPage> {
   final _comment = TextEditingController();
   bool _acting = false;
+  bool _networkBusy = false;
   int _operationGeneration = 0;
 
   @override
@@ -87,6 +98,7 @@ class _ExpenseApprovalDetailPageState
     if (oldWidget.claimId != widget.claimId) {
       ++_operationGeneration;
       _acting = false;
+      _networkBusy = false;
       _comment.clear();
     }
   }
@@ -94,7 +106,12 @@ class _ExpenseApprovalDetailPageState
   void _retireAction() {
     if (!mounted) return;
     ++_operationGeneration;
-    if (_acting) setState(() => _acting = false);
+    if (_acting || _networkBusy) {
+      setState(() {
+        _acting = false;
+        _networkBusy = false;
+      });
+    }
   }
 
   // 2026-09-22 全站表格滚动口径：明细表/发票表表头吸顶，任一表置顶后才显示
@@ -131,9 +148,12 @@ class _ExpenseApprovalDetailPageState
     final claim = _claim;
     final id = widget.claimId;
     if (_acting || claim == null || !_canInspect) return;
-    if (claim.invoices.any(
-      (invoice) => invoice.checkState != ExpenseInvoiceCheckState.verified,
-    )) {
+    if (ref
+            .read(expenseActionEligibilityProvider)
+            .requiresVerifiedInvoices(claim) &&
+        claim.invoices.any(
+          (invoice) => invoice.checkState != ExpenseInvoiceCheckState.verified,
+        )) {
       context.appWarning(
         AppLocalizations.of(context).expenseFlowVerifyBeforeApprove,
       );
@@ -197,12 +217,31 @@ class _ExpenseApprovalDetailPageState
     }
     await _runAction(
       (current) async {
+        final boundary = ref.read(sensitiveReadBoundaryProvider);
+        setState(() => _networkBusy = false);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || !current()) return false;
         final input = await showDialog<ExpensePaymentInput>(
           context: context,
           barrierDismissible: false,
-          builder: (_) => const _ExpensePaymentDialog(),
+          builder: (_) => SensitiveContentBoundary(
+            boundary: boundary,
+            isCurrent: current,
+            invalidatedBuilder: (dialogContext) => UtenAlertDialog(
+              title: const Text('授权已变化'),
+              content: const Text('请关闭后重新打开付款登记'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('关闭'),
+                ),
+              ],
+            ),
+            child: const _ExpensePaymentDialog(),
+          ),
         );
         if (input == null || !current() || !_canPay) return false;
+        setState(() => _networkBusy = true);
         await payExpense(
           ref,
           id,
@@ -233,21 +272,37 @@ class _ExpenseApprovalDetailPageState
         widget.claimId == id &&
         ref.read(expenseActionEligibilityProvider) == eligibility &&
         identical(ref.read(expenseRepositoryProvider), repository);
-    setState(() => _acting = true);
+    setState(() {
+      _acting = true;
+      _networkBusy = true;
+    });
     try {
       final completed = await runSensitiveWrite<bool>(
         ref,
         isCurrent: current,
         write: () => write(current),
       );
-      if (completed && current()) succeeded();
+      if (completed && current()) {
+        setState(() {
+          _acting = false;
+          _networkBusy = false;
+        });
+        succeeded();
+      }
     } catch (error) {
       if (mounted && current()) {
+        setState(() {
+          _acting = false;
+          _networkBusy = false;
+        });
         context.appApiError(error);
       }
     } finally {
       if (mounted && operation == _operationGeneration) {
-        setState(() => _acting = false);
+        setState(() {
+          _acting = false;
+          _networkBusy = false;
+        });
       }
     }
   }
@@ -258,229 +313,241 @@ class _ExpenseApprovalDetailPageState
     final detail = ref.watch(expenseDetailProvider(widget.claimId));
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '报销审批详情',
-        showBackButton: true,
-        actions: [
-          detail.maybeWhen(
-            data: (claim) => UtenButton(
-              type: UtenButtonType.tonal,
-              size: UtenButtonSize.small,
-              icon: Icons.print_outlined,
-              onPressed: () => showExpenseClaimPrintPreview(context, claim),
-              child: const Text('打印报销单'),
-            ),
-            orElse: () => const SizedBox.shrink(),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: UtenAppBar(
+            title: '报销审批详情',
+            info: '部门负责人审核后，依次交财务初核、财务复核和总经办批准，最终批准后登记付款。凭证查看下载与节点审批分别授权。',
+            showBackButton: true,
+            actions: [
+              detail.maybeWhen(
+                data: (claim) =>
+                    ExpenseFinancialApplicationLinkButton(claim: claim),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              detail.maybeWhen(
+                data: (claim) => UtenButton(
+                  type: UtenButtonType.tonal,
+                  size: UtenButtonSize.small,
+                  icon: Icons.print_outlined,
+                  onPressed: () => showExpenseClaimPrintPreview(context, claim),
+                  child: const Text('打印报销单'),
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+            ],
           ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _canApprove
-          ? TaskClaimHandle(
-              targetType: 'EXPENSE_APPROVE',
-              targetKey: widget.claimId,
-              builder: (heldByMe, claim) {
-                final blocked = !heldByMe && claim != null;
-                return UtenFloatingActionGroup(
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton: _canApprove
+              ? TaskClaimHandle(
+                  targetType: 'EXPENSE_APPROVE',
+                  targetKey: widget.claimId,
+                  builder: (heldByMe, claim) {
+                    final blocked = !heldByMe && claim != null;
+                    return UtenFloatingActionGroup(
+                      children: [
+                        UtenButton(
+                          type: UtenButtonType.secondary,
+                          size: UtenButtonSize.large,
+                          onPressed: _acting
+                              ? null
+                              : () => backTo(
+                                  context,
+                                  defaultPath: '/expense/approval',
+                                ),
+                          child: const Text('返回'),
+                        ),
+                        UtenButton(
+                          type: UtenButtonType.danger,
+                          size: UtenButtonSize.large,
+                          isLoading: _acting,
+                          icon: Icons.close_rounded,
+                          onPressed: (_acting || blocked) ? null : _reject,
+                          child: const Text('驳回'),
+                        ),
+                        if (_canInspect)
+                          UtenButton(
+                            type: UtenButtonType.success,
+                            size: UtenButtonSize.large,
+                            isLoading: _acting,
+                            icon: Icons.check_rounded,
+                            onPressed: (_acting || blocked) ? null : _approve,
+                            child: const Text('通过'),
+                          ),
+                      ],
+                    );
+                  },
+                )
+              : _canPay
+              ? UtenFloatingActionGroup(
                   children: [
                     UtenButton(
                       type: UtenButtonType.secondary,
                       size: UtenButtonSize.large,
                       onPressed: _acting
                           ? null
-                          : () => backTo(
-                              context,
-                              defaultPath: '/expense/approval',
-                            ),
+                          : () => context.go('/expense/approval'),
                       child: const Text('返回'),
                     ),
                     UtenButton(
-                      type: UtenButtonType.danger,
+                      type: UtenButtonType.success,
                       size: UtenButtonSize.large,
                       isLoading: _acting,
-                      icon: Icons.close_rounded,
-                      onPressed: (_acting || blocked) ? null : _reject,
-                      child: const Text('驳回'),
-                    ),
-                    if (_canInspect)
-                      UtenButton(
-                        type: UtenButtonType.success,
-                        size: UtenButtonSize.large,
-                        isLoading: _acting,
-                        icon: Icons.check_rounded,
-                        onPressed: (_acting || blocked) ? null : _approve,
-                        child: const Text('通过'),
+                      icon: Icons.account_balance_wallet_outlined,
+                      onPressed: _acting ? null : _pay,
+                      child: Text(
+                        AppLocalizations.of(context).expenseFlowPaymentRecord,
                       ),
+                    ),
                   ],
-                );
-              },
-            )
-          : _canPay
-          ? UtenFloatingActionGroup(
-              children: [
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.large,
-                  onPressed: _acting
-                      ? null
-                      : () => context.go('/expense/approval'),
-                  child: const Text('返回'),
-                ),
-                UtenButton(
-                  type: UtenButtonType.success,
-                  size: UtenButtonSize.large,
-                  isLoading: _acting,
-                  icon: Icons.account_balance_wallet_outlined,
-                  onPressed: _acting ? null : _pay,
-                  child: Text(
-                    AppLocalizations.of(context).expenseFlowPaymentRecord,
-                  ),
-                ),
-              ],
-            )
-          : null,
-      body: detail.when(
-        loading: () => const UtenSkeletonList(itemCount: 4),
-        error: (e, _) => UtenEmpty.error(
-          error: e,
-          message: '加载失败，请重试',
-          onAction: () => ref.invalidate(expenseDetailProvider(widget.claimId)),
-        ),
-        data: (claim) => UtenGridPageScrollbar(
-          pinned: _itemsPinned,
-          extraPinned: [_invoicePinned],
-          controller: _pageScroll,
-          child: UtenContentContainer(
-            child: SingleChildScrollView(
+                )
+              : null,
+          body: detail.when(
+            loading: () => const UtenSkeletonList(itemCount: 4),
+            error: (e, _) => UtenEmpty.error(
+              error: e,
+              message: '加载失败，请重试',
+              onAction: () =>
+                  ref.invalidate(expenseDetailProvider(widget.claimId)),
+            ),
+            data: (claim) => UtenGridPageScrollbar(
+              pinned: _itemsPinned,
+              extraPinned: [_invoicePinned],
               controller: _pageScroll,
-              padding: const EdgeInsets.fromLTRB(
-                0,
-                UtenSpacing.s16,
-                0,
-                UtenFloatingActionGroup.scrollClearance,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _Hero(claim: claim),
-                  const SizedBox(height: UtenSpacing.s20),
-                  ExpenseSubmissionChangeSummary(claim: claim),
-                  _itemsSection(theme, claim),
-                  const SizedBox(height: UtenSpacing.s20),
-                  _sectionTitle(theme, '发票登记'),
-                  const SizedBox(height: UtenSpacing.s8),
-                  ExpenseInvoiceSection(
-                    claim: claim,
-                    editable: false,
-                    canVerify: _canInspect,
-                    stickyHeaderPinned: _invoicePinned,
+              child: UtenContentContainer(
+                child: SingleChildScrollView(
+                  controller: _pageScroll,
+                  padding: const EdgeInsets.fromLTRB(
+                    0,
+                    UtenSpacing.s16,
+                    0,
+                    UtenFloatingActionGroup.scrollClearance,
                   ),
-                  const SizedBox(height: UtenSpacing.s20),
-                  _sectionTitle(
-                    theme,
-                    '附件 / 发票影像 (${claim.attachments.length})',
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  AttachmentSection(
-                    ownerType: 'EXPENSE_CLAIM',
-                    ownerId: claim.id,
-                    attachments: claim.attachments,
-                    ownerCanUpload: false,
-                    ownerCanDelete: false,
-                    onChanged: () =>
-                        ref.invalidate(expenseDetailProvider(claim.id)),
-                  ),
-                  const SizedBox(height: UtenSpacing.s20),
-                  if (claim.status == ExpenseClaimStatus.approved ||
-                      claim.status == ExpenseClaimStatus.paid) ...[
-                    AttachmentSection(
-                      ownerType: 'EXPENSE_PAYMENT_PROOF',
-                      ownerId: claim.id,
-                      title: AppLocalizations.of(
-                        context,
-                      ).expenseFlowPaymentProofs,
-                      emptyHint: AppLocalizations.of(
-                        context,
-                      ).expenseFlowPaymentProofGuide,
-                      attachments: claim.paymentProofs,
-                      ownerCanUpload: _canPay,
-                      ownerCanDelete: _canPay,
-                      onChanged: () =>
-                          ref.invalidate(expenseDetailProvider(claim.id)),
-                    ),
-                    const SizedBox(height: UtenSpacing.s20),
-                  ],
-                  _sectionTitle(theme, '审批轨迹'),
-                  const SizedBox(height: UtenSpacing.s8),
-                  UtenCard(
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      child: ExpenseClaimTimeline(claim: claim),
-                    ),
-                  ),
-                  if (_canApprove && !_canInspect)
-                    Text(
-                      AppLocalizations.of(
-                        context,
-                      ).expenseFlowReadEvidenceRequired,
-                    ),
-                  if (_canApprove) ...[
-                    const SizedBox(height: UtenSpacing.s20),
-                    TaskClaimHandle(
-                      targetType: 'EXPENSE_APPROVE',
-                      targetKey: widget.claimId,
-                      builder: (heldByMe, claim) {
-                        final blocked = !heldByMe && claim != null;
-                        if (!blocked) {
-                          return const UtenReviewerResponsibilityNotice(
-                            actionLabel: '报销审批',
-                            description:
-                                '点击通过或驳回后，系统将记录当前审核员及审批结果，请对本次决定负责。'
-                                '请核对明细与发票（登记要素+影像）后再决定。',
-                          );
-                        }
-                        return Row(
-                          children: [
-                            TaskClaimBadge(claim: claim),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '他人正在审批此单，请稍后再试',
-                                style: Theme.of(context).textTheme.labelMedium
-                                    ?.copyWith(fontWeight: FontWeight.w400),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: UtenSpacing.s20),
-                    _sectionTitle(theme, '审批意见'),
-                    const SizedBox(height: UtenSpacing.s8),
-                    UtenCard(
-                      padding: const EdgeInsets.all(UtenSpacing.s12),
-                      child: TextField(
-                        controller: _comment,
-                        maxLines: 3,
-                        decoration: const UtenInputDecoration(
-                          InputDecoration(
-                            labelText: '驳回原因',
-                            hintText: '驳回时必填，通过时不会提交',
-                          ),
-                          info: '驳回后申请人可修订重提：请写明修改要求（如缺票、金额不符）。',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _Hero(claim: claim),
+                      const SizedBox(height: UtenSpacing.s16),
+                      ExpenseApprovalProgress(claim: claim),
+                      const SizedBox(height: UtenSpacing.s20),
+                      ExpenseSubmissionChangeSummary(claim: claim),
+                      _itemsSection(theme, claim),
+                      const SizedBox(height: UtenSpacing.s20),
+                      _sectionTitle(theme, '发票登记'),
+                      const SizedBox(height: UtenSpacing.s8),
+                      ExpenseInvoiceSection(
+                        claim: claim,
+                        editable: false,
+                        canVerify: ref
+                            .watch(expenseActionEligibilityProvider)
+                            .canVerifyInvoice(claim),
+                        stickyHeaderPinned: _invoicePinned,
+                      ),
+                      const SizedBox(height: UtenSpacing.s20),
+                      if (claim.applicationKind != null) ...[
+                        FinanceNativeOriginalSection(
+                          ownerType: 'EXPENSE_CLAIM',
+                          ownerId: claim.id,
+                        ),
+                        const SizedBox(height: UtenSpacing.s20),
+                      ],
+                      _sectionTitle(
+                        theme,
+                        '附件 / 发票影像 (${claim.attachments.length})',
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      AttachmentSection(
+                        ownerType: 'EXPENSE_CLAIM',
+                        ownerId: claim.id,
+                        attachments: claim.attachments,
+                        ownerCanUpload: false,
+                        ownerCanDelete: false,
+                        onChanged: () =>
+                            ref.invalidate(expenseDetailProvider(claim.id)),
+                      ),
+                      const SizedBox(height: UtenSpacing.s20),
+                      if (claim.status == ExpenseClaimStatus.approved ||
+                          claim.status == ExpenseClaimStatus.paid) ...[
+                        AttachmentSection(
+                          ownerType: 'EXPENSE_PAYMENT_PROOF',
+                          ownerId: claim.id,
+                          title: AppLocalizations.of(
+                            context,
+                          ).expenseFlowPaymentProofs,
+                          emptyHint: AppLocalizations.of(
+                            context,
+                          ).expenseFlowPaymentProofGuide,
+                          attachments: claim.paymentProofs,
+                          ownerCanUpload: _canPay,
+                          ownerCanDelete: _canPay,
+                          onChanged: () =>
+                              ref.invalidate(expenseDetailProvider(claim.id)),
+                        ),
+                        const SizedBox(height: UtenSpacing.s20),
+                      ],
+                      _sectionTitle(theme, '审批轨迹'),
+                      const SizedBox(height: UtenSpacing.s8),
+                      UtenCard(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s16),
+                          child: ExpenseClaimTimeline(claim: claim),
                         ),
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: UtenSpacing.s32),
-                ],
+                      if (_canApprove) ...[
+                        const SizedBox(height: UtenSpacing.s20),
+                        TaskClaimHandle(
+                          targetType: 'EXPENSE_APPROVE',
+                          targetKey: widget.claimId,
+                          builder: (heldByMe, taskClaim) => Row(
+                            children: [
+                              Text(
+                                '审批意见',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              UtenFieldHintIcon(
+                                info: !_canInspect
+                                    ? AppLocalizations.of(
+                                        context,
+                                      ).expenseFlowReadEvidenceRequired
+                                    : '通过或驳回将记录当前审核员与节点。请核对明细和原件；财务节点须登记凭证查验，驳回须写明修改原因。',
+                              ),
+                              if (!heldByMe && taskClaim != null)
+                                TaskClaimBadge(claim: taskClaim),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
+                        UtenCard(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: TextField(
+                            controller: _comment,
+                            maxLines: 3,
+                            decoration: const UtenInputDecoration(
+                              InputDecoration(
+                                labelText: '驳回原因',
+                                hintText: '驳回时必填，通过时不会提交',
+                              ),
+                              info: '驳回后申请人可修订重提：请写明修改要求（如缺票、金额不符）。',
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: UtenSpacing.s32),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
+        if (_networkBusy)
+          const UtenBusyOverlay(title: '正在处理报销', showDoNotLeaveHint: false),
+      ],
     );
   }
 
@@ -523,23 +590,13 @@ class _ExpenseApprovalDetailPageState
             onFilterChanged: (_, _) {},
             embedded: true,
             stickyHeaderPinned: _itemsPinned,
-            summaryBar: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: UtenSpacing.s8,
-              children: [
-                Text(
-                  '共 ${claim.items.length} 项 · 合计 ',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  '${claim.totalAmount.toStringAsFixed(2)} 元',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+            summaryBar: UtenTotalsSummaryBar(
+              rowCount: claim.items.length,
+              compact: true,
+              entries: [
+                UtenTotalEntry(
+                  '合计',
+                  '${financeExactMoneyDisplay(claim.totalAmountText)} 元',
                 ),
               ],
             ),
@@ -564,6 +621,8 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
   late final TextEditingController _dateController;
   String? _accountId;
   String? _expenseStyleId;
+  AccountingExpensePurpose _postingPurpose =
+      AccountingExpensePurpose.ordinaryExpense;
   // UtenDropdownField 非 FormField：必填校验在 _submit 里显式判空并回显 errorMessage。
   String? _accountError;
   String? _styleError;
@@ -609,143 +668,189 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
         accountId: _accountId!,
         expenseStyleId: _expenseStyleId!,
         paymentDate: _paymentDate,
+        postingPurpose: _postingPurpose,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final optionsAsync = ref.watch(expensePaymentOptionsProvider);
+    final optionsProvider =
+        _postingPurpose == AccountingExpensePurpose.ordinaryExpense
+        ? expensePaymentOptionsProvider
+        : expensePaymentOptionsForPurposeProvider(_postingPurpose);
+    final optionsAsync = ref.watch(optionsProvider);
     final options = optionsAsync.value;
     final hasOptions =
         options != null &&
         options.accounts.isNotEmpty &&
         options.styles.isNotEmpty;
 
-    return UtenAlertDialog(
-      scrollable: false,
-      title: Text(AppLocalizations.of(context).expenseFlowPaymentRecord),
-      content: SizedBox(
-        width: 520,
-        child: optionsAsync.when(
-          loading: () => const SizedBox(
-            height: 260,
-            child: Center(child: CircularProgressIndicator()),
-          ),
-          error: (error, _) => SizedBox(
-            height: 300,
-            child: UtenEmpty.error(
-              error: error,
-              message: '付款账户和费用类别没有加载出来',
-              description: '请重试或联系财务维护付款账户和费用类别。',
-              actionLabel: '重试',
-              onAction: () => ref.invalidate(expensePaymentOptionsProvider),
-            ),
-          ),
-          data: (loaded) {
-            if (loaded.accounts.isEmpty || loaded.styles.isEmpty) {
-              final missing = <String>[
-                if (loaded.accounts.isEmpty) '可用付款账户',
-                if (loaded.styles.isEmpty) '可用费用类别',
-              ].join('和');
-              return SizedBox(
-                height: 300,
-                child: UtenEmpty(
-                  icon: Icons.account_balance_outlined,
-                  message: '缺少$missing',
-                  description: '请联系财务在基础资料中维护可用付款账户和费用类别，再重新加载。',
-                  actionLabel: '重新加载',
-                  onAction: () => ref.invalidate(expensePaymentOptionsProvider),
-                ),
-              );
-            }
-
-            return SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    UtenDropdownField(
-                      label: '付款账户',
-                      required: true,
-                      value: _accountId,
-                      allowClear: false,
-                      errorMessage: _accountError,
-                      items: [
-                        for (final account in loaded.accounts)
-                          UtenDropdownItem(
-                            value: account.id,
-                            label: account.balanceCurrent == null
-                                ? account.label
-                                : '${account.label} · 余额 '
-                                      '${account.balanceCurrent!.toStringAsFixed(2)} 元',
-                          ),
-                      ],
-                      onChanged: (value) => setState(() {
-                        _accountId = value;
-                        _accountError = null;
-                      }),
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    UtenDropdownField(
-                      label: '费用类别',
-                      required: true,
-                      value: _expenseStyleId,
-                      allowClear: false,
-                      errorMessage: _styleError,
-                      items: [
-                        for (final style in loaded.styles)
-                          UtenDropdownItem(value: style.id, label: style.label),
-                      ],
-                      onChanged: (value) => setState(() {
-                        _expenseStyleId = value;
-                        _styleError = null;
-                      }),
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    TextFormField(
-                      errorBuilder: utenTextFieldErrorBuilder,
-                      controller: _dateController,
-                      readOnly: true,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '付款日期 *',
-                          border: OutlineInputBorder(),
-                          suffixIcon: Icon(Icons.calendar_today_outlined),
-                        ),
-                      ),
-                      onTap: _pickPaymentDate,
-                      validator: (value) =>
-                          value == null || value.isEmpty ? '请选择付款日期' : null,
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    Text(
-                      AppLocalizations.of(context).expenseFlowPaymentGuide,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
+    return Stack(
+      children: [
+        UtenAlertDialog(
+          scrollable: false,
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  AppLocalizations.of(context).expenseFlowPaymentRecord,
                 ),
               ),
-            );
-          },
+              UtenFieldHintIcon(
+                info: AppLocalizations.of(context).expenseFlowPaymentGuide,
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 520,
+            child: optionsAsync.when(
+              loading: () => const SizedBox(
+                height: 260,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (error, _) => SizedBox(
+                height: 300,
+                child: UtenEmpty.error(
+                  error: error,
+                  message: '付款账户和费用类别没有加载出来',
+                  description: '请重试或联系财务维护付款账户和费用类别。',
+                  actionLabel: '重试',
+                  onAction: () => ref.invalidate(optionsProvider),
+                ),
+              ),
+              data: (loaded) {
+                if (loaded.accounts.isEmpty || loaded.styles.isEmpty) {
+                  final missing = <String>[
+                    if (loaded.accounts.isEmpty) '可用付款账户',
+                    if (loaded.styles.isEmpty) '可用费用类别',
+                  ].join('和');
+                  return SizedBox(
+                    height: 300,
+                    child: UtenEmpty(
+                      icon: Icons.account_balance_outlined,
+                      message: '缺少$missing',
+                      description: '请联系财务在基础资料中维护可用付款账户和费用类别，再重新加载。',
+                      actionLabel: '重新加载',
+                      onAction: () => ref.invalidate(optionsProvider),
+                    ),
+                  );
+                }
+
+                return SingleChildScrollView(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        UtenDropdownField(
+                          label: '支付用途',
+                          value: _postingPurpose.apiValue,
+                          items: [
+                            for (final purpose
+                                in AccountingExpensePurpose.values)
+                              UtenDropdownItem(
+                                value: purpose.apiValue,
+                                label: purpose.label,
+                              ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _postingPurpose =
+                                  AccountingExpensePurpose.fromApi(value);
+                              _expenseStyleId = null;
+                              _styleError = null;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: UtenSpacing.s16),
+                        UtenDropdownField(
+                          label: '付款账户',
+                          required: true,
+                          value: _accountId,
+                          allowClear: false,
+                          errorMessage: _accountError,
+                          items: [
+                            for (final account in loaded.accounts)
+                              UtenDropdownItem(
+                                value: account.id,
+                                label: account.balanceCurrent == null
+                                    ? account.label
+                                    : '${account.label} · 余额 '
+                                          '${financeMoneyWithUnitSuffix(account.balanceCurrentText ?? account.balanceCurrent?.toString(), currencyName: account.currencyName, currencyCode: account.currencyCode)}',
+                              ),
+                          ],
+                          onChanged: (value) => setState(() {
+                            _accountId = value;
+                            _accountError = null;
+                          }),
+                        ),
+                        const SizedBox(height: UtenSpacing.s16),
+                        UtenDropdownField(
+                          label:
+                              _postingPurpose ==
+                                  AccountingExpensePurpose.manufacturingCost
+                              ? '制造费用科目'
+                              : '费用类别',
+                          required: true,
+                          value: _expenseStyleId,
+                          allowClear: false,
+                          errorMessage: _styleError,
+                          items: [
+                            for (final style in loaded.styles)
+                              UtenDropdownItem(
+                                value: style.id,
+                                label: style.label,
+                              ),
+                          ],
+                          onChanged: (value) => setState(() {
+                            _expenseStyleId = value;
+                            _styleError = null;
+                          }),
+                        ),
+                        const SizedBox(height: UtenSpacing.s16),
+                        TextFormField(
+                          errorBuilder: utenTextFieldErrorBuilder,
+                          controller: _dateController,
+                          readOnly: true,
+                          decoration: const UtenInputDecoration(
+                            InputDecoration(
+                              labelText: '付款日期 *',
+                              border: OutlineInputBorder(),
+                              suffixIcon: Icon(Icons.calendar_today_outlined),
+                            ),
+                          ),
+                          onTap: _pickPaymentDate,
+                          validator: (value) =>
+                              value == null || value.isEmpty ? '请选择付款日期' : null,
+                        ),
+                        const SizedBox(height: UtenSpacing.s16),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: hasOptions ? _submit : null,
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: Text(
+                AppLocalizations.of(context).expenseFlowPaymentConfirm,
+              ),
+            ),
+          ],
         ),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton.icon(
-          onPressed: hasOptions ? _submit : null,
-          icon: const Icon(Icons.account_balance_wallet_outlined),
-          label: Text(AppLocalizations.of(context).expenseFlowPaymentConfirm),
-        ),
+        if (optionsAsync.isLoading)
+          const UtenBusyOverlay(title: '正在读取付款选项', showDoNotLeaveHint: false),
       ],
     );
   }
@@ -769,13 +874,13 @@ class _Hero extends StatelessWidget {
         ],
       ),
       status: UtenStatusBadge(
-        label: claim.status.label,
+        label: claim.progressLabel,
         type: _badge(claim.status),
       ),
       primary: [
         UtenSummaryField(
           label: '报销总额',
-          value: '${claim.totalAmount.toStringAsFixed(2)} 元',
+          value: '${financeExactMoneyDisplay(claim.totalAmountText)} 元',
           emphasis: true,
           danger: true,
         ),
@@ -789,7 +894,7 @@ class _Hero extends StatelessWidget {
         ),
       ],
       details: [
-        UtenSummaryField(label: '大写', value: rmbCapital(claim.totalAmount)),
+        UtenSummaryField(label: '大写', value: rmbCapital(claim.totalAmountText)),
         if (claim.remark != null && claim.remark!.trim().isNotEmpty)
           UtenSummaryField(label: '备注', value: claim.remark),
       ],

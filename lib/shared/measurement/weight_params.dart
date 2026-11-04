@@ -1,3 +1,4 @@
+import '../formatters/exact_decimal.dart';
 // 单重参数与单重学习接口 (ADR-135 §7.2): 模型 + 仓储 + 页内缓存 + 预测桥接。
 //
 // - POST /stock/weight/params: 一页一次批量取每行 (货品, 供应商) 的单重参数 (<= 500 行/次),
@@ -125,7 +126,9 @@ class WeightStockBalance {
   const WeightStockBalance({
     required this.warehouseId,
     required this.qtyBase,
+    this.qtyBaseExact,
     required this.weightKg,
+    this.weightKgExact,
     this.goodsId = '',
     this.colorId,
     this.estimated = false,
@@ -138,7 +141,13 @@ class WeightStockBalance {
   WeightBalanceIdentity get identity =>
       (warehouseId: warehouseId, goodsId: goodsId, colorId: colorId);
   final double qtyBase;
+  final String? qtyBaseExact;
+  String? get qtyBaseText =>
+      financeExactTrimmed(qtyBaseExact ?? qtyBase.toString());
   final double weightKg;
+  final String? weightKgExact;
+  String? get weightKgText =>
+      financeExactTrimmed(weightKgExact ?? weightKg.toString());
   final bool estimated;
 
   bool get usable =>
@@ -160,7 +169,9 @@ class WeightStockBalance {
         goodsId: _str(j['goodsId']) ?? '',
         colorId: _str(j['colorId']),
         qtyBase: _num(j['qtyBase']) ?? 0,
+        qtyBaseExact: financeExactDecimal(j['qtyBaseExact'] ?? j['qtyBase']),
         weightKg: _num(j['weightKg']) ?? 0,
+        weightKgExact: financeExactDecimal(j['weightKgExact'] ?? j['weightKg']),
         estimated: j['estimated'] == true,
       );
 }
@@ -212,6 +223,7 @@ class WeightParams {
     this.supplierSpecific = false,
     this.evidence,
     this.unitWeightKg,
+    this.unitWeightKgExact,
     this.logMean,
     this.lotPrior,
     this.gamma,
@@ -222,9 +234,13 @@ class WeightParams {
     this.suggestedSampleSize,
     this.exactUpToQty,
     this.tolerancePct,
+    this.tolerancePctExact,
     this.defaultTareKg,
+    this.defaultTareKgExact,
     this.lastTareKg,
+    this.lastTareKgExact,
     this.massFactorKg,
+    this.massFactorKgExact,
     this.stale = false,
     this.lastObservedAt,
     this.drawBiasPct,
@@ -249,6 +265,9 @@ class WeightParams {
 
   /// 单重: 每基本单位千克数。
   final double? unitWeightKg;
+  final String? unitWeightKgExact;
+  String? get unitWeightKgText =>
+      financeExactTrimmed(unitWeightKgExact ?? unitWeightKg.toString());
   final double? logMean;
 
   /// 批间先验方差 P。
@@ -261,11 +280,23 @@ class WeightParams {
   final int? suggestedSampleSize;
   final double? exactUpToQty;
   final double? tolerancePct;
+  final String? tolerancePctExact;
+  String? get tolerancePctText =>
+      financeExactTrimmed(tolerancePctExact ?? tolerancePct.toString());
   final double? defaultTareKg;
+  final String? defaultTareKgExact;
+  String? get defaultTareKgText =>
+      financeExactTrimmed(defaultTareKgExact ?? defaultTareKg.toString());
   final double? lastTareKg;
+  final String? lastTareKgExact;
+  String? get lastTareKgText =>
+      financeExactTrimmed(lastTareKgExact ?? lastTareKg.toString());
 
   /// 精确换算系数 (货品基本单位本身是重量单位时: 1 基本单位 = 多少千克)。
   final double? massFactorKg;
+  final String? massFactorKgExact;
+  String? get massFactorKgText =>
+      financeExactTrimmed(massFactorKgExact ?? massFactorKg.toString());
 
   /// 最近一次称重超过 365 天 (可靠度最高到「可参考」)。
   final bool stale;
@@ -292,6 +323,7 @@ class WeightParams {
     supplierSpecific: supplierSpecific,
     evidence: evidence,
     unitWeightKg: unitWeightKg,
+    unitWeightKgExact: unitWeightKgText,
     logMean: logMean,
     lotPrior: lotPrior,
     gamma: gamma,
@@ -302,9 +334,13 @@ class WeightParams {
     suggestedSampleSize: suggestedSampleSize,
     exactUpToQty: exactUpToQty,
     tolerancePct: tolerancePct,
+    tolerancePctExact: tolerancePctText,
     defaultTareKg: defaultTareKg,
+    defaultTareKgExact: defaultTareKgText,
     lastTareKg: lastTareKg,
+    lastTareKgExact: lastTareKgText,
     massFactorKg: massFactorKg,
+    massFactorKgExact: massFactorKgText,
     stale: stale,
     lastObservedAt: lastObservedAt,
     drawBiasPct: drawBiasPct,
@@ -370,6 +406,10 @@ class WeightParams {
 
   /// 皮重预填: 货品默认皮重, 否则上次用过的皮重。
   double? get prefillTareKg => defaultTareKg ?? lastTareKg;
+  String? get prefillTareKgText => defaultTareKgText ?? lastTareKgText;
+  String? get currentUnitWeightKgText => isExact
+      ? massFactorKgText
+      : (unitWeightKgText ?? financeExactDecimal(_expOrNull(logMean)));
 
   factory WeightParams.fromJson(Map<String, dynamic> j) => WeightParams(
     goodsId: (j['goodsId'] ?? '').toString(),
@@ -378,6 +418,9 @@ class WeightParams {
     supplierSpecific: j['supplierSpecific'] == true,
     evidence: _str(j['evidence']),
     unitWeightKg: _num(j['unitWeightKg']),
+    unitWeightKgExact: financeExactDecimal(
+      j['unitWeightKgExact'] ?? j['unitWeightKg'],
+    ),
     logMean: _num(j['logMean']),
     lotPrior: _num(j['lotPrior']),
     gamma: _num(j['gamma']),
@@ -388,9 +431,21 @@ class WeightParams {
     suggestedSampleSize: _int(j['suggestedSampleSize']),
     exactUpToQty: _num(j['exactUpToQty']),
     tolerancePct: _num(j['tolerancePct']),
+    tolerancePctExact: financeExactDecimal(
+      j['tolerancePctExact'] ?? j['tolerancePct'],
+    ),
     defaultTareKg: _num(j['defaultTareKg']),
+    defaultTareKgExact: financeExactDecimal(
+      j['defaultTareKgExact'] ?? j['defaultTareKg'],
+    ),
     lastTareKg: _num(j['lastTareKg']),
+    lastTareKgExact: financeExactDecimal(
+      j['lastTareKgExact'] ?? j['lastTareKg'],
+    ),
     massFactorKg: _num(j['massFactorKg']),
+    massFactorKgExact: financeExactDecimal(
+      j['massFactorKgExact'] ?? j['massFactorKg'],
+    ),
     stale: j['stale'] == true,
     lastObservedAt: _date(j['lastObservedAt']),
     drawBiasPct: _num(j['drawBiasPct']),
@@ -581,10 +636,15 @@ extension WeightParamsPrediction on WeightParams {
 class GoodsWeightProfile {
   const GoodsWeightProfile({
     required this.goodsId,
+    this.inputEvidence = const [],
     this.defaultTareKg,
+    this.defaultTareKgExact,
     this.tolerancePct,
+    this.tolerancePctExact,
     this.pieceCvPct,
+    this.pieceCvPctExact,
     this.manualUnitWeightKg,
+    this.manualUnitWeightKgExact,
     this.manualActive = false,
     this.manualReason,
     this.manualSetByName,
@@ -596,10 +656,24 @@ class GoodsWeightProfile {
   });
 
   final String goodsId;
+  final List<Map<String, dynamic>> inputEvidence;
   final double? defaultTareKg;
+  final String? defaultTareKgExact;
+  String? get defaultTareKgText =>
+      financeExactTrimmed(defaultTareKgExact ?? defaultTareKg?.toString());
   final double? tolerancePct;
+  final String? tolerancePctExact;
+  String? get tolerancePctText =>
+      financeExactTrimmed(tolerancePctExact ?? tolerancePct?.toString());
   final double? pieceCvPct;
+  final String? pieceCvPctExact;
+  String? get pieceCvPctText =>
+      financeExactTrimmed(pieceCvPctExact ?? pieceCvPct?.toString());
   final double? manualUnitWeightKg;
+  final String? manualUnitWeightKgExact;
+  String? get manualUnitWeightKgText => financeExactTrimmed(
+    manualUnitWeightKgExact ?? manualUnitWeightKg?.toString(),
+  );
 
   /// 人工单重生效中 (设定时的基本单位与现在一致; 换了基本单位后人工单重自动失效)。
   final bool manualActive;
@@ -618,10 +692,30 @@ class GoodsWeightProfile {
     String? goodsId,
   }) => GoodsWeightProfile(
     goodsId: (j['goodsId'] ?? goodsId ?? '').toString(),
+    inputEvidence: j['inputEvidence'] is List
+        ? [
+            for (final row
+                in (j['inputEvidence'] as List)
+                    .whereType<Map<Object?, Object?>>())
+              Map<String, dynamic>.from(row),
+          ]
+        : const [],
     defaultTareKg: _num(j['defaultTareKg']),
+    defaultTareKgExact: financeExactDecimal(
+      j['defaultTareKgExact'] ?? j['defaultTareKg'],
+    ),
     tolerancePct: _num(j['tolerancePct']),
+    tolerancePctExact: financeExactDecimal(
+      j['tolerancePctExact'] ?? j['tolerancePct'],
+    ),
     pieceCvPct: _num(j['pieceCvPct']),
+    pieceCvPctExact: financeExactDecimal(
+      j['pieceCvPctExact'] ?? j['pieceCvPct'],
+    ),
     manualUnitWeightKg: _num(j['manualUnitWeightKg']),
+    manualUnitWeightKgExact: financeExactDecimal(
+      j['manualUnitWeightKgExact'] ?? j['manualUnitWeightKg'],
+    ),
     manualActive: j['manualActive'] == true,
     manualReason: _str(j['manualReason']),
     manualSetByName: _str(j['manualSetByName']),
@@ -640,6 +734,7 @@ class GoodsWeightEstimateRow {
     this.supplierName,
     this.evidence,
     this.unitWeightKg,
+    this.unitWeightKgExact,
     this.logMean,
     this.tier,
     this.relHalfWidth,
@@ -663,6 +758,9 @@ class GoodsWeightEstimateRow {
   final String? supplierName;
   final String? evidence;
   final double? unitWeightKg;
+  final String? unitWeightKgExact;
+  String? get unitWeightKgText =>
+      financeExactTrimmed(unitWeightKgExact ?? unitWeightKg.toString());
   final double? logMean;
   final WeightTier? tier;
   final double? relHalfWidth;
@@ -687,6 +785,9 @@ class GoodsWeightEstimateRow {
         supplierName: _str(j['supplierName']),
         evidence: _str(j['evidence']),
         unitWeightKg: _num(j['unitWeightKg']),
+        unitWeightKgExact: financeExactDecimal(
+          j['unitWeightKgExact'] ?? j['unitWeightKg'],
+        ),
         logMean: _num(j['logMean']),
         tier: WeightTier.parse(j['tier']?.toString()),
         relHalfWidth: _num(j['relHalfWidth']),
@@ -792,10 +893,14 @@ class GoodsWeightDetail {
 class WeightObservation {
   const WeightObservation({
     required this.id,
+    this.inputEvidence = const [],
     required this.sourceKind,
     required this.qtyBase,
+    this.qtyBaseExact,
     required this.weightKg,
+    this.weightKgExact,
     this.unitWeightKg,
+    this.unitWeightKgExact,
     this.role,
     this.observedAt,
     this.colorId,
@@ -806,7 +911,9 @@ class WeightObservation {
     this.counterpartId,
     this.counterpartName,
     this.grossKg,
+    this.grossKgExact,
     this.tareKg,
+    this.tareKgExact,
     this.sourceDocType,
     this.sourceDocId,
     this.sourceItemId,
@@ -829,15 +936,25 @@ class WeightObservation {
   });
 
   final String id;
+  final List<Map<String, dynamic>> inputEvidence;
 
   /// SAMPLE/COUNT/RECEIPT/FINISHED/OTHER_IN/DRAW/ISSUE/SHIPMENT/RETURN/OTHER_OUT/TRANSFER。
   final String sourceKind;
   final String? role;
   final double qtyBase;
+  final String? qtyBaseExact;
+  String get qtyBaseText =>
+      financeExactTrimmed(qtyBaseExact ?? qtyBase.toString())!;
   final double weightKg;
+  final String? weightKgExact;
+  String get weightKgText =>
+      financeExactTrimmed(weightKgExact ?? weightKg.toString())!;
 
   /// 本条单重 (千克/基本单位, 服务端 = 净重 / 数量)。
   final double? unitWeightKg;
+  final String? unitWeightKgExact;
+  String? get unitWeightKgText =>
+      financeExactTrimmed(unitWeightKgExact ?? unitWeightKg?.toString());
   final DateTime? observedAt;
   final String? colorId;
   final String? warehouseId;
@@ -847,7 +964,13 @@ class WeightObservation {
   final String? counterpartId;
   final String? counterpartName;
   final double? grossKg;
+  final String? grossKgExact;
+  String? get grossKgText =>
+      financeExactTrimmed(grossKgExact ?? grossKg?.toString());
   final double? tareKg;
+  final String? tareKgExact;
+  String? get tareKgText =>
+      financeExactTrimmed(tareKgExact ?? tareKg?.toString());
   final String? sourceDocType;
   final String? sourceDocId;
   final String? sourceItemId;
@@ -884,11 +1007,24 @@ class WeightObservation {
   factory WeightObservation.fromJson(Map<String, dynamic> j) =>
       WeightObservation(
         id: (j['id'] ?? '').toString(),
+        inputEvidence: j['inputEvidence'] is List
+            ? [
+                for (final row
+                    in (j['inputEvidence'] as List)
+                        .whereType<Map<Object?, Object?>>())
+                  Map<String, dynamic>.from(row),
+              ]
+            : const [],
         sourceKind: (j['sourceKind'] ?? '').toString(),
         role: _str(j['role']),
         qtyBase: _num(j['qtyBase']) ?? 0,
+        qtyBaseExact: financeExactDecimal(j['qtyBaseExact'] ?? j['qtyBase']),
         weightKg: _num(j['weightKg']) ?? 0,
+        weightKgExact: financeExactDecimal(j['weightKgExact'] ?? j['weightKg']),
         unitWeightKg: _num(j['unitWeightKg']),
+        unitWeightKgExact: financeExactDecimal(
+          j['unitWeightKgExact'] ?? j['unitWeightKg'],
+        ),
         observedAt: _date(j['observedAt']),
         colorId: _str(j['colorId']),
         warehouseId: _str(j['warehouseId']),
@@ -898,7 +1034,9 @@ class WeightObservation {
         counterpartId: _str(j['counterpartId']),
         counterpartName: _str(j['counterpartName']),
         grossKg: _num(j['grossKg']),
+        grossKgExact: financeExactDecimal(j['grossKgExact'] ?? j['grossKg']),
         tareKg: _num(j['tareKg']),
+        tareKgExact: financeExactDecimal(j['tareKgExact'] ?? j['tareKg']),
         sourceDocType: _str(j['sourceDocType']),
         sourceDocId: _str(j['sourceDocId']),
         sourceItemId: _str(j['sourceItemId']),
@@ -928,21 +1066,53 @@ class WeightObservation {
 class WeightSampleRequest {
   const WeightSampleRequest({
     required this.qty,
+    this.qtyExact,
     required this.weight,
+    this.weightExact,
     required this.weightUnitCode,
     required this.idempotencyKey,
     this.tareKg,
+    this.tareKgExact,
     this.supplierId,
     this.warehouseId,
     this.newRegime = false,
     this.remark,
   });
 
+  factory WeightSampleRequest.fromJson(Map<String, dynamic> json) {
+    final qty = financeExactDecimal(json['qty']);
+    final weight = financeExactDecimal(json['weight']);
+    final tare = financeExactDecimal(json['tareKg']);
+    if (qty == null ||
+        weight == null ||
+        json['idempotencyKey'] is! String ||
+        json['weightUnit'] is! String) {
+      throw const FormatException('原称样请求缺失');
+    }
+    return WeightSampleRequest(
+      qty: double.parse(qty),
+      qtyExact: qty,
+      weight: double.parse(weight),
+      weightExact: weight,
+      tareKg: tare == null ? null : double.parse(tare),
+      tareKgExact: tare,
+      weightUnitCode: json['weightUnit'] as String,
+      idempotencyKey: json['idempotencyKey'] as String,
+      supplierId: json['supplierId'] as String?,
+      warehouseId: json['warehouseId'] as String?,
+      newRegime: json['newRegime'] == true,
+      remark: json['remark'] as String?,
+    );
+  }
+
   /// 抽样件数 (基本单位)。
   final double qty;
+  final String? qtyExact;
   final double weight;
+  final String? weightExact;
   final String weightUnitCode;
   final double? tareKg;
+  final String? tareKgExact;
   final String? supplierId;
   final String? warehouseId;
   final bool newRegime;
@@ -950,10 +1120,10 @@ class WeightSampleRequest {
   final String idempotencyKey;
 
   Map<String, Object?> toJson() => {
-    'qty': qty,
-    'weight': weight,
+    'qty': financeExactTrimmed(qtyExact ?? qty.toString()),
+    'weight': financeExactTrimmed(weightExact ?? weight.toString()),
     'weightUnit': weightUnitCode,
-    'tareKg': ?tareKg,
+    'tareKg': ?financeExactTrimmed(tareKgExact ?? tareKg?.toString()),
     'supplierId': ?supplierId,
     'warehouseId': ?warehouseId,
     'newRegime': newRegime,
@@ -967,9 +1137,13 @@ class WeightProfileUpdate {
   const WeightProfileUpdate({
     required this.expectedVersion,
     this.defaultTareKg,
+    this.defaultTareKgExact,
     this.tolerancePct,
+    this.tolerancePctExact,
     this.pieceCvPct,
+    this.pieceCvPctExact,
     this.manualUnitWeightKg,
+    this.manualUnitWeightKgExact,
     this.manualReason,
     this.learningEnabled = true,
     this.regimeMode = 'AUTO',
@@ -980,40 +1154,87 @@ class WeightProfileUpdate {
       WeightProfileUpdate(
         expectedVersion: p?.version ?? 0,
         defaultTareKg: p?.defaultTareKg,
+        defaultTareKgExact: p?.defaultTareKgText,
         tolerancePct: p?.tolerancePct,
+        tolerancePctExact: p?.tolerancePctText,
         pieceCvPct: p?.pieceCvPct,
+        pieceCvPctExact: p?.pieceCvPctText,
         manualUnitWeightKg: p?.manualUnitWeightKg,
+        manualUnitWeightKgExact: p?.manualUnitWeightKgText,
         manualReason: p?.manualReason,
         learningEnabled: p?.learningEnabled ?? true,
         regimeMode: p?.regimeMode ?? 'AUTO',
       );
 
+  factory WeightProfileUpdate.fromJson(Map<String, dynamic> data) =>
+      WeightProfileUpdate(
+        expectedVersion: (data['expectedVersion'] as num).toInt(),
+        defaultTareKg: double.tryParse(data['defaultTareKg']?.toString() ?? ''),
+        defaultTareKgExact: financeExactDecimal(data['defaultTareKg']),
+        tolerancePct: double.tryParse(data['tolerancePct']?.toString() ?? ''),
+        tolerancePctExact: financeExactDecimal(data['tolerancePct']),
+        pieceCvPct: double.tryParse(data['pieceCvPct']?.toString() ?? ''),
+        pieceCvPctExact: financeExactDecimal(data['pieceCvPct']),
+        manualUnitWeightKg: double.tryParse(
+          data['manualUnitWeightKg']?.toString() ?? '',
+        ),
+        manualUnitWeightKgExact: financeExactDecimal(
+          data['manualUnitWeightKg'],
+        ),
+        manualReason: data['manualReason'] as String?,
+        learningEnabled: data['learningEnabled'] == true,
+        regimeMode: data['regimeMode'] as String,
+      );
+
   final int expectedVersion;
   final double? defaultTareKg;
+  final String? defaultTareKgExact;
   final double? tolerancePct;
+  final String? tolerancePctExact;
   final double? pieceCvPct;
+  final String? pieceCvPctExact;
   final double? manualUnitWeightKg;
+  final String? manualUnitWeightKgExact;
   final String? manualReason;
   final bool learningEnabled;
   final String regimeMode;
 
   WeightProfileUpdate copyWith({
     double? defaultTareKg,
+    String? defaultTareKgExact,
     bool clearDefaultTare = false,
     double? tolerancePct,
+    String? tolerancePctExact,
     double? pieceCvPct,
+    String? pieceCvPctExact,
     double? manualUnitWeightKg,
+    String? manualUnitWeightKgExact,
     bool clearManual = false,
     String? manualReason,
     bool? learningEnabled,
     String? regimeMode,
   }) => WeightProfileUpdate(
     expectedVersion: expectedVersion,
+    defaultTareKgExact: clearDefaultTare
+        ? null
+        : (defaultTareKgExact ??
+              (defaultTareKg == null ? this.defaultTareKgExact : null)),
     defaultTareKg: clearDefaultTare
         ? null
         : (defaultTareKg ?? this.defaultTareKg),
     tolerancePct: tolerancePct ?? this.tolerancePct,
+    tolerancePctExact:
+        tolerancePctExact ??
+        (tolerancePct == null ? this.tolerancePctExact : null),
     pieceCvPct: pieceCvPct ?? this.pieceCvPct,
+    pieceCvPctExact:
+        pieceCvPctExact ?? (pieceCvPct == null ? this.pieceCvPctExact : null),
+    manualUnitWeightKgExact: clearManual
+        ? null
+        : (manualUnitWeightKgExact ??
+              (manualUnitWeightKg == null
+                  ? this.manualUnitWeightKgExact
+                  : null)),
     manualUnitWeightKg: clearManual
         ? null
         : (manualUnitWeightKg ?? this.manualUnitWeightKg),
@@ -1024,10 +1245,18 @@ class WeightProfileUpdate {
 
   Map<String, Object?> toJson() => {
     'expectedVersion': expectedVersion,
-    'defaultTareKg': defaultTareKg,
-    'tolerancePct': tolerancePct,
-    'pieceCvPct': pieceCvPct,
-    'manualUnitWeightKg': manualUnitWeightKg,
+    'defaultTareKg': financeExactTrimmed(
+      defaultTareKgExact ?? defaultTareKg?.toString(),
+    ),
+    'tolerancePct': financeExactTrimmed(
+      tolerancePctExact ?? tolerancePct?.toString(),
+    ),
+    'pieceCvPct': financeExactTrimmed(
+      pieceCvPctExact ?? pieceCvPct?.toString(),
+    ),
+    'manualUnitWeightKg': financeExactTrimmed(
+      manualUnitWeightKgExact ?? manualUnitWeightKg?.toString(),
+    ),
     'manualReason': manualReason,
     'learningEnabled': learningEnabled,
     'regimeMode': regimeMode,

@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 // 仓库单据编辑页的重量口径 (ADR-135 §3.3/§3.4):
 //  1. 库存分析「生成盘点单」经路由 extra 带 StockCheckPrefill: 预填仓库与明细, 读账面数量与
 //     账面重量 (估算带「≈」); 实盘之后是「账面重量 / 实盘重量(kg)」;
@@ -135,7 +137,7 @@ void main() {
                 )
                 .controller!
             as UtenAutofillTextController;
-    expect(checkQty.text, '10');
+    expect(checkQty.text, '10.003714377185664');
     expect(checkQty.autofilled, isTrue);
 
     await tester.tap(find.text('保存'));
@@ -146,8 +148,8 @@ void main() {
     final item = (body['items'] as List).cast<Map<String, dynamic>>().single;
     expect(item['goodsId'], _goodsId);
     expect(item['qty'], '10'); // 账面
-    expect(item['countQty'], '10'); // 实盘
-    expect(item['countWeight'], 0.02);
+    expect(item['countQty'], checkQty.text); // 实盘
+    expect(item['countWeight'], '0.02');
     expect(item['qtyFromWeight'], isTrue);
     expect(item.containsKey('weight'), isFalse);
     expect(find.text('详情 doc-new'), findsOneWidget);
@@ -213,7 +215,7 @@ void main() {
     await tester.pump();
     expect(inbound.weight.kg, 0.02);
     expect(inbound.weight.userEdited, isTrue);
-    expect(inbound.qty.text, '10');
+    expect(inbound.qty.text, '10.003714377185664');
     expect(inbound.qty.autofilled, isTrue);
     expect(inbound.weight.qtyFromWeight, isTrue);
     expect(inbound.weight.canonicalKeyPart, '0.02|1');
@@ -226,7 +228,7 @@ void main() {
     final outbound = await pumpGrid(WeightCaptureMode.outbound);
     await tester.enterText(find.byKey(const ValueKey('stock-grid-qty')), '10');
     await tester.pumpAndSettle();
-    expect(outbound.weight.text.text, '0.02');
+    expect(outbound.weight.text.text, '0.01999257400392371');
     expect(outbound.weight.kg, isNull);
     expect(outbound.weight.isSuggested, isTrue);
     expect(outbound.weight.canonicalKeyPart, '|0');
@@ -256,10 +258,17 @@ class _StaticParams extends WeightParamsCache {
 }
 
 class _Api extends ApiClient {
-  _Api() : super(Dio());
+  factory _Api() => _Api._(
+    Dio(BaseOptions(baseUrl: 'https://weight.test/api')),
+    _PostTransport(),
+  );
+  _Api._(Dio dio, this.transport) : super(dio) {
+    dio.httpClientAdapter = transport;
+  }
+  final _PostTransport transport;
 
   final List<Map<String, dynamic>> balanceQueries = [];
-  final List<Map<String, dynamic>> createdBodies = [];
+  List<Map<String, dynamic>> get createdBodies => transport.createdBodies;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -319,18 +328,34 @@ class _Api extends ApiClient {
     }
     return const [];
   }
+}
+
+class _PostTransport implements HttpClientAdapter {
+  final createdBodies = <Map<String, dynamic>>[];
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions request,
+    Stream<Uint8List>? body,
+    Future<void>? cancel,
+  ) async {
+    expect(request.method, 'POST');
+    expect(request.path, ApiEndpoints.stockDocsBase);
+    final bytes = <int>[];
+    await for (final chunk in body!) {
+      bytes.addAll(chunk);
+    }
+    createdBodies.add(
+      Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map),
+    );
+    return ResponseBody.fromString(
+      jsonEncode({'id': 'doc-new', 'docType': 'CHECK', 'items': <Object>[]}),
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
 
   @override
-  Future<Map<String, dynamic>> post(
-    String path, {
-    Object? body,
-    Map<String, dynamic>? headers,
-    Map<String, dynamic>? query,
-  }) async {
-    if (path == ApiEndpoints.stockDocsBase) {
-      createdBodies.add(Map<String, dynamic>.from(body! as Map));
-      return const {'id': 'doc-new', 'docType': 'CHECK', 'items': <Object>[]};
-    }
-    return const {};
-  }
+  void close({bool force = false}) {}
 }

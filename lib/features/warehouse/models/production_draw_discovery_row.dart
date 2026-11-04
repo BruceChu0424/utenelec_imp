@@ -22,6 +22,7 @@ class ProductionDrawDiscoveryRow {
       qtyOf: () => double.tryParse(quantity.text.trim()),
       qtyController: quantity,
       unitRate: 1,
+      unitRateExact: '1',
     );
   }
 
@@ -76,7 +77,7 @@ class ProductionDrawDiscoveryRow {
   /// 本行称了重量时的 IssueWeight (按 货品+颜色+实际发料仓 对到服务端建好的领料明细);
   /// 没称为 null。
   Map<String, dynamic>? weightJson() {
-    final kg = weight.kg;
+    final kg = weight.kgText;
     if (kg == null) return null;
     return {
       'goodsId': values['goodsId'],

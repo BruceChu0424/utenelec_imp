@@ -217,11 +217,7 @@ public class SalesReturnInventoryValueService implements SalesReturnInventoryVal
                 FROM sales_shipment_items item
                 JOIN sales_shipments shipment ON shipment.id=item.shipment_id
                     AND shipment.status=1 AND shipment.warehouse_work_status='SHIPPED' AND NOT shipment.is_deleted
-                JOIN stock_movements movement ON movement.source_doc_type='SALES_SHIPMENT'
-                    AND movement.source_doc_id=shipment.id AND movement.source_item_id=item.id
-                    AND movement.direction=-1 AND movement.movement_type IN (3,20)
-                    AND movement.goods_id=item.goods_id AND movement.color_id IS NOT DISTINCT FROM item.color_id
-                    AND movement.warehouse_id=shipment.warehouse_id
+                CROSS JOIN LATERAL fn_sales_shipment_original_movement(item) movement
                 WHERE item.id=:id AND NOT item.is_deleted
                 """, Map.of("id", event.shipmentItemId()));
         if (rows.size() != 1) throw conflict("退货必须对应唯一真实已发货库存流水，不能猜测原成本");

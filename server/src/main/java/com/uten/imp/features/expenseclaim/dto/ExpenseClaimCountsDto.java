@@ -7,4 +7,12 @@ package com.uten.imp.features.expenseclaim.dto;
  */
 public record ExpenseClaimCountsDto(long draftCount, long rejectedCount,
         long pendingApprovalCount, long pendingPaymentCount,
-        long processingCount) {}
+        long processingCount, long departmentPendingApprovalCount, long financeInitialPendingApprovalCount,
+        long financeReviewPendingApprovalCount, long executivePendingApprovalCount,
+        java.util.Map<String, Long> departmentPendingByCode,
+        java.util.Map<String, Long> departmentApprovalScopeByCode,long mineRoutingStaleCount) {
+    public ExpenseClaimCountsDto(long draftCount, long rejectedCount, long pendingApprovalCount,
+            long pendingPaymentCount, long processingCount) {
+        this(draftCount,rejectedCount,pendingApprovalCount,pendingPaymentCount,processingCount,0,0,0,0,java.util.Map.of(),java.util.Map.of(),0);
+    }
+}

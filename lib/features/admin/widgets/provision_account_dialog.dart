@@ -54,29 +54,41 @@ class _ProvisionAccountDialogState
   bool _provisioning = false;
   int _candidateRevision = 0;
 
-  Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
-    final rows = await ref
+  Future<UtenEmployeePickerPage> _load(UtenEmployeePickerQuery query) async {
+    final result = await ref
         .read(adminRepositoryProvider)
-        .provisionCandidates(search: keyword);
-    for (final row in rows) {
+        .provisionCandidatesPage(
+          search: query.keyword,
+          page: query.page,
+          departmentId: query.departmentId,
+          includeSubtree: query.includeDepartmentSubtree,
+        );
+    if (result.page != query.page) {
+      throw const FormatException('开户人员候选分页已变化，请重新搜索');
+    }
+    for (final row in result.items) {
       _candidates[row.employeeId] = row;
     }
-    return [
-      for (final row in rows)
-        UtenEmployeePickerItem(
-          id: row.employeeId,
-          name: row.name,
-          employeeCode: row.code,
-          departmentId: row.departmentId,
-          departmentName: row.departmentName,
-          accountStatus: row.accountStatus,
-          employmentStatus: row.employmentStatus,
-          enabled: row.provisionable,
-          disabledReason: row.provisionable
-              ? null
-              : '请先在员工档案中补全${row.missingHint}',
-        ),
-    ];
+    return UtenEmployeePickerPage(
+      items: [
+        for (final row in result.items)
+          UtenEmployeePickerItem(
+            id: row.employeeId,
+            name: row.name,
+            employeeCode: row.code,
+            departmentId: row.departmentId,
+            departmentName: row.departmentName,
+            accountStatus: row.accountStatus,
+            employmentStatus: row.employmentStatus,
+            enabled: row.provisionable,
+            disabledReason: row.provisionable
+                ? null
+                : '请先在员工档案中补全${row.missingHint}',
+          ),
+      ],
+      page: result.page,
+      totalPages: result.totalPages,
+    );
   }
 
   Future<void> _provision(List<AccountProvisionCandidate> candidates) async {
@@ -134,7 +146,7 @@ class _ProvisionAccountDialogState
       absorbing: _provisioning,
       child: UtenEmployeeSelectionPanel(
         candidateScopeKey: _candidateRevision,
-        loader: _load,
+        pagedLoader: _load,
         multiple: true,
         title: '选择开通账号的员工',
         confirmLabel: '开通所选账号',

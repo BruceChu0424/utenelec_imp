@@ -1,6 +1,6 @@
 package com.uten.imp.features.production.dailyreport.dto;
 
-import jakarta.validation.constraints.Digits;
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
@@ -32,6 +32,6 @@ public class DailyReportMaterialUsageLine {
      * 填了时审核按「本次用料 = 审核时的账面可用 − 实际剩余」覆盖 qtyBase，退仓按实际剩余。
      */
     @PositiveOrZero
-    @Digits(integer = 14, fraction = 4)
+    @DocumentQuantity
     private BigDecimal countedLeftoverQty;
 }

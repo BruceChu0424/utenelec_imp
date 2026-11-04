@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -710,14 +711,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                   searchHint: '搜索订单号 / 客户',
                   onSearchChanged: _applyKeyword,
                 ),
-                if (seg?.history == true) ...[
-                  const SizedBox(height: UtenFilterRow.rowGap),
-                  UtenHistoryTimeFilter(
-                    key: const Key('sales-order-progress-history-time'),
-                    value: _historyTime,
-                    onChanged: _onHistoryTime,
-                  ),
-                ],
               ],
             ),
           ),
@@ -753,6 +746,14 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     }
     return _withDraftCategory(
       MasterDataTableView<SalesOrderProgressRow>(
+        toolbarLeadingActions: [
+          if (_seg?.history == true)
+            UtenHistoryTimeFilter(
+              key: const Key('sales-order-progress-history-time'),
+              value: _historyTime,
+              onChanged: _onHistoryTime,
+            ),
+        ],
         expensiveRowMounts: false,
         rowsController: _tableRows,
         paginationRevision: _result,
@@ -891,7 +892,13 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
             '（含被驳回/进行中/已发货/已中止/已结案）',
       );
     }
-    return const UtenHistoryTimePlaceholder();
+    return UtenHistoryTimePlaceholder(
+      controls: UtenHistoryTimeFilter(
+        key: const Key('sales-order-progress-history-time'),
+        value: _historyTime,
+        onChanged: _onHistoryTime,
+      ),
+    );
   }
 
   List<MasterColumnDef<SalesOrderProgressRow>> get _columns {
@@ -1030,6 +1037,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
 
   String _fmt(double v) {
     if (v == v.roundToDouble()) return v.toInt().toString();
-    return v.toStringAsFixed(2);
+    return v.toExactString(minimumFractionDigits: 2);
   }
 }

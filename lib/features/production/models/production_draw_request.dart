@@ -1,3 +1,5 @@
+import '../../../core/formatters/exact_number_text.dart';
+
 /// A workshop segment and the version the operator has reviewed.
 /// Preview permits a missing version for a direct link; submit always uses the
 /// authoritative versions returned in [ProductionDrawRequestPreview.tasks].
@@ -235,7 +237,7 @@ class ProductionDrawRequestPreview {
           qty: double.parse(
             sources
                 .fold<double>(0, (total, row) => total + row.qty)
-                .toStringAsFixed(4),
+                .toExactString(minimumFractionDigits: 4),
           ),
           warehouseName: summary.warehouseName,
           goodsCode: summary.goodsCode,
@@ -280,7 +282,9 @@ class ProductionDrawRequestPreview {
       selections.add(
         ProductionDrawRequestSelection(
           drawItemId: source.drawItemId,
-          quantity: double.parse(allocated.toStringAsFixed(4)),
+          quantity: double.parse(
+            allocated.toExactString(minimumFractionDigits: 4),
+          ),
         ),
       );
       remaining -= allocated;

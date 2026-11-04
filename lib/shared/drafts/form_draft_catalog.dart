@@ -1,3 +1,4 @@
+import '../../features/finance/config/finance_requirement_names.dart';
 import '../auth/permissions.dart';
 import '../../core/router/route_names.dart';
 import 'form_draft.dart';
@@ -142,7 +143,7 @@ abstract final class FormDraftCatalog {
     draftKind: 'finance_quote_review',
   );
   static const financeShipmentReview = FormDraftDescriptor(
-    title: '出货财务审核',
+    title: FinanceRequirementNames.customerShipmentReview,
     module: BadgeModule.finance,
     route: '/finance/sales-shipment-audits/:id',
     permission: Perm.salesShipmentFinanceView,
@@ -288,6 +289,236 @@ abstract final class FormDraftCatalog {
     permission: Perm.financeAssetApprove,
     dialogKind: 'assetPolicy',
   );
+  static const financeCostTemplateInput = FormDraftDescriptor(
+    title: '财务原表资料',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.paymentStyleEdit,
+    dialogKind: 'financeCostTemplateInput',
+  );
+  static const financeAssetTemplateInput = FormDraftDescriptor(
+    title: '资产原表资料',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeAssetEdit,
+    dialogKind: 'financeAssetTemplateInput',
+  );
+  static const financeAssetOpeningGroup = FormDraftDescriptor(
+    title: '资产原表接续',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeAssetView,
+    dialogKind: 'financeAssetOpeningGroup',
+  );
+  static const financeMaterialStatement = FormDraftDescriptor(
+    title: FinanceRequirementNames.otherReceivableStatement,
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeMaterialStatement',
+  );
+  static const financeSubcontractLossPolicy = FormDraftDescriptor(
+    title: '允许损耗率',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeSubcontractLossPolicy',
+  );
+  static const financeSubcontractQuantityEvidence = FormDraftDescriptor(
+    title: '原表数量对应/期初与尾料核对',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeSubcontractQuantityEvidence',
+  );
+  static const financeProcurementConfirmation = FormDraftDescriptor(
+    title: '提交对账确认',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeProcurementConfirmation',
+  );
+  static const financeAuxiliaryImport = FormDraftDescriptor(
+    title: '原辅助明细导入',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeAuxiliaryImport',
+  );
+  static const financeStatementComparison = FormDraftDescriptor(
+    title: '原表导入比对',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeStatementComparison',
+  );
+  static const financeNativeLegacyOpening = FormDraftDescriptor(
+    title: '旧未结接续',
+    module: BadgeModule.finance,
+    route: RouteName.financeArAp,
+    permission: Perm.financeReportView,
+    dialogKind: 'financeNativeLegacyOpening',
+  );
+  static const financeClassificationCorrection = FormDraftDescriptor(
+    title: '往来分类整图更正',
+    module: BadgeModule.finance,
+    route: RouteName.financeArAp,
+    permission: Perm.financeReportView,
+    dialogKind: 'financeClassificationCorrection',
+  );
+  static const financePayableStatementAdjustment = FormDraftDescriptor(
+    title: '对账手续费及尾数处理',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.supplierSettlementConfirm,
+    dialogKind: 'financePayableStatementAdjustment',
+  );
+  static const financeAccountingImport = FormDraftDescriptor(
+    title: '原账套接续',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financePostExecute,
+    dialogKind: 'financeAccountingImport',
+  );
+  static const financeExpenseAnalysisInput = FormDraftDescriptor(
+    title: '费用原表资料',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.paymentStyleEdit,
+    dialogKind: 'financeExpenseAnalysisInput',
+  );
+  static const financeStatementProfile = FormDraftDescriptor(
+    title: '对账打印资料',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.paymentStyleEdit,
+    dialogKind: 'financeStatementProfile',
+  );
+  static const financeStatementProfileReview = FormDraftDescriptor(
+    title: '对账打印资料审核',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financePostExecute,
+    dialogKind: 'financeStatementProfileReview',
+  );
+  static const financeStatementReview = FormDraftDescriptor(
+    title: '对账原件处理',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.supplierSettlementConfirm,
+    dialogKind: 'financeStatementReview',
+  );
+  static const financeStatementClientReview = FormDraftDescriptor(
+    title: '对账原件处理',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReceiptApprove,
+    dialogKind: 'financeStatementClientReview',
+  );
+  static const financeApplication = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/new',
+    permission: Perm.financeApplicationApply,
+  );
+  static const financeApplicationExpense = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/new',
+    permission: Perm.expenseApply,
+  );
+  static const financeApplicationPayroll = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/new',
+    permission: Perm.payrollGenerate,
+  );
+  static const financeApplicationReview = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.financeApplicationReview,
+    dialogKind: 'financeApplicationReview',
+  );
+  static const financeApplicationOwner = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.financeApplicationApply,
+    dialogKind: 'financeApplicationOwner',
+  );
+  static const financeApplicationExpenseOwner = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.expenseApply,
+    dialogKind: 'financeApplicationExpenseOwner',
+  );
+  static const financeApplicationPayrollOwner = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.payrollGenerate,
+    dialogKind: 'financeApplicationPayrollOwner',
+  );
+  static const financeApplicationAssignment = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.expenseSettings,
+    dialogKind: 'financeApplicationAssignment',
+  );
+  static const financeApplicationContinuation = FormDraftDescriptor(
+    title: '原申请接续',
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id/continue',
+    permission: Perm.financeApplicationApply,
+  );
+  static const financeApplicationExpenseContinuation = FormDraftDescriptor(
+    title: '原申请接续',
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id/continue',
+    permission: Perm.expenseApply,
+  );
+  static const financeApplicationEditing = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id/edit',
+    permission: Perm.financeApplicationApply,
+  );
+  static const financeApplicationExpenseEditing = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id/edit',
+    permission: Perm.expenseApply,
+  );
+  static const financeApplicationPayrollEditing = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id/edit',
+    permission: Perm.payrollGenerate,
+  );
+  static const financeApplicationExecute = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.financeApplicationExecute,
+    dialogKind: 'financeApplicationExecute',
+  );
+  static const financeApplicationConfirm = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.financeApplicationConfirm,
+    dialogKind: 'financeApplicationConfirm',
+  );
+  static const financeApplicationReverse = FormDraftDescriptor(
+    title: FinanceRequirementNames.financeApplications,
+    module: BadgeModule.finance,
+    route: '/finance/applications/:id',
+    permission: Perm.financeApplicationReverse,
+    dialogKind: 'financeApplicationReverse',
+  );
 
   static const goods = FormDraftDescriptor(
     title: '新增货品',
@@ -325,11 +556,151 @@ abstract final class FormDraftCatalog {
     draftKind: 'expense',
   );
 
+  static const businessApplication = FormDraftDescriptor(
+    title: '新建申请',
+    module: BadgeModule.people,
+    route: '/applications/new',
+    permission: Perm.applicationApply,
+    draftKind: 'business_application',
+  );
+  static const businessApplicationPayment = FormDraftDescriptor(
+    title: '申请付款登记',
+    module: BadgeModule.finance,
+    route: '/applications/:id',
+    permission: Perm.applicationPay,
+    dialogKind: 'applicationPayment',
+    draftKind: 'business_application_payment',
+  );
+  static const businessApplicationPrepaymentFinance = FormDraftDescriptor(
+    title: '预付账务关联',
+    module: BadgeModule.finance,
+    route: '/applications/:id',
+    permission: Perm.applicationPrepaymentLinkFinance,
+    dialogKind: 'applicationPrepaymentFinance',
+    draftKind: 'business_application_prepayment_finance',
+  );
+  static const travelApplication = FormDraftDescriptor(
+    title: '出差申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=TRAVEL',
+    permission: Perm.applicationApplyTravel,
+    draftKind: 'business_application',
+  );
+  static const paymentApplication = FormDraftDescriptor(
+    title: '付款申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=PAYMENT',
+    permission: Perm.applicationApplyPayment,
+    draftKind: 'business_application',
+  );
+  static const prepaymentApplication = FormDraftDescriptor(
+    title: '预付申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=PREPAYMENT',
+    permission: Perm.applicationApplyPrepayment,
+    draftKind: 'business_application',
+  );
+  static const supplierPaymentApplication = FormDraftDescriptor(
+    title: '供应商付款申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=SUPPLIER_PAYMENT',
+    permission: Perm.applicationApplySupplierPayment,
+    draftKind: 'business_application',
+  );
+  static const applicationKinds = {
+    'TRAVEL': travelApplication,
+    'PAYMENT': paymentApplication,
+    'PREPAYMENT': prepaymentApplication,
+    'SUPPLIER_PAYMENT': supplierPaymentApplication,
+  };
+
   static const asset = FormDraftDescriptor(
     title: '新建资产',
     module: BadgeModule.finance,
     route: '/finance/assets/new',
     permission: Perm.financeAssetEdit,
+  );
+
+  static const weightSampleInbound = FormDraftDescriptor(
+    title: '称样校准',
+    module: BadgeModule.warehouse,
+    route: '/measurement/weight-sample',
+    permission: Perm.warehouseInboundStockIn,
+    dialogKind: 'weightSample',
+    draftKind: 'weight_sample',
+  );
+  static const weightSampleDocument = FormDraftDescriptor(
+    title: '称样校准',
+    module: BadgeModule.warehouse,
+    route: '/measurement/weight-sample',
+    permission: Perm.stockDocEdit,
+    dialogKind: 'weightSample',
+    draftKind: 'weight_sample',
+  );
+  static const weightSampleManage = FormDraftDescriptor(
+    title: '称样校准',
+    module: BadgeModule.warehouse,
+    route: '/measurement/weight-sample',
+    permission: Perm.stockWeightManage,
+    dialogKind: 'weightSample',
+    draftKind: 'weight_sample',
+  );
+
+  static const weighCountInbound = FormDraftDescriptor(
+    title: '称重算数量',
+    module: BadgeModule.warehouse,
+    route: '/measurement/weigh-count-recovery',
+    permission: Perm.warehouseInboundStockIn,
+    dialogKind: 'weighCount',
+    draftKind: 'weigh_count',
+  );
+  static const weighCountDocument = FormDraftDescriptor(
+    title: '称重算数量',
+    module: BadgeModule.warehouse,
+    route: '/measurement/weigh-count-recovery',
+    permission: Perm.stockDocEdit,
+    dialogKind: 'weighCount',
+    draftKind: 'weigh_count',
+  );
+  static const weighCountManage = FormDraftDescriptor(
+    title: '称重算数量',
+    module: BadgeModule.warehouse,
+    route: '/measurement/weigh-count-recovery',
+    permission: Perm.stockWeightManage,
+    dialogKind: 'weighCount',
+    draftKind: 'weigh_count',
+  );
+  static const weighCountRead = FormDraftDescriptor(
+    title: '称重算数量',
+    module: BadgeModule.warehouse,
+    route: '/measurement/weigh-count-recovery',
+    permission: Perm.stockView,
+    dialogKind: 'weighCount',
+    draftKind: 'weigh_count',
+  );
+
+  static const workshopMaterialCount = FormDraftDescriptor(
+    title: '车间内料仓盘点',
+    module: BadgeModule.warehouse,
+    route: RouteName.workshopMaterialCount,
+    permission: Perm.workshopMaterialCount,
+    draftKind: 'workshop_material_count',
+  );
+
+  static const workshopMaterialCloseRetry = FormDraftDescriptor(
+    title: '车间物料结算',
+    module: BadgeModule.warehouse,
+    route: '/workshop-material/close-retry',
+    permission: Perm.workshopMaterialCount,
+    draftKind: 'workshop_material_close_retry',
+  );
+
+  static const materialPreparation = FormDraftDescriptor(
+    title: '物料备料操作草稿',
+    module: BadgeModule.production,
+    route: RouteName.productionMaterialAnalysis,
+    permission: Perm.productionMaterialAnalysisView,
+    draftKind: 'material_preparation',
   );
 
   static const dailyReport = FormDraftDescriptor(
@@ -569,13 +940,66 @@ abstract final class FormDraftCatalog {
     'paymentStyle': paymentStyle,
     'clientAddress': clientAddress,
     'assetPolicy': assetPolicy,
+    'financeCostTemplateInput': financeCostTemplateInput,
+    'financeAssetTemplateInput': financeAssetTemplateInput,
+    'financeAssetOpeningGroup': financeAssetOpeningGroup,
+    'financeMaterialStatement': financeMaterialStatement,
+    'financeSubcontractLossPolicy': financeSubcontractLossPolicy,
+    'financeSubcontractQuantityEvidence': financeSubcontractQuantityEvidence,
+    'financeProcurementConfirmation': financeProcurementConfirmation,
+    'financeAuxiliaryImport': financeAuxiliaryImport,
+    'financeStatementComparison': financeStatementComparison,
+    'financeNativeLegacyOpening': financeNativeLegacyOpening,
+    'financeClassificationCorrection': financeClassificationCorrection,
+    'financePayableStatementAdjustment': financePayableStatementAdjustment,
+    'financeAccountingImport': financeAccountingImport,
+    'financeExpenseAnalysisInput': financeExpenseAnalysisInput,
+    'financeStatementProfile': financeStatementProfile,
+    'financeStatementProfileReview': financeStatementProfileReview,
+    'financeStatementReview': financeStatementReview,
+    'financeStatementClientReview': financeStatementClientReview,
+    'financeApplication': financeApplication,
+    'financeApplicationExpense': financeApplicationExpense,
+    'financeApplicationPayroll': financeApplicationPayroll,
+    'financeApplicationReview': financeApplicationReview,
+    'financeApplicationExecute': financeApplicationExecute,
+    'financeApplicationConfirm': financeApplicationConfirm,
+    'financeApplicationReverse': financeApplicationReverse,
+    'financeApplicationOwner': financeApplicationOwner,
+    'financeApplicationExpenseOwner': financeApplicationExpenseOwner,
+    'financeApplicationPayrollOwner': financeApplicationPayrollOwner,
+    'financeApplicationAssignment': financeApplicationAssignment,
+    'financeApplicationContinuation': financeApplicationContinuation,
+    'financeApplicationExpenseContinuation':
+        financeApplicationExpenseContinuation,
+    'financeApplicationEditing': financeApplicationEditing,
+    'financeApplicationExpenseEditing': financeApplicationExpenseEditing,
+    'financeApplicationPayrollEditing': financeApplicationPayrollEditing,
     'goods': goods,
     'employeeOnboarding': employeeOnboarding,
     'employeeOffboarding': employeeOffboarding,
     'employeeReconcile': employeeReconcile,
     'expense': expense,
+    'businessApplication': businessApplication,
+    'businessApplicationPayment': businessApplicationPayment,
+    'businessApplicationPrepaymentFinance':
+        businessApplicationPrepaymentFinance,
+    'travelApplication': travelApplication,
+    'paymentApplication': paymentApplication,
+    'prepaymentApplication': prepaymentApplication,
+    'supplierPaymentApplication': supplierPaymentApplication,
     'asset': asset,
     'dailyReport': dailyReport,
+    'materialPreparation': materialPreparation,
+    'workshopMaterialCount': workshopMaterialCount,
+    'workshopMaterialCloseRetry': workshopMaterialCloseRetry,
+    'weightSampleInbound': weightSampleInbound,
+    'weightSampleDocument': weightSampleDocument,
+    'weightSampleManage': weightSampleManage,
+    'weighCountInbound': weighCountInbound,
+    'weighCountDocument': weighCountDocument,
+    'weighCountManage': weighCountManage,
+    'weighCountRead': weighCountRead,
     'productionDraw': productionDraw,
     'productionDiscovery': productionDiscovery,
     'productionReturn': productionReturn,

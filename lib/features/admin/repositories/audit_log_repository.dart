@@ -11,7 +11,15 @@ import '../models/audit_session.dart';
 
 abstract interface class AuditLogRepository {
   /// 分页搜索审计操作人员。候选不含系统任务，以 actorId 作为选择权威。
-  Future<AuditActorPage> actors({int page = 1, int size = 20, String? keyword});
+  Future<AuditActorPage> actors({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? actorType,
+    bool unassignedOnly = false,
+  });
 
   /// 按登录会话分页；服务端负责跨午夜边界和 sessionId 权威分组。
   Future<AuditSessionPage> sessions({
@@ -139,12 +147,21 @@ class DioAuditLogRepository
     int page = 1,
     int size = 20,
     String? keyword,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? actorType,
+    bool unassignedOnly = false,
   }) async {
     final json = await api.get(
       '${ApiEndpoints.adminAuditLogs}/actors',
       query: <String, dynamic>{
         'page': page,
         'size': size,
+        'departmentId': ?departmentId,
+        if (departmentId != null || includeSubtree)
+          'includeSubtree': includeSubtree,
+        'actorType': ?actorType,
+        if (unassignedOnly) 'unassignedOnly': true,
         if (keyword != null && keyword.trim().isNotEmpty)
           'keyword': keyword.trim(),
       },

@@ -10,6 +10,7 @@ class ApiException implements Exception {
     this.fieldErrors,
     this.httpStatus,
     this.hasResponseCode = false,
+    this.details,
   }) : message = apiErrorMessage(code, message, httpStatus: httpStatus);
 
   /// 后端错误码（BAD_CREDENTIALS / ACCOUNT_LOCKED / ...）
@@ -26,6 +27,7 @@ class ApiException implements Exception {
   /// 连接失败或 HTTP 状态兜底补的(例如网关 502/503/504 的错误页)：这类响应说明不了
   /// 服务端对这次请求做了什么。
   final bool hasResponseCode;
+  final Map<String, dynamic>? details;
 
   factory ApiException.fromApiError(ApiError err, {int? httpStatus}) =>
       ApiException(
@@ -34,6 +36,7 @@ class ApiException implements Exception {
         fieldErrors: err.fieldErrors,
         httpStatus: httpStatus,
         hasResponseCode: err.hasCode,
+        details: err.details,
       );
 
   @override

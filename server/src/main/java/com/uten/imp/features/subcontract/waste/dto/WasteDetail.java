@@ -45,4 +45,6 @@ public class WasteDetail extends com.uten.imp.common.history.DocumentHistoryMeta
 
     @Override public void disableHistoryActions() {
     }
+    public String getTotalWeightExact(){return com.uten.imp.common.util.DecimalText.of(totalWeight);}
+    public String getDeductAmountExact(){return com.uten.imp.common.util.DecimalText.of(deductAmount);}
 }

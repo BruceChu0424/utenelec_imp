@@ -8,7 +8,6 @@ import com.uten.imp.features.stock.weight.GoodsWeightFacts.Profile;
 import com.uten.imp.features.stock.weight.dto.WeightParams;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -134,8 +133,7 @@ public final class WeightParamsResolver {
 
         Optional<WeightUnit> masterUnit = WeightUnit.tryParse(facts.masterWeightMassCode());
         if (facts.masterWeight() != null && facts.masterWeight().signum() > 0 && masterUnit.isPresent()) {
-            BigDecimal kgPerBase = facts.masterWeight().multiply(masterUnit.get().kgPerUnit())
-                    .setScale(UNIT_WEIGHT_SCALE, RoundingMode.HALF_EVEN);
+            BigDecimal kgPerBase = facts.masterWeight().multiply(masterUnit.get().kgPerUnit());
             if (kgPerBase.signum() > 0) {
                 double prior = cfg.masterPriorSd() * cfg.masterPriorSd();
                 return b.learnedLike(BASIS_MASTER_PRIOR, false, kgPerBase, StrictMath.log(kgPerBase.doubleValue()),
@@ -150,7 +148,7 @@ public final class WeightParamsResolver {
         if (!Double.isFinite(value) || value <= 0) {
             return null;
         }
-        BigDecimal kg = BigDecimal.valueOf(value).setScale(UNIT_WEIGHT_SCALE, RoundingMode.HALF_EVEN);
+        BigDecimal kg = BigDecimal.valueOf(value);
         return kg.signum() > 0 ? kg : null;
     }
 

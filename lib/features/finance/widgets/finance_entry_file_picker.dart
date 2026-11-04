@@ -13,3 +13,21 @@ final financeEntryFilePickerProvider = Provider<FinanceEntryFilePicker>(
     return selection?.files.single;
   },
 );
+
+/// Real counterpart confirmations may be the original spreadsheet, PDF, or a signed image.
+final financeConfirmationFilePickerProvider = Provider<FinanceEntryFilePicker>(
+  (ref) =>
+      () async => (await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'xlsx',
+          'xls',
+          'csv',
+          'pdf',
+          'png',
+          'jpg',
+          'jpeg',
+        ],
+        withData: true,
+      ))?.files.single,
+);

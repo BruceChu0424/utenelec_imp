@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
@@ -58,6 +59,9 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../features/basic_data/models/master_facet.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/business_precision.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../core/network/data_write_revision.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -138,6 +142,7 @@ part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
 part 'material_analysis_aggregate_table.dart';
+part 'material_analysis_precision_draft.dart';
 part 'material_analysis_aggregate_actions.dart';
 part 'material_analysis_aggregate_submission.dart';
 part 'material_analysis_draft_budget.dart';
@@ -158,6 +163,7 @@ class ProductionMaterialAnalysisPage extends ConsumerStatefulWidget {
     super.key,
     this.seed = const ProductionMaterialAnalysisSeed(),
     this.planCreateEntry = false,
+    this.preparationDraftId,
   });
 
   final ProductionMaterialAnalysisSeed seed;
@@ -167,6 +173,7 @@ class ProductionMaterialAnalysisPage extends ConsumerStatefulWidget {
   /// 交货日。联合分析后的层级表与「下达车间」逐行生成计划单的流程（ADR-071）
   /// 与普通物料分析完全一致——这正是手工计划不绕过物料分析的 ADR-099 漏斗。
   final bool planCreateEntry;
+  final String? preparationDraftId;
 
   @override
   ConsumerState<ProductionMaterialAnalysisPage> createState() =>
@@ -2192,9 +2199,9 @@ abstract class _MaterialAnalysisPageBase
 
   String _qty(double? value) {
     if (value == null) return '—';
-    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    if (value == value.roundToDouble()) return value.toExactString();
     return value
-        .toStringAsFixed(4)
+        .toExactString(minimumFractionDigits: 4)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
   }
@@ -2640,7 +2647,9 @@ class _ProductionMaterialAnalysisPageState
           ? null
           : _candidateFloatingAction(),
     );
-    return PopScope(canPop: !_planSubmissionInProgress, child: page);
+    return _aggregateTable.draftBoundary(
+      PopScope(canPop: !_planSubmissionInProgress, child: page),
+    );
   }
 
   /// 进页等待期 (2026-09-27 用户口径「一进就弹窗加载, 会卡一会」)。

@@ -948,28 +948,32 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                           _reload(1);
                         },
                       ),
-                      if (seg?.history == true) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: UtenSpacing.s8,
-                          ),
-                          child: UtenHistoryTimeFilter(
+                    ],
+                  ),
+                  body: seg == null
+                      ? const UtenFilterPlaceholder()
+                      : seg.history && _historyTime.isNone
+                      ? UtenHistoryTimePlaceholder(
+                          controls: UtenHistoryTimeFilter(
                             key: Key(
                               'purchase-doc-history-time-${_cfg.type.pathSegment}',
                             ),
                             value: _historyTime,
                             onChanged: _onHistoryTime,
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  body: seg == null
-                      ? const UtenFilterPlaceholder()
-                      : seg.history && _historyTime.isNone
-                      ? const UtenHistoryTimePlaceholder()
+                        )
                       : _withDraftCategory(
                           MasterDataTableView<PurchaseDocListItem>(
+                            toolbarLeadingActions: [
+                              if (seg.history)
+                                UtenHistoryTimeFilter(
+                                  key: Key(
+                                    'purchase-doc-history-time-${_cfg.type.pathSegment}',
+                                  ),
+                                  value: _historyTime,
+                                  onChanged: _onHistoryTime,
+                                ),
+                            ],
                             rowsController: _tableRows,
                             bottomContentPadding: _canCreate
                                 ? UtenFloatingActionGroup.scrollClearance

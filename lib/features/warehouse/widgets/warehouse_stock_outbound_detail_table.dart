@@ -158,8 +158,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           sortable: true,
           filterFromRows: true,
           exactValueOf: (r) => r.item.weight?.toString(),
-          value: (r) => formatWeightValue(r.item.weight),
-          cellBuilder: (context, r) => WeightText(kg: r.item.weight),
+          value: (r) => formatWeightValue(r.item.weightText),
+          cellBuilder: (context, r) => WeightText(kg: r.item.weightText),
         ),
         MasterColumnDef(
           key: 'source',

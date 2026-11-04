@@ -34,4 +34,7 @@ public record HealthOverview(
         @JsonProperty("drawOver30d") long drawOver30d,
         long needsSample,
         BigDecimal deadAmountLocal) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("knownWeightKgExact")
+    public String getKnownWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(knownWeightKg);}
 }

@@ -669,7 +669,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
   final WarehouseSalesOutboundDetail value;
   Map<String, String?>? selectedLineWarehouses;
   Map<String, String>? selectedPlaces;
-  Map<String, double>? selectedWeights;
+  Map<String, Object?>? selectedWeights;
 
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
@@ -710,7 +710,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
-    Map<String, double>? lineWeights,
+    Map<String, Object?>? lineWeights,
     List<String>? itemIds,
   }) async {
     selectedLineWarehouses = lineWarehouses;

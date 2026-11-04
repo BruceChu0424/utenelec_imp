@@ -41,6 +41,15 @@ public interface SubcontractShortDeliveryPort {
             String severity,
             boolean waitingMoreActive,
             LocalDate expectedCompleteBy) {
+        public String getOrderedQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderedQty);}
+        public String getAllowedLossPctExact(){return com.uten.imp.common.util.DecimalText.of(allowedLossPct);}
+        public String getFloorQtyExact(){return com.uten.imp.common.util.DecimalText.of(floorQty);}
+        public String getDeliveredBeforeExact(){return com.uten.imp.common.util.DecimalText.of(deliveredBefore);}
+        public String getDeclaredNowExact(){return com.uten.imp.common.util.DecimalText.of(declaredNow);}
+        public String getDeliveredAfterExact(){return com.uten.imp.common.util.DecimalText.of(deliveredAfter);}
+        public String getShortfallQtyExact(){return com.uten.imp.common.util.DecimalText.of(shortfallQty);}
+        public String getShortfallPctExact(){return com.uten.imp.common.util.DecimalText.of(shortfallPct);}
+
 
         /** 低于允许下限的两档要仓库看过弹窗再登记; 容差内/未设两档静默开中性案件。 */
         public boolean requiresAcknowledgement() {

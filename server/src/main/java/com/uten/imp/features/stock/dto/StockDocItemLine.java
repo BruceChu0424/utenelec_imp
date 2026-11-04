@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
@@ -22,6 +23,12 @@ import java.util.UUID;
 @Setter
 public class StockDocItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput {
 
+    /** Server-captured boundary operands; clients cannot populate this provenance. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private BigDecimal originalWeightInputKg;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private BigDecimal originalCountWeightInputKg;
+
     /** Existing native row identity for the dedicated review command; ordinary saves cannot assign IDs. */
     private UUID sourceItemId;
 
@@ -35,6 +42,7 @@ public class StockDocItemLine extends com.uten.imp.common.platformcolumns.Platfo
     private BigDecimal unitRate;
 
     @NotNull
+    @DocumentQuantity
     private BigDecimal qty;
 
     private BigDecimal price;
@@ -43,23 +51,23 @@ public class StockDocItemLine extends com.uten.imp.common.platformcolumns.Platfo
 
     /** 本行实称重量(千克, 整行, 不乘换算率); 盘点单不用本列(见 countWeight)。 */
     @DecimalMin("0")
-    @Digits(integer = 14, fraction = 4)
+    @Digits(integer = 40, fraction = 48)
     private BigDecimal weight;
 
     /** 数量是否按称重计数推算(按称重改数量); 为真时本行不进单重学习。 */
     private Boolean qtyFromWeight;
 
     @jakarta.validation.constraints.DecimalMin("0")
-    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
+    @DocumentQuantity
     private BigDecimal giftQty;
 
     /** 盘点盘盈(+)盘亏(-)（仅 CHECK）。 */
-    private BigDecimal surplusQty;
+    @DocumentQuantity private BigDecimal surplusQty;
     /** 盘点实盘数（仅 CHECK）。 */
-    private BigDecimal countQty;
+    @DocumentQuantity private BigDecimal countQty;
     /** 盘点实盘重量(千克, 仅 CHECK, 可空); 审核时把本维度库存重量定为此值(盘点定重)。 */
     @DecimalMin("0")
-    @Digits(integer = 14, fraction = 4)
+    @Digits(integer = 40, fraction = 48)
     private BigDecimal countWeight;
 
     private String place;

@@ -111,7 +111,7 @@ public final class SubcontractReturnCapacity {
                              AND exception_row.approved_excess_qty > 0
                        ), 0) AS approved_supplier_own_base,
                        COALESCE((
-                           SELECT SUM(receipt_item.qty * COALESCE(receipt_item.unit_rate, 1))
+                           SELECT SUM(COALESCE((to_jsonb(receipt_item)->>'adopted_base_qty')::numeric,receipt_item.qty * receipt_item.unit_rate))
                            FROM subcontract_receipt_items receipt_item
                            JOIN subcontract_receipts receipt
                              ON receipt.id = receipt_item.receipt_id
@@ -122,7 +122,7 @@ public final class SubcontractReturnCapacity {
                 """ + approvedExclusion + """
                        ), 0) AS approved_receipt_base,
                        COALESCE((
-                           SELECT SUM(draft_item.qty * COALESCE(draft_item.unit_rate, 1))
+                           SELECT SUM(COALESCE((to_jsonb(draft_item)->>'adopted_base_qty')::numeric,draft_item.qty * draft_item.unit_rate))
                            FROM subcontract_receipt_items draft_item
                            JOIN subcontract_receipts draft
                              ON draft.id = draft_item.receipt_id
@@ -131,7 +131,13 @@ public final class SubcontractReturnCapacity {
                            WHERE draft_item.order_item_id = order_item.id
                              AND draft_item.is_deleted = FALSE
                 """ + draftExclusion + """
-                       ), 0) AS active_draft_base
+                       ), 0) AS active_draft_base,
+                       CASE WHEN order_item.unit_id IS NULL OR order_item.unit_rate IS NULL OR order_item.unit_rate<=0
+                         OR EXISTS(SELECT 1 FROM subcontract_receipt_items source_item JOIN subcontract_receipts source_receipt ON source_receipt.id=source_item.receipt_id
+                           WHERE source_item.order_item_id=order_item.id AND source_receipt.status IN(0,1)
+                             AND NOT source_item.is_deleted AND NOT source_receipt.is_deleted
+                             AND (source_item.unit_id IS NULL OR source_item.unit_rate IS NULL OR source_item.unit_rate<=0))
+                         THEN 1 ELSE 0 END unknown_source_basis
                 FROM subcontract_order_items order_item
                 WHERE order_item.id IN (:orderItemIds)
                   AND COALESCE(order_item.is_deleted, FALSE) = FALSE
@@ -149,6 +155,7 @@ public final class SubcontractReturnCapacity {
         Map<UUID, Facts> facts = new LinkedHashMap<>();
         for (Object[] row : rows) {
             UUID id = (UUID) row[0];
+            if(((Number)row[7]).intValue()!=0)throw new ApiException(ErrorCode.CONFLICT,"来源订货或已收货的单位/换算率尚未核验，不能默认按1或把未知容量当0");
             facts.put(id, new Facts(id, decimal(row[1]), decimal(row[2]), decimal(row[3]),
                     decimal(row[4]), decimal(row[5]), decimal(row[6])));
         }

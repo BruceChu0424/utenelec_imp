@@ -3,6 +3,7 @@
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/notice.dart';
 import '../models/notice_audience.dart';
@@ -262,8 +263,12 @@ abstract interface class NoticeRepository {
     required List<String> employeeIds,
   });
 
-  Future<List<NoticeAudienceEmployee>> searchAudienceEmployees({
+  Future<PagedResult<NoticeAudienceEmployee>> audienceEmployeesPage({
     String? search,
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
   });
 
   /// 批量删除（从当前用户列表移除；他人不受影响）。返回实际删除条数。
@@ -597,16 +602,28 @@ class DioNoticeRepository implements NoticeRepository {
   }
 
   @override
-  Future<List<NoticeAudienceEmployee>> searchAudienceEmployees({
+  Future<PagedResult<NoticeAudienceEmployee>> audienceEmployeesPage({
     String? search,
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
   }) async {
-    final items = await _api.getList(
-      ApiEndpoints.noticesAudienceEmployees,
-      query: search == null || search.trim().isEmpty
-          ? null
-          : {'search': search.trim()},
+    final response = await _api.get(
+      '${ApiEndpoints.noticesAudienceEmployees}/page',
+      query: {
+        'page': page,
+        'size': size,
+        if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
+        'departmentId': ?departmentId,
+        if (departmentId != null || includeSubtree)
+          'includeSubtree': includeSubtree,
+      },
     );
-    return [for (final item in items) NoticeAudienceEmployee.fromJson(item)];
+    return PagedResult.fromJsonResponsive(
+      response,
+      NoticeAudienceEmployee.fromJson,
+    );
   }
 
   @override

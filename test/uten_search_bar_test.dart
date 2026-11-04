@@ -3,6 +3,105 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 
 void main() {
+  testWidgets(
+    'Enter applies a pending keyword immediately without a later duplicate',
+    (tester) async {
+      final changes = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: UtenSearchBar(onChanged: changes.add)),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), '张');
+      await tester.pump(const Duration(milliseconds: 40));
+      expect(changes, isEmpty);
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      expect(changes, ['张']);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(changes, ['张']);
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      expect(changes, ['张', '张']);
+    },
+  );
+
+  testWidgets(
+    'pending exact-query Enter is suppressed while completed and replacement queries submit',
+    (tester) async {
+      String? pending;
+      final changes = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UtenSearchBar(
+              isQueryPending: (value) => pending == value,
+              onChanged: (value) {
+                changes.add(value);
+                pending = value;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), '张');
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(changes, ['张']);
+      pending = null;
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      expect(changes, ['张', '张']);
+      await tester.enterText(find.byType(TextField), '李');
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      expect(changes, ['张', '张', '李']);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(changes, ['张', '张', '李']);
+    },
+  );
+
+  testWidgets(
+    'a collapsed composing range commits once instead of leaving search suspended',
+    (tester) async {
+      final changes = <String>[];
+      final inputs = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UtenSearchBar(
+              onInputChanged: inputs.add,
+              onChanged: changes.add,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byType(TextField));
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: '张',
+          composing: TextRange(start: 0, end: 1),
+          selection: TextSelection.collapsed(offset: 1),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(changes, isEmpty);
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: '张',
+          composing: TextRange.collapsed(1),
+          selection: TextSelection.collapsed(offset: 1),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 301));
+      expect(inputs, ['张']);
+      expect(changes, ['张']);
+    },
+  );
+
   testWidgets('clear emits once and cancels a pending debounced search', (
     tester,
   ) async {

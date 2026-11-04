@@ -283,7 +283,6 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
   }) {
     return UtenDepartmentTreeView(
       nodes: tree,
-      flatLevelColors: true,
       selectedIds: {selectedId},
       onNodeTap: (n) => onSelect(n.id),
       nodeEnabledPredicate: (_) => true,

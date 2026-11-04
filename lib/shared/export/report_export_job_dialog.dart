@@ -8,6 +8,7 @@ import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/authenticated_request_scope.dart';
+import '../../core/network/business_precision_coordinator.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
 import '../providers/export_context_epoch_provider.dart';
@@ -39,6 +40,7 @@ class ReportExportJobDialog extends ConsumerStatefulWidget {
 class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
   Timer? _poll;
   ReportExportJobRequest? _unresolved;
+  ReportExportPrecisionResume? _unresolvedPrecision;
   ReportExportJob? _job;
   List<ReportExportJob> _recent = const [];
   bool _busy = false;
@@ -67,6 +69,7 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
       _job = null;
       _recent = const [];
       _unresolved = null;
+      _unresolvedPrecision = null;
       _busy = false;
       _error = '账号、权限或服务器已变化，请关闭后重新打开导出';
     });
@@ -103,6 +106,12 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
   }
 
   Future<void> _restore() => _perform(() async {
+    final precision = widget.store.readPrecisionResume();
+    if (precision != null) {
+      _unresolvedPrecision = precision;
+      await _verifyPrecisionReceipt();
+      return;
+    }
     final pending = widget.store.read();
     if (pending != null) {
       _unresolved = pending;
@@ -132,8 +141,20 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
     await _accept(await widget.client.create(request));
   }
 
-  Future<void> _accept(ReportExportJob job) async {
+  Future<void> _accept(
+    ReportExportJob job, {
+    bool precisionConfirmed = false,
+  }) async {
     if (!_current) return;
+    if (precisionConfirmed && _unresolvedPrecision != null) {
+      await widget.store.resolvePrecisionResume(
+        _unresolvedPrecision!.requestId,
+      );
+      if (!_current) {
+        return;
+      }
+      _unresolvedPrecision = null;
+    }
     await widget.store.resolve(job.id);
     if (!_current) return;
     _unresolved = null;
@@ -151,8 +172,83 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
   }
 
   Future<void> _verify() => _perform(() async {
+    if (_unresolvedPrecision != null) {
+      await _verifyPrecisionReceipt();
+      return;
+    }
     final id = _unresolved?.id ?? _job?.id;
     if (id != null) await _accept(await widget.client.read(id));
+  });
+  Future<void> _verifyPrecisionReceipt() async {
+    final request = _unresolvedPrecision;
+    if (request == null) {
+      return;
+    }
+    final receipt = await widget.client.precisionReceipt(request);
+    if (!_current) {
+      return;
+    }
+    if (receipt != null) {
+      await _accept(receipt, precisionConfirmed: true);
+    } else {
+      await _accept(await widget.client.read(request.jobId));
+    }
+  }
+
+  Future<void> _sendPrecision(
+    ReportExportPrecisionResume request, {
+    required bool retry,
+  }) async {
+    await widget.store.savePrecisionResume(request);
+    if (!_current) {
+      return;
+    }
+    _unresolvedPrecision = request;
+    try {
+      await _accept(
+        await widget.client.resumePrecision(request),
+        precisionConfirmed: true,
+      );
+    } on ApiException catch (error) {
+      if (!retry &&
+          error.hasResponseCode &&
+          (error.httpStatus == 400 ||
+              error.httpStatus == 422 ||
+              error.httpStatus == 409 && error.code == 'CONFLICT')) {
+        await widget.store.resolvePrecisionResume(request.requestId);
+        _unresolvedPrecision = null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _choosePrecision() => _perform(() async {
+    final job = _job, required = _job?.precisionRequirement;
+    if (job == null ||
+        required == null ||
+        !job.awaitingPrecision ||
+        (job.precisionChoices.length >= 32 &&
+            !job.precisionChoices.containsKey(required.key))) {
+      if (job != null && job.precisionChoices.length >= 32) {
+        setState(() => _error = '本任务已保留32组本次选择，无法再新增；原任务与选择仍保留，请保留任务编号核对');
+      }
+      return;
+    }
+    if (job.precisionChoices.containsKey(required.key) &&
+        !required.selectionRejected) {
+      throw StateError('本项原精度仍待核对，请核查原任务，不循环重新选择');
+    }
+    final choice = await BusinessPrecisionCoordinator.instance.ask(
+      required,
+      isCurrent: () => _current,
+    );
+    if (!_current || choice == null) {
+      return;
+    }
+    await _sendPrecision(
+      ReportExportPrecisionResume.create(job, choice),
+      retry: false,
+    );
   });
 
   Future<void> _newExport() => _perform(() async {
@@ -177,6 +273,7 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
     });
     final job = _job;
     final unresolved = _unresolved;
+    final unresolvedPrecision = _unresolvedPrecision;
     final scheme = Theme.of(context).colorScheme;
     return UtenAlertDialog(
       title: const Text('报表导出任务'),
@@ -202,6 +299,10 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
             if (job.error?.isNotEmpty == true)
               Text(job.error!, style: TextStyle(color: scheme.error)),
             if (job.active) const Text('可稍后回来查看；关闭窗口不会取消任务。'),
+            if (job.awaitingPrecision)
+              const Text('尚未生成可下载文件。选择后按原任务、原筛选重新读取，会使用新的读取时点。'),
+            if (unresolvedPrecision != null)
+              const Text('原精度续处理结果尚未确认，请核查原回执或原样重试，不再次选择。'),
           ] else if (unresolved != null) ...[
             const Text('上次创建结果尚未确认，请先核查原任务。'),
             const SizedBox(height: UtenSpacing.s8),
@@ -243,7 +344,28 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
             onPressed: _busy ? null : () => _perform(() => _create(unresolved)),
             child: const Text('按原编号重试'),
           ),
-        if (!_retired && job != null && job.active && !job.cancelRequested)
+        if (!_retired && unresolvedPrecision != null)
+          UtenButton(
+            onPressed: _busy
+                ? null
+                : () => _perform(
+                    () => _sendPrecision(unresolvedPrecision, retry: true),
+                  ),
+            child: const Text('重试原精度请求'),
+          ),
+        if (!_retired &&
+            unresolvedPrecision == null &&
+            job?.awaitingPrecision == true &&
+            job?.precisionRequirement != null)
+          UtenButton(
+            onPressed: _busy ? null : _choosePrecision,
+            child: const Text('选择精度并继续原任务'),
+          ),
+        if (!_retired &&
+            unresolvedPrecision == null &&
+            job != null &&
+            (job.active || job.awaitingPrecision) &&
+            !job.cancelRequested)
           UtenButton(
             type: UtenButtonType.tonal,
             onPressed: _busy
@@ -258,7 +380,10 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
             onPressed: _busy ? null : _download,
             child: const Text('下载文件'),
           ),
-        if (!_retired && unresolved == null && job?.active != true)
+        if (!_retired &&
+            unresolved == null &&
+            unresolvedPrecision == null &&
+            job?.active != true)
           UtenButton(
             type: UtenButtonType.tonal,
             onPressed: _busy ? null : _newExport,

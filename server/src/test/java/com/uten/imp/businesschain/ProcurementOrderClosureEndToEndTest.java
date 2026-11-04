@@ -59,6 +59,7 @@ class ProcurementOrderClosureEndToEndTest {
     @Autowired com.uten.imp.features.purchase.ret.PurchaseReturnService purchaseReturns;
     @Autowired com.uten.imp.features.warehouse.inbound.ProcurementInspectionService inspections;
     @Autowired com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInService stockIn;
+    @Autowired com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService qualityResults;
     @Autowired ProcurementOrderClosureService closure;
     @Autowired ProcurementFinanceApprovalService finance;
     @Autowired com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturnService materialReturns;
@@ -75,7 +76,7 @@ class ProcurementOrderClosureEndToEndTest {
     com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility reviewers;
     private FullChainEndToEndTest harness;
 
-    private record Fixture(FullChainEndToEndTest.World world, UUID reviewer,
+    record Fixture(FullChainEndToEndTest.World world, UUID reviewer,
                            UUID request, UUID source, UUID order, UUID item) { }
 
     @BeforeEach void setup() {
@@ -139,7 +140,7 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(orders.detail(f.order()).getItems().getFirst().getDifferenceQty()).isEqualByComparingTo("-6");
         var differenceRows=reports.orderDetail(billNo,null,null,null,null,null,java.util.Map.of(),1,50,null,null).rows();
         assertThat(differenceRows).hasSize(1);
-        assertThat(differenceRows.getFirst().get("differenceQtyExact")).isEqualTo("-6.0000");
+        assertThat(new BigDecimal(differenceRows.getFirst().get("differenceQtyExact").toString())).isEqualByComparingTo("-6");
         assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows()).isEmpty();
         assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("4");
         assertThat(number("SELECT gift_ordered_qty FROM purchase_request_items WHERE id=?", f.source())).isEqualByComparingTo("1");
@@ -168,6 +169,44 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(businessFacts(f)).isEqualTo(stopped);
         assertThatThrownBy(() -> receipts.reverse(receipt)).isInstanceOf(ApiException.class).hasMessageContaining("结束");
         assertThat(businessFacts(f)).isEqualTo(stopped);
+    }
+    @Test void finiteTwentyFourPlaceRemainderCanBeClosedAndReorderedWithoutChangingTheOriginalApprovalOrPrice(){
+        Fixture f=fixture("closure-exact-remainder","0");
+        UUID receipt=receipt(f,"9.999999999999999999999999","0");finishExistingIqc(f,receipt);
+        assertThat(db.queryForObject("SELECT bool_and(numeric_proof_version=2 AND business_precision_policy IS NOT NULL) FROM procurement_inspection_events event JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id WHERE inspection.receipt_id=?",Boolean.class,receipt)).isTrue();
+        assertThat(db.queryForObject("SELECT bool_and(item.numeric_proof_version=2 AND item.business_precision_policy IS NOT NULL) FROM procurement_iqc_stock_in_batch_items item JOIN procurement_iqc_stock_in_batches batch ON batch.id=item.batch_id WHERE batch.receipt_id=?",Boolean.class,receipt)).isTrue();
+        String physical=physicalFacts(receipt);
+        String originalApproval=db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE order_id=? AND request_type='ORDER' ORDER BY attempt LIMIT 1",String.class,f.order());
+        var preview=closure.preview("PURCHASE",f.order());
+        assertThat(preview.canSubmit()).isTrue();assertThat(preview.canReorder()).isTrue();
+        assertThat(preview.items().getFirst().remainingQty()).isEqualByComparingTo("1e-24");
+        var result=closure.submit("PURCHASE",f.order(),new ClosureRequest("CLOSE_AND_REORDER","保留真实极小剩余订单",preview.fingerprint()));
+        UUID replacement=db.queryForObject("SELECT replacement_order_id FROM procurement_order_approval_cases WHERE id=?",UUID.class,result.caseId());
+        assertThat(number("SELECT qty FROM purchase_order_items WHERE order_id=?",replacement)).isEqualByComparingTo("1e-24");
+        assertThat(number("SELECT price FROM purchase_order_items WHERE order_id=?",replacement)).isEqualByComparingTo("10");
+        assertThat(number("SELECT amount_original FROM purchase_order_items WHERE order_id=?",replacement)).isEqualByComparingTo("1e-23");
+        assertThat(db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE order_id=? AND request_type='ORDER' ORDER BY attempt LIMIT 1",String.class,f.order())).isEqualTo(originalApproval);
+        assertThat(physicalFacts(receipt)).isEqualTo(physical);
+        assertThat(number("SELECT qty FROM purchase_order_items WHERE id=?",f.item())).isEqualByComparingTo("10");
+    }
+    @Test void splitStockInUsesActualPriorWeightAcrossChangedChoicesAndReplaysTheOriginalBatch()throws Exception {
+        Fixture f=fixture("iqc-actual-weight-prior","0");UUID receipt=receipt(f,"3","0",true,BigDecimal.ONE);
+        UUID event=db.queryForObject("SELECT event.id FROM procurement_inspection_events event JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id WHERE inspection.receipt_id=? AND event.action='PASS'",UUID.class,receipt);
+        UUID keeper=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"createIqcWarehouseConfirmer",f.world(),"iqc-weight-proof-keeper");harness.loginAs(keeper);
+        var first=new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest("iqc-actual-weight-first",List.of(new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem(event,BigDecimal.ONE,new BigDecimal("3"),"A",f.world().warehouseId())));
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of("quantity.slice",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")))){stockIn.confirm("PURCHASE",receipt,first);}
+        assertThat(stockIn.detail("PURCHASE",receipt).items().getFirst().stockedForReleaseWeight()).isEqualByComparingTo(".3333");
+        assertThat(qualityResults.detail("PURCHASE",receipt).items().getFirst().stockedForReleaseWeight()).isEqualByComparingTo(".3333");
+        String firstFact=db.queryForObject("SELECT to_jsonb(item)::text FROM procurement_iqc_stock_in_batch_items item WHERE item.pass_event_id=?",String.class,event);
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of("quantity.slice",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(2,"HALF_UP")))){stockIn.confirm("PURCHASE",receipt,new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest("iqc-actual-weight-second",List.of(new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem(event,BigDecimal.ONE,new BigDecimal("2"),"A",f.world().warehouseId()))));}
+        assertThat(stockIn.detail("PURCHASE",receipt).items().getFirst().stockedForReleaseWeight()).isEqualByComparingTo(".67");
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of("quantity.slice",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(0,"DOWN")))){
+            stockIn.confirm("PURCHASE",receipt,new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest("iqc-actual-weight-third",List.of(new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem(event,BigDecimal.ONE,BigDecimal.ONE,"A",f.world().warehouseId()))));
+            assertThat(stockIn.confirm("PURCHASE",receipt,first).replayed()).isTrue();
+        }
+        assertThat(db.queryForList("SELECT item.weight FROM procurement_iqc_stock_in_batch_items item WHERE item.pass_event_id=? ORDER BY item.stock_sequence",BigDecimal.class,event)).usingElementComparator(BigDecimal::compareTo).containsExactly(new BigDecimal(".3333"),new BigDecimal(".3367"),new BigDecimal(".33"));
+        assertThat(number("SELECT SUM(amount_local) FROM procurement_iqc_stock_in_batch_items WHERE pass_event_id=?",event)).isEqualByComparingTo("30");
+        assertThat(db.queryForObject("SELECT to_jsonb(item)::text FROM procurement_iqc_stock_in_batch_items item WHERE item.pass_event_id=? ORDER BY stock_sequence LIMIT 1",String.class,event)).isEqualTo(firstFact);
     }
 
     @Test void unresolvedQualityMustBeCompletedBeforeAClosureCanBeSubmitted() {
@@ -560,11 +599,15 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(wasteCount(item)).isEqualTo(wasteBefore);
     }
 
-    @Test void importedOrderWithUnknownUnitCannotStartEitherClosureLifecycleOrChangeRetainedFacts() {
-        var w = harness.seedWorld("closure-legacy-"+UUID.randomUUID()); harness.loginAs(w.superAdminUserId());
+    @Test void aNewUnknownConversionCannotMasqueradeAsAnImportedOrder() {
+        var w=harness.seedWorld("closure-new-unknown-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());
+        assertThatThrownBy(()->legacyUnknownOrder(w)).rootCause().hasMessageContaining("actual positive unit rate");
+    }
+
+    UUID[] legacyUnknownOrder(FullChainEndToEndTest.World w){
         harness.loginAs(w.superAdminUserId()); UUID order=UUID.randomUUID(),item=UUID.randomUUID();
         int legacy=940000000+Math.floorMod(order.hashCode(),1000000);
-        // Retained historical input with unknown conversion and zero counters; no trigger or source proof is bypassed.
+        // Called only against a real pre-V1033 schema; no current new-row proof is bypassed.
         new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
             tx.bind();
             String bill=numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.PURCHASE_ORDER);
@@ -573,8 +616,9 @@ class ProcurementOrderClosureEndToEndTest {
             db.update("INSERT INTO purchase_order_items(id,legacy_id,order_id,bill_no,bill_date,line_no,goods_id,unit_id,unit_rate,qty,received_qty,returned_qty,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at) SELECT ?,?,?,?,CURRENT_DATE,1,id,NULL,NULL,10,0,0,code,name,'LEGACY_IMPORT',now() FROM goods WHERE id=?",
                     item,legacy,order,bill,w.goodsD());
         });
-        String beforeOrder=db.queryForObject("SELECT to_jsonb(o)::text FROM purchase_orders o WHERE id=?",String.class,order);
-        String beforeItem=db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,item);
+        return new UUID[]{order,item};
+    }
+    void assertLegacyUnknownOrderReadOnly(UUID order,UUID item,String beforeOrder,String beforeItem){
         long approvalCases=db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=?",Long.class,order);
         assertThatThrownBy(() -> closure.preview("PURCHASE",order))
                 .isInstanceOf(ApiException.class).hasMessageContaining("历史");
@@ -583,7 +627,7 @@ class ProcurementOrderClosureEndToEndTest {
                     .isInstanceOf(ApiException.class).hasMessageContaining("历史");
         }
         assertThat(db.queryForObject("SELECT to_jsonb(o)::text FROM purchase_orders o WHERE id=?",String.class,order)).isEqualTo(beforeOrder);
-        assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,item)).isEqualTo(beforeItem);
+        assertThat(db.queryForObject("SELECT (to_jsonb(i)-'quantity_adoption_version'-'quantity_precision_policy'-'charged_base_qty'-'gift_base_qty')::text FROM purchase_order_items i WHERE id=?",String.class,item)).isEqualTo(beforeItem);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=?",Long.class,order)).isEqualTo(approvalCases);
         assertThat(db.queryForObject("SELECT is_closed FROM purchase_orders WHERE id=?",Boolean.class,order)).isFalse();
         assertThat(db.queryForObject("SELECT unit_id FROM purchase_order_items WHERE id=?",UUID.class,item)).isNull();
@@ -591,7 +635,7 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(number("SELECT qty FROM purchase_order_items WHERE id=?",item)).isEqualByComparingTo("10");
     }
 
-    private Fixture fixture(String label, String gift) {return fixture(label,gift,null);}
+    Fixture fixture(String label, String gift) {return fixture(label,gift,null);}
 
     private Fixture fixture(String label, String gift,String allowedOverReceiptPct) {
         var w = harness.seedWorld(label+"-"+UUID.randomUUID());
@@ -622,16 +666,19 @@ class ProcurementOrderClosureEndToEndTest {
         return result;
     }
 
-    private UUID receipt(Fixture f, String charged, String gift) {
+    UUID receipt(Fixture f, String charged, String gift) {
         return receipt(f,charged,gift,true);
     }
     private UUID receipt(Fixture f, String charged, String gift,boolean pass) {
+        return receipt(f,charged,gift,pass,null);
+    }
+    private UUID receipt(Fixture f,String charged,String gift,boolean pass,BigDecimal weight){
         harness.loginAs(f.world().superAdminUserId());
         var request = new com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest();
         request.setBillDate(BusinessTime.today()); request.setSupplierId(f.world().supplierId()); request.setWarehouseId(f.world().warehouseId());
         var line = new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
         line.setGoodsId(f.world().goodsD()); line.setUnitId(f.world().unitId()); line.setUnitRate(BigDecimal.ONE);
-        line.setQty(new BigDecimal(charged)); line.setGiftQty(new BigDecimal(gift)); line.setOrderItemId(f.item()); request.setItems(List.of(line));
+        line.setQty(new BigDecimal(charged)); line.setGiftQty(new BigDecimal(gift)); line.setOrderItemId(f.item());line.setWeight(weight); request.setItems(List.of(line));
         UUID id = receipts.create(request).getId(); receipts.approve(id);
         if(pass)passExistingIqc(f,id);
         return id;
@@ -679,7 +726,7 @@ class ProcurementOrderClosureEndToEndTest {
                     new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest("PASS", null, "终止前已经到货，先完成品质判定", "closure-pass-"+item));
         }
     }
-    private void finishExistingIqc(Fixture f, UUID receipt) {
+    void finishExistingIqc(Fixture f, UUID receipt) {
         passExistingIqc(f,receipt);
         List<UUID> items = db.queryForList("SELECT id FROM procurement_inspection_items WHERE receipt_id=? ORDER BY quantity_tranche", UUID.class, receipt);
         UUID keeper = org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness, "createIqcWarehouseConfirmer", f.world(), "closure-keeper-"+receipt);

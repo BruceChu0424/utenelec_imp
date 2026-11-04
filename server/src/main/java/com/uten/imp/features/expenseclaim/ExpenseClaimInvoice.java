@@ -54,13 +54,13 @@ public class ExpenseClaimInvoice extends BaseEntity {
     @Column(name = "buyer_name")
     private String buyerName;
 
-    @Column(name = "amount_excl_tax", precision = 18, scale = 2)
+    @Column(name = "amount_excl_tax")
     private BigDecimal amountExclTax;
 
-    @Column(name = "tax_amount", precision = 18, scale = 2)
+    @Column(name = "tax_amount")
     private BigDecimal taxAmount;
 
-    @Column(name = "total_amount", nullable = false, precision = 18, scale = 2)
+    @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
 
     /** UNCHECKED/VERIFIED_MANUAL/MISMATCH。 */

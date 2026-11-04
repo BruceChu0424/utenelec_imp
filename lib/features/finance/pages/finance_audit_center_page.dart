@@ -14,6 +14,7 @@
 //   · 旧队列路由（/finance/sales-order-confirmations 等）全部保留：通知深链与
 //     其它模块入口仍直达具体队列，页面与本页分段共用同一组件（embedded 模式）。
 import 'package:flutter/material.dart';
+import '../config/finance_requirement_names.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -145,7 +146,7 @@ class _FinanceAuditCenterPageState
       if (canShipment)
         _AuditSegment(
           value: 'shipment',
-          label: '出货审核',
+          label: FinanceRequirementNames.customerShipmentReview,
           count: fact(BadgeFact.shipmentFinance),
         ),
       if (canProcurement)

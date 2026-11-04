@@ -19,6 +19,7 @@ class UtenMonthField extends StatefulWidget {
     this.enabled = true,
     this.firstYear = 1900,
     this.lastYear = 2100,
+    this.info,
   });
 
   final String label;
@@ -27,6 +28,7 @@ class UtenMonthField extends StatefulWidget {
   final bool enabled;
   final int firstYear;
   final int lastYear;
+  final String? info;
 
   /// 兼容老库中文年月和旧客户端日期；严格验证月份/日期，避免 DateTime 自动进位。
   static DateTime? parse(String? raw) {
@@ -202,7 +204,11 @@ class _UtenMonthFieldState extends State<UtenMonthField> {
               icon: const Icon(Icons.event_outlined, size: 18),
             ),
           ),
-          info: '可输入年月，也可点击日历选择月份。',
+          info: [
+            '可输入年月，也可点击日历选择月份。',
+            if (widget.info case final String info when info.trim().isNotEmpty)
+              info,
+          ].join('\n'),
         ),
         Theme.of(context),
         autofilled: _aiFilled,

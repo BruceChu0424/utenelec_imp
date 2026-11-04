@@ -1,4 +1,3 @@
-import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 报销明细添加/编辑对话框（V608 从新建页内嵌对话框升位为共享组件：新建与编辑共用，
 // initial 非空 = 修改现有明细行）。
 
@@ -7,9 +6,12 @@ import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/utils/rmb_amount.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/financial_amount_validation.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/expense_item.dart';
 
@@ -62,7 +64,7 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
     _category = initial?.category ?? ExpenseCategory.transport;
     _date = initial?.date ?? ChinaDateTime.today();
     _amountController = TextEditingController(
-      text: initial == null ? '' : initial.amount.toStringAsFixed(2),
+      text: initial == null ? '' : financeExactMoneyDisplay(initial.amountText),
     );
     _descController = TextEditingController(text: initial?.description ?? '');
     _baseline = _snapshot;
@@ -186,38 +188,40 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s16),
-                TextFormField(
-                  errorBuilder: utenTextFieldErrorBuilder,
-                  controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '金额 *',
-                      prefixText: '¥ ',
-                      hintText: '0.00',
+                UtenFormGrid(
+                  columns: 2,
+                  maxColumns: 2,
+                  minFieldWidth: 200,
+                  children: [
+                    TextFormField(
+                      errorBuilder: utenTextFieldErrorBuilder,
+                      controller: _amountController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '金额 *',
+                          prefixText: '¥ ',
+                          hintText: '0.00',
+                        ),
+                        info: '按这项费用的实际票据填写人民币金额，同一笔费用不要拆成重复明细。',
+                      ),
+                      validator: (v) {
+                        return validateFinanceAmount(v);
+                      },
                     ),
-                    info: '按这项费用的实际票据填写人民币金额，同一笔费用不要拆成重复明细。',
-                  ),
-                  validator: (v) {
-                    final amount = parseExpenseAmountCents(v ?? '');
-                    if (amount == null) {
-                      return AppLocalizations.of(
-                        context,
-                      ).expenseFlowAmountInvalid;
-                    }
-                    return null;
-                  },
+                    UtenDateField(
+                      label: '费用发生日期',
+                      required: true,
+                      value: _date,
+                      firstDate: DateTime.utc(2000),
+                      lastDate: ChinaDateTime.today(),
+                      onChanged: (value) => setState(() => _date = value),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('费用发生日期'),
-                  subtitle: Text(_fmtDate(_date)),
-                  trailing: const Icon(Icons.calendar_today_outlined, size: 18),
-                  onTap: _pickDate,
-                ),
+                const SizedBox(height: UtenSpacing.s12),
                 TextFormField(
                   errorBuilder: utenTextFieldErrorBuilder,
                   controller: _descController,
@@ -256,8 +260,8 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
                       widget.initial?.id ??
                       DateTime.now().microsecondsSinceEpoch.toString(),
                   category: _category,
-                  amount:
-                      parseExpenseAmountCents(_amountController.text)! / 100,
+                  amount: double.parse(_amountController.text.trim()),
+                  amountExact: financeExactDecimal(_amountController.text),
                   date: _date,
                   description: _descController.text.trim().isEmpty
                       ? null
@@ -271,18 +275,4 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
       ],
     );
   }
-
-  Future<void> _pickDate() async {
-    final today = ChinaDateTime.today();
-    final picked = await showUtenDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime.utc(2000),
-      lastDate: today,
-    );
-    if (picked != null && mounted) setState(() => _date = picked);
-  }
-
-  String _fmtDate(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

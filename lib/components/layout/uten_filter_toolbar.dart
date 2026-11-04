@@ -48,8 +48,8 @@
 import 'package:flutter/material.dart';
 import '../inputs/uten_field_hint_icon.dart';
 
-import '../../../core/theme/uten_tokens.dart';
-import '../../../core/l10n/gen/app_localizations.dart';
+import '../../core/theme/uten_tokens.dart';
+import '../../core/l10n/gen/app_localizations.dart';
 import '../feedback/uten_in_progress_badge.dart';
 import '../feedback/uten_notification_badge.dart';
 import '../feedback/uten_segment_badge_label.dart';

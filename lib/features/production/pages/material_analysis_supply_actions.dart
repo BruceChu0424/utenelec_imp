@@ -143,7 +143,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       target = batches * orderMultipleQty;
     }
     // 数量统一保留 4 位小数，避免二进制浮点误差写进下达数量。
-    return double.parse(target.toStringAsFixed(4));
+    return double.parse(target.toExactString(minimumFractionDigits: 4));
   }
 
   bool _hasIssuedMakeOwnership(ProductionMaterialAnalysisMaterial material) =>

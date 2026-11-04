@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 货品详情「采购」区的采购允许超收% (ADR-144)。
 //
 // - [GoodsPurchaseOverReceiptViewCell]：查看态一格，显示记忆值；货品可编辑时
@@ -14,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/network/api_exception.dart';
@@ -23,15 +25,9 @@ import '../models/goods_node.dart';
 import '../repositories/goods_purchase_receipt_policy_repository.dart';
 
 /// 采购允许超收% 的显示文字：5 → 5%；空 = 未设(不允许超收)。
-String goodsPurchaseOverReceiptText(double? pct) {
-  if (pct == null) return '未设(不允许超收)';
-  final text = pct == pct.roundToDouble()
-      ? pct.toInt().toString()
-      : pct
-            .toStringAsFixed(2)
-            .replaceFirst(RegExp(r'0+$'), '')
-            .replaceFirst(RegExp(r'\.$'), '');
-  return '$text%';
+String goodsPurchaseOverReceiptText(Object? pct) {
+  final text = financeExactTrimmed(pct?.toString());
+  return text == null ? '未设(不允许超收)' : '$text%';
 }
 
 /// 查看态一格：标签、记忆值、可选修改按钮。
@@ -42,7 +38,7 @@ class GoodsPurchaseOverReceiptViewCell extends StatelessWidget {
     this.onEdit,
   });
 
-  final double? pct;
+  final Object? pct;
 
   /// 为空时不显示修改按钮 (货品不可编辑)。
   final VoidCallback? onEdit;
@@ -133,11 +129,7 @@ class _GoodsPurchaseReceiptPolicyDialog extends ConsumerStatefulWidget {
 class _GoodsPurchaseReceiptPolicyDialogState
     extends ConsumerState<_GoodsPurchaseReceiptPolicyDialog> {
   late final TextEditingController _controller = TextEditingController(
-    text: widget.detail.purchaseAllowedOverReceiptPct == null
-        ? ''
-        : goodsPurchaseOverReceiptText(
-            widget.detail.purchaseAllowedOverReceiptPct,
-          ).replaceFirst('%', ''),
+    text: widget.detail.purchaseAllowedOverReceiptPctText ?? '',
   );
   String? _error;
   bool _saving = false;
@@ -160,10 +152,11 @@ class _GoodsPurchaseReceiptPolicyDialogState
   Future<void> _save() async {
     final parsed = parseGoodsPurchaseOverReceiptPct(_controller.text);
     if (!parsed.valid) {
-      setState(() => _error = '请填写 0 到 100 之间的数，最多两位小数；留空表示不预填');
+      setState(() => _error = '请填写 0 到 100 之间的数，最多24位有效小数；留空表示不预填');
       return;
     }
-    if (parsed.value == widget.detail.purchaseAllowedOverReceiptPct) {
+    if (financeExactTrimmed(parsed.value) ==
+        financeExactTrimmed(widget.detail.purchaseAllowedOverReceiptPctText)) {
       Navigator.of(context).pop(false);
       return;
     }
@@ -204,68 +197,80 @@ class _GoodsPurchaseReceiptPolicyDialogState
     final label = _goodsLabel;
     return PopScope(
       canPop: !_saving,
-      child: UtenAlertDialog(
-        scrollable: false,
-        key: const ValueKey('goods-purchase-over-receipt-dialog'),
-        title: const Text('采购允许超收%'),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (label.isNotEmpty) ...[
-                  Text(
-                    label,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          UtenAlertDialog(
+            scrollable: false,
+            key: const ValueKey('goods-purchase-over-receipt-dialog'),
+            title: const Text('采购允许超收%'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (label.isNotEmpty) ...[
+                      Text(
+                        label,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                    ],
+                    UtenInput(
+                      key: const ValueKey('goods-purchase-over-receipt-input'),
+                      label: '采购允许超收%',
+                      info:
+                          '供应商送货允许多于订货量的比例。例如填 5，订 100 件累计最多可收 105 件，'
+                          '在这以内照常入库、立应付；超过的部分才转财务审批。'
+                          '这里是货品记忆：新开采购订货单时按它预填(黄框提醒核对)，'
+                          '每次保存订货单会自动记住最后填写的值。留空 = 清除记忆。',
+                      hint: '0 到 100，最多24位有效小数',
+                      controller: _controller,
+                      errorMessage: _error,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      textInputAction: TextInputAction.done,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                        LengthLimitingTextInputFormatter(1100),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                ],
-                UtenInput(
-                  key: const ValueKey('goods-purchase-over-receipt-input'),
-                  label: '采购允许超收%',
-                  info:
-                      '供应商送货允许多于订货量的比例。例如填 5，订 100 件累计最多可收 105 件，'
-                      '在这以内照常入库、立应付；超过的部分才转财务审批。'
-                      '这里是货品记忆：新开采购订货单时按它预填(黄框提醒核对)，'
-                      '每次保存订货单会自动记住最后填写的值。留空 = 清除记忆。',
-                  hint: '0 到 100，最多两位小数',
-                  controller: _controller,
-                  errorMessage: _error,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  textInputAction: TextInputAction.done,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    LengthLimitingTextInputFormatter(6),
                   ],
                 ),
-              ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            // 适老化触控基线: 弹窗两个按钮都用大号(52), 不小于 48。
+            actions: [
+              UtenButton(
+                key: const ValueKey('goods-purchase-over-receipt-cancel'),
+                type: UtenButtonType.ghost,
+                size: UtenButtonSize.large,
+                onPressed: _saving
+                    ? null
+                    : () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              UtenActionButton(
+                key: const ValueKey('goods-purchase-over-receipt-save'),
+                size: UtenActionButtonSize.large,
+                icon: Icons.save_outlined,
+                label: const Text('保存'),
+                loadingLabel: const Text('保存中…'),
+                onAction: _save,
+              ),
+            ],
           ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        // 适老化触控基线: 弹窗两个按钮都用大号(52), 不小于 48。
-        actions: [
-          UtenButton(
-            key: const ValueKey('goods-purchase-over-receipt-cancel'),
-            type: UtenButtonType.ghost,
-            size: UtenButtonSize.large,
-            onPressed: _saving ? null : () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          UtenActionButton(
-            key: const ValueKey('goods-purchase-over-receipt-save'),
-            size: UtenActionButtonSize.large,
-            icon: Icons.save_outlined,
-            label: const Text('保存'),
-            loadingLabel: const Text('保存中…'),
-            onAction: _save,
-          ),
+          if (_saving)
+            const UtenBusyOverlay(
+              title: '正在保存采购允许超收设置',
+              showDoNotLeaveHint: false,
+            ),
         ],
       ),
     );

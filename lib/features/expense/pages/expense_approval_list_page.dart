@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销审批列表页（审批人 + 财务打款双队列）
 // 文档：docs/03-页面/报销审批列表页.md
 //
@@ -11,6 +12,7 @@
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../shared/models/paged_result.dart';
@@ -41,6 +43,7 @@ import '../../../core/network/read_scope_revision.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
+import '../providers/expense_counts_provider.dart';
 import '../providers/expense_action_eligibility.dart';
 import '../repositories/expense_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -48,9 +51,32 @@ import '../../../shared/badges/badge_registry.dart';
 /// 单次批量上限（与后端 @Size(max=50) 对齐）。
 const int kExpenseBatchLimit = 50;
 
-class ExpenseApprovalListPage extends ConsumerStatefulWidget {
-  const ExpenseApprovalListPage({super.key, this.initialQueue});
+class ExpenseFinanceApprovalPage extends StatelessWidget {
+  const ExpenseFinanceApprovalPage({super.key, this.initialQueue});
   final ApprovalQueue? initialQueue;
+  @override
+  Widget build(BuildContext context) => ProviderScope(
+    overrides: [
+      expenseApprovalReadScopeProvider.overrideWithValue(
+        const ExpenseApprovalReadScope(approvalStage: 'FINANCE'),
+      ),
+    ],
+    child: ExpenseApprovalListPage(initialQueue: initialQueue),
+  );
+}
+
+class ExpenseApprovalListPage extends ConsumerStatefulWidget {
+  const ExpenseApprovalListPage({
+    super.key,
+    this.initialQueue,
+    this.embedded = false,
+    this.historyOnly = false,
+    this.resumeLocation,
+  });
+  final ApprovalQueue? initialQueue;
+  final bool embedded;
+  final bool historyOnly;
+  final String? resumeLocation;
 
   @override
   ConsumerState<ExpenseApprovalListPage> createState() =>
@@ -70,6 +96,7 @@ class _ExpenseApprovalListPageState
   /// 批量审批进行中（防并发 + 按钮加载态）。
   bool _batchBusy = false;
   bool _batchSending = false;
+  bool _refreshing = false;
   bool _queueReady = true;
   int _queueGeneration = 0;
   bool _queueListenerBound = false;
@@ -165,7 +192,10 @@ class _ExpenseApprovalListPageState
 
   @override
   Widget build(BuildContext context) {
-    ref.onPageResume('/expense/approval', _refreshQueue);
+    ref.onPageResume(
+      widget.resumeLocation ?? '/expense/approval',
+      _refreshQueue,
+    );
     if (!_queueReady) {
       return const Scaffold(
         appBar: UtenAppBar(title: '报销审批'),
@@ -202,14 +232,29 @@ class _ExpenseApprovalListPageState
           total: 0,
           totalPages: 0,
         );
-    final summaryAsync = ref.watch(expenseQueueSummaryProvider);
+    int fact(String key) => ref.watch<int>(badgeFactProvider(key));
+    final scope = ref.watch(expenseApprovalReadScopeProvider);
+    final summaryAsync = scope.isScoped
+        ? null
+        : ref.watch(expenseQueueSummaryProvider);
+    final counts = ref.watch(expenseCountsProvider);
+    final int pendingCount = scope.departmentCode != null
+        ? fact('expense.departmentPendingByCode.${scope.departmentCode}')
+        : scope.approvalStage == 'EXECUTIVE'
+        ? fact('expense.executivePendingApprovalCount')
+        : scope.isFinance
+        ? fact('expense.financeInitialPendingApprovalCount') +
+              fact('expense.financeReviewPendingApprovalCount')
+        : counts.pendingApprovalCount;
     final permissions = ref.watch(currentPermissionsProvider);
-    final canView = permissions.contains(Perm.expenseView);
-    final canApprove = permissions.contains(Perm.expenseApprove);
-    final canPay = permissions.contains(Perm.expensePay);
+    final canView = !scope.isScoped && permissions.contains(Perm.expenseView);
+    final canApprove = hasExpenseApprovalPermission(permissions);
+    final canPay =
+        (!scope.isScoped || scope.isFinance) &&
+        permissions.contains(Perm.expensePay);
     final eligibility = ref.watch(expenseActionEligibilityProvider);
     final isPendingQueue = queue == ApprovalQueue.pending;
-    final summary = summaryAsync.value;
+    final summary = summaryAsync?.value;
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
@@ -224,29 +269,40 @@ class _ExpenseApprovalListPageState
           children: [
             UtenFilterToolbar<ApprovalQueue>(
               segmentsKey: const Key('expense-approval-segments'),
+              trailing: widget.embedded
+                  ? UtenRefreshButton(
+                      onRefresh: _refreshQueue,
+                      busy: _refreshing,
+                      enabled: !_batchBusy,
+                    )
+                  : null,
               segments: [
-                if (canView)
+                if (!widget.historyOnly && canView)
                   const UtenFilterSegment(
                     value: ApprovalQueue.browse,
                     label: '全部单据',
                   ),
-                if (canView || canApprove)
+                if (!widget.historyOnly && (canView || canApprove))
                   UtenFilterSegment(
                     value: ApprovalQueue.pending,
-                    label: '待审批',
+                    label: '待审核',
                     count: canApprove
-                        ? summary?.actionablePendingCount
+                        ? (scope.isScoped
+                              ? pendingCount
+                              : summary?.actionablePendingCount)
                         : summary?.pendingCount,
                     countForm: canApprove
                         ? UtenSegmentCountForm.actionable
                         : UtenSegmentCountForm.browsing,
                   ),
-                if (canView || canPay)
+                if (!widget.historyOnly && (canView || canPay))
                   UtenFilterSegment(
                     value: ApprovalQueue.payable,
                     label: '待付款',
                     count: canPay
-                        ? summary?.actionablePayableCount
+                        ? (scope.isScoped
+                              ? counts.pendingPaymentCount
+                              : summary?.actionablePayableCount)
                         : summary?.payableCount,
                     countForm: canPay
                         ? UtenSegmentCountForm.actionable
@@ -287,13 +343,13 @@ class _ExpenseApprovalListPageState
                       child: Text(
                         // 报销恒人民币（2026-10-10 金额带单位口径：数值后带「元」）。
                         '待审批 ${summary.pendingCount} 单 · '
-                        '${summary.pendingAmount.toStringAsFixed(2)} 元　|　'
+                        '${financeExactMoneyDisplay(summary.pendingAmountText)} 元　|　'
                         '待付款 ${summary.payableCount} 单 · '
-                        '${summary.payableAmount.toStringAsFixed(2)} 元　|　'
+                        '${financeExactMoneyDisplay(summary.payableAmountText)} 元　|　'
                         '本月提交 ${summary.monthSubmittedCount} 单 · '
-                        '${summary.monthSubmittedAmount.toStringAsFixed(2)} 元　|　'
+                        '${financeExactMoneyDisplay(summary.monthSubmittedAmountText)} 元　|　'
                         '本月已付款 ${summary.monthPaidCount} 单 · '
-                        '${summary.monthPaidAmount.toStringAsFixed(2)} 元',
+                        '${financeExactMoneyDisplay(summary.monthPaidAmountText)} 元',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontFeatures: const [FontFeature.tabularFigures()],
@@ -317,12 +373,7 @@ class _ExpenseApprovalListPageState
           error: listAsync.hasError
               ? (humanErrorMessage(listAsync.error!) ?? '加载更多没有成功，请重试')
               : null,
-          onRetry: () {
-            ref
-                .read(expenseApprovalListProvider.notifier)
-                .invalidateCachedPages();
-            ref.invalidate(expenseApprovalListProvider);
-          },
+          onRetry: _refreshQueue,
           primary: true,
           columns: _columns,
           items: page.items,
@@ -353,7 +404,10 @@ class _ExpenseApprovalListPageState
           // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
           // 列表实例与筛选/页码保留，数据由 provider 失效自动换新；
           // 原来 go 直达会把列表实例抹掉，详情返回只能落 default。
-          onRowTap: (claim) => context.push('/expense/approval/${claim.id}'),
+          onRowTap: (claim) async {
+            await context.push('/expense/approval/${claim.id}');
+            if (mounted && scope.isScoped) await _refreshQueue();
+          },
           emptyMessage: switch (queue) {
             ApprovalQueue.pending => '暂无待审批报销',
             ApprovalQueue.payable => '暂无待付款报销',
@@ -374,18 +428,26 @@ class _ExpenseApprovalListPageState
     }
 
     return Scaffold(
-      appBar: UtenAppBar(
-        title: '报销审批',
-        showBackButton: true,
-        actions: [
-          UtenRefreshButton(
-            enabled: !_batchBusy,
-            busy: listAsync.isLoading,
-            onRefresh: _refreshQueue,
-          ),
+      appBar: widget.embedded
+          ? null
+          : UtenAppBar(
+              title: '报销审批',
+              showBackButton: true,
+              actions: [
+                UtenRefreshButton(
+                  enabled: !_batchBusy,
+                  busy: listAsync.isLoading,
+                  onRefresh: _refreshQueue,
+                ),
+              ],
+            ),
+      body: Stack(
+        children: [
+          body,
+          if (_batchSending || _refreshing)
+            const UtenBusyOverlay(title: '正在处理报销', showDoNotLeaveHint: false),
         ],
       ),
-      body: body,
     );
   }
 
@@ -402,8 +464,8 @@ class _ExpenseApprovalListPageState
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 72,
-      value: (claim) => claim.status.label,
+      width: 170,
+      value: (claim) => claim.progressLabel,
       // 2026-09-27 用户口径「表格状态列整格底色」（口径同报销列表；ADR-169
       // 档位锚定）：草稿=灰 / 待审批·审批中=蓝（已提交流转；「轮到我审/我付」
       // 由待审批·待付款分段的红徽章表达）/ 已通过待打款=琥珀（本页待付款段
@@ -453,10 +515,11 @@ class _ExpenseApprovalListPageState
     ),
     MasterColumnDef(
       key: 'totalAmount',
+      exactValueOf: (claim) => claim.totalAmountText,
       label: '金额',
       width: 110,
       type: 'money',
-      value: (claim) => claim.totalAmount.toStringAsFixed(2),
+      value: (claim) => financeExactMoneyDisplay(claim.totalAmountText),
     ),
     MasterColumnDef(
       key: 'yearMonth',
@@ -531,7 +594,7 @@ class _ExpenseApprovalListPageState
               const SizedBox(height: UtenSpacing.s12),
               Text(
                 '将统一审批所选 $count 单报销。若有单据不满足条件，本批将全部保留待审批，'
-                '通过后进入待付款队列。请先逐单打开详情核对明细、原件并登记查验结果。',
+                '通过后流转至下一审批环节；最终批准后才可付款。请先逐单核对明细与原件，财务节点须完成凭证查验。',
               ),
             ],
           ),
@@ -619,11 +682,15 @@ class _ExpenseApprovalListPageState
         },
       );
       if (!mounted || !current() || processed == null) return;
+      setState(() => _batchSending = false);
       context.appSuccess(
         approve ? '已通过 $processed 单报销' : '已驳回 $processed 单报销，等待申请人修订后重新提交',
       );
     } catch (error) {
-      if (mounted && current()) context.appApiError(error);
+      if (mounted && current()) {
+        setState(() => _batchSending = false);
+        context.appApiError(error);
+      }
     } finally {
       final refresh = current() && attempted;
       if (mounted && operation == _operationGeneration) {
@@ -643,7 +710,8 @@ class _ExpenseApprovalListPageState
 
   /// 批量动作后列表、筛选桶与汇总一起刷新（计数随队列变化）。
   Future<void> _refreshQueue({bool Function()? stillCurrent}) async {
-    if (stillCurrent != null && !stillCurrent()) return;
+    if (_refreshing || (stillCurrent != null && !stillCurrent())) return;
+    setState(() => _refreshing = true);
     ref.read(expenseApprovalListProvider.notifier).invalidateCachedPages();
     final facets = expenseApprovalFacetsProvider(
       ref.read(approvalQueueProvider),
@@ -656,12 +724,16 @@ class _ExpenseApprovalListPageState
         refreshBadges(ref),
         ref.read(expenseApprovalListProvider.future),
         ref.read(facets.future),
-        ref.read(expenseQueueSummaryProvider.future),
+        if (!ref.read(expenseApprovalReadScopeProvider).isScoped)
+          ref.read(expenseQueueSummaryProvider.future),
       ]);
     } catch (error) {
       if (mounted && (stillCurrent == null || stillCurrent())) {
+        setState(() => _refreshing = false);
         context.appApiError(error);
       }
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 }

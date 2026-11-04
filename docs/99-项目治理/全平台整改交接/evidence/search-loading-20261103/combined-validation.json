@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "integrationBaseCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+  "implementationBaseCommit": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "status": "COMBINED_SOURCE_VERIFIED_MAIN_INTEGRATED_STOPPED",
+  "backend": {
+    "uniqueTests": 52,
+    "classes": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "actualMigrations": 928,
+    "migrationHead": "V1002",
+    "finalInputSha256": "02a4a2f4453fab294b58e421e019298558d7ac7ed895350afb20f1adc2f7077f",
+    "postVerificationDrift": 0,
+    "evidence": "combined-backend-review.json"
+  },
+  "flutter": {
+    "fullSourceAndTestsAnalyze": "No issues",
+    "sourceInputs": 3643,
+    "finalCombinedTests": 196,
+    "failures": 0,
+    "evidence": "combined-flutter-review.json",
+    "overlappingTargetedTests": 43,
+    "doNotSumOverlappingBatches": true
+  },
+  "wpf": {
+    "workItems": 368,
+    "done": 10,
+    "priorStatusOwnerDoDDependenciesPreserved": true,
+    "newMainApplicationPackagesPreserved": 6,
+    "architectures": [
+      "x86",
+      "x64"
+    ],
+    "compileWarningsAsErrors": "PASS",
+    "sourceAndRegistryChecks": "PASS",
+    "evidence": "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json",
+    "fullErpEquivalent": false,
+    "win7Accepted": false
+  },
+  "sourceComposition": {
+    "codeConflictCount": 0,
+    "generatedMetadata": "Regenerated from the 368-item new-main baseline; old 362-item metadata was not copied over it.",
+    "additionalSearchOnlyFixes": [
+      "Company unmatched historical department exact filtering",
+      "Department approval candidate continuation beyond 100, literal/multiword/ranked query",
+      "Financial association search uses shared input/read lifecycle",
+      "Prepayment billNo literal wildcard escaping"
+    ],
+    "workflowSaveOrMoneyRulesChanged": false
+  },
+  "oldBaselineResults": "258 backend/401 Flutter and other batches are retained as original-base evidence, not a combined-main full-suite claim.",
+  "deploymentOrPackagingPerformed": false,
+  "mainCopyPerformed": true
+}

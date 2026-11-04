@@ -1,6 +1,7 @@
 import '../../../shared/pricing/price_analysis_access.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
+import '../../../shared/search/keyword_search.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1036,10 +1037,10 @@ class _MaterialMarketPickerState extends State<_MaterialMarketPicker> {
                   onChanged: (value) => setState(() => _search = value),
                 ),
                 for (final row in _rows.where(
-                  (row) => row.data.values
-                      .join(' ')
-                      .toLowerCase()
-                      .contains(_search.trim().toLowerCase()),
+                  (row) => matchesKeywordSearch(
+                    row.data.values.map((value) => value?.toString()),
+                    _search,
+                  ),
                 ))
                   ListTile(
                     key: ValueKey('material-market-choice-${row.seriesId}'),

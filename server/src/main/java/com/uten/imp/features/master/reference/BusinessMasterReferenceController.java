@@ -7,6 +7,7 @@ import com.uten.imp.features.master.clientcategory.ClientCategoryService;
 import com.uten.imp.features.master.clientcategory.dto.ClientCategoryNode;
 import com.uten.imp.features.master.goods.GoodsService;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
+import com.uten.imp.features.master.goods.dto.GoodsSearchRequest;
 import com.uten.imp.features.master.account.AccountService;
 import com.uten.imp.features.master.warehouse.WarehouseService;
 import com.uten.imp.application.port.OrganizationReferencePort;
@@ -171,6 +172,49 @@ public class BusinessMasterReferenceController {
         return new PageResponse<>(result.getItems().stream()
                 .map(item -> GoodsReferenceProjection.of(item, includeMasterStock)).toList(),
                 result.getPage(), result.getSize(), result.getTotal(), result.getTotalPages());
+    }
+
+    @PostMapping("/goods/search")
+    public PageResponse<Map<String,Object>> goodsSearch(@Valid @RequestBody GoodsSearchRequest query,
+            HttpServletRequest request) {
+        access.require("goods");
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        GoodsReferenceProjection.validateQuery(query.filter(), query.sort());
+        var result = goods.list(query.filter(), query.requestedPage(), query.requestedSize(), query.sort(), query.order());
+        boolean includeMasterStock = access.canReadMasterGoods();
+        return new PageResponse<>(result.getItems().stream()
+                .map(item -> GoodsReferenceProjection.of(item, includeMasterStock)).toList(),
+                result.getPage(), result.getSize(), result.getTotal(), result.getTotalPages());
+    }
+
+    @PostMapping("/goods/search-category-ids")
+    public List<UUID> goodsSearchCategoriesBody(@Valid @RequestBody GoodsSearchRequest query, HttpServletRequest request) {
+        access.require("goods");
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        GoodsReferenceProjection.validateQuery(query.filter(), null);
+        return goods.matchingCategoryIds(query.filter());
+    }
+
+    @PostMapping("/goods/facets")
+    public com.uten.imp.features.master.goods.dto.GoodsFacets goodsFacetsBody(
+            @Valid @RequestBody GoodsSearchRequest query, HttpServletRequest request) {
+        access.require("goods");
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        GoodsReferenceProjection.validateQuery(query.filter(), null);
+        return GoodsReferenceProjection.facets(goods.queryFacets(query.filter()));
+    }
+
+    @PostMapping("/goods/facet-values")
+    public com.uten.imp.features.master.goods.dto.GoodsFacetPage goodsFacetValuesBody(
+            @Valid @RequestBody GoodsSearchRequest query,
+            @RequestParam String field, @RequestParam(defaultValue="") String search,
+            @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="50") int size,
+            HttpServletRequest request) {
+        access.require("goods");
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        GoodsReferenceProjection.validateQuery(query.filter(), null);
+        GoodsReferenceProjection.validateField(field);
+        return goods.facetValues(query.filter(), field, search, page, size);
     }
 
     @GetMapping("/goods/search-category-ids")

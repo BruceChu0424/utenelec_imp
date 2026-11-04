@@ -5,6 +5,12 @@ import com.uten.imp.application.port.CompanyFileHistoryAccessPort;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.DepartmentSearchSql;
+import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.features.companyfiles.CompanyFileDtos.*;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -699,6 +705,29 @@ public class CompanyFileService implements CompanyFileHistoryAccessPort {
     }
 
     public List<Principal> principals(String type, String search, int page, int size) {
+        var plan = principalRead(type, search, null, false);
+        int limit = Math.clamp(size, 1, 100);
+        return principalRows(plan, limit, (long) Math.max(0, page) * limit);
+    }
+
+    /** The original subject directory authority, with an exact bounded page/count contract. */
+    public PageResponse<Principal> principalsPage(String type, String search, int page, int size,
+            UUID departmentId, boolean includeSubtree) {
+        var plan = principalRead(type, search, departmentId, includeSubtree);
+        var pageable = Pageables.of(page, size);
+        var rows = principalRows(plan, pageable.getPageSize(), pageable.getOffset());
+        var result = org.springframework.data.support.PageableExecutionUtils.getPage(rows, pageable, () -> {
+            Long count = new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc)
+                    .queryForObject(plan.prefix() + "SELECT count(*) " + plan.fromWhere(), plan.parameters(), Long.class);
+            return count == null ? 0 : count;
+        });
+        return new PageResponse<>(rows, result);
+    }
+
+    private record PrincipalRead(String type, String prefix, String columns, String fromWhere,
+            String order, Map<String, Object> parameters) { }
+
+    private PrincipalRead principalRead(String type, String search, UUID departmentId, boolean includeSubtree) {
         AuthUser u = user();
         // Any reader may resolve subjects: folder-level managers are appointed through
         // directory ACL grants, not through global administration codes (V958).
@@ -706,37 +735,33 @@ public class CompanyFileService implements CompanyFileHistoryAccessPort {
         if (!Set.of("USER", "DEPARTMENT").contains(type)) throw invalid("请选择人员或部门");
         String value = search == null ? "" : search.strip();
         if (value.length() > 60) throw invalid("搜索内容过长");
-        String pattern =
-                "%" + value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
-        int limit = Math.clamp(size, 1, 100);
-        long offset = (long) Math.max(0, page) * limit;
-        if (type.equals("DEPARTMENT"))
-            return jdbc.query(
-                    "SELECT id,name,code detail FROM departments WHERE NOT is_deleted AND (name"
-                            + " ILIKE ? OR code ILIKE ?) ORDER BY sort_order,name,id LIMIT ? OFFSET ?",
-                    (rs, row) ->
-                            new Principal(
-                                    rs.getObject("id", UUID.class),
-                                    rs.getString("name"),
-                                    rs.getString("detail"),
-                                    type),
-                    pattern,
-                    pattern, limit, offset);
-        return jdbc.query(
-                """
-                SELECT u.id,e.full_name||'('||e.code||')' AS name,d.name AS detail,e.department_id
-                FROM users u JOIN employees e ON e.id=u.employee_id LEFT JOIN departments d ON d.id=e.department_id
-                WHERE NOT u.is_deleted AND u.status='active' AND NOT e.is_deleted
-                  AND (e.full_name ILIKE ? OR e.code ILIKE ?) ORDER BY e.full_name,e.code,u.id LIMIT ? OFFSET ?
-                """,
-                (rs, row) ->
-                        new Principal(
-                                rs.getObject("id", UUID.class),
-                                rs.getString("name"),
-                                rs.getString("detail"),
-                                type, rs.getObject("department_id", UUID.class)),
-                pattern,
-                pattern, limit, offset);
+        boolean people = type.equals("USER"), searched = !KeywordSearch.terms(value).isEmpty();
+        String departmentName = searched ? DepartmentSearchSql.name("d.name") : "d.name";
+        String[] fields = people ? new String[]{"e.full_name", "e.code", departmentName} : new String[]{"d.name", "d.code"};
+        var parameters = new LinkedHashMap<String,Object>(); parameters.put("principalKeyword", KeywordSearch.phrase(value));
+        var narrowing = EmployeeCandidateFilter.of(people ? departmentId : null, includeSubtree, List.of(), "e.id", "e.department_id");
+        parameters.putAll(narrowing.parameters());
+        String columns = people ? "SELECT u.id,e.full_name||'('||e.code||')' AS name,d.name AS detail,e.department_id "
+                : "SELECT d.id,d.name,d.code AS detail,NULL::uuid AS department_id ";
+        String fromWhere = people ? "FROM users u JOIN employees e ON e.id=u.employee_id LEFT JOIN departments d ON d.id=e.department_id\n"
+                + DepartmentSearchSql.joins(searched, "e.department_id")
+                + " WHERE NOT u.is_deleted AND u.status='active' AND NOT e.is_deleted AND "
+                : "FROM departments d WHERE NOT d.is_deleted AND ";
+        fromWhere += TaskKeywordSearch.conditionParameter("principalKeyword", fields) + narrowing.sql();
+        String rank = TaskKeywordSearch.rankNamesFirstParameter("principalKeyword",
+                new String[]{people ? "e.full_name" : "d.name"}, new String[]{}, fields);
+        return new PrincipalRead(type, DepartmentSearchSql.prefix(people && searched), columns, fromWhere,
+                rank + (people ? ",e.full_name,e.code,u.id" : ",d.sort_order,d.name,d.id"), parameters);
+    }
+
+    private List<Principal> principalRows(PrincipalRead plan, int limit, long offset) {
+        var parameters = new LinkedHashMap<>(plan.parameters());
+        parameters.put("principalLimit", limit); parameters.put("principalOffset", offset);
+        return new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc).query(
+                plan.prefix() + plan.columns() + plan.fromWhere() + " ORDER BY " + plan.order()
+                        + " LIMIT :principalLimit OFFSET :principalOffset", parameters,
+                (rs, row) -> new Principal(rs.getObject("id", UUID.class), rs.getString("name"),
+                        rs.getString("detail"), plan.type(), rs.getObject("department_id", UUID.class)));
     }
 
     /**

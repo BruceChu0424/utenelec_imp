@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/l10n/localized_text.dart';
 import '../models/goods_detail_sequence.dart';
 import '../../../shared/widgets/read_owned_dialog.dart';
@@ -636,11 +637,13 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
               key: 'minOrderQty',
               label: '最小起订量',
               type: MasterFieldType.money,
+              exactDecimal: true,
             ),
             const MasterFieldDef(
               key: 'orderMultipleQty',
               label: '订货倍数',
               type: MasterFieldType.money,
+              exactDecimal: true,
             ),
             if (_canEditPrice)
               const MasterFieldDef(
@@ -969,8 +972,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       'material': d.material,
       'series': d.series,
       'stockPlace': d.stockPlace,
-      'thickness': d.thickness,
-      'mWeight': d.mWeight,
+      'thickness': d.thicknessText,
+      'mWeight': d.mWeightText,
       ...goodsUuidFirstReferenceBody(d),
       // 后模镶件编号 + 备注(老库 Paper 真身)：粘贴等全量回传路径同步携带。
       'rearInsertCode': d.rearInsertCode,
@@ -978,41 +981,24 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       'pack': d.pack,
       'pieces': d.pieces,
       // 采购批量口径(V575)：与其他字段同口径全量回传，避免粘贴清空。
-      'minOrderQty': d.minOrderQty,
-      'orderMultipleQty': d.orderMultipleQty,
+      'minOrderQty': d.minOrderQtyText,
+      'orderMultipleQty': d.orderMultipleQtyText,
       // 所属仓库 (V587)：本 body 是整体覆盖式回传，漏带这一键在复制/粘贴时就会把归属丢掉。
       'owningWarehouseId': d.owningWarehouseId,
-      // 成本字段全量回传（后端 apply 全量覆盖语义，缺字段会被清 null）。
-      'sourceE': d.sourceE,
-      'machiningE': d.machiningE,
-      'incidentalE': d.incidentalE,
-      'lacquerE': d.lacquerE,
-      'platingE': d.platingE,
-      'casingE': d.casingE,
-      'polishE': d.polishE,
-      'total': d.total,
-      'workRate': d.workRate,
-      'workE': d.workE,
-      'lostRate': d.lostRate,
-      'lostE': d.lostE,
-      'rentRate': d.rentRate,
-      'rentE': d.rentE,
-      'makeRate': d.makeRate,
-      'makeE': d.makeE,
+      // Only a new copy adopts the copied budget; ordinary edits never resubmit it.
+      if (copyMode && !d.costMasked) ...d.budgetExact,
       // 复制建立新资料，只有具成本权限才复制委外损耗记忆。
       if (!copyMode || _perms.contains(Perm.goodsCostView))
-        'subcontractAllowedLossPct': d.subcontractAllowedLossPct,
-      'cTotal': d.cTotal,
-      'gTotal': d.gTotal,
+        'subcontractAllowedLossPct': d.subcontractAllowedLossPctText,
     };
     if (!copyMode) {
       body['code'] = d.code;
       if (d.version != null) body['version'] = d.version;
     }
-    if (!copyMode || _canEditPrice) {
+    if (copyMode && _canEditPrice) {
       body['price'] = d.priceText;
       if (_canEditPrice) body['currencyId'] = d.currencyId;
-      body['discount'] = d.discount;
+      body['discount'] = d.discountText;
     }
     return normalizeGoodsUuidFirstBody(body);
   }
@@ -1785,9 +1771,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       columnSearchEnabled: true,
       sortable: true,
       info: '按两位折扣倍率检索，例如 0.90 表示九折；折扣倍率不求和。',
-      exactValueOf: (g) =>
-          g.discountDisplayText ?? g.discount?.toStringAsFixed(2),
-      value: (g) => g.discountDisplayText ?? g.discount?.toStringAsFixed(2),
+      exactValueOf: (g) => g.discountDisplayText ?? g.discountText,
+      value: (g) => g.discountDisplayText ?? g.discountText,
     ),
     MasterColumnDef(
       key: 'stockQty',
@@ -1796,10 +1781,13 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       type: 'number',
       columnSearchEnabled: true,
       sortable: true,
-      info: '按本列两位显示值检索与排序，来源为参与核算的普通良品仓库存；不同货品单位不相加。',
+      info: '按本列完整原值检索与排序，来源为参与核算的普通良品仓库存；不同货品单位不相加。',
       exactValueOf: (g) =>
-          g.stockQtyDisplayText ?? g.stockQty?.toStringAsFixed(2),
-      value: (g) => g.stockQtyDisplayText ?? g.stockQty?.toStringAsFixed(2),
+          g.stockQtyDisplayText ??
+          g.stockQty?.toExactString(minimumFractionDigits: 2),
+      value: (g) =>
+          g.stockQtyDisplayText ??
+          g.stockQty?.toExactString(minimumFractionDigits: 2),
     ),
     // 采购批量口径（V575）：空=供应商无该项要求，按净需求原样下达。
     MasterColumnDef(
@@ -1809,7 +1797,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       type: 'number',
       columnSearchEnabled: true,
       sortable: true,
-      value: (g) => goodsQtyText(g.minOrderQty),
+      exactValueOf: (g) => g.minOrderQtyText,
+      value: (g) => g.minOrderQtyText,
     ),
     MasterColumnDef(
       key: 'orderMultipleQty',
@@ -1818,7 +1807,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       type: 'number',
       columnSearchEnabled: true,
       sortable: true,
-      value: (g) => goodsQtyText(g.orderMultipleQty),
+      exactValueOf: (g) => g.orderMultipleQtyText,
+      value: (g) => g.orderMultipleQtyText,
     ),
   ];
 }

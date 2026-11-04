@@ -12,10 +12,11 @@ class AutomaticRequestInterceptor extends Interceptor {
 
   /// 与服务端 AutomaticRequestPolicy.HEADER 一致。
   static const header = 'X-Uten-Automatic';
+  static const forceAutomaticKey = 'uten.forceAutomaticRequest';
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    if (UserActivity.userIsIdle) {
+    if (options.extra[forceAutomaticKey] == true || UserActivity.userIsIdle) {
       options.headers[header] = '1';
     } else {
       options.headers.remove(header);

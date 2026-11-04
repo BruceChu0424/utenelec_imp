@@ -9,9 +9,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyVisitorsPage @48 (page-class)<br>_MyVisitorsPageState @55 (state-class) |
-| 真实路由绑定 | /my-visitors；router @2289；builder ['MyVisitorsPage']；redirect None |
+| 真实路由绑定 | /my-visitors；router @2381；builder ['MyVisitorsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | visitor:host_confirm @350；定义 lib/shared/auth/permissions.dart:72<br>visitor:host_confirm @359；定义 lib/shared/auth/permissions.dart:72<br>visitor:host_confirm @368；定义 lib/shared/auth/permissions.dart:72 |
+| 权限 | visitor:host_confirm @350；定义 lib/shared/auth/permissions.dart:122<br>visitor:host_confirm @359；定义 lib/shared/auth/permissions.dart:122<br>visitor:host_confirm @368；定义 lib/shared/auth/permissions.dart:122 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/visitor/repositories/visitor_staff_repository.dart；接口：/security/blacklist、/security/blacklist/{id}、/security/check-in/{id}、/security/verify、/visitor-approval、/visitor-approval/as-host、/visitor-approval/facets、/visitor-approval/{id}、/visitor-approval/{id}/action、/visitor-approval/{id}/host-confirm |
 | 动作处理 | _confirm @78 [method-declaration-candidate] 提示 ['confirm']；Future<void> _confirm(<br>hostConfirm @87 [action-like-invocation] 提示 ['confirm']；.hostConfirm(app.id, confirmed: confirmed);<br>_batchConfirm @159 [method-declaration-candidate] 提示 ['confirm']；Future<void> _batchConfirm(<br>hostConfirm @216 [action-like-invocation] 提示 ['confirm']；await repo.hostConfirm(id, confirmed: true);<br>_batchConfirm @259 [action-like-invocation] 提示 ['confirm']；? () => _batchConfirm(Set<String>.of(selectedIds), pageItems)<br>_confirm @373 [action-like-invocation] 提示 ['confirm']；onTap: () => _confirm(context, app, true, l10n),<br>_confirm @379 [action-like-invocation] 提示 ['confirm']；onTap: () => _confirm(context, app, false, l10n), |
@@ -27,9 +27,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApprovalDetailPage @31 (page-class)<br>_VisitorApprovalDetailPageState @40 (state-class) |
-| 真实路由绑定 | /visitor-approval/:id；router @2282；builder ['VisitorApprovalDetailPage']；redirect None |
+| 真实路由绑定 | /visitor-approval/:id；router @2374；builder ['VisitorApprovalDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | visitor:approve @52；定义 lib/shared/auth/permissions.dart:71<br>visitor:approve @295；定义 lib/shared/auth/permissions.dart:71 |
+| 权限 | visitor:approve @52；定义 lib/shared/auth/permissions.dart:121<br>visitor:approve @295；定义 lib/shared/auth/permissions.dart:121 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/visitor/repositories/visitor_staff_repository.dart；接口：/security/blacklist、/security/blacklist/{id}、/security/check-in/{id}、/security/verify、/visitor-approval、/visitor-approval/as-host、/visitor-approval/facets、/visitor-approval/{id}、/visitor-approval/{id}/action、/visitor-approval/{id}/host-confirm |
 | 动作处理 | _approve @103 [method-declaration-candidate] 提示 ['approve']；Future<void> _approve() async {<br>_reject @128 [method-declaration-candidate] 提示 ['reject']；Future<void> _reject() async {<br>canApprove @320 [callback-reference] 提示 ['approve']；onPressed<br>canApprove @327 [callback-reference] 提示 ['approve']；onPressed |
@@ -45,9 +45,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApprovalListPage @54 (page-class)<br>_VisitorApprovalListPageState @62 (state-class) |
-| 真实路由绑定 | /visitor-approval；router @2277；builder ['VisitorApprovalListPage']；redirect None |
+| 真实路由绑定 | /visitor-approval；router @2369；builder ['VisitorApprovalListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | visitor:approve @499；定义 lib/shared/auth/permissions.dart:71<br>visitor:approve @508；定义 lib/shared/auth/permissions.dart:71 |
+| 权限 | visitor:approve @499；定义 lib/shared/auth/permissions.dart:121<br>visitor:approve @508；定义 lib/shared/auth/permissions.dart:121 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/visitor/repositories/visitor_staff_repository.dart；接口：/security/blacklist、/security/blacklist/{id}、/security/check-in/{id}、/security/verify、/visitor-approval、/visitor-approval/as-host、/visitor-approval/facets、/visitor-approval/{id}、/visitor-approval/{id}/action、/visitor-approval/{id}/host-confirm |
 | 动作处理 | _batchApprove @158 [method-declaration-candidate] 提示 ['approve']；Future<void> _batchApprove(Set<String> ids) async {<br>showUtenReviewerConfirmDialog @162 [action-like-invocation] 提示 ['confirm']；final confirmed = await showUtenReviewerConfirmDialog(<br>visitorBatchApproveTitle @164 [action-like-invocation] 提示 ['approve']；title: l10n.visitorBatchApproveTitle(count),<br>visitorBatchApproveMessage @165 [action-like-invocation] 提示 ['approve']；message: l10n.visitorBatchApproveMessage(count),<br>visitorBatchApproveResponsibility @168 [action-like-invocation] 提示 ['approve']；responsibilityDescription: l10n.visitorBatchApproveResponsibility(count),<br>_batchReject @178 [method-declaration-candidate] 提示 ['reject']；Future<void> _batchReject(Set<String> ids) async {<br>showUtenBatchRejectDialog @181 [action-like-invocation] 提示 ['reject']；final reason = await showUtenBatchRejectDialog(<br>visitorBatchRejectTitle @186 [action-like-invocation] 提示 ['reject']；title: l10n.visitorBatchRejectTitle(ids.length),<br>visitorBatchRejectDescription @187 [action-like-invocation] 提示 ['reject']；description: l10n.visitorBatchRejectDescription(ids.length),<br>showUtenReviewerConfirmDialog @221 [action-like-invocation] 提示 ['confirm']；final confirmed = await showUtenReviewerConfirmDialog(<br>_batchApprove @303 [action-like-invocation] 提示 ['approve']；? () => _batchApprove(Set<String>.of(selectedIds))<br>visitorBatchApproveButton @305 [action-like-invocation] 提示 ['approve']；child: Text(l10n.visitorBatchApproveButton(selectedIds.length)),<br>_batchReject @324 [action-like-invocation] 提示 ['reject']；? () => _batchReject(Set<String>.of(selectedIds))<br>visitorBatchRejectButton @326 [action-like-invocation] 提示 ['reject']；child: Text(l10n.visitorBatchRejectButton(selectedIds.length)), |

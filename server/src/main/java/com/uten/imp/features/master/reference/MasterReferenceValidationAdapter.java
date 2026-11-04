@@ -24,8 +24,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MasterReferenceValidationAdapter implements MasterReferenceValidationPort {
 
-    private static final BigDecimal MIN_STORABLE_RATE = new BigDecimal("0.000001");
-
     private final EntityManager em;
     private final OwnerVisibility ownerVisibility;
     private final ClientAccessPolicy clientAccessPolicy;
@@ -199,13 +197,8 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
         if (unitRate == null) {
             throw validation(prefix(lineNo) + "使用非基本单位时必须提供单位换算率");
         }
-        BigDecimal canonicalRate = unitRate.stripTrailingZeros();
-        int integerDigits = Math.max(0, canonicalRate.precision() - canonicalRate.scale());
-        if (unitRate.compareTo(MIN_STORABLE_RATE) < 0
-                || canonicalRate.scale() > 6
-                || integerDigits > 12) {
-            throw validation(prefix(lineNo) + "单位换算率必须是可存储的大于 0 的 NUMERIC(18,6)");
-        }
+        com.uten.imp.common.util.FinancialExactAmount.rate(unitRate,prefix(lineNo)+"单位换算率");
+        if (unitRate.signum()<=0) throw validation(prefix(lineNo)+"单位换算率必须大于零");
         return new ResolvedLineUnit(unitId, unitRate);
     }
 

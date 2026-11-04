@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -8,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -62,6 +64,30 @@ class _FakeNoticeRepository implements NoticeRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _ReceiptRepository extends _FakeNoticeRepository {
+  _ReceiptRepository(super.notices);
+
+  final gate = Completer<void>();
+  int acknowledgements = 0;
+
+  @override
+  Future<List<Notice>> list({bool? onlyUnread, bool? importantOnly}) async =>
+      _notices.where((notice) => onlyUnread != true || !notice.isRead).toList();
+
+  @override
+  Future<Notice> acknowledge(String id) async {
+    acknowledgements++;
+    if (acknowledgements == 1) throw StateError('offline');
+    await gate.future;
+    final index = _notices.indexWhere((notice) => notice.id == id);
+    return _notices[index] = _notices[index].copyWith(
+      isRead: true,
+      myAcked: true,
+      ackCount: 1,
+    );
+  }
 }
 
 const _orderA = '11111111-1111-4111-8111-111111111111';
@@ -193,6 +219,70 @@ void _expectFullTextInsideCard(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    const previewDirectory = String.fromEnvironment('NOTICE_PREVIEW_DIR');
+    if (previewDirectory.isEmpty) return;
+    final font = FontLoader('NotoSansSC')
+      ..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'));
+    await font.load();
+    final icons = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await icons.load();
+  });
+
+  testWidgets(
+    'received notice leaves unread and stays read after reloading all',
+    (tester) async {
+      final repository = _ReceiptRepository([
+        Notice(
+          id: 'receipt',
+          title: '服务器有新版本 v2.5.46',
+          content: '已手动检查到新版本。请进入服务器运维页核对。',
+          type: NoticeType.system,
+          publisher: '系统',
+          publishedAt: ChinaDateTime.now(),
+          isRead: false,
+          interactionMode: NoticeInteractionMode.acknowledge,
+        ),
+      ]);
+      await _mount(tester, repository);
+      const previewDirectory = String.fromEnvironment('NOTICE_PREVIEW_DIR');
+      await _capture(tester, previewDirectory, 'receipt-before.png');
+
+      await tester.tap(find.text('收到'));
+      await tester.pumpAndSettle();
+      expect(repository.acknowledgements, 1);
+      expect(
+        find.byKey(const ValueKey('notice-unread-indicator')),
+        findsOneWidget,
+      );
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+
+      await tester.tap(find.text('收到'));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('收到'), warnIfMissed: false);
+      expect(repository.acknowledgements, 2);
+      expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+      repository.gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(NoticeCard), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+
+      await tester.tap(find.text('全部'));
+      await tester.pumpAndSettle();
+      expect(find.text('已收到'), findsOneWidget);
+      expect(find.text('服务器有新版本 v2.5.46'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('notice-unread-indicator')),
+        findsNothing,
+      );
+      await _capture(tester, previewDirectory, 'receipt-after.png');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('defaults to unread filter', (tester) async {
     final repository = _FakeNoticeRepository([_notice('a')]);
     await _mount(tester, repository);
@@ -247,8 +337,14 @@ void main() {
 
     expect(repository.markReadCalls, ['receipt']);
     expect(find.byIcon(Icons.circle), findsNothing);
-    // 头部副标题翻成「全部已读」（弹窗内按钮随未读清零隐藏）。
-    expect(find.textContaining('全部已读，未读排在前面'), findsOneWidget);
+    // 头部同排计数翻成「全部已读」（弹窗内按钮随未读清零隐藏）。
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('notice-group-stage')),
+        matching: find.text('共 2 条 · 全部已读'),
+      ),
+      findsOneWidget,
+    );
   });
 
   for (final disabled in [false, true]) {
@@ -309,7 +405,13 @@ void main() {
     await tester.tap(find.text('全部已读').last);
     await tester.pumpAndSettle();
     expect(repository.markReadCalls, ['card', 'receipt', 'card']);
-    expect(find.textContaining('全部已读，未读排在前面'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('notice-group-stage')),
+        matching: find.text('共 2 条 · 全部已读'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -337,14 +439,6 @@ void main() {
     tester,
   ) async {
     const previewDirectory = String.fromEnvironment('NOTICE_PREVIEW_DIR');
-    if (previewDirectory.isNotEmpty) {
-      final font = FontLoader('NotoSansSC')
-        ..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'));
-      await font.load();
-      final icons = FontLoader('MaterialIcons')
-        ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
-      await icons.load();
-    }
     final now = ChinaDateTime.now();
     final notices = <Notice>[
       for (var i = 0; i < NoticeType.values.length; i++)

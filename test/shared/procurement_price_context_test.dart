@@ -27,6 +27,63 @@ void main() {
   );
 
   test(
+    'native price and a one-digit tax-context change survive defaults, recovery and invalidation',
+    () {
+      const price =
+          '1234567890123456789012345678901234567890.123456789012345678901234';
+      const tax = '13.123456789012345678901234';
+      final defaults = ProcurementLastTerms.fromJson({
+        'purchasePrice': 1.2345678901234568e39,
+        'purchasePriceExact': price,
+        'subcontractPrice': 1.2345678901234568e39,
+        'subcontractPriceExact': price,
+        'taxRate': 13.123456789012346,
+        'taxRateExact': tax,
+        'exchangeRate': 7.123456789012346,
+        'exchangeRateExact': '7.123456789012345678901234',
+        'priceContext': {
+          'supplierId': 'supplier-a',
+          'colorId': 'red',
+          'unitId': 'box',
+          'currencyId': 'USD',
+          'taxRate': 13.123456789012346,
+          'taxRateExact': tax,
+        },
+      });
+      expect(defaults.purchasePriceText, price);
+      expect(defaults.subcontractPriceText, price);
+      expect(defaults.taxRateText, tax);
+      expect(defaults.exchangeRateText, '7.123456789012345678901234');
+      final target = PurchaseGridRow()
+        ..goods = const GoodsOption(id: 'goods', code: 'G', name: '匿名货品')
+        ..supplierId = 'supplier-a'
+        ..unitId = 'box'
+        ..colorId = 'red'
+        ..currencyId = 'USD';
+      addTearDown(target.dispose);
+      target.taxRate.text = tax;
+      target.price.text = defaults.purchasePriceText!;
+      target.markTermsAutofilled('price', target.price.text);
+      target.watchDefaultPrice(
+        price: target.price,
+        supplier: target.supplierIdNotifier,
+        context: defaults.priceContext!,
+        goodsId: 'goods',
+        currentGoodsId: () => target.goods?.id,
+        currentColorId: () => target.colorId,
+        currentUnitId: () => target.unitId,
+      );
+      final draft = target.exportCommercialDraft();
+      expect((draft['priceContext'] as Map)['taxRate'], tax);
+      final copy = target.clone();
+      addTearDown(copy.dispose);
+      expect(copy.price.text, price);
+      copy.taxRate.text = '13.123456789012345678901235';
+      expect(copy.price.text, isEmpty);
+      expect(target.price.text, price);
+    },
+  );
+  test(
     'price requires every commercial dimension and never guesses legacy context',
     () {
       expect(matches(), isTrue);

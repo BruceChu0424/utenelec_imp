@@ -148,8 +148,12 @@ class PurchaseLineUnitPolicyTest {
         ApiException roundedToZeroRate = assertThrows(
                 ApiException.class,
                 () -> policy.normalizeAndValidate(
-                        UUID.randomUUID(), purchaseUnitId, new BigDecimal("0.0000001"), 6));
+                        UUID.randomUUID(), purchaseUnitId, new BigDecimal("1e-25"), 6));
         assertEquals(ErrorCode.VALIDATION_FAILED, roundedToZeroRate.getCode());
+
+        BigDecimal nativeRate=new BigDecimal("0.123456789012345678901234");
+        assertEquals(nativeRate,policy.normalizeAndValidate(UUID.randomUUID(),purchaseUnitId,nativeRate,6).unitRate());
+        assertEquals(0,new BigDecimal("1e-24").compareTo(policy.normalizeAndValidate(UUID.randomUUID(),purchaseUnitId,new BigDecimal("1e-24"),6).unitRate()));
 
         when(unitQuery.getSingleResult()).thenReturn(0L);
         ApiException deletedUnit = assertThrows(

@@ -2149,7 +2149,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
   Future<void> _lossPolicy() async {
     final form = GlobalKey<FormState>();
     final controller = TextEditingController(
-      text: widget.detail.subcontractAllowedLossPct?.toString() ?? '',
+      text: widget.detail.subcontractAllowedLossPctText ?? '',
     );
     final result = await _dialogWhenRemoved<String>(
       context: context,
@@ -2162,13 +2162,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             validator: (value) {
               final text = value?.trim() ?? '';
               if (text.isEmpty) return null;
-              if (!RegExp(r'^\d{1,3}(?:\.\d{1,2})?$').hasMatch(text)) {
-                return _l.costLossRange;
-              }
-              final amount = double.tryParse(text);
-              return amount == null || amount < 0 || amount > 100
-                  ? _l.costLossRange
-                  : null;
+              return parseExactPercentage(text).valid
+                  ? null
+                  : '请填写0到100之间最多24位有效小数的原百分数';
             },
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             errorBuilder: utenTextFieldErrorBuilder,
@@ -2197,15 +2193,20 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     controller.dispose();
     if (result == null || !mounted) return;
     await _action(() async {
-      await ref
-          .read(apiClientProvider)
-          .put(
-            '/master/goods/${widget.detail.id}/subcontract-loss-policy',
-            body: {
-              'expectedVersion': widget.detail.version,
-              'percent': result.isEmpty ? null : result,
-            },
-          );
+      setState(() => _lossPolicySaving = true);
+      try {
+        await ref
+            .read(apiClientProvider)
+            .put(
+              '/master/goods/${widget.detail.id}/subcontract-loss-policy',
+              body: {
+                'expectedVersion': widget.detail.version,
+                'percent': result.isEmpty ? null : result,
+              },
+            );
+      } finally {
+        if (mounted) setState(() => _lossPolicySaving = false);
+      }
       widget.onSaved?.call();
     });
   }

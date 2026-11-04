@@ -25,6 +25,7 @@
   <sys:Double x:Key="Uten.Height.Input">44</sys:Double>
   <sys:Double x:Key="Uten.Height.Cell">32</sys:Double>
   <sys:Double x:Key="Uten.Height.Caption">36</sys:Double>
+  <sys:Double x:Key="Uten.Breakpoint.DesktopStart">1280</sys:Double>
   <sys:Double x:Key="Uten.Space.S2">2</sys:Double>
   <Thickness x:Key="Uten.Padding.S2">2</Thickness>
   <sys:Double x:Key="Uten.Space.S4">4</sys:Double>

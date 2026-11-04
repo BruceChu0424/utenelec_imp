@@ -9,9 +9,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangeDetailPage @37 (page-class)<br>_HrProfileChangeDetailPageState @46 (state-class) |
-| 真实路由绑定 | /hr/profile-changes/:id；router @2370；builder ['HrProfileChangeDetailPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes/:id；router @2462；builder ['HrProfileChangeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | profile:review @162；定义 lib/shared/auth/permissions.dart:79 |
+| 权限 | profile:review @162；定义 lib/shared/auth/permissions.dart:129 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/profile/repositories/profile_change_repository.dart；接口：/hr/profile-changes、/hr/profile-changes/facets、/hr/profile-changes/{id}、/hr/profile-changes/{id}/review、/profile/me/changes |
 | 动作处理 | addPostFrameCallback @65 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @81 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeRoute @82 [action-like-invocation] 提示 ['remove']；if (route?.isActive == true) route!.navigator?.removeRoute(route);<br>addPostFrameCallback @91 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeRoute @92 [action-like-invocation] 提示 ['remove']；if (route?.isActive == true) route!.navigator?.removeRoute(route);<br>_onReject @172 [action-like-invocation] 提示 ['reject']；: () => _onReject(context, l10n),<br>_onApprove @180 [action-like-invocation] 提示 ['approve']；: () => _onApprove(context, l10n),<br>copyWith @275 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>_onApprove @297 [method-declaration-candidate] 提示 ['approve']；Future<void> _onApprove(BuildContext context, AppLocalizations l10n) async {<br>_onReject @367 [method-declaration-candidate] 提示 ['reject']；Future<void> _onReject(BuildContext context, AppLocalizations l10n) async {<br>UtenBatchRejectDialog @378 [action-like-invocation] 提示 ['reject']；UtenBatchRejectDialog( |
@@ -27,9 +27,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangesListPage @62 (page-class)<br>_HrProfileChangesListPageState @70 (state-class) |
-| 真实路由绑定 | /hr/profile-changes；router @2365；builder ['HrProfileChangesListPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes；router @2457；builder ['HrProfileChangesListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | profile:review @456；定义 lib/shared/auth/permissions.dart:79<br>profile:review @462；定义 lib/shared/auth/permissions.dart:79 |
+| 权限 | profile:review @456；定义 lib/shared/auth/permissions.dart:129<br>profile:review @462；定义 lib/shared/auth/permissions.dart:129 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/profile/repositories/profile_change_repository.dart；接口：/hr/profile-changes、/hr/profile-changes/facets、/hr/profile-changes/{id}、/hr/profile-changes/{id}/review、/profile/me/changes |
 | 动作处理 | addPostFrameCallback @105 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_batchApprove @191 [method-declaration-candidate] 提示 ['approve']；Future<void> _batchApprove(Set<String> ids) async {<br>showUtenReviewerConfirmDialog @194 [action-like-invocation] 提示 ['confirm']；final confirmed = await showUtenReviewerConfirmDialog(<br>_batchReject @209 [method-declaration-candidate] 提示 ['reject']；Future<void> _batchReject(Set<String> ids) async {<br>showUtenBatchRejectDialog @211 [action-like-invocation] 提示 ['reject']；final reason = await showUtenBatchRejectDialog(<br>_batchApprove @276 [action-like-invocation] 提示 ['approve']；? () => _batchApprove(Set<String>.of(selectedIds))<br>_batchReject @287 [action-like-invocation] 提示 ['reject']；? () => _batchReject(Set<String>.of(selectedIds)) |

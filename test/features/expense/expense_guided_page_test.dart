@@ -53,7 +53,7 @@ void main() {
       final draft = harness.container.read(formDraftsProvider).single;
       expect(draft.data['title'], '服务端核验办公费');
       final items = (draft.data['items'] as List).cast<Map<String, dynamic>>();
-      expect(items.single['amount'], 113);
+      expect(items.single['amount'], '113');
       expect(harness.jobs.reads, ['route-job-1']);
       expect(harness.repo.creates, isEmpty);
       expect(harness.repo.invoices, isEmpty);

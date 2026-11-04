@@ -70,6 +70,7 @@ public final class DocumentSniffer {
             return ext.equals("xls") || ext.equals("xlt") || ext.equals("xlsx") ? DocumentKind.XLS
                     : DocumentKind.UNSUPPORTED;
         }
+        if(ext.equals("xls")&&LegacyBiffGridReader.isRaw(head))return DocumentKind.XLS;
         if ((ext.equals("csv") || ext.equals("txt")) && isDecodableText(head)) {
             return DocumentKind.CSV;
         }

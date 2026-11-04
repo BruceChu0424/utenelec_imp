@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -200,7 +201,9 @@ class _OverviewBody extends StatelessWidget {
                   ),
                   _Metric(
                     '离职率(估算)',
-                    rate == null ? '—' : '${rate.toStringAsFixed(1)}%',
+                    rate == null
+                        ? '—'
+                        : '${rate.toExactString(minimumFractionDigits: 1)}%',
                     tooltip: overview.historyCoverageComplete
                         ? '离职事件数 ÷ 期初与期末平均在册人数'
                         : '任职历史覆盖不完整，暂不显示离职率',

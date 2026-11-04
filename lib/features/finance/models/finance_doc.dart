@@ -1,3 +1,4 @@
+import '../../../shared/models/accounting_expense_purpose.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 // 钱流单据统一模型（5 单据超集，对应后端各 *ListItem/*Detail/*ItemDto）。
 //
@@ -123,6 +124,7 @@ class FinanceDocListItem {
     this.outAccountId,
     this.amountLocal,
     this.amountLocalText,
+    this.amountOriginalText,
     this.status,
     this.glStatus,
     this.legacyId,
@@ -142,6 +144,7 @@ class FinanceDocListItem {
   final String? outAccountId; // bankTransfer 用
   final double? amountLocal;
   final String? amountLocalText;
+  final String? amountOriginalText;
   final int? status;
   final int? glStatus;
   final int? legacyId;
@@ -158,6 +161,7 @@ class FinanceDocListItem {
         partyId: (json['clientId'] ?? json['supplierId']) as String?,
         accountId: (json['accountId'] ?? json['outAccountId']) as String?,
         outAccountId: json['outAccountId'] as String?,
+        amountOriginalText: financeDecimalText(json['amountOriginalExact']),
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
         amountLocalText: financeDecimalText(
           json['amountLocalExact'] ?? json['amountLocal'],
@@ -185,6 +189,7 @@ class FinanceDocItem {
     this.partyId,
     this.salesOrderId,
     this.expenseStyleId,
+    this.postingPurpose = AccountingExpensePurpose.ordinaryExpense,
     this.incomeStyleId,
     this.departmentId,
     this.departmentName,
@@ -228,6 +233,7 @@ class FinanceDocItem {
   final String? salesOrderId;
   // expense/otherIncome 分摊
   final String? expenseStyleId;
+  final AccountingExpensePurpose postingPurpose;
   final String? incomeStyleId;
   final String? departmentId;
 
@@ -275,6 +281,7 @@ class FinanceDocItem {
     partyId: (json['clientId'] ?? json['partyId']) as String?,
     salesOrderId: json['salesOrderId'] as String?,
     expenseStyleId: json['expenseStyleId'] as String?,
+    postingPurpose: AccountingExpensePurpose.fromApi(json['postingPurpose']),
     incomeStyleId: json['incomeStyleId'] as String?,
     departmentId: json['departmentId'] as String?,
     departmentName: json['departmentName'] as String?,

@@ -1,9 +1,11 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/china_datetime.dart';
-import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../models/warehouse_iqc_stock_in.dart'
     show WarehouseIqcStockInConfirmItem;
 import '../models/warehouse_quality_result.dart';
@@ -22,7 +24,8 @@ class WarehouseQualitySliceDraft {
        quantity = TextEditingController(
          text:
              snapshot?.quantity ??
-             warehouseQualityQuantity(slice.remainingBaseQty),
+             financeExactTrimmed(slice.remainingBaseQtyText) ??
+             '',
        ),
        place = TextEditingController(
          text: snapshot?.place ?? slice.placeHint ?? '',
@@ -75,24 +78,58 @@ class WarehouseQualitySliceDraft {
   bool get usesSuggestedWarehouse =>
       warehouseId != null && warehouseId == slice.warehouseId;
   double get previewQuantity {
-    final value = double.tryParse(quantity.text.trim());
+    final value = double.tryParse(previewQuantityText ?? '');
     return value != null && value.isFinite && value > 0 ? value : 0;
   }
+
+  String? get previewQuantityText =>
+      positiveDocumentQuantityText(quantity.text.trim());
 
   /// 本次实收对应的放行重量(千克，只读预览；ADR-135 §3.10)。
   ///
   /// 放行重量来自到货实称，按「已入库量 → 已入库量 + 本次」的累计份额差分摊，
-  /// 与服务端入库时的切片同一口径(4 位四舍五入，末批取余)；到货没称为 null。
-  double? get previewWeightKg {
-    final total = slice.releasedWeight;
-    final whole = slice.releasedBaseQty;
-    final qty = previewQuantity;
-    if (total == null || whole <= 0 || qty <= 0) return null;
-    final before = slice.stockedForReleaseBaseQty;
-    final previous = roundKgLine(total * before / whole) ?? 0;
-    final next = roundKgLine(total * (before + qty) / whole) ?? 0;
-    return roundKgLine(next - previous);
+  /// 有限结果保留全文；旧批重量取真实已入库值，不用本次策略重算。
+  /// 除不尽的选择由实际提交时的公共精度弹窗办理，不在输入时猜精度。
+  String? get previewWeightText {
+    final total = slice.releasedWeightText,
+        whole = slice.releasedBaseQtyText,
+        qty = previewQuantityText,
+        before = slice.stockedForReleaseBaseQtyText;
+    if (total == null || whole == null || qty == null || before == null) {
+      return null;
+    }
+    final previous =
+        slice.stockedForReleaseWeightText ??
+        (financeExactTrimmed(before) == '0' ? '0' : null);
+    if (previous == null) return null;
+    final after = financeExactSumTexts([before, qty]);
+    final target = financeExactDivideTexts(
+      financeExactMultiplyTexts([total, after]),
+      whole,
+    );
+    if (target.text == null) return null;
+    final delta = financeExactSumTexts([
+      target.text,
+      previous.startsWith('-') ? previous.substring(1) : '-$previous',
+    ]);
+    final units = financeExactDecimalUnits(
+      financeExactTrimmed(delta),
+      scale: 24,
+    );
+    return units == null || units < BigInt.zero
+        ? null
+        : financeExactTrimmed(delta);
   }
+
+  // Read-only legacy callers may use a binary estimate; command/render paths
+  // use previewWeightText and never submit this compatibility projection.
+  double? get previewWeightKg => double.tryParse(previewWeightText ?? '');
+
+  String get previewWeightPendingText => slice.releasedWeightText == null
+      ? '未称'
+      : previewQuantityText == null
+      ? '—'
+      : '提交时核定精度';
 
   WarehouseQualitySliceSnapshot get snapshot => WarehouseQualitySliceSnapshot(
     selected: selected,
@@ -122,18 +159,15 @@ class WarehouseQualitySliceDraft {
   }
 
   String? get quantityError {
-    final value = double.tryParse(quantity.text.trim());
-    if (value == null || !value.isFinite || value < 0.0001) {
-      return '请输入不小于 0.0001 的本次实收数量';
-    }
-    if (value - slice.remainingBaseQty > 0.0000001) {
-      return '本次数量 ${warehouseQualityQuantity(value)} 不得超过合格待入量 '
-          '${warehouseQualityQuantity(slice.remainingBaseQty)}';
-    }
-    final scaled = value * 10000;
-    if (!scaled.isFinite ||
-        (scaled - scaled.roundToDouble()).abs() > 0.000001) {
-      return '本次实收数量最多保留 4 位小数';
+    final value = positiveDocumentQuantityText(quantity.text.trim());
+    if (value == null) return '本次实收数量必须大于0，整数最多40位、小数最多24位';
+    final remaining = positiveDocumentQuantityText(
+      financeExactTrimmed(slice.remainingBaseQtyText) ?? '',
+    );
+    if (remaining == null) return '缺少原待入数量的精确资料，请刷新并核对原放行明细';
+    if (financeExactDecimalUnits(value, scale: 24)! >
+        financeExactDecimalUnits(remaining, scale: 24)!) {
+      return '本次数量 ${warehouseQualityQuantity(value)} 不得超过合格待入量 ${warehouseQualityQuantity(remaining)}';
     }
     return null;
   }
@@ -159,8 +193,10 @@ class WarehouseQualitySliceDraft {
   WarehouseIqcStockInConfirmItem toConfirmItem() =>
       WarehouseIqcStockInConfirmItem(
         passEventId: slice.passEventId,
-        baseQty: double.parse(quantity.text.trim()),
-        expectedRemainingBaseQty: slice.remainingBaseQty,
+        baseQty: quantity.text.trim(),
+        expectedRemainingBaseQty:
+            slice.remainingBaseQtyText ??
+            (throw const FormatException('原放行数量缺少精确资料')),
         warehouseId: warehouseId!,
         place: place.text.trim(),
       );
@@ -219,10 +255,8 @@ String warehouseQualitySliceFingerprint(
   return jsonEncode([for (final item in sorted) item.toJson()]);
 }
 
-String warehouseQualityQuantity(double value) => value
-    .toStringAsFixed(4)
-    .replaceFirst(RegExp(r'0+$'), '')
-    .replaceFirst(RegExp(r'\.$'), '');
+String warehouseQualityQuantity(Object value) =>
+    exactNumberDisplay(value) ?? '—';
 
 String warehouseQualityDateTime(String? value) {
   final text = value?.trim();

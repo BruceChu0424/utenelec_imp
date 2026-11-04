@@ -11,22 +11,24 @@ import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.IntStream;
+import java.util.regex.Pattern;
 
 /** Ordinary search: every whitespace-separated word must match at least one field. */
 public final class KeywordSearch {
     /** A numeric expression, never PostgreSQL's ordinal ORDER BY syntax. */
     public static final String INACTIVE_NATIVE_RANK = "CAST(0 AS integer)";
+    private static final Pattern WORD_SEPARATOR = Pattern.compile("(?U)\\s+");
 
     private KeywordSearch() {}
 
     public static List<String> terms(String query) {
         if (query == null || query.isBlank()) return List.of();
-        return Arrays.stream(query.toLowerCase(Locale.ROOT).split("(?U)\\s+"))
+        return Arrays.stream(WORD_SEPARATOR.split(query.toLowerCase(Locale.ROOT)))
                 .filter(term -> !term.isEmpty()).distinct().toList();
     }
 
     public static String phrase(String query) {
-        return query == null ? "" : query.toLowerCase(Locale.ROOT).replaceAll("(?U)\\s+", " ").trim();
+        return query == null ? "" : WORD_SEPARATOR.matcher(query.toLowerCase(Locale.ROOT)).replaceAll(" ").trim();
     }
 
     public static boolean matches(String text, String... fields) {

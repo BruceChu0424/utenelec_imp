@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../models/production_workshop_task_stage.dart';
 import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -2567,8 +2568,9 @@ class _ProductionWorkshopTasksPageState
     );
   }
 
-  static String _taskQuantity(double value) =>
-      value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+  static String _taskQuantity(double value) => value
+      .toExactString(minimumFractionDigits: 4)
+      .replaceFirst(RegExp(r'\.?0+$'), '');
 
   Future<void> _openMaterialUsage(
     ProductionExecutionWorkbenchSegment task,
@@ -2990,17 +2992,7 @@ class _ProductionWorkshopTasksPageState
                     _load();
                   },
                 ),
-                if (_isHistory) ...[
-                  // 历史任务时间门控（ADR-066 §1.3，2026-10-24 起默认近一个月）。
-                  Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                    child: UtenHistoryTimeFilter(
-                      key: const Key('workshop-history-time'),
-                      value: _historyTime,
-                      onChanged: _onHistoryTime,
-                    ),
-                  ),
-                ],
+
                 const SizedBox(height: UtenSpacing.s8),
                 if (_serverReportDraftsError != null && _status != null)
                   Padding(
@@ -3016,12 +3008,25 @@ class _ProductionWorkshopTasksPageState
                           description: '开工准备包含待认料、等待物料和可开工任务；生产中可报工',
                         )
                       : _isHistory && _historyTime.isNone
-                      ? const UtenHistoryTimePlaceholder(
+                      ? UtenHistoryTimePlaceholder(
+                          controls: UtenHistoryTimeFilter(
+                            key: const Key('workshop-history-time'),
+                            value: _historyTime,
+                            onChanged: _onHistoryTime,
+                          ),
                           description: '按计划完工日期加载已完工 / 已取消 / 已撤回工单',
                         )
                       : MasterDataTableView<
                           ProductionExecutionWorkbenchSegment
                         >(
+                          toolbarLeadingActions: [
+                            if (_isHistory)
+                              UtenHistoryTimeFilter(
+                                key: const Key('workshop-history-time'),
+                                value: _historyTime,
+                                onChanged: _onHistoryTime,
+                              ),
+                          ],
                           rowsController: _tableRows,
                           expensiveRowMounts: _isPreparing && _canStart,
                           paginationRevision: _items,

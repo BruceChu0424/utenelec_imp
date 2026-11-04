@@ -247,7 +247,7 @@ void main() {
     await tester.ensureVisible(find.byType(UtenMonthField));
     await tester.tap(find.byTooltip('选择制造年月'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('9月'));
+    await tester.tap(find.byKey(const ValueKey('uten-calendar-month-9')));
     await tester.pumpAndSettle();
     final monthInput = find.descendant(
       of: find.byType(UtenMonthField),

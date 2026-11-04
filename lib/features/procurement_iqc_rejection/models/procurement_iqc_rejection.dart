@@ -486,6 +486,8 @@ class ProcurementIqcConfirmCreditCommand {
     this.baseQty,
     this.actualAmountOriginal,
     this.sourceApLedgerId,
+    this.sourceCandidateId,
+    this.precisionPolicy,
     this.allocations = const [],
     this.expectedBookAllocationHash,
   });
@@ -498,22 +500,28 @@ class ProcurementIqcConfirmCreditCommand {
   final String? baseQty,
       actualAmountOriginal,
       sourceApLedgerId,
+      sourceCandidateId,
       expectedBookAllocationHash;
   final List<ProcurementIqcCreditAllocationCommand> allocations;
+  final Map<String, dynamic>? precisionPolicy;
 
-  ProcurementIqcConfirmCreditCommand withBookHash(String hash) =>
-      ProcurementIqcConfirmCreditCommand(
-        expectedVersion: expectedVersion,
-        commandId: commandId,
-        creditReference: creditReference,
-        creditDate: creditDate,
-        reason: reason,
-        baseQty: baseQty,
-        actualAmountOriginal: actualAmountOriginal,
-        sourceApLedgerId: sourceApLedgerId,
-        allocations: allocations,
-        expectedBookAllocationHash: hash,
-      );
+  ProcurementIqcConfirmCreditCommand withBookHash(
+    String hash, {
+    Map<String, dynamic>? precisionPolicy,
+  }) => ProcurementIqcConfirmCreditCommand(
+    expectedVersion: expectedVersion,
+    commandId: commandId,
+    creditReference: creditReference,
+    creditDate: creditDate,
+    reason: reason,
+    baseQty: baseQty,
+    actualAmountOriginal: actualAmountOriginal,
+    sourceApLedgerId: sourceApLedgerId,
+    sourceCandidateId: sourceCandidateId,
+    precisionPolicy: precisionPolicy ?? this.precisionPolicy,
+    allocations: allocations,
+    expectedBookAllocationHash: hash,
+  );
 
   Map<String, dynamic> toJson() => {
     'expectedVersion': expectedVersion,
@@ -525,6 +533,8 @@ class ProcurementIqcConfirmCreditCommand {
       'baseQty': baseQty,
       'actualAmountOriginal': actualAmountOriginal!.trim(),
       'sourceApLedgerId': sourceApLedgerId,
+      if (sourceCandidateId != null) 'sourceCandidateId': sourceCandidateId,
+      if (precisionPolicy != null) 'precisionPolicy': precisionPolicy,
       'allocations': allocations.map((item) => item.toJson()).toList(),
       'expectedBookAllocationHash': expectedBookAllocationHash,
     },

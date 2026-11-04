@@ -28,7 +28,40 @@ public class GoodsDetail {
     /** Exact price for display and editing, without a JSON-number/double round trip. */
     public String getPriceDisplayText() { return priceMasked ? null : DecimalText.of(price); }
 
+    public String getBulkPackageQtyExact() { return DecimalText.of(bulkPackageQty); }
+    public String getSubcontractAllowedLossPctExact() { return DecimalText.of(subcontractAllowedLossPct); }
+    public String getPurchaseAllowedOverReceiptPctExact() { return DecimalText.of(purchaseAllowedOverReceiptPct); }
+    public String getDiscountDisplayText() { return discountMasked ? null : DecimalText.of(discount); }
+
+    /** Masked through the same fields as the legacy numeric response. */
+    public java.util.Map<String,String> getBudgetExact() {
+        if (costMasked) return java.util.Map.of();
+        var values = new java.util.LinkedHashMap<String,String>();
+        values.put("sourceE", DecimalText.of(sourceE));
+        values.put("machiningE", DecimalText.of(machiningE));
+        values.put("incidentalE", DecimalText.of(incidentalE));
+        values.put("lacquerE", DecimalText.of(lacquerE));
+        values.put("platingE", DecimalText.of(platingE));
+        values.put("casingE", DecimalText.of(casingE));
+        values.put("polishE", DecimalText.of(polishE));
+        values.put("total", DecimalText.of(total));
+        values.put("workRate", DecimalText.of(workRate));
+        values.put("workE", DecimalText.of(workE));
+        values.put("lostRate", DecimalText.of(lostRate));
+        values.put("lostE", DecimalText.of(lostE));
+        values.put("rentRate", DecimalText.of(rentRate));
+        values.put("rentE", DecimalText.of(rentE));
+        values.put("makeRate", DecimalText.of(makeRate));
+        values.put("makeE", DecimalText.of(makeE));
+        values.put("cTotal", DecimalText.of(cTotal));
+        values.put("gTotal", DecimalText.of(gTotal));
+        return java.util.Collections.unmodifiableMap(values);
+    }
+
     // ===== 列表核心 =====
+    public String getThicknessExact() { return DecimalText.of(thickness); }
+    public String getMinOrderQtyExact() { return DecimalText.of(minOrderQty); }
+    public String getOrderMultipleQtyExact() { return DecimalText.of(orderMultipleQty); }
     private UUID id;
     private String code;
     private String name;
@@ -177,6 +210,8 @@ public class GoodsDetail {
     @JsonProperty("cNumber")
     public String getCNumber() { return cNumber; }
 
+    public String getDefaultPurchasePriceExact() { return DecimalText.of(getDefaultPurchasePrice()); }
+    public String getDefaultSubcontractPriceExact() { return DecimalText.of(getDefaultSubcontractPrice()); }
     public BigDecimal getDefaultPurchasePrice() {
         return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();
     }
@@ -198,4 +233,10 @@ public class GoodsDetail {
     public BigDecimal getGTotal() {
         return gTotal;
     }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("mWeightExact")
+    public String getMWeightExact(){return com.uten.imp.common.util.DecimalText.of(mWeight);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("stockWeightKgExact")
+    public String getStockWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(stockWeightKg);}
 }

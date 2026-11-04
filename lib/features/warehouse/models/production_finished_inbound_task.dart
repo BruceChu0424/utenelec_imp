@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/quantity_display.dart';
 
 enum ProductionFinishedInboundTaskStage {
@@ -400,6 +401,7 @@ class ProductionFinishedArrivalLot {
     required this.goodsCode,
     required this.goodsName,
     required this.reportedQty,
+    this.reportedQtyExact,
     this.members = const [],
     this.demandQty = 0,
     this.publicQty = 0,
@@ -419,7 +421,9 @@ class ProductionFinishedArrivalLot {
     this.lastWarehouseName,
     this.countedQty,
     this.weight,
+    this.weightExact,
     this.unitRate = 1,
+    this.unitRateExact,
   });
 
   final String lotId;
@@ -439,6 +443,9 @@ class ProductionFinishedArrivalLot {
 
   /// 本批报工合计(报工单位)。
   final double reportedQty;
+  final String? reportedQtyExact;
+  String get reportedQtyText =>
+      financeExactDecimal(reportedQtyExact ?? reportedQty)!;
   final double demandQty;
   final double publicQty;
   final double actualSurplusQty;
@@ -451,9 +458,14 @@ class ProductionFinishedArrivalLot {
 
   /// 已登记批的整批实称净重(千克)；待登记与没称的批为空(ADR-135 §3.2)。
   final double? weight;
+  final String? weightExact;
+  String? get weightText =>
+      financeExactTrimmed(weightExact ?? weight?.toString());
 
   /// 1 个报工单位 = 多少货品基本单位(报工行换算率，空按 1)；基本数量 = 报工数量 x 它。
   final double unitRate;
+  final String? unitRateExact;
+  String get unitRateText => financeExactDecimal(unitRateExact ?? unitRate)!;
 
   /// 报工数量折成货品基本单位(核对实称重量、换算按重量计的精确重量用)。
   double get reportedBaseQty => reportedQty * unitRate;
@@ -485,7 +497,15 @@ class ProductionFinishedArrivalLot {
         colorName: json['colorName'] as String?,
         unitId: json['unitId'] as String?,
         unitName: json['unitName'] as String?,
-        reportedQty: (json['reportedQty'] as num?)?.toDouble() ?? 0,
+        reportedQty:
+            double.tryParse(
+              (json['reportedQtyExact'] ?? json['reportedQty'])?.toString() ??
+                  '',
+            ) ??
+            0,
+        reportedQtyExact: financeExactDecimal(
+          json['reportedQtyExact'] ?? json['reportedQty'],
+        ),
         demandQty: (json['demandQty'] as num?)?.toDouble() ?? 0,
         publicQty: (json['publicQty'] as num?)?.toDouble() ?? 0,
         actualSurplusQty: (json['actualSurplusQty'] as num?)?.toDouble() ?? 0,
@@ -495,8 +515,12 @@ class ProductionFinishedArrivalLot {
         lastWarehouseId: json['lastWarehouseId'] as String?,
         lastWarehouseName: json['lastWarehouseName'] as String?,
         countedQty: (json['countedQty'] as num?)?.toDouble(),
-        weight: (json['weight'] as num?)?.toDouble(),
+        weight: double.tryParse(json['weight']?.toString() ?? ''),
+        weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
         unitRate: _positiveRate(json['unitRate']),
+        unitRateExact: financeExactDecimal(
+          json['unitRateExact'] ?? json['unitRate'],
+        ),
       );
 
   static double _positiveRate(Object? raw) {

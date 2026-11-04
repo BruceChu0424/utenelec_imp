@@ -1,3 +1,5 @@
+import '../../../shared/formatters/exact_decimal.dart';
+
 const Set<String> warehouseSalesOutboundForbiddenKeys = {
   'financeAudit',
   'currencyId',
@@ -186,6 +188,7 @@ class WarehouseSalesOutboundLine {
     this.unitRate,
     this.quantity,
     this.weightKg,
+    this.weightKgExact,
     this.weightSource,
     this.parcelQuantity,
     this.cartonCount,
@@ -218,6 +221,8 @@ class WarehouseSalesOutboundLine {
   /// 出库重量 (千克): 已出库行取销售出库流水的重量 (ADR-135 §3.7), 待出库行为空;
   /// 仓库称重只落出库流水, 从不写回销售出货明细。
   final double? weightKg;
+  final String? weightKgExact;
+  String? get weightKgText => financeExactDecimal(weightKgExact ?? weightKg);
 
   /// 重量来源 MEASURED/EXACT/SLICE/AVERAGE/ESTIMATE (估算显示「≈」)。
   final String? weightSource;
@@ -260,7 +265,12 @@ class WarehouseSalesOutboundLine {
       unitName: _text(json['unitName']),
       unitRate: _number(json['unitRate']),
       quantity: _decimalText(json['quantityExact'] ?? json['quantity']),
-      weightKg: _number(json['weightKg']),
+      weightKg: double.tryParse(
+        (json['weightKgExact'] ?? json['weightKg'])?.toString() ?? '',
+      ),
+      weightKgExact: financeExactDecimal(
+        json['weightKgExact'] ?? json['weightKg'],
+      ),
       weightSource: _text(json['weightSource']),
       parcelQuantity: _decimalText(json['parcelQuantity']),
       cartonCount: _integer(json['cartonCount']),

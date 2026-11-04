@@ -17,6 +17,7 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputResponse {
+    public String getAllowedLossPctExact() { return com.uten.imp.common.util.DecimalText.of(allowedLossPct); }
     public BigDecimal getDifferenceQty(){return com.uten.imp.common.finance.ProcurementDeliveryDifference.of(qty,receivedQty,returnedQty);}
     public String getDifferenceQtyExact(){return com.uten.imp.common.util.DecimalText.of(getDifferenceQty());}
     private UUID id;
@@ -63,4 +64,9 @@ public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputRe
     /** 订货行的来源委外申请引用（合并行多来源展示/编辑回显/跳转）。 */
     public record SourceApplicationDoc(
             UUID applicationItemId, UUID applicationId, String billNo) {}
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
+
+    public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
+    public String getReceivedQtyExact(){return com.uten.imp.common.util.DecimalText.of(receivedQty);}
+    public String getSettledLossQtyExact(){return com.uten.imp.common.util.DecimalText.of(settledLossQty);}
 }

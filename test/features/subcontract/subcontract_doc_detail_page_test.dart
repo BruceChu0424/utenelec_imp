@@ -351,9 +351,13 @@ void main() {
     expect(find.text('委外物料（我方供料）'), findsOneWidget);
     expect(find.text('2 行 · 冻结 1 行 / 预估 1 行'), findsOneWidget);
     // 默认收起, 点标题展开后逐行可见(折叠裁剪不卸载子树, 用交互+内容断言)。
-    await tester.tap(find.text('委外物料（我方供料）'));
+    await tester.ensureVisible(find.text('委外物料（我方供料）'));
     await tester.pumpAndSettle();
-    expect(find.text('外壳'), findsOneWidget);
+    await tester.tap(find.text('委外物料（我方供料）').hitTestable());
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('外壳'));
+    await tester.pumpAndSettle();
+    expect(find.text('外壳').hitTestable(), findsOneWidget);
     expect(find.text('第 1 行'), findsOneWidget);
     expect(find.text('第 2 行'), findsOneWidget);
     // 冻结行展示已发净量; 按 BOM 现算(未批准)行没有已发量。

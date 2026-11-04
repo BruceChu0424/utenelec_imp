@@ -30,7 +30,7 @@ enum WorkbenchBadgeCatalog {
     /** HR 任务中心: 今日转正/逾期转正/今日生日/今日周年/证件待核对(仅能修改证件的人计)。 */
     hrTaskCenter(Module.people, facts("hrTask.count"), none()),
     /** 我的报销: 红 = 草稿 + 驳回待修订; 黄 = 已提交在审批/待付款。 */
-    expenseMine(Module.people, facts("expense.draftCount", "expense.rejectedCount"),
+    expenseMine(Module.people, facts("expense.draftCount", "expense.rejectedCount","expense.mineRoutingStaleCount"),
             facts("expense.processingCount")),
 
     // —— 钱流 ——
@@ -45,7 +45,16 @@ enum WorkbenchBadgeCatalog {
             "financeArrivalException.count",
             "iqcRejection.open"), none()),
     /** 财务报销: 待审批 + 待付款(每张单只处于一个队列)。 */
-    expenseFinance(Module.finance, facts("expense.pendingApprovalCount", "expense.pendingPaymentCount"), none()),
+    expenseDepartmentApproval(Module.people,facts("expense.departmentPendingApprovalCount"),none()),
+    expenseExecutiveApproval(Module.people,facts("expense.executivePendingApprovalCount"),none()),
+    expenseFinance(Module.finance, facts("expense.financeInitialPendingApprovalCount", "expense.financeReviewPendingApprovalCount", "expense.pendingPaymentCount"), none()),
+    applicationMine(Module.people,facts("application.mineDraftCount","application.mineRejectedCount","application.mineRoutingStaleCount"),facts("application.mineProcessingCount")),
+    applicationDepartmentApproval(Module.people,facts("application.departmentPendingByCode.*"),none()),
+    applicationExecutiveApproval(Module.people,facts("application.executivePendingCount"),none()),
+    applicationFinance(Module.finance,facts("application.financePendingCount","application.financeReceivePendingCount","application.payableCount","application.prepaymentPostingTodoCount"),facts("application.prepaymentPostingInProgressCount")),
+    applicationProcurement(Module.people,facts("application.procurementPendingCount"),none()),
+    applicationViceExecutive(Module.people,facts("application.viceExecutivePendingCount"),none()),
+    financeApplications(Module.finance,facts("financeApplication.todoCount"),facts("financeApplication.processingCount")),
     /** 销售报价核价(ADR-134): 待核价的报价(只算有核价权限的人的待办)。挂在财务「销售报价核价」卡。 */
     financeQuoteReview(Module.finance, facts("salesQuoteFinance.pending"), none()),
     /** 财务侧盘点审核: 待财务复核的盘点差异。 */

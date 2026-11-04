@@ -259,11 +259,12 @@ void main() {
       );
       expect(input.toJson(), {
         'title': '客户拜访',
+        'expenseKind': 'GENERAL',
         'remark': '上海',
         'items': [
           {
             'category': 'TRANSPORT',
-            'amount': 128.5,
+            'amount': '128.5',
             'date': '2026-07-30',
             'description': '高铁',
           },
@@ -316,6 +317,7 @@ void main() {
           'accountId': 'account-active',
           'expenseStyleId': 'style-active',
           'paymentDate': '2026-07-30',
+          'postingPurpose': 'ORDINARY_EXPENSE',
         },
       );
     });
@@ -404,6 +406,7 @@ void main() {
         'accountId': 'account-active',
         'expenseStyleId': 'style-active',
         'paymentDate': '2026-07-30',
+        'postingPurpose': 'ORDINARY_EXPENSE',
         'expectedVersion': 8,
       });
     });

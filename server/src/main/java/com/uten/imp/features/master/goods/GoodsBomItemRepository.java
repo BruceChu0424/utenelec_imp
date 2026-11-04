@@ -93,4 +93,8 @@ public interface GoodsBomItemRepository extends JpaRepository<GoodsBomItem, UUID
      */
     @Query(value = "SELECT fn_goods_bom_material_cost(:goodsId)", nativeQuery = true)
     BigDecimal materialCost(@Param("goodsId") UUID goodsId);
+    @org.springframework.data.jpa.repository.QueryHints(@jakarta.persistence.QueryHint(name=org.hibernate.jpa.HibernateHints.HINT_FLUSH_MODE,value="COMMIT"))
+    @Query(value="SELECT fn_goods_bom_periodic_quantity(:rowId,:goodsId,:componentId,:quantity,:basis,:kind)",nativeQuery=true)
+    BigDecimal adoptPeriodicQuantity(@Param("rowId") UUID rowId,@Param("goodsId") UUID goodsId,
+            @Param("componentId") UUID componentId,@Param("quantity") BigDecimal quantity,@Param("basis") BigDecimal basis,@Param("kind") String kind);
 }

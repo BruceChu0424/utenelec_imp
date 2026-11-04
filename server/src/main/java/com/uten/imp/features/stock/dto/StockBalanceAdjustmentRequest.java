@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -41,12 +42,12 @@ public class StockBalanceAdjustmentRequest {
     private UUID colorId;
 
     @NotNull
-    @Digits(integer = 14, fraction = 4)
+    @DocumentQuantity
     private BigDecimal expectedQty;
 
     @NotNull
     @PositiveOrZero
-    @Digits(integer = 14, fraction = 4)
+    @DocumentQuantity
     private BigDecimal targetQty;
 
     /**
@@ -54,7 +55,7 @@ public class StockBalanceAdjustmentRequest {
      * 空或 0 = 不改重量。数量不变时只要重量与当前不同也可以提交。
      */
     @DecimalMin("0")
-    @Digits(integer = 14, fraction = 4)
+    @Digits(integer = 40, fraction = 48)
     private BigDecimal targetWeightKg;
 
     @NotBlank

@@ -59,6 +59,43 @@ const _captureScreenshots = bool.fromEnvironment(
 
 void main() {
   testWidgets(
+    'permission Enter refreshes completed same-query data and suppresses actual in-flight duplicates',
+    (tester) async {
+      final repository = _EnterSearchRepository();
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+      );
+      repository.pending = Completer<PagedResult<AdminUserSummary>>();
+      final search = find.widgetWithText(TextField, '搜索姓名 / 工号 / 登录账号');
+      await tester.enterText(search, '张');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      expect(repository.queries.where((query) => query == '张'), hasLength(1));
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(repository.queries.where((query) => query == '张'), hasLength(1));
+      repository.pending!.complete(repository.result(1));
+      repository.pending = null;
+      repository.version = 2;
+      await tester.pumpAndSettle();
+      expect(find.textContaining('张员工1'), findsWidgets);
+      await tester.showKeyboard(find.byType(TextField).first);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repository.queries.where((query) => query == '张'), hasLength(2));
+      expect(find.textContaining('张员工2'), findsWidgets);
+      expect(find.textContaining('张员工1'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'authorization management without account support cannot reset credentials',
     (tester) async {
       final repository = _Repository(resetSupportAllowed: true);
@@ -1610,7 +1647,7 @@ class _AiRepository implements PagePermissionDelegationRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _Repository implements AdminRepository {
+class _Repository implements AdminRepository, AdminUserLookupRepository {
   _Repository({
     this.protected = false,
     this.paged = false,
@@ -1630,6 +1667,13 @@ class _Repository implements AdminRepository {
   final requestedPasswords = <String?>[];
   Object? resetError;
   int refreshedTargets = 0;
+  @override
+  Future<AdminUserSummary> userById(String userId) async {
+    expect(userId, user.id);
+    refreshedTargets++;
+    return user;
+  }
+
   String status = 'active';
   AdminUserSummary get user => AdminUserSummary(
     id: 'user-target',
@@ -1846,6 +1890,42 @@ AdminUserSummary _selectionUser(
   mustChangePassword: false,
   remoteAccess: false,
 );
+
+class _EnterSearchRepository extends _Repository {
+  final queries = <String?>[];
+  Completer<PagedResult<AdminUserSummary>>? pending;
+  int version = 0;
+  PagedResult<AdminUserSummary> result(int value) => PagedResult(
+    items: [
+      AdminUserSummary(
+        id: 'enter-$value',
+        loginAccount: 'fixture-enter-$value',
+        employeeName: '张员工$value',
+        employeeCode: 'E00$value',
+        employeeStatus: 'active',
+        currentEmployee: true,
+        status: 'active',
+        mustChangePassword: false,
+        remoteAccess: false,
+      ),
+    ],
+    page: 1,
+    size: 20,
+    total: 1,
+    totalPages: 1,
+  );
+  @override
+  Future<PagedResult<AdminUserSummary>> listUsers({
+    int page = 1,
+    int size = 20,
+    String? search,
+    String? status,
+  }) async {
+    queries.add(search);
+    if (search == '张' && pending != null) return pending!.future;
+    return result(version);
+  }
+}
 
 class _SelectionRowsRepository extends _Repository {
   _SelectionRowsRepository(this.rows);

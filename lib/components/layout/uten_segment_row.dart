@@ -27,7 +27,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../feedback/uten_dialog.dart';
 
-import '../../../core/theme/uten_tokens.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../feedback/uten_segment_badge_label.dart';
 import 'uten_fit_or_compact.dart';
 
@@ -45,6 +45,10 @@ class UtenSegmentRow<T> extends StatelessWidget {
     this.minCellWidth,
     this.minCellHeight = UtenFilterRow.minHeight,
     this.compactSummary,
+    this.segmentWrapper,
+    this.compactWrapper,
+    this.showCompactIcon = true,
+    this.compactLabel,
   });
 
   /// 分段定义（复用 Material 的 ButtonSegment：value/label/icon/enabled）。
@@ -82,6 +86,20 @@ class UtenSegmentRow<T> extends StatelessWidget {
   /// vertical panel. Selection labels never shrink to make room for these.
   final Widget? compactSummary;
 
+  /// Decorates the complete hit target in both the row and its compact panel.
+  /// Labels remain plain widgets so compact text retains the same meaning.
+  final Widget Function(ButtonSegment<T> segment, Widget child)? segmentWrapper;
+
+  /// Decorates the compact trigger without changing its selection behavior.
+  final Widget Function(Widget child)? compactWrapper;
+
+  /// Compact triggers and panel rows can omit icons for text-only controls.
+  final bool showCompactIcon;
+  final String? compactLabel;
+
+  Widget _wrapSegment(ButtonSegment<T> segment, Widget child) =>
+      segmentWrapper?.call(segment, child) ?? child;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -104,16 +122,19 @@ class UtenSegmentRow<T> extends StatelessWidget {
           children: [
             for (var i = 0; i < segments.length; i++) ...[
               if (i > 0) Container(width: 1, color: borderColor),
-              _SegmentCell<T>(
-                segment: segments[i],
-                isSelected: selected.contains(segments[i].value),
-                showSelectedIcon: showSelectedIcon,
-                selectedIcon: selectedIcon,
-                minCellWidth: minCellWidth,
-                minCellHeight: minCellHeight,
-                onPressed: canChange
-                    ? () => _handlePressed(segments[i].value)
-                    : null,
+              _wrapSegment(
+                segments[i],
+                _SegmentCell<T>(
+                  segment: segments[i],
+                  isSelected: selected.contains(segments[i].value),
+                  showSelectedIcon: showSelectedIcon,
+                  selectedIcon: selectedIcon,
+                  minCellWidth: minCellWidth,
+                  minCellHeight: minCellHeight,
+                  onPressed: canChange
+                      ? () => _handlePressed(segments[i].value)
+                      : null,
+                ),
               ),
             ],
           ],
@@ -139,12 +160,14 @@ class UtenSegmentRow<T> extends StatelessWidget {
     final picked = segments.where(
       (segment) => selected.contains(segment.value),
     );
-    final label = picked.isEmpty
-        ? '选择分类'
-        : picked.length == 1
-        ? _labelText(picked.single)
-        : '已选择 ${picked.length} 项';
-    return OutlinedButton(
+    final label =
+        compactLabel ??
+        (picked.isEmpty
+            ? '选择分类'
+            : picked.length == 1
+            ? _labelText(picked.single)
+            : '已选择 ${picked.length} 项');
+    final button = OutlinedButton(
       onPressed: enabled ? () => _showCategories(context) : null,
       style: OutlinedButton.styleFrom(
         minimumSize: Size(
@@ -163,8 +186,10 @@ class UtenSegmentRow<T> extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(label, softWrap: true)),
-              const SizedBox(width: UtenFilterRow.iconGap),
-              const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+              if (showCompactIcon) ...[
+                const SizedBox(width: UtenFilterRow.iconGap),
+                const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+              ],
             ],
           ),
           if (compactSummary != null) ...[
@@ -174,6 +199,7 @@ class UtenSegmentRow<T> extends StatelessWidget {
         ],
       ),
     );
+    return compactWrapper?.call(button) ?? button;
   }
 
   Future<void> _showCategories(BuildContext context) async {
@@ -201,34 +227,42 @@ class UtenSegmentRow<T> extends StatelessWidget {
               const Divider(height: 1),
               const SizedBox(height: 8),
               for (final segment in segments)
-                Semantics(
-                  selected: selected.contains(segment.value),
-                  button: true,
-                  enabled: segment.enabled,
-                  child: InkWell(
-                    onTap: segment.enabled
-                        ? () => Navigator.of(
-                            panelContext,
-                          ).pop(_SegmentChoice(segment.value))
-                        : null,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: UtenFilterRow.heightOf(panelContext),
-                      ),
-                      child: Padding(
-                        padding: UtenFilterRow.contentPadding,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 24,
-                              child: selected.contains(segment.value)
-                                  ? const Icon(Icons.check_rounded, size: 18)
-                                  : segment.icon,
-                            ),
-                            const SizedBox(width: UtenFilterRow.iconGap),
-                            Expanded(child: _panelLabel(segment)),
-                          ],
+                _wrapSegment(
+                  segment,
+                  Semantics(
+                    selected: selected.contains(segment.value),
+                    button: true,
+                    enabled: segment.enabled,
+                    child: InkWell(
+                      onTap: segment.enabled
+                          ? () => Navigator.of(
+                              panelContext,
+                            ).pop(_SegmentChoice(segment.value))
+                          : null,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: UtenFilterRow.heightOf(panelContext),
+                        ),
+                        child: Padding(
+                          padding: UtenFilterRow.contentPadding,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (showCompactIcon) ...[
+                                SizedBox(
+                                  width: 24,
+                                  child: selected.contains(segment.value)
+                                      ? const Icon(
+                                          Icons.check_rounded,
+                                          size: 18,
+                                        )
+                                      : segment.icon,
+                                ),
+                                const SizedBox(width: UtenFilterRow.iconGap),
+                              ],
+                              Expanded(child: _panelLabel(segment)),
+                            ],
+                          ),
                         ),
                       ),
                     ),

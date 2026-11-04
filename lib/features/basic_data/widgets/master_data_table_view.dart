@@ -7,9 +7,11 @@ import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/responsive/display_zoom.dart';
 import '../../../core/responsive/compact_presentation.dart';
 import '../../../components/layout/uten_action_overflow.dart';
+import '../../../components/layout/uten_table_action_scope.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_vertical_scrollbar.dart';
 import '../../../components/data_display/uten_table_surface.dart';
+import '../../../components/data_display/uten_table_header_group.dart';
 import '../../../components/data_display/uten_table_read_status.dart';
 import '../../../components/data_display/uten_table_text_selection.dart';
 import '../../../components/data_display/uten_selection_lifecycle.dart';
@@ -51,6 +53,7 @@ import '../../../components/layout/uten_prepend_scroll_anchor.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_overlay_lifecycle.dart';
 import '../../../components/feedback/uten_motion.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_table_cell_auto_width.dart';
@@ -204,6 +207,7 @@ class MasterColumnDef<T> {
     this.filterFromRows = false,
     this.columnSearchEnabled,
     this.facetSearchEnabled = false,
+    this.facetCandidatesUseKeyword = false,
     this.headerFilterAction,
     this.headerTrailingBuilder,
     this.cellColor,
@@ -220,10 +224,12 @@ class MasterColumnDef<T> {
     this.legendOf,
     this.aiSensitive = false,
     this.exportable = true,
+    this.headerGroups = const [],
   });
 
   final String key;
   final String label;
+  final List<UtenTableHeaderGroup> headerGroups;
   final bool defaultVisible;
 
   /// 状态图例「值 -> 含义」(ADR-150, 可选)：AI 助手读页面时, 本列每种底色/状态
@@ -329,6 +335,10 @@ class MasterColumnDef<T> {
   /// Search the complete supplied candidate list without adding a row keyword
   /// query. Opt in for enum facets whose server API accepts one exact value.
   final bool facetSearchEnabled;
+
+  /// Full-report text suggestions have no independent exact-facet contract.
+  /// They commit through Search even when opened before typing.
+  final bool facetCandidatesUseKeyword;
   final MasterHeaderFilterAction? headerFilterAction;
   final WidgetBuilder? headerTrailingBuilder;
 
@@ -6577,7 +6587,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   leading[i] is SizedBox &&
                   (leading[i] as SizedBox).child is UtenSearchBar
               ? SizedBox(width: 48, child: (leading[i] as SizedBox).child)
-              : leading[i],
+              : UtenTableActionScope(child: leading[i]),
         ),
     ];
   }
@@ -6590,7 +6600,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     return [
       for (var i = 0; i < actions.length; i++)
-        KeyedSubtree(key: _toolbarActionKeys[i], child: actions[i]),
+        KeyedSubtree(
+          key: _toolbarActionKeys[i],
+          child: UtenTableActionScope(child: actions[i]),
+        ),
     ];
   }
 
@@ -8158,7 +8171,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   Widget _buildHeaderRow(ThemeData theme) {
-    final row = _buildHeaderRowBody(theme);
+    final flatRow = _buildHeaderRowBody(theme);
+    final indices=_visibleIndices;
+    final depth=indices.fold<int>(0,(count,index)=>math.max(count,_columns[index].headerGroups.length));
+    final row=depth==0?flatRow:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+      for(int level=0;level<depth;level++)_buildHeaderGroupBand(theme,indices,level),
+      flatRow,
+    ]);
     return UtenTableRowRightEdge(
       child: !widget.showColumnChooser
           ? row
@@ -8179,6 +8198,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               row: row,
             ),
     );
+  }
+  Widget _buildHeaderGroupBand(ThemeData theme,List<int> indices,int level) {
+    Widget band(List<int> visible,{bool trailing=false}) {
+      final cells=<Widget>[];
+      if(_hasSelectionColumn)cells.add(const SizedBox(width:_selectionColWidth));
+      final paths=[for(final column in _columns)column.headerGroups];
+      for(final span in buildUtenTableHeaderGroupBand(paths,visible,level)) {
+        final width=span.columnIndices.fold<double>(0,(total,index)=>total+_widths[index]);
+        cells.add(SizedBox(width:width,child:UtenTableCellFrame(insetBorder:true,border:Border(right:BorderSide(color:theme.colorScheme.outline),bottom:BorderSide(color:theme.colorScheme.outline)),child:ConstrainedBox(constraints:const BoxConstraints(minHeight:32),child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:6),child:Center(child:Text(span.label,textAlign:TextAlign.center,style:theme.textTheme.labelLarge)))))));
+      }
+      if(trailing&&widget.showColumnChooser)cells.add(const SizedBox(width:48));
+      return IntrinsicHeight(child:Row(crossAxisAlignment:CrossAxisAlignment.stretch,children:cells));
+    }
+    final pinned=_pinnedVisibleIndices;
+    return ColoredBox(color:theme.colorScheme.surfaceContainerHigh,child:_withFrozenLeadingRegion(controller:_headerH,width:_pinnedLeadingWidth(pinned),cell:ColoredBox(color:theme.colorScheme.surfaceContainerHigh,child:band(pinned)),row:band(indices,trailing:true)));
   }
 
   Widget _buildHeaderRowBody(ThemeData theme) {
@@ -8305,6 +8339,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       scopeDescription: widget.headerFilterScopeDescription,
       filterAction: _columns[i].headerFilterAction,
       facetSearchEnabled: _columns[i].facetSearchEnabled,
+      candidatesUseKeyword: _columns[i].facetCandidatesUseKeyword,
       selectedBucket: _selectedFacetBuckets[sortKey],
       onBucketSelected: (bucket) {
         if (bucket == null) {
@@ -9173,6 +9208,7 @@ class _FilterCell extends StatefulWidget {
     this.leading,
     this.filterAction,
     this.facetSearchEnabled = false,
+    this.candidatesUseKeyword = false,
     this.scopeDescription,
   });
 
@@ -9191,6 +9227,7 @@ class _FilterCell extends StatefulWidget {
   final String? search;
   final MasterHeaderFilterAction? filterAction;
   final bool facetSearchEnabled;
+  final bool candidatesUseKeyword;
   final String? scopeDescription;
 
   /// 列头说明（MasterColumnDef.info 透传）：非空渲染 ⓘ，悬停 Tooltip、
@@ -9239,6 +9276,7 @@ class _FilterCellState extends State<_FilterCell> {
   int? _fetchingRevision;
   List<MasterFacetBucket> _remoteBuckets = const [];
   bool _remoteLoading = false;
+  bool _remoteManualLoading = false;
   bool _remoteHasMore = false;
   bool _remoteFailed = false;
   int _remotePage = 0;
@@ -9274,6 +9312,7 @@ class _FilterCellState extends State<_FilterCell> {
     _overlayLifecycle?.dispose();
     _overlayLifecycle = null;
     _searchRevision++;
+    _remoteManualLoading = false;
     _searchDebounce?.cancel();
     _overlay?.remove();
     _overlay = null;
@@ -9316,6 +9355,7 @@ class _FilterCellState extends State<_FilterCell> {
     _remoteHasMore = false;
     _remoteFailed = false;
     _remoteLoading = true;
+    _remoteManualLoading = immediate;
     _overlay?.markNeedsBuild();
     if (immediate) {
       _fetchRemote(revision, 1);
@@ -9343,21 +9383,35 @@ class _FilterCellState extends State<_FilterCell> {
       _remoteHasMore = false;
       _remoteFailed = false;
       _remoteLoading = false;
+      _remoteManualLoading = false;
       _overlay?.markNeedsBuild();
       return;
     }
     _searchRemote(value.text);
   }
 
-  Future<void> _fetchRemote(int revision, int page) async {
+  Future<void> _fetchRemote(
+    int revision,
+    int page, {
+    bool manual = false,
+  }) async {
     if (!(widget.isCurrent?.call() ?? true)) return;
     if (_fetchingRevision == revision) return;
     _fetchingRevision = revision;
     _remoteLoading = true;
+    _remoteManualLoading = _remoteManualLoading || manual;
     _remoteFailed = false;
     _overlay?.markNeedsBuild();
     try {
-      final result = await widget.loadFacetPage!(_remoteQuery, page);
+      final query = _remoteQuery;
+      final result = await PagedReadIntent.scopedRead(
+        () =>
+            mounted &&
+            _overlay != null &&
+            revision == _searchRevision &&
+            (widget.isCurrent?.call() ?? true),
+        () => widget.loadFacetPage!(query, page),
+      );
       if (!mounted ||
           _overlay == null ||
           revision != _searchRevision ||
@@ -9374,6 +9428,7 @@ class _FilterCellState extends State<_FilterCell> {
       _remoteHasMore = result.hasMore;
       _remotePage = page;
       _remoteLoading = false;
+      _remoteManualLoading = false;
       _overlay?.markNeedsBuild();
     } catch (_) {
       if (!mounted ||
@@ -9384,6 +9439,7 @@ class _FilterCellState extends State<_FilterCell> {
       }
       _fetchingRevision = null;
       _remoteLoading = false;
+      _remoteManualLoading = false;
       _remoteFailed = true;
       _overlay?.markNeedsBuild();
     }
@@ -9396,6 +9452,21 @@ class _FilterCellState extends State<_FilterCell> {
     widget.onBucketSelected?.call(bucket);
     widget.onChanged(value);
     _close();
+  }
+
+  void _selectCandidate(MasterFacetBucket bucket) {
+    if (utenColumnCandidateAppliesSearch(
+      supportsSearch: widget.onSearch != null && widget.type == 'text',
+      query: _searchCtl?.text ?? '',
+      value: bucket.value,
+      display: bucket.display,
+      alwaysSearch: widget.candidatesUseKeyword,
+    )) {
+      _searchCtl?.text = bucket.display;
+      _submitSearch();
+    } else {
+      _select(bucket.value, bucket: bucket);
+    }
   }
 
   void _submitSearch() {
@@ -9633,7 +9704,7 @@ class _FilterCellState extends State<_FilterCell> {
                   q,
                   fields: (bucket) => [bucket.display],
                 );
-          return UtenTableHeaderMenuList(
+          final menu = UtenTableHeaderMenuList(
             search:
                 widget.onSearch != null ||
                     hasFacets ||
@@ -9747,7 +9818,7 @@ class _FilterCellState extends State<_FilterCell> {
                         ? '${b.display} (${b.count})'
                         : b.display,
                     isSelected: sanitized == b.value,
-                    onTap: () => _select(b.value, bucket: b),
+                    onTap: () => _selectCandidate(b),
                     theme: theme,
                   ),
                 // 「其他」兜底桶固定放最后（2026-09-16 用户口径）：
@@ -9775,14 +9846,20 @@ class _FilterCellState extends State<_FilterCell> {
                   ),
                 if (_remoteFailed)
                   TextButton(
-                    onPressed: () =>
-                        _fetchRemote(_searchRevision, _remotePage + 1),
+                    onPressed: () => _fetchRemote(
+                      _searchRevision,
+                      _remotePage + 1,
+                      manual: true,
+                    ),
                     child: Text(basicDataL10n(ctx).tableFacetLoadFailed),
                   ),
                 if (_remoteHasMore && !_remoteLoading && !_remoteFailed)
                   TextButton(
-                    onPressed: () =>
-                        _fetchRemote(_searchRevision, _remotePage + 1),
+                    onPressed: () => _fetchRemote(
+                      _searchRevision,
+                      _remotePage + 1,
+                      manual: true,
+                    ),
                     child: Text(basicDataL10n(ctx).tableFacetLoadMore),
                   ),
                 if (buckets.isEmpty &&
@@ -9802,6 +9879,16 @@ class _FilterCellState extends State<_FilterCell> {
                     ),
                   ),
               ],
+            ],
+          );
+          return Stack(
+            children: [
+              menu,
+              if (_remoteLoading && _remoteManualLoading)
+                const UtenBusyOverlay(
+                  title: '正在加载候选',
+                  showDoNotLeaveHint: false,
+                ),
             ],
           );
         },

@@ -34,6 +34,18 @@ import static org.springframework.format.annotation.DateTimeFormat.ISO;
 public class FinanceStatementController {
 
     private final FinanceStatementService service;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<FinanceStatementDocumentService> documents;
+
+    private ReportTableResponse original(String variant,LocalDate from,LocalDate to,int page,int size){
+        var id=FinanceStatementRequest.id("statementReviewId");if(id==null)return null;
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        if(!options.filters().isEmpty()||options.sort()!=null&&!options.sort().isBlank()||options.order()!=null&&!options.order().isBlank()
+                ||request!=null&&request.getParameter("keyword")!=null&&!request.getParameter("keyword").isBlank())
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"冻结原件须按原完整范围输出，请清除搜索、列筛选和排序");
+        return documents.getObject().originalTableFor(variant,id,from,to,FinanceStatementRequest.id("partyId"),FinanceStatementRequest.id("currencyId"),page,size,FinanceStatementRequest.id("materialContextId"),variant.equals("other-receivable")?FinanceStatementRequest.allMaterialContexts():null);
+    }
 
     /** 附件 1 · 委外加工对账单（前端两个 chip 共用：委外加工 / 采购外放加工）。 */
     @GetMapping("/subcontract")
@@ -45,6 +57,10 @@ public class FinanceStatementController {
             @RequestParam(required = false) BigDecimal lossRate,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
+        var original=original("subcontract",dateFrom,dateTo,page,size);if(original!=null)return original;
+        if(FinanceStatementRequest.template())return service.subcontractStatement(keyword,dateFrom,dateTo,lossRate,
+                FinanceStatementRequest.id("partyId"),FinanceStatementRequest.id("currencyId"),page,size,
+                com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
         return service.subcontractStatement(keyword, dateFrom, dateTo, lossRate, page, size,
                 com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
@@ -58,6 +74,10 @@ public class FinanceStatementController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
+        var original=original("supplier",dateFrom,dateTo,page,size);if(original!=null)return original;
+        if(FinanceStatementRequest.template())return service.supplierStatement(keyword,dateFrom,dateTo,
+                FinanceStatementRequest.id("partyId"),FinanceStatementRequest.id("currencyId"),page,size,
+                com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
         return service.supplierStatement(keyword, dateFrom, dateTo, page, size,
                 com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
@@ -71,6 +91,9 @@ public class FinanceStatementController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
+        var original=original("other-receivable",dateFrom,dateTo,page,size);if(original!=null)return original;
+        if(FinanceStatementRequest.template()||FinanceStatementRequest.id("materialContextId")!=null)
+            return documents.getObject().currentMaterialTable(FinanceStatementRequest.id("materialContextId"),FinanceStatementRequest.id("partyId"),FinanceStatementRequest.id("currencyId"),keyword,dateFrom,dateTo,page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current(),FinanceStatementRequest.allMaterialContexts());
         return service.otherReceivableStatement(keyword, dateFrom, dateTo, page, size,
                 com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
@@ -84,6 +107,10 @@ public class FinanceStatementController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
+        var original=original("client",dateFrom,dateTo,page,size);if(original!=null)return original;
+        if(FinanceStatementRequest.template())return service.clientStatement(keyword,dateFrom,dateTo,
+                FinanceStatementRequest.id("partyId"),FinanceStatementRequest.id("currencyId"),page,size,
+                com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
         return service.clientStatement(keyword, dateFrom, dateTo, page, size,
                 com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }

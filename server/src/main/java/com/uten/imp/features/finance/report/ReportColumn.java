@@ -10,7 +10,16 @@ package com.uten.imp.features.finance.report;
  */
 public record ReportColumn(String key, String label, String type, Integer width,
                            String totalLabel, String totalGroupKey, String unitLabel, String unitKey,
-                           String totalGroupIdentityKey) implements com.uten.imp.common.report.ReportValueUnit {
+                           String totalGroupIdentityKey,java.util.List<HeaderGroup> headerGroups) implements com.uten.imp.common.report.ReportValueUnit {
+    public record HeaderGroup(String id,String label) { }
+    public ReportColumn {headerGroups=headerGroups==null?java.util.List.of():java.util.List.copyOf(headerGroups);}
+    public ReportColumn(String key,String label,String type,Integer width,String totalLabel,String totalGroupKey,
+                        String unitLabel,String unitKey,String totalGroupIdentityKey){
+        this(key,label,type,width,totalLabel,totalGroupKey,unitLabel,unitKey,totalGroupIdentityKey,java.util.List.of());
+    }
+    public ReportColumn withHeaderGroups(java.util.List<HeaderGroup> groups){
+        return new ReportColumn(key,label,type,width,totalLabel,totalGroupKey,unitLabel,unitKey,totalGroupIdentityKey,groups);
+    }
 
     public ReportColumn(String key, String label, String type, Integer width,
                         String totalLabel, String totalGroupKey, String unitLabel, String unitKey) {
@@ -24,11 +33,11 @@ public record ReportColumn(String key, String label, String type, Integer width,
     }
 
     public ReportColumn withUnitLabel(String unit) {
-        return new ReportColumn(key, label, type, width, totalLabel, totalGroupKey, unit, null, totalGroupIdentityKey);
+        return new ReportColumn(key, label, type, width, totalLabel, totalGroupKey, unit, null, totalGroupIdentityKey,headerGroups);
     }
 
     public ReportColumn withUnitKey(String rowKey) {
-        return new ReportColumn(key, label, type, width, totalLabel, totalGroupKey, null, rowKey, totalGroupIdentityKey);
+        return new ReportColumn(key, label, type, width, totalLabel, totalGroupKey, null, rowKey, totalGroupIdentityKey,headerGroups);
     }
 
     /** 兼容构造：不参与合计的列沿用原 4 参签名（所有既有工厂方法走这里）。 */
@@ -50,7 +59,7 @@ public record ReportColumn(String key, String label, String type, Integer width,
 
     /** Group totals by a real source identity; the display name never establishes equivalence. */
     public ReportColumn totaled(String totalLabel,String displayKey,String identityKey) {
-        return new ReportColumn(key,label,type,width,totalLabel,displayKey,unitLabel,unitKey,identityKey);
+        return new ReportColumn(key,label,type,width,totalLabel,displayKey,unitLabel,unitKey,identityKey,headerGroups);
     }
 
     /** 无分组维度的合计（整份报表只出一个总数）。 */

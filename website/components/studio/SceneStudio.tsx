@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { ArrowUpRight, Check, Grip, Minus, Plus, RotateCcw, Search } from 'lucide-react';
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { searchTerms, textSearchRank } from '@/lib/text-search';
 import { Link } from '@/i18n/navigation';
 import {
   STUDIO_PLACEMENT_LIMITS,
@@ -112,10 +113,10 @@ export function SceneStudio({
   const scene = scenes.find((item) => item.id === sceneId) || scenes[0];
   const variant = variants.find((item) => item.id === variantId) || variants[0];
   const variantGroups = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
-    const matches = normalized
-      ? variants.filter((item) => `${item.productName} ${item.name} ${item.model || ''} ${item.seriesName || ''}`.toLocaleLowerCase().includes(normalized))
-      : variants;
+    const terms = searchTerms(query, 80);
+    const matches = terms.length ? variants.map((item, position) => ({ item, position,
+      rank: textSearchRank([item.productName, item.name, item.model, item.seriesName], terms) }))
+      .filter(match => match.rank >= 0).sort((left, right) => left.rank - right.rank || left.position - right.position).map(match => match.item) : variants;
     const groups = new Map<string, StudioVariant[]>();
     for (const item of matches) {
       const groupName = item.seriesName?.trim() || '';

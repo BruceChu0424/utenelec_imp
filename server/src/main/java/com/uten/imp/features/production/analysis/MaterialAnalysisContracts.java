@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.uten.imp.common.validation.RequestLimits;
@@ -75,8 +76,8 @@ public final class MaterialAnalysisContracts {
             @Size(max = 200) String sourceRef,
             @Size(max = 1000) String sourceReason,
             LocalDate deliveryDate,
-            @NotNull @DecimalMin(value = "0.0001")
-            @Digits(integer = 14, fraction = 4) BigDecimal requestedQty) {
+            @NotNull @DecimalMin(value = "0", inclusive=false)
+            @DocumentQuantity BigDecimal requestedQty) {
     }
 
     public record BomDiagnosticRequest(
@@ -178,8 +179,8 @@ public final class MaterialAnalysisContracts {
             @Size(max = 64) String actionGroupKey,
             UUID materialLineId,
             @NotNull @DecimalMin(value = "0")
-            @Digits(integer = 14, fraction = 4) BigDecimal qty,
-            @DecimalMin(value = "0") @Digits(integer = 14, fraction = 4)
+            @DocumentQuantity BigDecimal qty,
+            @DecimalMin(value = "0") @DocumentQuantity
             BigDecimal safetyReplenishmentQty) {
     }
 
@@ -202,7 +203,7 @@ public final class MaterialAnalysisContracts {
 
     public record SharedFutureClaimQuantity(
             @NotBlank @Size(max=64) String actionGroupKey,
-            @NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,
+            @NotNull @DecimalMin(value="0",inclusive=false) @DocumentQuantity BigDecimal qty,
             UUID sourceActionId) {
     }
 
@@ -246,8 +247,8 @@ public final class MaterialAnalysisContracts {
         public record IssuePlanLine(
                 UUID materialLineId,
                 UUID analysisLineId,
-                @NotNull @DecimalMin(value = "0.0001")
-                @Digits(integer = 14, fraction = 4) BigDecimal qty,
+                @NotNull @DecimalMin(value = "0", inclusive=false)
+                @DocumentQuantity BigDecimal qty,
                 LocalDate billDate,
                 LocalDate deliveryDate,
                 UUID departmentId,
@@ -316,7 +317,7 @@ public final class MaterialAnalysisContracts {
         public record TypedOutput(
                 @NotNull UUID materialLineId,
                 @NotNull @DecimalMin(value = "0.0000")
-                @Digits(integer = 14, fraction = 4) BigDecimal qty) {}
+                @DocumentQuantity BigDecimal qty) {}
 
         IssueWorkshopPlansRequest toIssueRequest() {
             return new IssueWorkshopPlansRequest(version, fingerprint, idempotencyKey, warehouseId,
@@ -327,8 +328,8 @@ public final class MaterialAnalysisContracts {
     /** 生成计划时的逐行排产输入（分析行 + 数量 + 车间/负责人）。 */
     public record PlanQuantity(
             @NotNull UUID analysisLineId,
-            @NotNull @DecimalMin(value = "0.0001")
-            @Digits(integer = 14, fraction = 4) BigDecimal qty,
+            @NotNull @DecimalMin(value = "0", inclusive=false)
+            @DocumentQuantity BigDecimal qty,
             LocalDate billDate,
             LocalDate deliveryDate,
             UUID departmentId,
@@ -399,8 +400,8 @@ public final class MaterialAnalysisContracts {
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
             @NotNull UUID fromMaterialLineId,
             @NotNull UUID toMaterialLineId,
-            @NotNull @DecimalMin(value = "0.0001")
-            @Digits(integer = 14, fraction = 4) BigDecimal qty,
+            @NotNull @DecimalMin(value = "0", inclusive=false)
+            @DocumentQuantity BigDecimal qty,
             @NotBlank @Size(min = 2, max = 1000) String reason) {
     }
 
@@ -425,8 +426,8 @@ public final class MaterialAnalysisContracts {
             @NotNull Long targetVersion,
             @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String targetFingerprint,
             @NotNull UUID targetMaterialLineId,
-            @NotNull @DecimalMin(value = "0.0001")
-            @Digits(integer = 14, fraction = 4) BigDecimal qty,
+            @NotNull @DecimalMin(value = "0", inclusive=false)
+            @DocumentQuantity BigDecimal qty,
             @Size(max = 1000) String reason,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
     }
@@ -1151,6 +1152,9 @@ public final class MaterialAnalysisContracts {
             if(mainWarehousePublicAvailableQty!=null)values.put("mainWarehousePublicAvailableQty",mainWarehousePublicAvailableQty.toPlainString());
             if(sharedFutureClaimableQty!=null)values.put("sharedFutureClaimableQty",sharedFutureClaimableQty.toPlainString());
             if(preparationSharedAvailableQty!=null)values.put("preparationSharedAvailableQty",preparationSharedAvailableQty.toPlainString());
+            if(preparationOwnedAvailableQty!=null)values.put("preparationOwnedAvailableQty",preparationOwnedAvailableQty.toPlainString());
+            if(preparationUncoveredBeforeSharedQty!=null)values.put("preparationUncoveredBeforeSharedQty",preparationUncoveredBeforeSharedQty.toPlainString());
+            if(preparationAdoptableSharedQty!=null)values.put("preparationAdoptableSharedQty",preparationAdoptableSharedQty.toPlainString());
             return java.util.Collections.unmodifiableMap(values);
         }
         /** 缺 BOM 标记与研发任务编号(只在详情最后一步按库内判定写入)。 */
@@ -1205,7 +1209,9 @@ public final class MaterialAnalysisContracts {
     public record TransferableInSummary(
             java.util.Map<UUID, BigDecimal> qtyByMaterialLineId) {}
 
-    public record PreparationSharedSupplySlice(String key,BigDecimal availableQty,boolean adoptable) { }
+    public record PreparationSharedSupplySlice(String key,BigDecimal availableQty,boolean adoptable) {
+        public String getAvailableQtyExact(){return com.uten.imp.common.util.DecimalText.of(availableQty);}
+    }
 
     public record SharedFutureSupplyRef(
             String route,

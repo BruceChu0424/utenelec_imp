@@ -1,3 +1,5 @@
+import '../../../core/formatters/exact_number_text.dart';
+import '../../../shared/models/customer_actual_receipt_context.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/business_columns/business_column.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -165,9 +167,9 @@ String priorityLabel(int? p) {
 
 /// 数量短文本：整数不带小数，其余最多 4 位并去掉尾零（链路标签/阶段文案用）。
 String salesQtyText(double value) {
-  if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+  if (value == value.roundToDouble()) return value.toExactString();
   return value
-      .toStringAsFixed(4)
+      .toExactString(minimumFractionDigits: 4)
       .replaceFirst(RegExp(r'0+$'), '')
       .replaceFirst(RegExp(r'\.$'), '');
 }
@@ -371,6 +373,8 @@ bool salesShipmentLocksDraftEdit({
 class ShipmentFinanceAuditInfo {
   const ShipmentFinanceAuditInfo({
     this.shipmentId,
+    this.actualReceiptContext,
+    this.financeAuditorName,
     this.financeAudit,
     this.clientName,
     this.settlementMethodId,
@@ -423,6 +427,8 @@ class ShipmentFinanceAuditInfo {
   final String? commercialSnapshot;
   final String? previousCommercialSnapshot;
 
+  final CustomerActualReceiptContext? actualReceiptContext;
+  final String? financeAuditorName;
   final String? shipmentId;
   final int? financeAudit;
   final String? clientName;
@@ -438,6 +444,12 @@ class ShipmentFinanceAuditInfo {
   factory ShipmentFinanceAuditInfo.fromJson(Map<String, dynamic> json) =>
       ShipmentFinanceAuditInfo(
         shipmentId: _text(json['shipmentId']),
+        actualReceiptContext: json['actualReceiptContext'] is Map
+            ? CustomerActualReceiptContext.fromJson(
+                Map<String, dynamic>.from(json['actualReceiptContext'] as Map),
+              )
+            : null,
+        financeAuditorName: _text(json['financeAuditorName']),
         reviewRevision: (json['reviewRevision'] as num?)?.toInt(),
         contentHash: _text(json['contentHash']),
         billingMode: _text(json['billingMode']),
@@ -1167,6 +1179,7 @@ class SalesDocDetail {
     this.rejectReason,
     this.financeAudit,
     this.financeAuditedAt,
+    this.financeAuditorName,
     this.priceMasked = false,
     this.writable = false,
     this.requotedToId,
@@ -1273,6 +1286,7 @@ class SalesDocDetail {
   /// C6 财务发货审核：0 未审 / 1 已审发货（出货单）。
   final int? financeAudit;
   final String? financeAuditedAt;
+  final String? financeAuditorName;
 
   /// 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族字段渲染 ***
   final bool priceMasked;
@@ -1381,6 +1395,7 @@ class SalesDocDetail {
     rejectReason: json['rejectReason'] as String?,
     financeAudit: (json['financeAudit'] as num?)?.toInt(),
     financeAuditedAt: json['financeAuditedAt'] as String?,
+    financeAuditorName: json['financeAuditorName'] as String?,
     priceMasked: (json['priceMasked'] as bool?) ?? false,
     writable: (json['writable'] as bool?) ?? false,
     requotedToId: json['requotedToId'] as String?,

@@ -72,6 +72,10 @@ public class SubcontractMaterialReturnService {
 
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.uten.imp.application.port.SubcontractMaterialReversalValuePort reversalValue;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.BusinessNumericInputEvidencePort numericInputEvidence;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.SubcontractMaterialQuantityPort materialQuantities;
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -406,15 +410,25 @@ public class SubcontractMaterialReturnService {
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */
     private void applyMovement(SubcontractMaterialReturn r, SubcontractMaterialReturnItem it, short direction,
                                OffsetDateTime ts, BigDecimal overrideAmount) {
-        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        BigDecimal baseQty = it.getQty().multiply(rate);
+        var conversion=direction>0?com.uten.imp.common.finance.DocumentUnitConversion.saved(em,it.getId(),it.getQty(),it.getUnitId(),it.getUnitRate()):null;
+        if(conversion!=null){
+            if(materialQuantities==null)throw new ApiException(ErrorCode.CONFLICT,"当前无法核对原委外材料实际可退数量");
+            com.uten.imp.common.finance.DocumentUnitConversion.requireWithin(conversion,materialQuantities.returnableBaseQuantity(it.getMaterialIssueItemId()));
+        }
+        var original=direction<0?com.uten.imp.common.finance.DocumentUnitConversion.originalMovement(em,StockService.SRC_SUBCONTRACT_MATERIAL_RETURN,
+                StockService.TYPE_SUBCONTRACT_MATERIAL_RETURN,r.getId(),it.getId(),it.getGoodsId(),it.getColorId(),r.getWarehouseId(),1):null;
+        BigDecimal baseQty=conversion==null?original.quantity():conversion.basicQuantity();
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
-        stockService.recordMovement(new StockService.MovementRequest(
+        var posted=stockService.recordMovement(new StockService.MovementRequest(
                 ts, StockService.TYPE_SUBCONTRACT_MATERIAL_RETURN, StockService.SRC_SUBCONTRACT_MATERIAL_RETURN,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
                 // 委外材料退回不是仓库称重单据: 不带重量, 由库存账推算; 红冲按原流水镜像(ADR-135)。
                 direction < 0 ? "红冲" : null, null));
+        // The shared ledger owns the movement ID. The original-input proof is
+        // saved in the same transaction before its deferred identity guard.
+        if(conversion!=null)com.uten.imp.common.finance.DocumentUnitConversion.captureSaved(numericInputEvidence,posted.movementId(),it.getId(),it.getGoodsId(),it.getUnitId(),conversion);
+        else com.uten.imp.common.finance.DocumentUnitConversion.captureRestore(numericInputEvidence,posted.movementId(),it.getId(),it.getGoodsId(),original);
     }
 
     private void applyHeader(MaterialReturnSaveRequest req, SubcontractMaterialReturn r) {
@@ -498,6 +512,7 @@ public class SubcontractMaterialReturnService {
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
+            com.uten.imp.common.finance.DocumentUnitConversion.project(l.getQty(),l.getUnitId(),l.getUnitRate());
             it.setPrice(l.getPrice());
             // 金额只由服务端派生(ADR-112): 数量 × 单价; 本单据无币种, 按本位币计(汇率 1)。单价空则金额空。
             MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);

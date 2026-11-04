@@ -32,7 +32,7 @@ public class GoodsSubcontractLossPolicyController {
     private final TxSessionVars tx;
 
     public record Policy(@NotNull Long expectedVersion,
-            @DecimalMin("0") @DecimalMax("100") @Digits(integer = 3, fraction = 2) BigDecimal percent) {}
+            @DecimalMin("0") @DecimalMax("100") @com.uten.imp.common.validation.DocumentAmount BigDecimal percent) {}
 
     @PutMapping("/api/master/goods/{id}/subcontract-loss-policy")
     @PreAuthorize("hasAuthority('goods:purchase:edit') and hasAuthority('goods:cost:view')")

@@ -96,7 +96,7 @@ public class SubcontractReturnAmountAuthority {
                 throw conflict("委外退货委外商、币种、汇率、税率、结算方式或订单来源与进仓事实不一致");
             }
             if (validatedReceipts.add(sourceReceiptId)) {
-                ProcurementReturnPayableAuthority.lockAndValidate(
+                ProcurementReturnPayableAuthority.lockAndValidateConsideration(
                         em, "SUBCONTRACT", sourceReceiptId, sourceSupplierId,
                         sourceCurrencyId, sourceRate, sourceSettlementMethodId,
                         sourceReceiptOriginal, sourceReceiptLocal, sourceApPosted);

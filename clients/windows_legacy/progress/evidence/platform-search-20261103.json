@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 1,
+  "id": "E-PLATFORM-SEARCH-20261103",
+  "baselineCommit": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "scope": "Search improvements, read-only queries and existing native surfaces only",
+  "sourceReview": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/website-wpf-search-review.json",
+  "packages": [
+    {
+      "id": "W7-CORE-001",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-002",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-003",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-004",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-005",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-006",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-007",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-008",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-009",
+      "businessSource": null,
+      "status": "implemented",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-010",
+      "businessSource": null,
+      "status": "in_progress",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-011",
+      "businessSource": null,
+      "status": "verified_local",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-012",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-013",
+      "businessSource": null,
+      "status": "verified_local",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-014",
+      "businessSource": null,
+      "status": "verified_local",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-015",
+      "businessSource": null,
+      "status": "in_progress",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-016",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-017",
+      "businessSource": null,
+      "status": "done",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-018",
+      "businessSource": null,
+      "status": "verified_local",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-019",
+      "businessSource": null,
+      "status": "verified_local",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-020",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-021",
+      "businessSource": null,
+      "status": "in_progress",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-CORE-022",
+      "businessSource": null,
+      "status": "verified_local",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-001",
+      "businessSource": null,
+      "status": "in_progress",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-002",
+      "businessSource": null,
+      "status": "in_progress",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-003",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-004",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-005",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-006",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-007",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-ARCH-008",
+      "businessSource": null,
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-007",
+      "businessSource": "lib/features/admin/pages/admin_permissions_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-025",
+      "businessSource": "lib/features/basic_data/pages/goods_detail_page.dart",
+      "status": "in_progress",
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs"
+      ],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-031",
+      "businessSource": "lib/features/basic_data/pages/mould_category_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-033",
+      "businessSource": "lib/features/basic_data/pages/payment_style_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-034",
+      "businessSource": "lib/features/basic_data/pages/product_category_page.dart",
+      "status": "in_progress",
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs"
+      ],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-038",
+      "businessSource": "lib/features/basic_data/pages/warehouse_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-043",
+      "businessSource": "lib/features/department/pages/department_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-048",
+      "businessSource": "lib/features/employee/pages/employee_list_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-049",
+      "businessSource": "lib/features/employee/pages/employee_offboarding_workflow_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-050",
+      "businessSource": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    },
+    {
+      "id": "W7-BIZ-102",
+      "businessSource": "lib/features/production/pages/production_daily_report_edit_page.dart",
+      "status": "todo",
+      "nativeTargets": [],
+      "interpretation": "Search contract evidence only; existing migration status retained."
+    }
+  ],
+  "workItemCount": 362,
+  "statusOwnerDoDAndDependenciesPreserved": true,
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "productionDeploymentPerformed": false,
+  "validation": "Existing native goods/unit search x86/x64 local input/IME/retirement tests passed; new Dart business candidate pages are not native migrations.",
+  "contract": "clients/windows_legacy/progress/contracts/platform-search-v1.json",
+  "integrationVerification": {
+    "baseCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+    "evidence": "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json",
+    "historicalWorkItemCountRetained": 362,
+    "currentIntegratedWorkItemCount": 368,
+    "allMainPackageIdsStatusesOwnersDoDAndDependenciesPreserved": true,
+    "allOriginalMainEvidenceRetained": true,
+    "newMainApplicationContractsEvidenceAndHandoverHashesPreserved": true,
+    "nativeX86X64SearchAndReadScopeFixturePassed": true,
+    "fullErpEquivalent": false,
+    "win7Accepted": false,
+    "published": false
+  }
+}

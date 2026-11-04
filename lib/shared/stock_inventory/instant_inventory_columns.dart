@@ -138,7 +138,7 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       type: 'weight',
       sortable: true,
       value: (r) => formatWeightValue(
-        r.weight,
+        r.weightText,
         display: weightDisplay,
         estimated: r.weightEstimated,
         unknownText: r.weightUnknown || (r.qty ?? 0) != 0
@@ -146,7 +146,7 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
             : '—',
       ),
       cellBuilder: (_, r) => WeightText(
-        kg: r.weight,
+        kg: r.weightText,
         estimated: r.weightEstimated,
         display: weightDisplay,
         unknownText: r.weightUnknown || (r.qty ?? 0) != 0

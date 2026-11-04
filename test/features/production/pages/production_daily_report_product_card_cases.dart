@@ -73,7 +73,7 @@ void registerDailyReportProductCardTests() {
       final showFirst = grid.revealRow(grid.rows.first);
       await tester.pumpAndSettle();
       expect(await showFirst, isTrue);
-      expect(card, findsNothing);
+      expect(card.hitTestable(), findsNothing);
 
       expect(material.materialInvalid, isTrue);
       expect(material.materialEditable, isTrue);

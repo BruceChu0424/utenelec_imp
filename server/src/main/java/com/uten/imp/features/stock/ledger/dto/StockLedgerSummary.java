@@ -35,4 +35,18 @@ public record StockLedgerSummary(
         long inWeightUnknownRows,
         long outWeightUnknownRows,
         BigDecimal residualKg) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("openingWeightKgExact")
+    public String getOpeningWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(openingWeightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("closingWeightKgExact")
+    public String getClosingWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(closingWeightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("inWeightKgExact")
+    public String getInWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(inWeightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("outWeightKgExact")
+    public String getOutWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(outWeightKg);}
+
+    public String getResidualKgExact(){return com.uten.imp.common.util.DecimalText.of(residualKg);}
 }

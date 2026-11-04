@@ -77,6 +77,35 @@ class ReportKeywordSearchPostgresTest {
                 empty.build(null).params(), Long.class)).isEqualTo(4);
     }
 
+    @Test void dedicatedBillNumberFiltersKeepLiteralPercentUnderscoreAndBackslashAcrossReportFamilies() {
+        String fixture = """
+                WITH o(id,bill_no,status,bill_date,owner_key,qty) AS (VALUES
+                  (1,'A%_B\\X',1,DATE '2026-11-03','A',10),
+                  (2,'AxYBZQ',1,DATE '2026-11-03','A',20),
+                  (3,'A%_B\\X',1,DATE '2026-11-03','OTHER',9999))
+                """;
+        for (String report : List.of("purchase", "sales", "stock")) {
+            var where = new ReportQueryKit.WhereBuilder("WHERE o.owner_key='A'");
+            switch (report) {
+                case "purchase" -> ReportQueryKit.addCommonDocFilters(where, "A%_B\\X", null, null,
+                        null, null, null, null, "o.bill_no", "o.bill_date");
+                case "sales" -> ReflectionTestUtils.invokeMethod(SalesReportService.class, "addCommonDocFilters",
+                        where, "A%_B\\X", null, null, null, null, null, null, "o.bill_no", "o.bill_date");
+                case "stock" -> ReflectionTestUtils.invokeMethod(StockReportService.class, "addCommonFilters",
+                        where, "A%_B\\X", null, null, null, null, null, null, null, true, false);
+                default -> throw new IllegalArgumentException(report);
+            }
+            var full = where.build(null);
+            assertThat(jdbc.queryForList(fixture + "SELECT id FROM o " + full.sql(), full.params(), Integer.class))
+                    .as("%s dedicated bill filter", report).containsExactly(1);
+            assertThat(jdbc.queryForObject(fixture + "SELECT count(*) FROM o " + full.sql(), full.params(), Long.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject(fixture + "SELECT sum(qty) FROM o " + full.sql(), full.params(), BigDecimal.class))
+                    .isEqualByComparingTo("10");
+            assertThat(jdbc.queryForList(fixture + "SELECT bill_no FROM o " + full.sql()
+                    + " GROUP BY bill_no", full.params(), String.class)).containsExactly("A%_B\\X");
+        }
+    }
+
     @Test void aCompletePhraseRanksAheadOfWordsSplitAcrossDifferentFieldsAndGroupedRows() {
         var where = where("Metric Screw");
         var full = where.build(null);

@@ -3,6 +3,8 @@
 // type 取值：text / date / number / money / bool / int（后端权威返回）。
 // 前端据此决定单元格格式化（formatReportCell）与是否可排序（isSortableReportType）。
 
+import '../../../components/data_display/uten_table_header_group.dart';
+
 /// 一列：[key]（与后端 query/排序参数对齐）、[label]（列头）、[type]、[width]（建议列宽）。
 class ReportColumn {
   const ReportColumn({
@@ -12,6 +14,7 @@ class ReportColumn {
     this.width,
     this.unitLabel,
     this.unitKey,
+    this.headerGroups = const [],
   });
 
   final String key;
@@ -20,6 +23,7 @@ class ReportColumn {
   final double? width;
   final String? unitLabel;
   final String? unitKey;
+  final List<UtenTableHeaderGroup> headerGroups;
 
   factory ReportColumn.fromJson(Map<String, dynamic> j) => ReportColumn(
     key: (j['key'] ?? '').toString(),
@@ -28,5 +32,13 @@ class ReportColumn {
     width: (j['width'] as num?)?.toDouble(),
     unitLabel: j['unitLabel']?.toString(),
     unitKey: j['unitKey']?.toString(),
+    headerGroups: [
+      for (final group in j['headerGroups'] as List? ?? const [])
+        if (group is Map)
+          UtenTableHeaderGroup(
+            id: group['id']?.toString() ?? '',
+            label: group['label']?.toString() ?? '',
+          ),
+    ],
   );
 }

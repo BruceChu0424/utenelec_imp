@@ -30,6 +30,7 @@ final class GlComputedHeaders {
         } else if(report.equals("gl/profit-annual")||report.equals("gl/profit-monthly")) {
             Set<Object> closure=new LinkedHashSet<>(identities);
             for(Object id:identities)closure.addAll(FinancialStatementCatalog.context("PROFIT",((Number)id).intValue()));
+            if(report.equals("gl/profit-annual")&&identities.contains(33))closure.add(32);
             identities=closure;
         }
         for(var row:original.rows())if(identities.contains(identity(report,row)))rows.add(row);

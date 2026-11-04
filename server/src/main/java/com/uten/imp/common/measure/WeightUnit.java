@@ -1,16 +1,14 @@
 package com.uten.imp.common.measure;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Locale;
 import java.util.Optional;
 
 /**
  * 重量单位 (ADR-135): 封闭目录, 库内一律按千克 (kg) 存。
  *
- * <p>单据/称重行的重量列都是 NUMERIC(18,4) kg (0.1 g), 客户端先换算成 kg 再四舍五入到 4 位,
- * 服务端用 {@link #toKgLine} 同式复核; 称样等学习数据用 {@link #toKgPrecise} (6 位)。
- * 重量是数量口径, 不属于金额舍入范围 (common/measure 不在金额锁边扫描内)。
+ * <p>千克事实保留有限十进制原值。超过存储24位或单位除不尽时，必须本次用户明确选择精度。
+ * 学习估算保留来源标记，不将近似值冒充实称。
  */
 public enum WeightUnit {
     G("G", "克", "g", new BigDecimal("0.001")),
@@ -20,10 +18,10 @@ public enum WeightUnit {
     LB("LB", "磅", "lb", new BigDecimal("0.45359237")),
     OZ("OZ", "盎司", "oz", new BigDecimal("0.028349523125"));
 
-    /** 单据行重量 (kg) 的小数位: 0.1 g。 */
-    public static final int LINE_SCALE = 4;
+    /** 千克记录支持的小数位上限。 */
+    public static final int LINE_SCALE = 24;
     /** 学习数据 (观测) 重量 (kg) 的小数位。 */
-    public static final int PRECISE_SCALE = 6;
+    public static final int PRECISE_SCALE = 24;
 
     private final String code;
     private final String label;
@@ -57,17 +55,19 @@ public enum WeightUnit {
         return kgPerUnit;
     }
 
-    /** 单据行口径: value 换算成 kg, 四舍五入到 4 位; null 原样返回。 */
+    /** 单据行口径: value 换算成 kg，有限值完整保留，超边界明确选择; null 原样返回。 */
     public BigDecimal toKgLine(BigDecimal value) {
-        return value == null ? null : value.multiply(kgPerUnit).setScale(LINE_SCALE, RoundingMode.HALF_UP);
+        return value == null ? null : com.uten.imp.common.util.FinancialExactAmount.quantity(
+            com.uten.imp.common.finance.BusinessPrecisionContext.divide(value.multiply(kgPerUnit),BigDecimal.ONE,
+                "weight.to-kg","本次千克重量换算",24),"千克重量");
     }
 
-    /** 学习数据口径: value 换算成 kg, 四舍五入到 6 位; null 原样返回。 */
+    /** 学习数据口径: value 换算成 kg，沿同一事实精度入口; null 原样返回。 */
     public BigDecimal toKgPrecise(BigDecimal value) {
-        return value == null ? null : value.multiply(kgPerUnit).setScale(PRECISE_SCALE, RoundingMode.HALF_UP);
+        return toKgLine(value);
     }
 
-    /** kg 换算回本单位, 四舍五入到指定小数位; null 原样返回。 */
+    /** kg 换算回本单位，scale旧参数只作兼容，不隐式选精度; null 原样返回。 */
     public BigDecimal fromKg(BigDecimal kg, int scale) {
         if (kg == null) {
             return null;
@@ -75,7 +75,7 @@ public enum WeightUnit {
         if (scale < 0) {
             throw new IllegalArgumentException("scale must be >= 0");
         }
-        return kg.divide(kgPerUnit, scale, RoundingMode.HALF_UP);
+        return com.uten.imp.common.finance.BusinessPrecisionContext.divide(kg,kgPerUnit,"weight.from-kg","本次重量单位换算",24);
     }
 
     /**

@@ -2,6 +2,9 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.uten.imp.common.util.DecimalText;
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -69,7 +72,19 @@ public final class ProcurementIqcStockInContracts {
             List<InboundAllocation> expectedAllocations,
             @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
             String warehouseName,
-            String quantityTranche) {
+            String quantityTranche,
+            BigDecimal stockedForReleaseWeight) {
+        public ReleasedSlice(UUID passEventId,UUID inspectionItemId,UUID goodsId,String goodsCode,String goodsName,String colorName,UUID unitId,String unitName,String sourceOrderNo,BigDecimal receivedBaseQty,BigDecimal qualityPassedBaseQty,BigDecimal warehouseStockedBaseQty,BigDecimal releasedBaseQty,BigDecimal stockedForReleaseBaseQty,BigDecimal remainingBaseQty,BigDecimal releasedWeight,String placeHint,String releaseNote,String releasedBy,OffsetDateTime releasedAt,List<InboundAllocation> expectedAllocations,UUID warehouseId,String warehouseName,String quantityTranche){
+            this(passEventId,inspectionItemId,goodsId,goodsCode,goodsName,colorName,unitId,unitName,sourceOrderNo,receivedBaseQty,qualityPassedBaseQty,warehouseStockedBaseQty,releasedBaseQty,stockedForReleaseBaseQty,remainingBaseQty,releasedWeight,placeHint,releaseNote,releasedBy,releasedAt,expectedAllocations,warehouseId,warehouseName,quantityTranche,null);
+        }
+        @JsonProperty("receivedBaseQtyExact") public String receivedBaseQtyExact(){return DecimalText.of(receivedBaseQty);}
+        @JsonProperty("qualityPassedBaseQtyExact") public String qualityPassedBaseQtyExact(){return DecimalText.of(qualityPassedBaseQty);}
+        @JsonProperty("warehouseStockedBaseQtyExact") public String warehouseStockedBaseQtyExact(){return DecimalText.of(warehouseStockedBaseQty);}
+        @JsonProperty("releasedBaseQtyExact") public String releasedBaseQtyExact(){return DecimalText.of(releasedBaseQty);}
+        @JsonProperty("stockedForReleaseBaseQtyExact") public String stockedForReleaseBaseQtyExact(){return DecimalText.of(stockedForReleaseBaseQty);}
+        @JsonProperty("remainingBaseQtyExact") public String remainingBaseQtyExact(){return DecimalText.of(remainingBaseQty);}
+        @JsonProperty("releasedWeightExact") public String releasedWeightExact(){return DecimalText.of(releasedWeight);}
+        @JsonProperty("stockedForReleaseWeightExact") public String stockedForReleaseWeightExact(){return DecimalText.of(stockedForReleaseWeight);}
         public ReleasedSlice(UUID passEventId, UUID inspectionItemId, UUID goodsId, String goodsCode, String goodsName, String colorName, UUID unitId, String unitName, String sourceOrderNo, BigDecimal receivedBaseQty, BigDecimal qualityPassedBaseQty, BigDecimal warehouseStockedBaseQty, BigDecimal releasedBaseQty, BigDecimal stockedForReleaseBaseQty, BigDecimal remainingBaseQty, BigDecimal releasedWeight, String placeHint, String releaseNote, String releasedBy, OffsetDateTime releasedAt, List<InboundAllocation> expectedAllocations, UUID warehouseId, String warehouseName) {
             this(passEventId, inspectionItemId, goodsId, goodsCode, goodsName, colorName, unitId, unitName, sourceOrderNo, receivedBaseQty, qualityPassedBaseQty, warehouseStockedBaseQty, releasedBaseQty, stockedForReleaseBaseQty, remainingBaseQty, releasedWeight, placeHint, releaseNote, releasedBy, releasedAt, expectedAllocations, warehouseId, warehouseName, "LEGACY");
         }
@@ -123,6 +138,8 @@ public final class ProcurementIqcStockInContracts {
             String warehouseName,
             String origin,
             String quantityTranche) {
+        @JsonProperty("baseQtyExact") public String baseQtyExact(){return DecimalText.of(baseQty);}
+        @JsonProperty("weightExact") public String weightExact(){return DecimalText.of(weight);}
         public StockInHistoryItem(UUID stockInItemId, UUID batchId, UUID passEventId, UUID goodsId, String goodsCode, String goodsName, String colorName, String unitName, BigDecimal baseQty, BigDecimal weight, String place, String confirmedBy, OffsetDateTime confirmedAt, List<InboundAllocation> actualAllocations, UUID warehouseId, String warehouseName, String origin) {
             this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName, colorName, unitName, baseQty, weight, place, confirmedBy, confirmedAt, actualAllocations, warehouseId, warehouseName, origin, "LEGACY");
         }
@@ -183,6 +200,7 @@ public final class ProcurementIqcStockInContracts {
             @JsonSerialize(using = ToStringSerializer.class) UUID responsibleEmployeeId,
             String responsibleEmployeeName,
             String formationStatus) {
+        @JsonProperty("qtyExact") public String qtyExact(){return DecimalText.of(qty);}
 
         public InboundAllocation {
             intendedWarehouseNames = intendedWarehouseNames == null
@@ -197,8 +215,8 @@ public final class ProcurementIqcStockInContracts {
 
     public record ConfirmItem(
             @NotNull @JsonSerialize(using = ToStringSerializer.class) UUID passEventId,
-            @NotNull @DecimalMin(value = "0.0001") BigDecimal baseQty,
-            @NotNull @DecimalMin(value = "0.0001") BigDecimal expectedRemainingBaseQty,
+            @NotNull @DecimalMin(value = "0",inclusive=false) @DocumentQuantity BigDecimal baseQty,
+            @NotNull @DecimalMin(value = "0",inclusive=false) @DocumentQuantity BigDecimal expectedRemainingBaseQty,
             @NotBlank @Size(max = 100) String place,
             @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId) {
         /** Existing callers retain only their already recorded source warehouse; missing sources never default. */

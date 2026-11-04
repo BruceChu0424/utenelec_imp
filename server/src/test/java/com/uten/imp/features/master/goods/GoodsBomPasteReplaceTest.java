@@ -61,7 +61,7 @@ class GoodsBomPasteReplaceTest {
     private final MasterObjectAccess access = mock(MasterObjectAccess.class);
     private final ColorRepository colors = mock(ColorRepository.class);
     private final GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
-    private final GoodsBomService bom = new GoodsBomService(
+    private final GoodsBomService bom = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class),
             goodsRepo, bomRepo, colors, mock(UnitRepository.class),
             mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class),
             mock(MasterReferenceValidationPort.class), relationships,

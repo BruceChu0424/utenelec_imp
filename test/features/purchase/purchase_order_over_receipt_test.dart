@@ -411,9 +411,9 @@ void main() {
 
     test('输入解析：空有效(不提交)，0..100 两位小数，越界或非数字无效', () {
       expect(parsePurchaseOverReceiptPct('  '), (value: null, valid: true));
-      expect(parsePurchaseOverReceiptPct('5'), (value: 5.0, valid: true));
-      expect(parsePurchaseOverReceiptPct('3.456'), (value: 3.46, valid: true));
-      expect(parsePurchaseOverReceiptPct('100'), (value: 100.0, valid: true));
+      expect(parsePurchaseOverReceiptPct('5'), (value: '5', valid: true));
+      expect(parsePurchaseOverReceiptPct('3.456'), (value: '3.456', valid: true));
+      expect(parsePurchaseOverReceiptPct('100'), (value: '100', valid: true));
       expect(parsePurchaseOverReceiptPct('100.01').valid, isFalse);
       expect(parsePurchaseOverReceiptPct('-1').valid, isFalse);
       expect(parsePurchaseOverReceiptPct('abc').valid, isFalse);
@@ -603,7 +603,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('编辑既有单：回显比例，改成三位小数按两位提交', (tester) async {
+  testWidgets('编辑既有单：回显比例，改成三位小数保持完整提交', (tester) async {
     final api = await _pumpEdit(tester, 5);
     final row = _grid(tester).controller.rows.single;
     expect(row.allowedOverReceiptPct.text, '5');
@@ -611,7 +611,7 @@ void main() {
     row.allowedOverReceiptPct.text = '3.456';
     await _save(tester);
     final line = (api.lastPutBody!['items'] as List).single as Map;
-    expect(line['allowedOverReceiptPct'], 3.46);
+    expect(line['allowedOverReceiptPct'], '3.456');
     expect(tester.takeException(), isNull);
   });
 

@@ -1,3 +1,4 @@
+import 'production_exact_quantity.dart';
 import 'material_preparation_supply_slice.dart';
 
 /// A read-only budget for the current selection. Quantities already owned by a
@@ -16,6 +17,7 @@ class MaterialPreparationBudgetLine {
     this.priority = 0,
     this.adoptableSharedQty,
     this.supplySlices,
+    this.quantityFactsExact = const {},
   });
 
   final String materialLineId;
@@ -32,6 +34,19 @@ class MaterialPreparationBudgetLine {
   final int priority;
   final double? adoptableSharedQty;
   final List<MaterialPreparationSupplySlice>? supplySlices;
+  final Map<String, String> quantityFactsExact;
+  BigInt amount(String key) {
+    final Object? legacy = switch (key) {
+      'ownedAvailableQty' => ownedAvailableQty,
+      'uncoveredBeforeSharedQty' => uncoveredBeforeSharedQty,
+      'requestedQty' => requestedQty,
+      'adoptableSharedQty' => adoptableSharedQty,
+      _ => null,
+    };
+    return MaterialPreparationDraftBudget.units(
+      quantityFactsExact[key] ?? productionExactQuantityText(legacy),
+    );
+  }
 }
 
 class MaterialPreparationBudgetRow {
@@ -40,12 +55,29 @@ class MaterialPreparationBudgetRow {
     required this.remainingSharedQty,
     required this.availableQty,
     required this.netShortageQty,
+    this.reservedSharedQtyExact,
+    this.remainingSharedQtyExact,
+    this.availableQtyExact,
+    this.netShortageQtyExact,
   });
 
   final double reservedSharedQty;
   final double remainingSharedQty;
   final double availableQty;
   final double netShortageQty;
+  final String? reservedSharedQtyExact,
+      remainingSharedQtyExact,
+      availableQtyExact,
+      netShortageQtyExact;
+  String? get reservedSharedQtyText =>
+      productionExactQuantityText(reservedSharedQtyExact ?? reservedSharedQty);
+  String? get remainingSharedQtyText => productionExactQuantityText(
+    remainingSharedQtyExact ?? remainingSharedQty,
+  );
+  String? get availableQtyText =>
+      productionExactQuantityText(availableQtyExact ?? availableQty);
+  String? get netShortageQtyText =>
+      productionExactQuantityText(netShortageQtyExact ?? netShortageQty);
 }
 
 class MaterialPreparationDraftBudget {
@@ -54,12 +86,14 @@ class MaterialPreparationDraftBudget {
     this.inputs = const {},
     this.remainingSlices = const {},
     this.coveredReservations = const {},
+    this.pendingReason,
   });
 
+  final String? pendingReason;
   final Map<String, MaterialPreparationBudgetRow> rows;
   final Map<String, MaterialPreparationBudgetLine> inputs;
-  final Map<String, Map<String, int>> remainingSlices;
-  final Map<String, int> coveredReservations;
+  final Map<String, Map<String, BigInt>> remainingSlices;
+  final Map<String, BigInt> coveredReservations;
 
   MaterialPreparationBudgetRow summarize(Iterable<String> lineIds) {
     final uniqueIds = lineIds.toSet();
@@ -71,37 +105,43 @@ class MaterialPreparationDraftBudget {
       final input = inputs[id];
       if (input != null) byPool.putIfAbsent(input.poolKey, () => []).add(id);
     }
-    var reserved = 0, remaining = 0, available = 0, shortage = 0;
+    var reserved = BigInt.zero,
+        remaining = BigInt.zero,
+        available = BigInt.zero,
+        shortage = BigInt.zero;
     for (final ids in byPool.values) {
-      final free = units(rows[ids.first]!.remainingSharedQty);
-      final used = ids.fold<int>(
-        0,
-        (sum, id) => sum + units(rows[id]!.reservedSharedQty),
+      final free = units(rows[ids.first]!.remainingSharedQtyText);
+      final used = ids.fold<BigInt>(
+        BigInt.zero,
+        (sum, id) => sum + units(rows[id]!.reservedSharedQtyText),
       );
-      final need = ids.fold<int>(
-        0,
-        (sum, id) => sum + units(inputs[id]!.uncoveredBeforeSharedQty),
+      final need = ids.fold<BigInt>(
+        BigInt.zero,
+        (sum, id) => sum + inputs[id]!.amount('uncoveredBeforeSharedQty'),
       );
       reserved += used;
       remaining += free;
       available += free;
       final needs = {
         for (final id in ids)
-          id:
-              (units(inputs[id]!.uncoveredBeforeSharedQty) -
-                      (coveredReservations[id] ?? 0))
-                  .clamp(0, 9007199254740991),
+          id: _positive(
+            inputs[id]!.amount('uncoveredBeforeSharedQty') -
+                (coveredReservations[id] ?? BigInt.zero),
+          ),
       };
       final slices = remainingSlices[inputs[ids.first]!.poolKey];
       final gap = slices == null
           ? need - used - free
-          : needs.values.fold<int>(0, (sum, value) => sum + value) -
+          : needs.values.fold<BigInt>(
+                  BigInt.zero,
+                  (sum, value) => sum + value,
+                ) -
                 _allocateCoverage(
                   needs: {
                     for (final id in ids)
                       id: _cappedNeed(
                         inputs[id]!,
-                        alreadyCovered: coveredReservations[id] ?? 0,
+                        alreadyCovered: coveredReservations[id] ?? BigInt.zero,
                       ),
                   },
                   supply: {
@@ -114,35 +154,63 @@ class MaterialPreparationDraftBudget {
                       id: _eligibleKeys(inputs[id]!, slices),
                   },
                 ).total;
-      shortage += gap > 0 ? gap : 0;
+      shortage += _positive(gap);
     }
     return MaterialPreparationBudgetRow(
-      reservedSharedQty: reserved / 10000,
-      remainingSharedQty: remaining / 10000,
-      availableQty: available / 10000,
-      netShortageQty: shortage / 10000,
+      reservedSharedQty: _qty(reserved),
+      reservedSharedQtyExact: _text(reserved),
+      remainingSharedQty: _qty(remaining),
+      remainingSharedQtyExact: _text(remaining),
+      availableQty: _qty(available),
+      availableQtyExact: _text(available),
+      netShortageQty: _qty(shortage),
+      netShortageQtyExact: _text(shortage),
     );
   }
 
   factory MaterialPreparationDraftBudget.project({
     required Iterable<MaterialPreparationBudgetLine> lines,
     required Map<String, double> sharedAvailableByPool,
+    Map<String, String> sharedAvailableExactByPool = const {},
   }) {
-    // The API quantity scale is four decimals. Accumulating its integer units
-    // avoids losing the final 0.0001 across many selected sources.
-    double qty(int value) => value / 10000;
+    final captured = lines.toList(growable: false);
+    try {
+      return _project(
+        lines: captured,
+        sharedAvailableByPool: sharedAvailableByPool,
+        sharedAvailableExactByPool: sharedAvailableExactByPool,
+      );
+    } on FormatException catch (error) {
+      return MaterialPreparationDraftBudget(
+        rows: const {},
+        pendingReason: error.message,
+        inputs: {for (final line in captured) line.materialLineId: line},
+      );
+    }
+  }
+  static MaterialPreparationDraftBudget _project({
+    required Iterable<MaterialPreparationBudgetLine> lines,
+    required Map<String, double> sharedAvailableByPool,
+    required Map<String, String> sharedAvailableExactByPool,
+  }) {
+    // Every edge/capacity keeps full 24-place units, including on JavaScript.
+    // Node IDs and traversal levels remain discrete ints; no business amount is rounded.
+    double qty(BigInt value) => _qty(value);
     final remaining = {
       for (final entry in sharedAvailableByPool.entries)
-        entry.key: units(entry.value),
+        entry.key: units(
+          sharedAvailableExactByPool[entry.key] ??
+              productionExactQuantityText(entry.value),
+        ),
     };
     final byId = {for (final line in lines) line.materialLineId: line};
-    final slicesByPool = <String, Map<String, int>>{};
+    final slicesByPool = <String, Map<String, BigInt>>{};
     for (final line in byId.values) {
       if (line.supplySlices == null) continue;
       final pool = slicesByPool.putIfAbsent(line.poolKey, () => {});
       for (final slice in line.supplySlices!) {
         if (slice.key.isEmpty) continue;
-        final quantity = units(slice.availableQty);
+        final quantity = units(slice.availableQtyText);
         pool.update(
           slice.key,
           (old) => old < quantity ? old : quantity,
@@ -160,22 +228,22 @@ class MaterialPreparationDraftBudget {
     // Old servers have no source proof. Nested anonymous capacity tiers give a
     // conservative overlap bound when only per-row caps are available; caps
     // never prove that two rows can consume separate underlying sources.
-    final legacyCaps = <String, Set<int>>{};
+    final legacyCaps = <String, Set<BigInt>>{};
     for (final line in byId.values) {
       if (line.adoptableSharedQty != null) {
         legacyCaps
             .putIfAbsent(line.poolKey, () => {})
-            .add(units(line.adoptableSharedQty!));
+            .add(line.amount('adoptableSharedQty'));
       }
     }
     for (final entry in remaining.entries) {
       slicesByPool.putIfAbsent(entry.key, () {
         final limits = {
           entry.value,
-          for (final cap in legacyCaps[entry.key] ?? const <int>{})
-            cap.clamp(0, entry.value),
+          for (final cap in legacyCaps[entry.key] ?? const <BigInt>{})
+            _min(_positive(cap), entry.value),
         }.toList()..sort();
-        var previous = 0;
+        var previous = BigInt.zero;
         return {
           for (final limit in limits)
             'legacy:$limit': (() {
@@ -214,42 +282,43 @@ class MaterialPreparationDraftBudget {
       },
       inputLimits: {
         for (final entry in groupedInputs.entries)
-          entry.key: units(entry.value.first.requestedQty),
+          entry.key: entry.value.first.amount('requestedQty'),
       },
     );
     final coveredReservations = legal.byLine;
-    final reservations = Map<String, int>.from(coveredReservations);
+    final reservations = Map<String, BigInt>.from(coveredReservations);
     for (final entry in legal.bySource.entries) {
       final key = entry.key;
       slicesByPool[key.pool]![key.source] =
           slicesByPool[key.pool]![key.source]! - entry.value;
-      remaining[key.pool] = (remaining[key.pool] ?? 0) - entry.value;
+      remaining[key.pool] = (remaining[key.pool] ?? BigInt.zero) - entry.value;
     }
     // Extra entered amounts still reduce the editing balance, as requested,
     // but cannot turn an ineligible/self source into demand coverage.
     for (final group in groupedInputs.values) {
       var requested =
-          units(group.first.requestedQty) -
-          group.fold<int>(
-            0,
+          group.first.amount('requestedQty') -
+          group.fold<BigInt>(
+            BigInt.zero,
             (sum, line) =>
-                sum + (coveredReservations[line.materialLineId] ?? 0),
+                sum + (coveredReservations[line.materialLineId] ?? BigInt.zero),
           );
       for (final line in group) {
-        if (requested <= 0) break;
+        if (requested <= BigInt.zero) break;
         final slices = slicesByPool[line.poolKey]!;
         for (final key in slices.keys.toList()..sort()) {
           final free = slices[key]!;
           final take = requested < free ? requested : free;
           slices[key] = free - take;
-          remaining[line.poolKey] = (remaining[line.poolKey] ?? 0) - take;
+          remaining[line.poolKey] =
+              (remaining[line.poolKey] ?? BigInt.zero) - take;
           reservations.update(
             line.materialLineId,
             (value) => value + take,
             ifAbsent: () => take,
           );
           requested -= take;
-          if (requested == 0) break;
+          if (requested == BigInt.zero) break;
         }
       }
     }
@@ -260,12 +329,13 @@ class MaterialPreparationDraftBudget {
       rows: {
         for (final line in ordered)
           line.materialLineId: (() {
-            final reserved = reservations[line.materialLineId] ?? 0;
-            final free = remaining[line.poolKey] ?? 0;
+            final reserved = reservations[line.materialLineId] ?? BigInt.zero;
+            final free = remaining[line.poolKey] ?? BigInt.zero;
             // uncoveredBeforeSharedQty already excludes real private coverage.
             // A selected source retains its own reservation when other rows use
             // the rest of the pool, but cannot consume another source's share.
-            final ownCover = coveredReservations[line.materialLineId] ?? 0;
+            final ownCover =
+                coveredReservations[line.materialLineId] ?? BigInt.zero;
             final slices = slicesByPool[line.poolKey];
             final allowed = slices == null
                 ? const <_BudgetSupplyKey>{}
@@ -279,50 +349,55 @@ class MaterialPreparationDraftBudget {
                           source: entry.key,
                         )),
                       )
-                      .fold<int>(0, (sum, entry) => sum + entry.value);
+                      .fold<BigInt>(
+                        BigInt.zero,
+                        (sum, entry) => sum + entry.value,
+                      );
             final adoptable = ownCover + eligibleFree;
             final cap = line.adoptableSharedQty == null
                 ? adoptable
-                : units(line.adoptableSharedQty!);
+                : line.amount('adoptableSharedQty');
             final coverage = adoptable < cap ? adoptable : cap;
-            final uncovered = units(line.uncoveredBeforeSharedQty) - coverage;
+            final uncovered =
+                line.amount('uncoveredBeforeSharedQty') - coverage;
             return MaterialPreparationBudgetRow(
               reservedSharedQty: qty(reserved),
               remainingSharedQty: qty(free),
               availableQty: qty(free),
-              netShortageQty: qty(uncovered > 0 ? uncovered : 0),
+              netShortageQty: qty(_positive(uncovered)),
+              reservedSharedQtyExact: _text(reserved),
+              remainingSharedQtyExact: _text(free),
+              availableQtyExact: _text(free),
+              netShortageQtyExact: _text(_positive(uncovered)),
             );
           })(),
       },
     );
   }
 
-  static int units(double value) =>
-      value.isFinite && value > 0 ? (value * 10000).round() : 0;
+  static BigInt units(Object? value) {
+    final exact = productionExactQuantityUnits(value);
+    if (exact == null) throw const FormatException('备料数量缺少完整原值，请重新读取来源；原输入已保留');
+    return exact;
+  }
 }
 
 typedef _BudgetSupplyKey = ({String pool, String source});
 
-int _cappedNeed(MaterialPreparationBudgetLine line, {int alreadyCovered = 0}) {
-  final need =
-      (MaterialPreparationDraftBudget.units(line.uncoveredBeforeSharedQty) -
-              alreadyCovered)
-          .clamp(0, 9007199254740991);
-  final cap = line.adoptableSharedQty;
-  return cap == null
+BigInt _cappedNeed(
+  MaterialPreparationBudgetLine line, {
+  BigInt? alreadyCovered,
+}) {
+  final used = alreadyCovered ?? BigInt.zero;
+  final need = _positive(line.amount('uncoveredBeforeSharedQty') - used);
+  return line.adoptableSharedQty == null
       ? need
-      : need.clamp(
-          0,
-          (MaterialPreparationDraftBudget.units(cap) - alreadyCovered).clamp(
-            0,
-            9007199254740991,
-          ),
-        );
+      : _min(need, _positive(line.amount('adoptableSharedQty') - used));
 }
 
 Set<_BudgetSupplyKey> _eligibleKeys(
   MaterialPreparationBudgetLine line,
-  Map<String, int> pool,
+  Map<String, BigInt> pool,
 ) => {
   for (final key
       in line.supplySlices == null
@@ -330,10 +405,9 @@ Set<_BudgetSupplyKey> _eligibleKeys(
               (key) =>
                   line.adoptableSharedQty == null ||
                   (key.startsWith('legacy:') &&
-                      (int.tryParse(key.substring(7)) ?? 9007199254740991) <=
-                          MaterialPreparationDraftBudget.units(
-                            line.adoptableSharedQty!,
-                          )),
+                      (BigInt.tryParse(key.substring(7)) ??
+                              BigInt.from(10).pow(100)) <=
+                          line.amount('adoptableSharedQty')),
             )
           : line.supplySlices!
                 .where((slice) => slice.adoptable)
@@ -343,18 +417,26 @@ Set<_BudgetSupplyKey> _eligibleKeys(
 
 /// Exact overlap accounting with a small capacitated bipartite flow. The
 /// optional input layer preserves one total for a multi-source quantity editor.
-({int total, Map<String, int> byLine, Map<_BudgetSupplyKey, int> bySource})
+({
+  BigInt total,
+  Map<String, BigInt> byLine,
+  Map<_BudgetSupplyKey, BigInt> bySource,
+})
 _allocateCoverage({
-  required Map<String, int> needs,
-  required Map<_BudgetSupplyKey, int> supply,
+  required Map<String, BigInt> needs,
+  required Map<_BudgetSupplyKey, BigInt> supply,
   required Map<String, Set<_BudgetSupplyKey>> eligible,
   Map<String, String> inputByLine = const {},
-  Map<String, int>? inputLimits,
+  Map<String, BigInt>? inputLimits,
 }) {
-  final demands = needs.entries.where((entry) => entry.value > 0).toList();
-  final sources = supply.entries.where((entry) => entry.value > 0).toList();
+  final demands = needs.entries
+      .where((entry) => entry.value > BigInt.zero)
+      .toList();
+  final sources = supply.entries
+      .where((entry) => entry.value > BigInt.zero)
+      .toList();
   if (demands.isEmpty || sources.isEmpty) {
-    return (total: 0, byLine: {}, bySource: {});
+    return (total: BigInt.zero, byLine: {}, bySource: {});
   }
   final limits = inputLimits ?? needs;
   final common = eligible[demands.first.key] ?? const <_BudgetSupplyKey>{};
@@ -364,13 +446,16 @@ _allocateCoverage({
   })) {
     // Repeated BOM paths commonly have identical supply eligibility. Their
     // coverage is a simple common-pool allocation, with no graph per path.
-    final groupsRemaining = Map<String, int>.from(limits);
-    var free = common.fold<int>(0, (sum, key) => sum + (supply[key] ?? 0));
-    var total = 0;
-    final byLine = <String, int>{};
+    final groupsRemaining = Map<String, BigInt>.from(limits);
+    var free = common.fold<BigInt>(
+      BigInt.zero,
+      (sum, key) => sum + (supply[key] ?? BigInt.zero),
+    );
+    var total = BigInt.zero;
+    final byLine = <String, BigInt>{};
     for (final demand in demands) {
       final group = inputByLine[demand.key] ?? demand.key;
-      final cap = groupsRemaining[group] ?? 0;
+      final cap = groupsRemaining[group] ?? BigInt.zero;
       final wanted = demand.value < cap ? demand.value : cap;
       final take = wanted < free ? wanted : free;
       byLine[demand.key] = take;
@@ -378,14 +463,14 @@ _allocateCoverage({
       free -= take;
       total += take;
     }
-    final bySource = <_BudgetSupplyKey, int>{};
+    final bySource = <_BudgetSupplyKey, BigInt>{};
     var allocated = total;
     for (final key in common) {
-      final available = supply[key] ?? 0;
+      final available = supply[key] ?? BigInt.zero;
       final take = allocated < available ? allocated : available;
       bySource[key] = take;
       allocated -= take;
-      if (allocated == 0) break;
+      if (allocated == BigInt.zero) break;
     }
     return (total: total, byLine: byLine, bySource: bySource);
   }
@@ -400,9 +485,9 @@ _allocateCoverage({
   };
   final sink = supplyStart + sources.length;
   final graph = List.generate(sink + 1, (_) => <_BudgetFlowEdge>[]);
-  _BudgetFlowEdge add(int from, int to, int qty) {
+  _BudgetFlowEdge add(int from, int to, BigInt qty) {
     final forward = _BudgetFlowEdge(to, graph[to].length, qty);
-    final backward = _BudgetFlowEdge(from, graph[from].length, 0);
+    final backward = _BudgetFlowEdge(from, graph[from].length, BigInt.zero);
     graph[from].add(forward);
     graph[to].add(backward);
     return forward;
@@ -429,28 +514,31 @@ _allocateCoverage({
   for (var j = 0; j < sources.length; j++) {
     sourceEdges[sources[j].key] = add(supplyStart + j, sink, sources[j].value);
   }
-  var total = 0;
-  final maximum = demands.fold<int>(0, (sum, entry) => sum + entry.value);
+  var total = BigInt.zero;
+  final maximum = demands.fold<BigInt>(
+    BigInt.zero,
+    (sum, entry) => sum + entry.value,
+  );
   while (true) {
     final levels = List.filled(graph.length, -1);
     final queue = <int>[0];
     levels[0] = 0;
     for (var head = 0; head < queue.length; head++) {
       for (final edge in graph[queue[head]]) {
-        if (edge.qty <= 0 || levels[edge.to] >= 0) continue;
+        if (edge.qty <= BigInt.zero || levels[edge.to] >= 0) continue;
         levels[edge.to] = levels[queue[head]] + 1;
         queue.add(edge.to);
       }
     }
     if (levels[sink] < 0) break;
     final next = List.filled(graph.length, 0);
-    int send(int node, int limit) {
+    BigInt send(int node, BigInt limit) {
       if (node == sink) return limit;
       while (next[node] < graph[node].length) {
         final edge = graph[node][next[node]];
-        if (edge.qty > 0 && levels[edge.to] == levels[node] + 1) {
+        if (edge.qty > BigInt.zero && levels[edge.to] == levels[node] + 1) {
           final pushed = send(edge.to, edge.qty < limit ? edge.qty : limit);
-          if (pushed > 0) {
+          if (pushed > BigInt.zero) {
             edge.qty -= pushed;
             graph[edge.to][edge.reverse].qty += pushed;
             return pushed;
@@ -458,12 +546,12 @@ _allocateCoverage({
         }
         next[node]++;
       }
-      return 0;
+      return BigInt.zero;
     }
 
     while (true) {
       final pushed = send(0, maximum);
-      if (pushed == 0) break;
+      if (pushed == BigInt.zero) break;
       total += pushed;
     }
   }
@@ -483,5 +571,10 @@ _allocateCoverage({
 class _BudgetFlowEdge {
   _BudgetFlowEdge(this.to, this.reverse, this.qty);
   final int to, reverse;
-  int qty;
+  BigInt qty;
 }
+
+BigInt _positive(BigInt value) => value.isNegative ? BigInt.zero : value;
+BigInt _min(BigInt left, BigInt right) => left < right ? left : right;
+String _text(BigInt value) => productionQuantityTextFromUnits(value);
+double _qty(BigInt value) => double.parse(_text(value));

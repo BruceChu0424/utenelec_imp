@@ -394,7 +394,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                        line.goods_id, line.goods_code_snapshot, line.goods_name_snapshot, line.color_id, color.name, line.unit_id,
                        line.actual_loss_qty, line.allowed_loss_qty, line.excess_loss_qty,
                        CASE WHEN actual.normal_value_local IS NOT NULL AND actual.excess_value_local IS NOT NULL
-                            THEN ROUND((actual.normal_value_local+actual.excess_value_local)/line.actual_loss_qty,30) END,
+                            THEN actual.normal_value_local+actual.excess_value_local END,
                        actual.excess_value_local,CASE WHEN actual.complete THEN 'VALUED' ELSE 'MISSING_COST' END
                 FROM subcontract_loss_case_lines line
                 JOIN v_subcontract_waste_actual_value actual ON actual.waste_item_id=line.waste_item_id
@@ -405,7 +405,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]), NativeValueConverters.uuid(row[4]),
                 NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.uuid(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.uuid(row[9]),
                 quantity(row[10]), quantity(row[11]), quantity(row[12]),
-                priceMasked ? null : moneyText(row[13]),
+                priceMasked || row[13]==null ? null : moneyText(MoneyPolicy.unitValue(decimal(row[13]),decimal(row[10]))),
                 priceMasked ? null : moneyText(row[14]), NativeValueConverters.text(row[15]))).toList();
         @SuppressWarnings("unchecked")
         List<Object[]> resolutionRows = em.createNativeQuery("""

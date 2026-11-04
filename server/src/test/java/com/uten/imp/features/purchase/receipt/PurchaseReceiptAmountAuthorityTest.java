@@ -2,6 +2,8 @@ package com.uten.imp.features.purchase.receipt;
 
 import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -11,6 +13,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PurchaseReceiptAmountAuthorityTest {
+    private AutoCloseable explicitUserChoice;
+    @BeforeEach void selectForTheseFourPlaceClosingExamples(){
+        explicitUserChoice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+            "money.reference-unit-price",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP"),
+            "money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")));
+    }
+    @AfterEach void releaseChoice()throws Exception{explicitUserChoice.close();}
+
+    @Test void aNewRepeatingReceiptCannotImplicitlyReuseTheOldFourPlaceConvention()throws Exception {
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of())){
+            assertThatThrownBy(()->PurchaseReceiptAmountAuthority.sourceAmounts(BigDecimal.ONE,new BigDecimal("0.3333"),BigDecimal.ONE,
+                new BigDecimal("3"),BigDecimal.ONE,BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO))
+                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        }
+    }
 
     @Test
     void threeThousandBagsForOneHundredCloseExactlyAfterThreeReceipts() {
@@ -55,7 +72,7 @@ class PurchaseReceiptAmountAuthorityTest {
                 new BigDecimal("2"), new BigDecimal("0.6668"), new BigDecimal("0.6668"));
 
         // ADR-112: 来源金额与单价不一致(1.0001 ≠ 3 × 0.33335)时按「累计量份额 − 已收」分摊,
-        // 除不尽的累计份额取到来源金额位数(0.3334 / 0.6667), 末批取全部剩余; 合计恰好等于来源金额。
+        // 本例用户明确选择4位HALF_UP(0.3334 / 0.6667)，末批取全部剩余；合计恰好等于来源金额。
         assertThat(partial.original()).isEqualByComparingTo("0.3334");
         assertThat(partial.local()).isEqualByComparingTo("0.3334");
         assertThat(second.original()).isEqualByComparingTo("0.3333");

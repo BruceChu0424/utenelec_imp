@@ -39,6 +39,8 @@ public class FinanceExpenseItem extends BaseEntity {
     /** 费用项目（办公费/差旅费/房租…），→ payment_styles(category=EXPENSE)。 */
     @Column(name = "expense_style_id")
     private UUID expenseStyleId;
+    @Column(name="posting_purpose",nullable=false)
+    private String postingPurpose="ORDINARY_EXPENSE";
 
     /** 分摊部门。 */
     @Column(name = "department_id")

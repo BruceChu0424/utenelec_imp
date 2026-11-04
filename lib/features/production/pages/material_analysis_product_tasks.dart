@@ -1579,7 +1579,7 @@ abstract class _MaterialAnalysisProductTasksState
       if (coverage != null)
         '合格库存保障 ${_qty(coverage.covered)}/'
             '${_qty(material.requiredQty)}'
-            '(${(coverage.ratio * 100).toStringAsFixed(0)}%)',
+            '(${(coverage.ratio * 100).toExactString()}%)',
       if (requirementView != null) requirementView.title,
       if (requirementView != null) requirementView.detail,
       if (taskChild == null &&

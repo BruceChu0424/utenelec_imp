@@ -34,6 +34,7 @@ namespace Uten.Legacy.Tests
             using (var log = new DiagnosticsLog(root, "2.5.43+2543"))
             {
                 log.Write("request.begin", method: "POST", path: "/api/goods/123?password=secret");
+                log.Write("session.listener_failed", "changed.InvalidOperationException");
                 for (int i = 0; i < 1000; i++) log.Write("diagnostic.surge", elapsed: i);
                 try { throw new InvalidOperationException("password=secret business text"); }
                 catch (Exception error) { log.Fatal("managed.test_exception", error); }
@@ -43,6 +44,7 @@ namespace Uten.Legacy.Tests
             string text = String.Join("\n", files.Select(ReadShared));
             check(text.Contains("wpf_legacy") && text.Contains("2.5.43+2543"), "logs retain runtime/version");
             check(text.Contains("managed.test_exception") && text.Contains("InvalidOperationException"), "exception has a durable .log record");
+            check(text.Contains("changed.InvalidOperationException"), "listener failures retain sanitized event and exception type diagnostics");
             check(!text.Contains("password") && !text.Contains("secret") && !text.Contains("business text"), "credential/body/exception messages absent");
             check(DiagnosticsLog.SafePath("/api/goods/123?token=secret") == "/api/goods/:id", "same sanitized path contract as Flutter");
             check(File.ReadAllText(Path.Combine(root, "business.txt")) == "retained", "unrelated files survive retention");

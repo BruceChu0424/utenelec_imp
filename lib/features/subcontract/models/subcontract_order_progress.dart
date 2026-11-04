@@ -1,3 +1,5 @@
+import '../../../shared/measurement/document_quantity.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 // 委外订货单全链路进度模型(ADR-143 §4.6)。
 // 对应 GET /api/subcontract/orders/{id}/progress。
 //
@@ -76,6 +78,24 @@ const _defaultNodeLabels = <String, String>{
 
 /// 一个委外任务(订货明细)的进度。数量全部为订货单位；物料行用物料自己的单位。
 class SubcontractItemProgress {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'orderQty' => orderQty,
+          'drawnQty' => drawnQty,
+          'pendingQty' => pendingQty,
+          'drawableQty' => drawableQty,
+          'shortQty' => shortQty,
+          'returnableQty' => returnableQty,
+          'receivedQty' => receivedQty,
+          'qualifiedQty' => qualifiedQty,
+          'pendingInspectionQty' => pendingInspectionQty,
+          'stockedQty' => stockedQty,
+          'settledLossQty' => settledLossQty,
+          _ => null,
+        });
+
   const SubcontractItemProgress({
     required this.orderItemId,
     required this.lineNo,
@@ -100,6 +120,7 @@ class SubcontractItemProgress {
     required this.settledLossQty,
     required this.materials,
     required this.timeline,
+    this.exactQuantities = const {},
   });
 
   final String orderItemId;
@@ -138,6 +159,19 @@ class SubcontractItemProgress {
 
   factory SubcontractItemProgress.fromJson(Map<String, dynamic> json) =>
       SubcontractItemProgress(
+        exactQuantities: recordedDecimalFields(json, [
+          'orderQty',
+          'drawnQty',
+          'pendingQty',
+          'drawableQty',
+          'shortQty',
+          'returnableQty',
+          'receivedQty',
+          'qualifiedQty',
+          'pendingInspectionQty',
+          'stockedQty',
+          'settledLossQty',
+        ]),
         orderItemId: _string(json, 'orderItemId') ?? '',
         lineNo: (json['lineNo'] as num?)?.toInt(),
         goodsCode: _string(json, 'goodsCode') ?? '',
@@ -168,6 +202,19 @@ class SubcontractItemProgress {
 
 /// 链路单据进度(领料出仓单/回厂进仓单/退货单/损耗单共用)。
 class SubcontractProgressDoc {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'totalQty' => totalQty,
+          'totalLocal' => totalLocal,
+          'iqcPassedBaseQty' => iqcPassedBaseQty,
+          'warehouseStockedBaseQty' => warehouseStockedBaseQty,
+          'pendingStockInBaseQty' => pendingStockInBaseQty,
+          'deductAmount' => deductAmount,
+          _ => null,
+        });
+
   const SubcontractProgressDoc({
     required this.id,
     required this.billNo,
@@ -184,6 +231,7 @@ class SubcontractProgressDoc {
     this.pendingStockInBaseQty,
     this.deductAmount,
     this.deductPosted,
+    this.exactQuantities = const {},
   });
 
   final String id;
@@ -215,6 +263,14 @@ class SubcontractProgressDoc {
 
   factory SubcontractProgressDoc.fromJson(Map<String, dynamic> json) =>
       SubcontractProgressDoc(
+        exactQuantities: recordedDecimalFields(json, [
+          'totalQty',
+          'totalLocal',
+          'iqcPassedBaseQty',
+          'warehouseStockedBaseQty',
+          'pendingStockInBaseQty',
+          'deductAmount',
+        ]),
         id: json['id'] as String,
         billNo: json['billNo'] as String?,
         status: (json['status'] as num?)?.toInt(),
@@ -237,6 +293,18 @@ class SubcontractProgressDoc {
 
 /// 委外商处物料台账行(V221 守恒口径，按物料聚合)。
 class SubcontractSupplierLedgerLine {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'atSupplierQty' => atSupplierQty,
+          'consumedQty' => consumedQty,
+          'returnedQty' => returnedQty,
+          'wastedQty' => wastedQty,
+          'supplierEnding' => supplierEnding,
+          _ => null,
+        });
+
   const SubcontractSupplierLedgerLine({
     required this.goodsCode,
     required this.goodsName,
@@ -247,6 +315,7 @@ class SubcontractSupplierLedgerLine {
     required this.returnedQty,
     required this.wastedQty,
     required this.supplierEnding,
+    this.exactQuantities = const {},
   });
 
   final String? goodsCode;
@@ -261,6 +330,13 @@ class SubcontractSupplierLedgerLine {
 
   factory SubcontractSupplierLedgerLine.fromJson(Map<String, dynamic> json) =>
       SubcontractSupplierLedgerLine(
+        exactQuantities: recordedDecimalFields(json, [
+          'atSupplierQty',
+          'consumedQty',
+          'returnedQty',
+          'wastedQty',
+          'supplierEnding',
+        ]),
         goodsCode: json['goodsCode'] as String?,
         goodsName: json['goodsName'] as String?,
         colorName: json['colorName'] as String?,
@@ -274,6 +350,15 @@ class SubcontractSupplierLedgerLine {
 }
 
 class SubcontractOrderProgress {
+  final Map<String, String?> exactQuantities;
+  String? quantityText(String key) => exactQuantities.containsKey(key)
+      ? exactQuantities[key]
+      : financeExactDecimal(switch (key) {
+          'apPostedTotal' => apPostedTotal,
+          'wasteDeductTotal' => wasteDeductTotal,
+          _ => null,
+        });
+
   const SubcontractOrderProgress({
     required this.orderId,
     required this.billNo,
@@ -291,6 +376,7 @@ class SubcontractOrderProgress {
     required this.apPostedTotal,
     required this.wasteDeductTotal,
     this.priceMasked = false,
+    this.exactQuantities = const {},
   });
 
   final String orderId;
@@ -320,6 +406,10 @@ class SubcontractOrderProgress {
 
   factory SubcontractOrderProgress.fromJson(Map<String, dynamic> json) =>
       SubcontractOrderProgress(
+        exactQuantities: recordedDecimalFields(json, [
+          'apPostedTotal',
+          'wasteDeductTotal',
+        ]),
         orderId: json['orderId'] as String,
         billNo: json['billNo'] as String?,
         status: (json['status'] as num?)?.toInt(),

@@ -137,8 +137,15 @@ public class AuditController {
     public PageResponse<AuditActorOption> actors(
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return auditQuery.actors(keyword, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "false") boolean includeSubtree,
+            @RequestParam(required = false) String actorType,
+            @RequestParam(defaultValue = "false") boolean unassignedOnly) {
+        if (departmentId == null && !includeSubtree && (actorType == null || actorType.isBlank()) && !unassignedOnly) {
+            return auditQuery.actors(keyword, page, size);
+        }
+        return auditQuery.actors(keyword, page, size, departmentId, includeSubtree, actorType, unassignedOnly);
     }
 
     /**

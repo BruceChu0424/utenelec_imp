@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 工资条列表页（表格版）
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
@@ -204,8 +205,9 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     width: 140,
     type: 'money',
     aiSensitive: true,
-    value: (s) =>
-        financeLocalMoneyWithUnitSuffix(s.grossIncome.toStringAsFixed(2)),
+    value: (s) => financeLocalMoneyWithUnitSuffix(
+      s.grossIncome.toExactString(minimumFractionDigits: 2),
+    ),
   ),
   MasterColumnDef(
     key: 'totalDeduction',
@@ -215,8 +217,9 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     width: 140,
     type: 'money',
     aiSensitive: true,
-    value: (s) =>
-        financeLocalMoneyWithUnitSuffix(s.totalDeduction.toStringAsFixed(2)),
+    value: (s) => financeLocalMoneyWithUnitSuffix(
+      s.totalDeduction.toExactString(minimumFractionDigits: 2),
+    ),
   ),
   MasterColumnDef(
     key: 'netIncome',
@@ -226,8 +229,9 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     width: 150,
     type: 'money',
     aiSensitive: true,
-    value: (s) =>
-        financeLocalMoneyWithUnitSuffix(s.netIncome.toStringAsFixed(2)),
+    value: (s) => financeLocalMoneyWithUnitSuffix(
+      s.netIncome.toExactString(minimumFractionDigits: 2),
+    ),
   ),
   MasterColumnDef(
     key: 'publishedAt',

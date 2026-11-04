@@ -96,7 +96,7 @@ public class PurchaseReturnAmountAuthority {
                 throw conflict("采购退货供应商、币种、汇率、税率、结算方式或订单来源与收货事实不一致");
             }
             if (item.getQty().signum()>0 && validatedReceipts.add(sourceReceiptId)) {
-                ProcurementReturnPayableAuthority.lockAndValidate(
+                ProcurementReturnPayableAuthority.lockAndValidateConsideration(
                         em, "PURCHASE", sourceReceiptId, sourceSupplierId,
                         sourceCurrencyId, sourceRate, sourceSettlementMethodId,
                         sourceReceiptOriginal, sourceReceiptLocal, sourceApPosted);
@@ -164,8 +164,10 @@ public class PurchaseReturnAmountAuthority {
         BigDecimal remainingQty=sourceQty.subtract(priorQty),remainingBase=sourceBase.subtract(priorBase);
         if(requested.compareTo(remainingQty)>0 || remainingBase.signum()<=0)
             throw conflict("退货超过来源剩余原单位量或基本量");
-        BigDecimal base=requested.compareTo(remainingQty)==0 ? remainingBase
-                :sourceBase.multiply(requested).divide(sourceQty,4,java.math.RoundingMode.DOWN);
+        BigDecimal base;
+        if(requested.compareTo(remainingQty)==0)base=remainingBase;
+        else base=com.uten.imp.common.finance.BusinessPrecisionContext.divide(sourceBase.multiply(requested),sourceQty,
+                "procurement.return.base-quantity","采购退货基本量换算",com.uten.imp.common.util.FinancialExactAmount.MAX_FRACTION_DIGITS);
         base=com.uten.imp.common.util.FinancialExactAmount.quantity(base,"退货冻结基本量");
         if(base.signum()<=0 || base.compareTo(remainingBase)>0)throw conflict("退货分量小于可记录精度或超过冻结实物余量");
         return base;

@@ -1,12 +1,12 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Digits;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -132,7 +132,14 @@ public final class ProcurementIqcRejectionContracts {
 
     public record CreditSourceItem(UUID sourceApLedgerId,String sourceBillNo,
             String amountOriginal,String amountLocal,String creditedAmountOriginal,
-            String remainingAmountOriginal,List<CreditCaseChoice> cases) {}
+            String remainingAmountOriginal,List<CreditCaseChoice> cases,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            UUID sourceCandidateId) {
+        public CreditSourceItem(UUID sourceApLedgerId,String sourceBillNo,String amountOriginal,String amountLocal,
+                String creditedAmountOriginal,String remainingAmountOriginal,List<CreditCaseChoice> cases){
+            this(sourceApLedgerId,sourceBillNo,amountOriginal,amountLocal,creditedAmountOriginal,remainingAmountOriginal,cases,null);
+        }
+    }
 
     public record CreditCaseChoice(UUID caseId,long version,String receiptBillNo,
             String goodsName,String creditableBaseQty,String baseUnitName) {}
@@ -151,12 +158,24 @@ public final class ProcurementIqcRejectionContracts {
             @NotBlank @Size(max = 200) String creditReference,
             @NotNull LocalDate creditDate,
             @NotBlank @Size(max = 2000) String reason,
-            @DecimalMin(value = "0", inclusive = false) @Digits(integer = 14, fraction = 4)
+            @DecimalMin(value = "0", inclusive = false) @DocumentQuantity
             BigDecimal baseQty,
             BigDecimal actualAmountOriginal,
             UUID sourceApLedgerId,
             @Size(max = 100) List<@Valid ActualCreditAllocation> allocations,
-            @jakarta.validation.constraints.Pattern(regexp="[0-9a-f]{64}") String expectedBookAllocationHash) {
+            @jakarta.validation.constraints.Pattern(regexp="[0-9a-f]{64}") String expectedBookAllocationHash,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            UUID sourceCandidateId,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            java.util.Map<String,Object> precisionPolicy) {
+        public ConfirmCreditRequest(long expectedVersion,UUID commandId,String creditReference,LocalDate creditDate,String reason,
+                BigDecimal baseQty,BigDecimal actualAmountOriginal,UUID sourceApLedgerId,List<ActualCreditAllocation> allocations,String expectedBookAllocationHash,UUID sourceCandidateId){
+            this(expectedVersion,commandId,creditReference,creditDate,reason,baseQty,actualAmountOriginal,sourceApLedgerId,allocations,expectedBookAllocationHash,sourceCandidateId,null);
+        }
+        public ConfirmCreditRequest(long expectedVersion,UUID commandId,String creditReference,LocalDate creditDate,String reason,
+                BigDecimal baseQty,BigDecimal actualAmountOriginal,UUID sourceApLedgerId,List<ActualCreditAllocation> allocations,String expectedBookAllocationHash){
+            this(expectedVersion,commandId,creditReference,creditDate,reason,baseQty,actualAmountOriginal,sourceApLedgerId,allocations,expectedBookAllocationHash,null);
+        }
         public ConfirmCreditRequest(long expectedVersion, UUID commandId,
                 String creditReference, LocalDate creditDate, String reason) {
             this(expectedVersion, commandId, creditReference, creditDate, reason, null,null,null,null,null);
@@ -175,14 +194,21 @@ public final class ProcurementIqcRejectionContracts {
     public record CreditBookPreview(String bookAllocationHash,String amountOriginal,String amountLocal,
             String offsetOriginal,String offsetLocal,String creditRemainingOriginal,String creditRemainingLocal,
             String sourceBeforeOriginal,String sourceBeforeLocal,String sourceAfterOriginal,String sourceAfterLocal,
-            List<CreditCaseBookItem> caseAllocations) {}
+            List<CreditCaseBookItem> caseAllocations,
+            java.util.Map<String,Object> precisionPolicy) {
+        public CreditBookPreview(String bookAllocationHash,String amountOriginal,String amountLocal,String offsetOriginal,String offsetLocal,
+                String creditRemainingOriginal,String creditRemainingLocal,String sourceBeforeOriginal,String sourceBeforeLocal,String sourceAfterOriginal,String sourceAfterLocal,List<CreditCaseBookItem> caseAllocations){
+            this(bookAllocationHash,amountOriginal,amountLocal,offsetOriginal,offsetLocal,creditRemainingOriginal,creditRemainingLocal,
+                    sourceBeforeOriginal,sourceBeforeLocal,sourceAfterOriginal,sourceAfterLocal,caseAllocations,null);
+        }
+    }
     public record CreditCaseBookItem(UUID caseId,String baseQty,String amountOriginal,String amountLocal,
             String beforeOriginal,String beforeLocal,String afterOriginal,String afterLocal) {}
 
     public record ActualCreditAllocation(
             @NotNull UUID caseId,
             @Min(1) long expectedVersion,
-            @NotNull @DecimalMin(value="0",inclusive=false) @Digits(integer=14,fraction=4) BigDecimal baseQty,
+            @NotNull @DecimalMin(value="0",inclusive=false) @DocumentQuantity BigDecimal baseQty,
             @NotNull BigDecimal amountOriginal) {
     }
 

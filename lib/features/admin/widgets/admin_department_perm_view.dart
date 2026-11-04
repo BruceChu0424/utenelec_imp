@@ -537,7 +537,6 @@ class _AdminDepartmentPermViewState
                 mode: _multiSelection
                     ? UtenDepartmentTreeMode.multi
                     : UtenDepartmentTreeMode.single,
-                flatLevelColors: true,
                 selectedIds: _multiSelection
                     ? _batchDepartments.keys.toSet()
                     : {?_dept?.id},

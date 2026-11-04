@@ -1,0 +1,3239 @@
+{
+  "subcontractStatement": {
+    "layout": {
+      "version": 2,
+      "templateKey": "subcontractStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 19,
+      "canvasColumns": 19,
+      "widths": [
+        9.0,
+        10.375,
+        30.5583,
+        14.6333,
+        8.8833,
+        18.25,
+        10.75,
+        10.3833,
+        9.5,
+        9.0,
+        12.8833,
+        9.1333,
+        11.5,
+        9.0,
+        9.0,
+        9.0,
+        19.225,
+        9.0,
+        7.75
+      ],
+      "hiddenColumns": [],
+      "fontName": "宋体",
+      "fontSize": 12,
+      "rowHeight": 18.0,
+      "headerStartRow": 2,
+      "headerRow": 3,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司\n2026年9月份对账单",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 1,
+          "bold": true,
+          "text": "客户：匿名往来公司",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 2,
+          "bold": true,
+          "text": "序号",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 2,
+          "bold": true,
+          "text": "物料编码",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "LEFT",
+          "column": 2,
+          "row": 2,
+          "bold": true,
+          "text": "品名及规格",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 2,
+          "bold": true,
+          "text": "颜色",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 2,
+          "bold": true,
+          "text": "期初库存(PCS)",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 2,
+          "bold": true,
+          "text": "本月入库",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 3,
+          "bold": true,
+          "text": "材料单号",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 3,
+          "bold": true,
+          "text": "入库日期",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 3,
+          "bold": true,
+          "text": "入库数量",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 8,
+          "row": 3,
+          "bold": true,
+          "text": "数量合计",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 9,
+          "row": 2,
+          "bold": true,
+          "text": "允许生产损耗3%",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 10,
+          "row": 2,
+          "bold": true,
+          "text": "本月出货",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 10,
+          "row": 3,
+          "bold": true,
+          "text": "入库单号",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 11,
+          "row": 3,
+          "bold": true,
+          "text": "出货日期",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 12,
+          "row": 3,
+          "bold": true,
+          "text": "出货数量",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 13,
+          "row": 3,
+          "bold": true,
+          "text": "数量合计",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 14,
+          "row": 2,
+          "bold": true,
+          "text": "结存",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 15,
+          "row": 2,
+          "bold": true,
+          "text": "加工单价含税（元）",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 16,
+          "row": 2,
+          "bold": true,
+          "text": "金额（元）",
+          "fontSize": 12.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 17,
+          "row": 2,
+          "bold": true,
+          "text": "减扣材料款",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 17,
+          "row": 3,
+          "bold": true,
+          "text": "单价",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 18,
+          "row": 3,
+          "bold": true,
+          "text": "金额",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 0,
+          "lastColumn": 18
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 0,
+          "lastColumn": 18
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 0,
+          "lastColumn": 0
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 1,
+          "lastColumn": 1
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 2,
+          "lastColumn": 2
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 3,
+          "lastColumn": 3
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 4,
+          "lastColumn": 4
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 5,
+          "lastColumn": 8
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 9,
+          "lastColumn": 9
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 10,
+          "lastColumn": 13
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 14,
+          "lastColumn": 14
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 15,
+          "lastColumn": 15
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 2,
+          "firstColumn": 16,
+          "lastColumn": 16
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 17,
+          "lastColumn": 18
+        }
+      ],
+      "headingRowHeights": {
+        "3": 32.0,
+        "2": 32.0,
+        "1": 32.0,
+        "0": 32.0
+      },
+      "footer": {
+        "minimumDataRows": 283,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 16,
+            "lastColumn": 16,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "人民币",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 18,
+            "lastColumn": 18,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "0",
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "人民币",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 2,
+            "lastColumn": 15,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计：",
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 16,
+            "lastColumn": 16,
+            "rowSpan": 2,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 17,
+            "lastColumn": 18,
+            "rowSpan": 2,
+            "type": "text",
+            "value": "",
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": true,
+            "basis": "本份原件实际内部确认",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 2,
+            "column": 2,
+            "lastColumn": 15,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本次约定扣款：无额外扣款（匿名演示数据）",
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ]
+      },
+      "landscape": false,
+      "sourcePrint": {
+        "version": 2,
+        "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+        "sourceSheetPath": "xl/worksheets/sheet2.xml",
+        "paperSize": "A4",
+        "effectivePaperSize": "A4",
+        "orientation": "portrait",
+        "scalePercent": 100,
+        "fitToPage": false,
+        "fitToWidth": 1,
+        "fitToHeight": 1,
+        "pageOrder": "downThenOver",
+        "marginsPoints": {
+          "left": 54,
+          "right": 54,
+          "top": 72,
+          "bottom": 72,
+          "header": 36,
+          "footer": 36
+        },
+        "repeatRows": [],
+        "repeatColumns": [],
+        "columnWidthsPoints": [
+          50.625,
+          58.5,
+          171.75,
+          82.125,
+          49.875,
+          102.75,
+          60.375,
+          58.5,
+          53.25,
+          50.625,
+          72.375,
+          51.375,
+          64.5,
+          50.625,
+          50.625,
+          50.625,
+          108.0,
+          50.625,
+          43.5
+        ],
+        "columnWidthCharacters": [
+          9.0,
+          10.375,
+          30.5583333333333,
+          14.6333333333333,
+          8.88333333333333,
+          18.25,
+          10.75,
+          10.3833333333333,
+          9.5,
+          9.0,
+          12.8833333333333,
+          9.13333333333333,
+          11.5,
+          9.0,
+          9.0,
+          9.0,
+          19.225,
+          9.0,
+          7.75
+        ],
+        "widthBasis": {
+          "fontName": "宋体",
+          "fontSize": 11,
+          "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+        },
+        "sourcePageSetupAttributes": {
+          "paperSize": "9",
+          "orientation": "portrait"
+        },
+        "sourceStyles": {
+          "A1": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "A2": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "A3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "B3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "C289": {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C290": {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "D3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "E3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "F3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "F4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "G4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "H4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "I4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "J3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "K3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "K4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "L4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "M4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "N4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "O3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "P3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "Q288": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "Q289": {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "Q3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "R289": {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "R3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "R4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "S288": {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "S4": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        },
+        "bodyStyles": [
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ],
+        "geometrySha256": "87e6cce66cdde7bf5b11eb04c656c17cf9457d397dc86b8cfbd165e0daf2d030"
+      },
+      "geometrySha256": "87e6cce66cdde7bf5b11eb04c656c17cf9457d397dc86b8cfbd165e0daf2d030"
+    },
+    "rows": [
+      [
+        "1",
+        "DEMO-001",
+        "匿名加工件",
+        "白色",
+        "100",
+        "演示发料001",
+        "2026-09-03",
+        "10",
+        "10",
+        "0.3",
+        "演示回厂001",
+        "2026-09-08",
+        "2",
+        "2",
+        "107.7",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234",
+        "0",
+        "0"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "序号",
+      "物料编码",
+      "品名及规格",
+      "颜色",
+      "期初库存(PCS)",
+      "本月入库 / 材料单号",
+      "本月入库 / 入库日期",
+      "本月入库 / 入库数量",
+      "本月入库 / 数量合计",
+      "允许生产损耗3%",
+      "本月出货 / 入库单号",
+      "本月出货 / 出货日期",
+      "本月出货 / 出货数量",
+      "本月出货 / 数量合计",
+      "结存",
+      "加工单价含税（元）",
+      "金额（元）",
+      "减扣材料款 / 单价",
+      "减扣材料款 / 金额"
+    ]
+  },
+  "supplierStatement": {
+    "layout": {
+      "version": 2,
+      "templateKey": "supplierStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 8,
+      "canvasColumns": 8,
+      "widths": [
+        9.65,
+        9.1,
+        47.9,
+        5.2,
+        8.0,
+        10.3917,
+        12.0,
+        18.0
+      ],
+      "hiddenColumns": [],
+      "fontName": "宋体",
+      "fontSize": 11,
+      "rowHeight": 30.0,
+      "headerStartRow": 5,
+      "headerRow": 5,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司",
+          "fontSize": 18.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 1,
+          "bold": false,
+          "text": "地址：演示联系地址",
+          "fontSize": 10.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 2,
+          "bold": false,
+          "text": "电话：演示联系电话",
+          "fontSize": 10.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 3,
+          "bold": true,
+          "text": "对 帐 表",
+          "fontSize": 18.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 4,
+          "bold": false,
+          "text": "客户：匿名往来公司                      对帐日期：2026-9-1 至 2026-9-30",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 5,
+          "bold": false,
+          "text": "送货日期",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 5,
+          "bold": false,
+          "text": "物料编码",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 5,
+          "bold": false,
+          "text": "物料名称",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 5,
+          "bold": false,
+          "text": "单位",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 5,
+          "bold": false,
+          "text": "数量",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 5,
+          "bold": false,
+          "text": "含税单价",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 5,
+          "bold": false,
+          "text": "含税金额",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 5,
+          "bold": false,
+          "text": "备注",
+          "fontSize": 11.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 1,
+          "lastColumn": 7
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 1,
+          "lastColumn": 6
+        },
+        {
+          "lastRow": 2,
+          "firstRow": 2,
+          "firstColumn": 1,
+          "lastColumn": 6
+        },
+        {
+          "lastRow": 3,
+          "firstRow": 3,
+          "firstColumn": 1,
+          "lastColumn": 6
+        },
+        {
+          "lastRow": 4,
+          "firstRow": 4,
+          "firstColumn": 0,
+          "lastColumn": 6
+        }
+      ],
+      "headingRowHeights": {
+        "5": 30.0,
+        "4": 23.0,
+        "3": 23.0,
+        "2": 23.0,
+        "1": 23.0,
+        "0": 24.5
+      },
+      "footer": {
+        "minimumDataRows": 6,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 0,
+            "lastColumn": 2,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计：",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 4,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "number",
+            "value": "2",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "PCS",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "人民币",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计：",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 1,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本次约定扣款：无额外扣款（匿名演示数据）",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 7,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": true,
+            "basis": "本份原件实际内部确认",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 4,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "匿名演示公司",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 4,
+            "column": 4,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "2026年10月1日",
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ]
+      },
+      "landscape": false,
+      "sourcePrint": {
+        "version": 2,
+        "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+        "sourceSheetPath": "xl/worksheets/sheet3.xml",
+        "paperSize": "EXCEL_DEFAULT",
+        "effectivePaperSize": "A4",
+        "orientation": "portrait",
+        "scalePercent": 100,
+        "fitToPage": false,
+        "fitToWidth": 1,
+        "fitToHeight": 1,
+        "pageOrder": "downThenOver",
+        "marginsPoints": {
+          "left": 54,
+          "right": 54,
+          "top": 72,
+          "bottom": 72,
+          "header": 36,
+          "footer": 36
+        },
+        "repeatRows": [],
+        "repeatColumns": [],
+        "columnWidthsPoints": [
+          54.375,
+          51.0,
+          269.25,
+          29.25,
+          45.0,
+          58.5,
+          67.5,
+          101.25
+        ],
+        "columnWidthCharacters": [
+          9.65,
+          9.1,
+          47.9,
+          5.2,
+          8.0,
+          10.3916666666667,
+          12.0,
+          18.0
+        ],
+        "widthBasis": {
+          "fontName": "宋体",
+          "fontSize": 11,
+          "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+        },
+        "sourcePageSetupAttributes": {},
+        "sourceStyles": {
+          "A13": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A14": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A5": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B1": {
+            "fontSize": 18.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B14": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B2": {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B3": {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B4": {
+            "fontSize": 18.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "D6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E13": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E16": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E17": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "F6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G13": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G14": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "H14": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "H6": {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        },
+        "bodyStyles": [
+          {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 11.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ],
+        "geometrySha256": "093b029589c8ae421ff6af49b1418cdb3c584598e7ac0b1a797f52efcab6a651"
+      },
+      "geometrySha256": "093b029589c8ae421ff6af49b1418cdb3c584598e7ac0b1a797f52efcab6a651"
+    },
+    "rows": [
+      [
+        "2026-09-08",
+        "DEMO-001",
+        "匿名材料",
+        "PCS",
+        "2",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234",
+        "演示原单001"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "送货日期",
+      "物料编码",
+      "物料名称",
+      "单位",
+      "数量",
+      "含税单价",
+      "含税金额",
+      "备注"
+    ]
+  },
+  "otherReceivableStatement": {
+    "layout": {
+      "version": 2,
+      "templateKey": "otherReceivableStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 10,
+      "canvasColumns": 17,
+      "widths": [
+        10.4167,
+        22.875,
+        4.875,
+        10.0,
+        8.125,
+        8.3333,
+        10.9333,
+        10.5167,
+        7.9167,
+        19.125,
+        5.5,
+        24.0,
+        6.3,
+        9.0,
+        7.7,
+        9.8,
+        11.6
+      ],
+      "hiddenColumns": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "fontName": "宋体",
+      "fontSize": 10,
+      "rowHeight": 25.5,
+      "headerStartRow": 2,
+      "headerRow": 2,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司\n2026年9月份对账单",
+          "fontSize": 24.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 1,
+          "bold": true,
+          "text": "客户：匿名往来公司",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 1,
+          "bold": false,
+          "text": "电话：演示联系电话",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 1,
+          "bold": false,
+          "text": "传真：演示传真",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 9,
+          "row": 1,
+          "bold": false,
+          "text": "其他应收款  对账单",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 2,
+          "bold": true,
+          "text": "日期",
+          "fontSize": 10.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 2,
+          "bold": true,
+          "text": "产品名称（57#）",
+          "fontSize": 10.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 2,
+          "bold": true,
+          "text": "规格",
+          "fontSize": 10.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 2,
+          "bold": true,
+          "text": "进仓重量(KG)",
+          "fontSize": 10.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 2,
+          "bold": true,
+          "text": "发出重量(KG)",
+          "fontSize": 10.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 2,
+          "bold": true,
+          "text": "损耗0.5%",
+          "fontSize": 10.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 2,
+          "bold": true,
+          "text": "本月结余(KG）",
+          "fontSize": 10.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 2,
+          "bold": true,
+          "text": "发出数量(PCS)",
+          "fontSize": 10.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 8,
+          "row": 2,
+          "bold": true,
+          "text": "加工单价",
+          "fontSize": 10.0,
+          "wrapText": false,
+          "shrinkToFit": true
+        },
+        {
+          "alignment": "CENTER",
+          "column": 9,
+          "row": 2,
+          "bold": true,
+          "text": "加工货款",
+          "fontSize": 10.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 0,
+          "lastColumn": 9
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 0,
+          "lastColumn": 3
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 4,
+          "lastColumn": 5
+        }
+      ],
+      "headingRowHeights": {
+        "2": 25.5,
+        "1": 32.0,
+        "0": 55.0
+      },
+      "footer": {
+        "minimumDataRows": 37,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本月加工费总金额：",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 3,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 5,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "人民币大写总金额：",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 7,
+            "lastColumn": 9,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "金额含分以下小数，保留原数值待核",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "含税加工费金额",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 3,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "113.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 2,
+            "column": 0,
+            "lastColumn": 3,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "截止2026年9月30日贵公司应付总金额：",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 2,
+            "column": 4,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "200.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 0,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "总欠金本材料",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 5,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "number",
+            "value": "5.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "制表:匿名演示制表人",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 8,
+            "lastColumn": 8,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "日期：2026年10月1日",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 5,
+            "column": 0,
+            "lastColumn": 9,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "备注：匿名演示：请核对原单和实际金额，未确认的签字区域保留空白。",
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 7,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "客户确认:",
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 7,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "优腾确认:",
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 9,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "日    期:",
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 9,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "日   期：",
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ]
+      },
+      "landscape": false,
+      "sourcePrint": {
+        "version": 2,
+        "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+        "sourceSheetPath": "xl/worksheets/sheet5.xml",
+        "paperSize": "EXCEL_DEFAULT",
+        "effectivePaperSize": "A4",
+        "orientation": "portrait",
+        "scalePercent": 100,
+        "fitToPage": false,
+        "fitToWidth": 1,
+        "fitToHeight": 1,
+        "pageOrder": "downThenOver",
+        "marginsPoints": {
+          "left": 54,
+          "right": 54,
+          "top": 72,
+          "bottom": 72,
+          "header": 36,
+          "footer": 36
+        },
+        "repeatRows": [],
+        "repeatColumns": [],
+        "columnWidthsPoints": [
+          58.5,
+          128.625,
+          27.375,
+          56.25,
+          45.75,
+          46.875,
+          61.5,
+          59.25,
+          44.625,
+          107.625,
+          30.75,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "columnWidthCharacters": [
+          10.4166666666667,
+          22.875,
+          4.875,
+          10.0,
+          8.125,
+          8.33333333333333,
+          10.9333333333333,
+          10.5166666666667,
+          7.91666666666667,
+          19.125,
+          5.5,
+          24.0,
+          6.3,
+          9.0,
+          7.7,
+          9.8,
+          11.6
+        ],
+        "widthBasis": {
+          "fontName": "宋体",
+          "fontSize": 11,
+          "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+        },
+        "sourcePageSetupAttributes": {},
+        "sourceStyles": {
+          "A1": {
+            "fontSize": 24.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "A2": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A41": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "RIGHT",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A42": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A43": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A44": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A46": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A48": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A50": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "D3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "D41": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "D42": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E2": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "E43": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "F3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "F41": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "F44": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "G44": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G48": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G50": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "H2": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "H3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "H41": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "I3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": true
+          },
+          "I44": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "J2": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "J3": {
+            "fontSize": 10.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        },
+        "bodyStyles": [
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 10.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ],
+        "geometrySha256": "b207efb981d319dcc1cd12e28a1572ce7c98fcb7580284e491cd76b6f9d48917"
+      },
+      "geometrySha256": "b207efb981d319dcc1cd12e28a1572ce7c98fcb7580284e491cd76b6f9d48917"
+    },
+    "rows": [
+      [
+        "2026-09-08",
+        "匿名铜粒",
+        "演示规格",
+        "10",
+        "4",
+        "0.05",
+        "5.95",
+        "2",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "日期",
+      "产品名称（57#）",
+      "规格",
+      "进仓重量(KG)",
+      "发出重量(KG)",
+      "损耗0.5%",
+      "本月结余(KG）",
+      "发出数量(PCS)",
+      "加工单价",
+      "加工货款"
+    ]
+  },
+  "clientStatement": {
+    "layout": {
+      "version": 2,
+      "templateKey": "clientStatement",
+      "title": "匿名演示公司\n2026年9月份对账单",
+      "mainColumnCount": 8,
+      "canvasColumns": 8,
+      "widths": [
+        11.3667,
+        55.1667,
+        11.6667,
+        4.5,
+        8.0917,
+        9.5333,
+        14.1167,
+        14.2417
+      ],
+      "hiddenColumns": [],
+      "fontName": "宋体",
+      "fontSize": 9,
+      "rowHeight": 18.0,
+      "headerStartRow": 3,
+      "headerRow": 3,
+      "headings": [
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 0,
+          "bold": true,
+          "text": "匿名演示公司\n2026年9月份对账单",
+          "fontSize": 11.0,
+          "wrapText": true,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 1,
+          "bold": true,
+          "text": "客户：匿名往来公司",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 1,
+          "bold": true,
+          "text": "应收账款   客户对账",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "LEFT",
+          "column": 0,
+          "row": 2,
+          "bold": true,
+          "text": "电话：演示联系电话",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 2,
+          "bold": true,
+          "text": "传真：演示传真",
+          "fontSize": 12.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 0,
+          "row": 3,
+          "bold": false,
+          "text": "开单日期",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 1,
+          "row": 3,
+          "bold": false,
+          "text": "货品名称",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 2,
+          "row": 3,
+          "bold": false,
+          "text": "颜色",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 3,
+          "row": 3,
+          "bold": false,
+          "text": "单位",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 4,
+          "row": 3,
+          "bold": false,
+          "text": "数量",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 5,
+          "row": 3,
+          "bold": false,
+          "text": "含税单价",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 6,
+          "row": 3,
+          "bold": false,
+          "text": "含税金额",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        },
+        {
+          "alignment": "CENTER",
+          "column": 7,
+          "row": 3,
+          "bold": false,
+          "text": "备注",
+          "fontSize": 9.0,
+          "wrapText": false,
+          "shrinkToFit": false
+        }
+      ],
+      "merges": [
+        {
+          "lastRow": 0,
+          "firstRow": 0,
+          "firstColumn": 0,
+          "lastColumn": 7
+        },
+        {
+          "lastRow": 1,
+          "firstRow": 1,
+          "firstColumn": 4,
+          "lastColumn": 6
+        }
+      ],
+      "headingRowHeights": {
+        "3": 18.0,
+        "2": 18.0,
+        "1": 18.0,
+        "0": 33.0
+      },
+      "footer": {
+        "minimumDataRows": 89,
+        "cells": [
+          {
+            "rowOffset": 0,
+            "column": 1,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "合计",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 4,
+            "lastColumn": 4,
+            "rowSpan": 1,
+            "type": "number",
+            "value": "2",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "PCS",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 0,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "100.123456789012345678901234",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "人民币",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "本月货款人民币大写金额：",
+            "fontSize": 14.0,
+            "bold": true,
+            "alignment": "RIGHT",
+            "pending": false,
+            "basis": "",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 1,
+            "column": 2,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "金额含分以下小数，保留原数值待核",
+            "fontSize": 14.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 2,
+            "column": 0,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "已扣质保金：0",
+            "fontSize": 14.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 0,
+            "lastColumn": 1,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "截止2026年9月30日贵公司应付总金额：",
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 2,
+            "lastColumn": 2,
+            "rowSpan": 1,
+            "type": "money",
+            "value": "200.123456789012345678901234",
+            "fontSize": 9.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 3,
+            "column": 3,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 4,
+            "column": 0,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "备注：匿名演示：请核对原单和实际金额，未确认的签字区域保留空白。",
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "pending": false,
+            "basis": "匿名布局验证数据",
+            "wrapText": true,
+            "shrinkToFit": true
+          },
+          {
+            "rowOffset": 6,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "客户对账人签名盖章：",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 6,
+            "column": 2,
+            "lastColumn": 2,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "     供应商对账人签名盖章：",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 6,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "匿名演示制表人",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 9,
+            "column": 0,
+            "lastColumn": 0,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "              日期：",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 9,
+            "column": 2,
+            "lastColumn": 5,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "                 日期：",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": true,
+            "basis": "本份原件实际确认事实",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 9,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "2026年10月1日",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 11,
+            "column": 6,
+            "lastColumn": 6,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "匿名演示公司",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "rowOffset": 12,
+            "column": 6,
+            "lastColumn": 7,
+            "rowSpan": 1,
+            "type": "text",
+            "value": "2026年10月1日",
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "pending": false,
+            "basis": "原件已冻结的实际资料",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ]
+      },
+      "landscape": false,
+      "sourcePrint": {
+        "version": 2,
+        "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+        "sourceSheetPath": "xl/worksheets/sheet6.xml",
+        "paperSize": "EXCEL_DEFAULT",
+        "effectivePaperSize": "A4",
+        "orientation": "portrait",
+        "scalePercent": 100,
+        "fitToPage": false,
+        "fitToWidth": 1,
+        "fitToHeight": 1,
+        "pageOrder": "downThenOver",
+        "marginsPoints": {
+          "left": 54,
+          "right": 54,
+          "top": 72,
+          "bottom": 72,
+          "header": 36,
+          "footer": 36
+        },
+        "repeatRows": [],
+        "repeatColumns": [],
+        "columnWidthsPoints": [
+          63.75,
+          310.125,
+          65.625,
+          25.125,
+          45.375,
+          53.625,
+          79.5,
+          80.25
+        ],
+        "columnWidthCharacters": [
+          11.3666666666667,
+          55.1666666666667,
+          11.6666666666667,
+          4.5,
+          8.09166666666667,
+          9.53333333333333,
+          14.1166666666667,
+          14.2416666666667
+        ],
+        "widthBasis": {
+          "fontName": "宋体",
+          "fontSize": 11,
+          "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+        },
+        "sourcePageSetupAttributes": {},
+        "sourceStyles": {
+          "A1": {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "A100": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A103": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A2": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A95": {
+            "fontSize": 14.0,
+            "bold": true,
+            "alignment": "RIGHT",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A96": {
+            "fontSize": 14.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "A97": {
+            "fontSize": 11.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "A98": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "wrapText": true,
+            "shrinkToFit": true
+          },
+          "B4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "B94": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C100": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "GENERAL",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C103": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "C3": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C95": {
+            "fontSize": 14.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "C97": {
+            "fontSize": 9.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "D4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "D97": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "LEFT",
+            "wrapText": true,
+            "shrinkToFit": false
+          },
+          "E2": {
+            "fontSize": 12.0,
+            "bold": true,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "E94": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "F4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G100": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G103": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G105": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G106": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "G94": {
+            "fontSize": 12.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          "H4": {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        },
+        "bodyStyles": [
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "LEFT",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          },
+          {
+            "fontSize": 9.0,
+            "bold": false,
+            "alignment": "CENTER",
+            "wrapText": false,
+            "shrinkToFit": false
+          }
+        ],
+        "geometrySha256": "cc14ccdd1ea1da406232053d5de2a2fe3b176e5bf1cb471b647374c50f1accc2"
+      },
+      "geometrySha256": "cc14ccdd1ea1da406232053d5de2a2fe3b176e5bf1cb471b647374c50f1accc2"
+    },
+    "rows": [
+      [
+        "2026-09-08",
+        "匿名产品",
+        "白色",
+        "PCS",
+        "2",
+        "50.061728394506172839450617",
+        "100.123456789012345678901234",
+        "演示原单001"
+      ]
+    ],
+    "notice": "匿名布局验证，非公司账务",
+    "headers": [
+      "开单日期",
+      "货品名称",
+      "颜色",
+      "单位",
+      "数量",
+      "含税单价",
+      "含税金额",
+      "备注"
+    ]
+  }
+}

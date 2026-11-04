@@ -10,6 +10,9 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_employee_picker_access.dart';
+import '../../../components/inputs/uten_employee_department_tree.dart';
+import '../../../features/employee/providers/employee_picker_department_tree_provider.dart';
+import '../../../shared/models/department_node.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -714,64 +717,98 @@ class _AuditActorPickerState extends ConsumerState<AuditActorPicker>
     with EmployeePickerAccessState<AuditActorPicker> {
   final _actors = <String, AuditActorOption>{};
   int _loadRevision = 0;
+  AuditLogRepository? _directoryRepository;
+  static const _visitorDepartment = 'audit-external-visitors';
+
+  Future<List<DepartmentNode>> _departments() async => [
+    ...await ref.read(employeePickerDepartmentTreeProvider.future),
+    DepartmentNode(
+      id: _visitorDepartment,
+      code: 'AUDIT_VISITORS',
+      name: '外部访客',
+      level: '公司',
+      children: const [],
+    ),
+  ];
 
   @override
   void onPickerAccessInvalidated() {
     _loadRevision++;
     _actors.clear();
+    _directoryRepository = null;
   }
 
-  Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
+  Future<UtenEmployeePickerPage> _load(UtenEmployeePickerQuery query) async {
     final ticket = pickerAccess.capture();
-    final repository = ref.read(auditLogRepositoryProvider);
+    // Pin the owning audit directory for this open picker; actorId is a user/
+    // visitor identity and must never be replaced with an employee directory.
+    final AuditLogRepository repository =
+        _directoryRepository ?? ref.read(auditLogRepositoryProvider);
+    _directoryRepository = repository;
     final revision = ++_loadRevision;
-    final rows = <String, AuditActorOption>{};
-    var pageNumber = 1;
-    var totalPages = 1;
-    do {
-      final page = await repository.actors(
-        page: pageNumber,
-        size: 100,
-        keyword: keyword,
-      );
-      if (!mounted || !ticket.isCurrent || revision != _loadRevision) {
-        return const [];
-      }
-      if (page.page != pageNumber) throw StateError('人员列表数据加载出了问题，请刷新重试');
-      for (final actor in page.items) {
-        rows[actor.actorId] = actor;
-      }
-      totalPages = page.totalPages;
-      pageNumber++;
-    } while (pageNumber <= totalPages);
-    _actors.addAll(rows);
-    return [
-      for (final actor in rows.values)
-        UtenEmployeePickerItem(
-          id: actor.actorId,
-          name: actor.primaryLabel,
-          departmentId: actor.actorType == 'visitor'
-              ? 'audit-external-visitors'
-              : actor.departmentId,
-          departmentName: actor.department,
-          accountStatus: actor.accountStatus,
-          employmentStatus: actor.actorType == 'visitor'
-              ? 'notApplicable'
-              : actor.employmentStatus,
-          subtitle: [
-            if (actor.actorType == 'visitor') '访客',
-            if (actor.position?.trim().isNotEmpty == true)
-              actor.position!.trim(),
-            if (actor.lastActivityAt != null)
-              '最近操作：${_auditBeijingTime(actor.lastActivityAt)}',
-          ].join(' · '),
-        ),
-    ];
+    var departmentId = query.departmentId;
+    final visitors = departmentId == _visitorDepartment;
+    final unassigned =
+        query.departmentScopeKey ==
+        UtenEmployeeDepartmentDirectory.unknownDepartment;
+    bool knownDepartment(Iterable<DepartmentNode> nodes) => nodes.any(
+      (node) => node.id == departmentId || knownDepartment(node.children),
+    );
+    final subtree =
+        departmentId != null &&
+        !visitors &&
+        knownDepartment(query.organization ?? const []);
+    if (visitors || unassigned) departmentId = null;
+    final page = await repository.actors(
+      page: query.page,
+      size: 100,
+      keyword: query.keyword,
+      departmentId: departmentId,
+      includeSubtree: subtree,
+      actorType: visitors
+          ? 'visitor'
+          : unassigned
+          ? 'staff'
+          : null,
+      unassignedOnly: unassigned,
+    );
+    if (!mounted || !ticket.isCurrent || revision != _loadRevision) {
+      return UtenEmployeePickerPage.empty(page: query.page);
+    }
+    if (page.page != query.page) throw StateError('人员列表数据加载出了问题，请刷新重试');
+    _actors.addAll({for (final actor in page.items) actor.actorId: actor});
+    return UtenEmployeePickerPage(
+      page: page.page,
+      totalPages: page.totalPages,
+      items: [
+        for (final actor in page.items)
+          UtenEmployeePickerItem(
+            id: actor.actorId,
+            name: actor.primaryLabel,
+            departmentId: actor.actorType == 'visitor'
+                ? _visitorDepartment
+                : actor.departmentId,
+            departmentName: actor.department,
+            accountStatus: actor.accountStatus,
+            employmentStatus: actor.actorType == 'visitor'
+                ? 'notApplicable'
+                : actor.employmentStatus,
+            subtitle: [
+              if (actor.actorType == 'visitor') '访客',
+              if (actor.position?.trim().isNotEmpty == true)
+                actor.position!.trim(),
+              if (actor.lastActivityAt != null)
+                '最近操作：${_auditBeijingTime(actor.lastActivityAt)}',
+            ].join(' · '),
+          ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) => UtenEmployeeSelectionPanel(
-    loader: _load,
+    pagedLoader: _load,
+    departmentTreeLoader: _departments,
     title: '人员目录',
     searchHint: '搜索部门 / 姓名 / 账号',
     emptyMessage: '暂时没有可选择的人员',

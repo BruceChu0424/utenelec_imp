@@ -159,7 +159,7 @@ class GoodsUuidRelationshipServiceTest {
         GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
         var access = mock(com.uten.imp.features.master.lifecycle.MasterObjectAccess.class);
         when(access.visibleGoodsOwner()).thenReturn(owner -> true);
-        GoodsBomService service = new GoodsBomService(
+        GoodsBomService service = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class),
                 goodsRepo, bomRepo, mock(ColorRepository.class), mock(UnitRepository.class),
                 mock(TxSessionVars.class), mock(com.uten.imp.security.SecurityContextCurrentUser.class),
                 mock(MasterReferenceValidationPort.class), relationships,

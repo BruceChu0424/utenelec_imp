@@ -134,8 +134,11 @@ public class GoodsWeightObservationService {
      * 登记一次称重观测 (加入调用方事务)。不满足学习条件时不登记, 返回空; 同一 captureKey 重放返回已有观测 id。
      * 本方法不会因为数据本身挡住调用方的过账: 数值越界的观测一律不登记。
      */
+    public record Recorded(UUID id,boolean created) { }
     @Transactional
-    public Optional<UUID> record(ObservationCommand cmd) {
+    public Optional<UUID> record(ObservationCommand cmd) { return recordWithReceipt(cmd).map(Recorded::id); }
+    @Transactional
+    public Optional<Recorded> recordWithReceipt(ObservationCommand cmd) {
         if (cmd == null || cmd.goodsId() == null || cmd.kind() == null
                 || cmd.captureKey() == null || cmd.captureKey().isBlank()) {
             return Optional.empty();
@@ -148,7 +151,7 @@ public class GoodsWeightObservationService {
         String captureKey = cmd.captureKey().strip();
         Optional<UUID> existing = findByCaptureKey(captureKey);
         if (existing.isPresent()) {
-            return existing;
+            return existing.map(id->new Recorded(id,false));
         }
         GoodsWeightFacts goods = facts.load(cmd.goodsId());
         if (!goods.exists() || goods.exact() || !goods.profile().learningEnabled()) {
@@ -234,7 +237,7 @@ public class GoodsWeightObservationService {
                 RETURNING id
                 """, args, UUID.class);
         if (inserted.isEmpty()) {
-            return findByCaptureKey(captureKey);
+            return findByCaptureKey(captureKey).map(found->new Recorded(found,false));
         }
         if (cmd.kind() == SourceKind.SAMPLE && cmd.newRegime()) {
             startManualRegime(cmd.goodsId(), observedAt, cmd.recordedBy());
@@ -242,7 +245,7 @@ public class GoodsWeightObservationService {
         if (excluded == null || (cmd.kind() == SourceKind.SAMPLE && cmd.newRegime())) {
             publish(cmd.goodsId(), id, "RECORDED");
         }
-        return Optional.of(id);
+        return Optional.of(new Recorded(id,true));
     }
 
     /** 按 captureKey 红冲一条观测 (单据撤销时调用); 返回红冲条数。 */
@@ -322,7 +325,7 @@ public class GoodsWeightObservationService {
     static String exclusionReason(BigDecimal qty, BigDecimal weightKg, BigDecimal expectedWeightKg,
                                   BigDecimal servedUnitWeightKg) {
         if (expectedWeightKg != null && weightKg != null
-                && WeightUnit.KG.toKgLine(expectedWeightKg).compareTo(WeightUnit.KG.toKgLine(weightKg)) == 0) {
+                && expectedWeightKg.compareTo(weightKg) == 0) {
             return EXCLUDED_ECHO;
         }
         if (servedUnitWeightKg != null && servedUnitWeightKg.signum() > 0 && qty != null && weightKg != null) {
@@ -330,8 +333,8 @@ public class GoodsWeightObservationService {
             if (pieces >= QTY_ECHO_MIN_PIECES && Double.isFinite(pieces)) {
                 BigDecimal estimate = BigDecimal.valueOf(pieces);
                 BigDecimal whole = estimate.setScale(0, RoundingMode.HALF_EVEN);
-                BigDecimal fourDp = estimate.setScale(QTY_SCALE, RoundingMode.HALF_EVEN);
-                if (qty.compareTo(whole) == 0 || qty.compareTo(fourDp) == 0) {
+                BigDecimal exactFraction = estimate;
+                if (qty.compareTo(whole) == 0 || qty.compareTo(exactFraction) == 0) {
                     return EXCLUDED_QTY_ECHO;
                 }
             }
@@ -371,13 +374,13 @@ public class GoodsWeightObservationService {
                 .worse(resolution.tier());
         Alert alert = resolution.alertsAllowed() && requestTier != Tier.RED ? check.alert() : Alert.NONE;
         BigDecimal deviation = !Double.isFinite(check.deviationPct()) ? null
-                : BigDecimal.valueOf(check.deviationPct()).setScale(4, RoundingMode.HALF_EVEN)
+                : BigDecimal.valueOf(check.deviationPct())
                 .max(DEVIATION_LIMIT.negate()).min(DEVIATION_LIMIT);
-        BigDecimal expectedUnit = unitWeight.setScale(UNIT_WEIGHT_SCALE, RoundingMode.HALF_EVEN);
+        BigDecimal expectedUnit = unitWeight;
         BigDecimal expectedWeight = !Double.isFinite(check.expectedWeightKg()) ? null
-                : BigDecimal.valueOf(check.expectedWeightKg()).setScale(KG_SCALE, RoundingMode.HALF_EVEN);
-        return new Snapshot(fits(expectedUnit, 12) ? expectedUnit : null,
-                fits(expectedWeight, 14) ? expectedWeight : null,
+                : BigDecimal.valueOf(check.expectedWeightKg());
+        return new Snapshot(fits(expectedUnit, 40) ? expectedUnit : null,
+                fits(expectedWeight, 40) ? expectedWeight : null,
                 deviation, alert, requestTier, tolerancePct, unitWeight);
     }
 
@@ -431,12 +434,8 @@ public class GoodsWeightObservationService {
     }
 
     /** 按列精度取位; 整数位超过 14 位 (NUMERIC(18,4) / NUMERIC(20,6) 放不下) 返回 null, 不让观测挡住过账。 */
-    static BigDecimal scaled(BigDecimal value, int scale) {
-        if (value == null) {
-            return null;
-        }
-        BigDecimal rounded = value.setScale(scale, RoundingMode.HALF_EVEN);
-        return fits(rounded, 14) ? rounded : null;
+    static BigDecimal scaled(BigDecimal value, int legacyScale) {
+        return value==null?null:WeightMath.normalizeInput(value);
     }
 
     /** 整数位不超过 intDigits。 */
@@ -453,7 +452,7 @@ public class GoodsWeightObservationService {
         if (eps == null || eps.signum() < 0 || eps.compareTo(new BigDecimal("0.5")) > 0) {
             return null;
         }
-        return eps.setScale(5, RoundingMode.HALF_EVEN);
+        return com.uten.imp.common.util.FinancialExactAmount.rate(eps,"数量相对误差");
     }
 
     private static String blankToNull(String value) {

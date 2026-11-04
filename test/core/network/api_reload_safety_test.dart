@@ -206,6 +206,45 @@ void main() {
       expect(registry.snapshot.isSafe, isTrue);
     },
   );
+  for (final path in [
+    '/finance/statement-documents/metadata',
+    '/api/finance/statement-documents/preview',
+    '/finance/statement-documents/reviews/query?page=2',
+  ]) {
+    test(
+      'statement read $path never retains an unknown financial commit',
+      () async {
+        final request = api.post(
+          path,
+          body: {'partyId': 'explicit-original-party'},
+        );
+        final rejected = expectLater(request, throwsA(isA<ApiException>()));
+        expect(safety.pendingReadCount, 1);
+        expect(safety.pendingCount, 0);
+        await adapter.ready(1);
+        adapter.fail(0, DioExceptionType.receiveTimeout);
+        await rejected;
+        expect(registry.snapshot.isSafe, isTrue);
+      },
+    );
+  }
+  for (final path in [
+    '/finance/statement-documents/profiles',
+    '/finance/statement-documents/reviews',
+    '/finance/statement-documents/reviews/original/decision',
+    '/finance/statement-documents/reviews/original/counterpart',
+  ]) {
+    test('statement write $path keeps unknown commit protection', () async {
+      final request = api.post(path, body: {'requestId': 'original-request'});
+      final rejected = expectLater(request, throwsA(isA<ApiException>()));
+      expect(safety.pendingCount, 1);
+      expect(safety.pendingReadCount, 0);
+      await adapter.ready(1);
+      adapter.fail(0, DioExceptionType.receiveTimeout);
+      await rejected;
+      expect(registry.snapshot.serverReloadSafe, isFalse);
+    });
+  }
 
   for (final path in [
     '/platform-columns/goods/values:batch',

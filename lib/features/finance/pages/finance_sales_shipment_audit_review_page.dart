@@ -1,3 +1,6 @@
+import '../../sales/widgets/sales_shipment_print.dart';
+import '../config/finance_requirement_names.dart';
+import '../widgets/finance_actual_receipt_context.dart';
 // 出货财务审核详情页（财务专用视图，与销售端出货详情分离；2026-09-12 拆分）。
 //
 // 对齐销售订单财务审核页 V300 / 订货审批审核详情页（ADR-027 §五）范式：
@@ -530,7 +533,7 @@ class _FinanceSalesShipmentAuditReviewPageState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const UtenReviewerResponsibilityNotice(
-                actionLabel: '出货财务审核',
+                actionLabel: FinanceRequirementNames.customerShipmentReview,
                 description: '确认仅放行仓库作业；正式应收在仓库确认出库后生成。系统将记录当前审核员并承担本次放行责任。',
                 compact: true,
               ),
@@ -804,9 +807,25 @@ class _FinanceSalesShipmentAuditReviewPageState
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
-          title: '出货财务审核',
+          title: FinanceRequirementNames.customerShipmentReview,
           leading: UtenBackButton(onPressed: _leave),
           actions: [
+            if (_detail?.financeAudit == 1 && (_detail?.status ?? -1) >= 0)
+              UtenButton(
+                icon: Icons.print_outlined,
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        try {
+                          await showSalesShipmentPrint(context, ref, widget.id);
+                        } catch (error) {
+                          if (context.mounted) {
+                            context.appApiError(error, fallback: '打印预览未读取完成');
+                          }
+                        }
+                      },
+                child: const Text('预览打印'),
+              ),
             UtenRefreshButton(
               enabled: !_busy,
               busy: _loading,
@@ -1094,6 +1113,7 @@ class _FinanceSalesShipmentAuditReviewPageState
         if (!_isFreeShipment) ...[
           const SizedBox(height: UtenSpacing.s12),
           _exchangeRateSection(theme, info),
+          FinanceActualReceiptContext(value: info.actualReceiptContext),
         ],
       ],
     );
@@ -1318,6 +1338,13 @@ class _FinanceSalesShipmentAuditReviewPageState
             if (d.parcelCount != null) kv('件数', d.parcelCount?.toString()),
             if (d.remark?.isNotEmpty == true) kv('备注', d.remark),
             if (d.financeAuditedAt != null) kv('放行时间', d.financeAuditedAt),
+            if (d.financeAudit == 1)
+              kv(
+                '审核人',
+                d.financeAuditorName?.isNotEmpty == true
+                    ? d.financeAuditorName
+                    : '历史未留姓名快照',
+              ),
           ],
         ),
       ],

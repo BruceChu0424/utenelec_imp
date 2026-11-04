@@ -200,6 +200,26 @@ class ReportExportSpecialSourcesPostgresTest {
                             "sql",context.sql));
         }
     }
+    @ParameterizedTest @ValueSource(strings={"account/statement","statement/flow","statements/supplier","cost/product","gl/trial-balance"})
+    void reportTextCandidatesUseTheFullOwningProjectionAcrossEveryPage(String report) throws Exception {
+        String column=switch(report){case "account/statement"->"billNo";case "statement/flow"->"refNo";case "statements/supplier"->"goodsName";case "cost/product"->"goodsCode";default->"styleCode";};
+        try(var context=new Context()) {
+            var parameters=new HashMap<>(Map.of("dateFrom",DATE.toString(),"dateTo",DATE.toString()));
+            if(report.equals("account/statement"))parameters.put("accountId",ACCOUNT.toString());
+            if(report.equals("statement/flow")){parameters.put("partyId",CLIENT.toString());parameters.put("side","AR");}
+            List<String> actual=new ArrayList<>();
+            for(int page=1;;page++)try(var candidates=com.uten.imp.common.web.NativeFacetCandidates.open("value","",page,100)) {
+                var response=context.finance.columnCandidates(report,column,parameters);
+                var result=candidates.result(response,"current");
+                assertThat(result.items()).hasSizeLessThanOrEqualTo(100);
+                actual.addAll(result.items().stream().map(item->item.get("value").toString()).toList());
+                if(!result.hasMore())break;
+            }
+            assertThat(actual).hasSize(1001).doesNotHaveDuplicates();
+            assertThat(context.sql).anySatisfy(sql->assertThat(sql).contains("candidate.bucket_count"));
+        }
+    }
+
     @Test void actualAccountFacetServiceReadsAllDistinctCandidatesBeyondLegacyFiveHundredWithLiteralSearch() throws Exception {
         db.update("UPDATE finance_reconciliations SET bill_no=? WHERE account_id=? AND posting_seq=1002","百分%_\\原文",ACCOUNT);
         db.update("UPDATE finance_reconciliations SET bill_no=NULL WHERE account_id=? AND posting_seq=2",ACCOUNT);

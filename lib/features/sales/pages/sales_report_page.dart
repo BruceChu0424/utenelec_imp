@@ -382,29 +382,6 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     );
   }
 
-  /// 「已选筛选」chip 文案：key 映射列中文名（不暴露 clientName 等内部键），
-  /// 值映射 facet 桶展示名（客户 UUID → 客户名，不暴露内部 id）。
-  String _filterChipText(String key, String value) {
-    final data = _data;
-    String label = key;
-    if (data != null) {
-      for (final c in data.columns) {
-        if (c.key == key) {
-          label = c.label;
-          break;
-        }
-      }
-    }
-    if (value == kMasterFilterNullValue) return '$label: (空)';
-    final buckets = data?.facets[key];
-    if (buckets != null) {
-      for (final b in buckets) {
-        if (b.value == value) return '$label: ${b.display}';
-      }
-    }
-    return '$label: $value';
-  }
-
   void _changeDocType(SalesReportDocType t) {
     if (t == _docType) return;
     setState(() {
@@ -514,65 +491,17 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
               _persistAndReload();
             },
           ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('日期范围'),
-          UtenDateRangeButton(
-            range: DateTimeRange(start: _from, end: _to),
-            firstDate: DateTime(2010),
-            lastDate: DateTime(2100),
-            onChanged: (range) async {
-              if (!mounted) return;
-              setState(() {
-                _from = range.start;
-                _to = range.end;
-              });
-              _persistPrefs();
-              _page = 1;
-              await _load();
-            },
-          ),
-          if (_filters.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _filterLabel('已选筛选 (${_filters.length})'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                for (final e in _filters.entries)
-                  Chip(
-                    label: Text(
-                      _filterChipText(e.key, e.value),
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                    onDeleted: () => _onFilterChanged(e.key, null),
-                    visualDensity: VisualDensity.compact,
-                  ),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 
   Widget _buildTable() {
-    final source = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final source = _data ?? _reportMetadata.loadingData;
     final matches =
         _acceptedEndpoint == _readEndpoint &&
         const DeepCollectionEquality().equals(_acceptedQuery, _readQuery);
-    final data = matches ? source : source?.pendingQuery();
-    if (data == null) {
-      final error = _reportPages.error;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(error ?? '暂无报表数据'),
-            TextButton(onPressed: _load, child: const Text('重试')),
-          ],
-        ),
-      );
-    }
+    final data = matches ? source : source.pendingQuery();
     // 状态类列（label 含「状态」，如 单据状态）在客户端映射处排到最前，并收紧
     // 声明宽（value 即显示文案 → 72；表格仍按内容自动适配加宽）；其余列保持
     // 服务端元数据的顺序与宽度。
@@ -609,6 +538,21 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       serverColumnSearchKeys: data.columnSearchKeys,
       items: data.rows,
       toolbarActions: [
+        UtenDateRangeButton(
+          range: DateTimeRange(start: _from, end: _to),
+          firstDate: DateTime(2010),
+          lastDate: DateTime(2100),
+          onChanged: (range) async {
+            if (!mounted) return;
+            setState(() {
+              _from = range.start;
+              _to = range.end;
+            });
+            _persistPrefs();
+            _page = 1;
+            await _load();
+          },
+        ),
         UtenPrintPreviewButton(
           title: '销售${_docType.label}${_kind.shortLabel}报表',
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',

@@ -11,4 +11,5 @@ public record ExpenseClaimItemDto(
         LocalDate date,
         String description
 ) {
+    public String getAmountExact(){return com.uten.imp.common.util.DecimalText.of(amount);}
 }

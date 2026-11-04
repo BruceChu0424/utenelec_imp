@@ -528,8 +528,11 @@ void main() {
         'inspectionItemId': 'i-1',
         'goodsId': 'g-1',
         'receivedBaseQty': 10,
+        'receivedBaseQtyExact': '10',
         'passedBaseQty': 10,
+        'passedBaseQtyExact': '10',
         'failedBaseQty': 0,
+        'failedBaseQtyExact': '0',
         'lineStatus': 'RESOLVED',
       }).verdict,
       WarehouseQualityLineVerdict.passed,
@@ -540,8 +543,11 @@ void main() {
         'inspectionItemId': 'i-2',
         'goodsId': 'g-1',
         'receivedBaseQty': 10,
+        'receivedBaseQtyExact': '10',
         'passedBaseQty': 0,
+        'passedBaseQtyExact': '0',
         'failedBaseQty': 10,
+        'failedBaseQtyExact': '10',
         'lineStatus': 'RESOLVED',
       }).verdict,
       WarehouseQualityLineVerdict.rejected,
@@ -552,8 +558,11 @@ void main() {
         'inspectionItemId': 'i-3',
         'goodsId': 'g-1',
         'receivedBaseQty': 10,
+        'receivedBaseQtyExact': '10',
         'passedBaseQty': 6,
+        'passedBaseQtyExact': '6',
         'failedBaseQty': 4,
+        'failedBaseQtyExact': '4',
         'lineStatus': 'RESOLVED',
       }).verdict,
       WarehouseQualityLineVerdict.partial,
@@ -563,8 +572,11 @@ void main() {
         'inspectionItemId': 'i-4',
         'goodsId': 'g-1',
         'receivedBaseQty': 10,
+        'receivedBaseQtyExact': '10',
         'passedBaseQty': 6,
+        'passedBaseQtyExact': '6',
         'failedBaseQty': 0,
+        'failedBaseQtyExact': '0',
         'lineStatus': 'PARTIAL',
       }).verdict,
       WarehouseQualityLineVerdict.partial,
@@ -575,8 +587,11 @@ void main() {
         'inspectionItemId': 'i-5',
         'goodsId': 'g-1',
         'receivedBaseQty': 10,
+        'receivedBaseQtyExact': '10',
         'passedBaseQty': 0,
+        'passedBaseQtyExact': '0',
         'failedBaseQty': 0,
+        'failedBaseQtyExact': '0',
         'lineStatus': 'PENDING',
       }).verdict,
       WarehouseQualityLineVerdict.waiting,
@@ -646,10 +661,15 @@ void main() {
               'quantityTranche': pair.$2,
               'lineStatus': 'RESOLVED',
               'receivedBaseQty': pair.$3,
+              'receivedBaseQtyExact': (pair.$3).toString(),
               'passedBaseQty': pair.$3,
+              'passedBaseQtyExact': (pair.$3).toString(),
               'failedBaseQty': 0,
+              'failedBaseQtyExact': '0',
               'warehouseStockedBaseQty': 0,
+              'warehouseStockedBaseQtyExact': '0',
               'pendingStockBaseQty': pair.$3,
+              'pendingStockBaseQtyExact': (pair.$3).toString(),
             },
         ],
         'items': [
@@ -723,10 +743,10 @@ void main() {
         'charged-pass',
         'gift-pass',
       });
-      expect(items.map((row) => row.baseQty).toList(), [10.0, 1.0]);
+      expect(items.map((row) => row.baseQty).toList(), ['10', '1']);
       expect(items.map((row) => row.expectedRemainingBaseQty).toList(), [
-        10.0,
-        1.0,
+        '10',
+        '1',
       ]);
     },
   );
@@ -885,7 +905,7 @@ void main() {
       };
       expect(byPassEvent['pass-1']!.place, 'B-02');
       expect(byPassEvent['pass-2']!.place, 'A-01');
-      expect(byPassEvent['pass-1']!.baseQty, 5);
+      expect(byPassEvent['pass-1']!.baseQty, '5');
       expect(tester.takeException(), isNull);
     },
   );
@@ -950,7 +970,7 @@ void main() {
     final edited = {
       for (final item in command.items) item.passEventId: item,
     }['pass-1']!;
-    expect(edited.baseQty, 3.5);
+    expect(edited.baseQty, '3.5');
     expect(edited.place, 'B-02');
     expect(
       tester.widget<TextFormField>(find.byKey(quantityKey)).controller?.text,
@@ -1106,9 +1126,13 @@ Map<String, dynamic> _detailJson() => {
         'unitName': '件',
         'lineStatus': verdict.$1,
         'receivedBaseQty': verdict.$2,
+        'receivedBaseQtyExact': (verdict.$2).toString(),
         'passedBaseQty': verdict.$3,
+        'passedBaseQtyExact': (verdict.$3).toString(),
         'failedBaseQty': verdict.$4,
+        'failedBaseQtyExact': (verdict.$4).toString(),
         'warehouseStockedBaseQty': 0,
+        'warehouseStockedBaseQtyExact': '0',
         'pendingStockBaseQty': switch (index) {
           0 => 10,
           1 => 6,
@@ -1148,11 +1172,17 @@ Map<String, dynamic> _sliceJson(
   'unitName': '件',
   'sourceOrderNo': 'PO-001',
   'receivedBaseQty': 10,
+  'receivedBaseQtyExact': '10',
   'qualityPassedBaseQty': remaining,
+  'qualityPassedBaseQtyExact': (remaining).toString(),
   'warehouseStockedBaseQty': 0,
+  'warehouseStockedBaseQtyExact': '0',
   'releasedBaseQty': remaining,
+  'releasedBaseQtyExact': (remaining).toString(),
   'stockedForReleaseBaseQty': 0,
+  'stockedForReleaseBaseQtyExact': '0',
   'remainingBaseQty': remaining,
+  'remainingBaseQtyExact': (remaining).toString(),
   'releasedWeight': null,
   'placeHint': 'A-01',
   'releaseNote': '抽检合格',
@@ -1180,10 +1210,15 @@ Map<String, dynamic> _completedDetailJson() => {
       'unitName': '件',
       'lineStatus': 'RESOLVED',
       'receivedBaseQty': 10,
+      'receivedBaseQtyExact': '10',
       'passedBaseQty': 10,
+      'passedBaseQtyExact': '10',
       'failedBaseQty': 0,
+      'failedBaseQtyExact': '0',
       'warehouseStockedBaseQty': 10,
+      'warehouseStockedBaseQtyExact': '10',
       'pendingStockBaseQty': 0,
+      'pendingStockBaseQtyExact': '0',
     },
   ],
   'history': [
@@ -1300,7 +1335,12 @@ class _StockInGateway implements WarehouseIqcStockInGateway {
       throw ApiException('NETWORK_ERROR', '未取得原入库回执');
     }
     if (conflictOnce && confirmCalls == 1) {
-      throw ApiException('CONFLICT', '品质放行待入库余量已变化');
+      throw ApiException(
+        'CONFLICT',
+        '品质放行待入库余量已变化',
+        httpStatus: 409,
+        hasResponseCode: true,
+      );
     }
     return WarehouseIqcStockInConfirmResult(
       batchId: 'batch-1',

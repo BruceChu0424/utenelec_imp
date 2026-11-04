@@ -15,6 +15,17 @@ import '../../../shared/badges/effective_badge_summary_provider.dart';
 /// (ADR-108), 这里只做「卡片 → 入口/容器」的映射。
 enum WorkbenchBadgeKind {
   salesManagerReview,
+  approvalHr,
+  approvalFinanceDepartment,
+  approvalProduction,
+  approvalEngineering,
+  approvalPmc,
+  approvalQuality,
+  approvalNewmedia,
+  approvalRail,
+  approvalSecurity,
+  approvalExecutive,
+  approvalExecutiveDepartment,
   expenseMine,
   visitorHost, // 我的访客(被访人待确认 / 在办)
   visitorApproval, // 访客审批(HR 待审批 / 已批准待来访)
@@ -38,7 +49,7 @@ enum WorkbenchBadgeKind {
 ///
 /// 模块卡取整个容器: 采购/委外/仓库/钱流/销售/品质在工作台上只有一张卡, 生产管理卡与
 /// 车间任务卡分属 production / workshop 两个容器(两张卡各计各的, 不双计)。
-/// 钱流、品质、HR、服务器状态没有「在办」态, 黄数恒 0(服务端目录里就没有黄的来源)。
+/// 品质、HR、服务器状态没有「在办」态；钱流仅供应商预付待合法入账记录时计独立财务跟进黄数。
 BadgeCounts workbenchBadgeCounts(
   WorkbenchBadgeKind kind,
   BadgeSummary summary,
@@ -47,8 +58,42 @@ BadgeCounts workbenchBadgeCounts(
       BadgeCounts(summary.entryTodo(value), summary.entryInProgress(value));
   BadgeCounts module(BadgeModule value) =>
       BadgeCounts(summary.moduleTodo(value), summary.moduleInProgress(value));
+  const departmentKinds = {
+    WorkbenchBadgeKind.approvalHr: 'DEPT_HR',
+    WorkbenchBadgeKind.approvalFinanceDepartment: 'DEPT_FIN',
+    WorkbenchBadgeKind.approvalExecutiveDepartment: 'GM',
+    WorkbenchBadgeKind.approvalProduction: 'DEPT_PROD',
+    WorkbenchBadgeKind.approvalEngineering: 'DEPT_ENG',
+    WorkbenchBadgeKind.approvalPmc: 'DEPT_PMC',
+    WorkbenchBadgeKind.approvalQuality: 'DEPT_QA',
+    WorkbenchBadgeKind.approvalNewmedia: 'DEPT_NEWMEDIA',
+    WorkbenchBadgeKind.approvalRail: 'DEPT_RAIL',
+    WorkbenchBadgeKind.approvalSecurity: 'DEPT_SECURITY',
+  };
+  final department = departmentKinds[kind];
+  if (department != null) {
+    return BadgeCounts(
+      summary.fact('expense.departmentPendingByCode.$department') +
+          summary.fact('application.departmentPendingByCode.$department') +
+          (department == 'DEPT_PMC'
+              ? summary.fact('application.procurementPendingCount')
+              : 0),
+      0,
+    );
+  }
   return switch (kind) {
-    WorkbenchBadgeKind.expenseMine => entry(BadgeEntry.expenseMine),
+    WorkbenchBadgeKind.expenseMine => BadgeCounts(
+      summary.entryTodo(BadgeEntry.expenseMine) +
+          summary.entryTodo(BadgeEntry.applicationMine),
+      summary.entryInProgress(BadgeEntry.expenseMine) +
+          summary.entryInProgress(BadgeEntry.applicationMine),
+    ),
+    WorkbenchBadgeKind.approvalExecutive => BadgeCounts(
+      summary.entryTodo(BadgeEntry.expenseExecutiveApproval) +
+          summary.entryTodo(BadgeEntry.applicationExecutiveApproval) +
+          summary.entryTodo(BadgeEntry.applicationViceExecutive),
+      0,
+    ),
     WorkbenchBadgeKind.visitorHost => entry(BadgeEntry.visitorHost),
     WorkbenchBadgeKind.visitorApproval => entry(BadgeEntry.visitorApproval),
     WorkbenchBadgeKind.hrReview => entry(BadgeEntry.hrProfileReview),
@@ -60,8 +105,11 @@ BadgeCounts workbenchBadgeCounts(
     WorkbenchBadgeKind.purchase => module(BadgeModule.purchase),
     WorkbenchBadgeKind.finance => module(BadgeModule.finance),
     WorkbenchBadgeKind.subcontract => module(BadgeModule.subcontract),
-    WorkbenchBadgeKind.salesManagerReview => entry(
-      BadgeEntry.salesManagerReview,
+    WorkbenchBadgeKind.salesManagerReview => BadgeCounts(
+      summary.entryTodo(BadgeEntry.salesManagerReview) +
+          summary.fact('expense.departmentPendingByCode.DEPT_SALES') +
+          summary.fact('application.departmentPendingByCode.DEPT_SALES'),
+      0,
     ),
     WorkbenchBadgeKind.sales => module(BadgeModule.sales),
     WorkbenchBadgeKind.websiteInquiry => entry(BadgeEntry.websiteInquiry),
@@ -73,7 +121,7 @@ BadgeCounts workbenchBadgeCounts(
           summary.entryTodo(BadgeEntry.serverUpdateAvailable),
       0,
     ),
-    WorkbenchBadgeKind.none => BadgeCounts.zero,
+    _ => BadgeCounts.zero,
   };
 }
 

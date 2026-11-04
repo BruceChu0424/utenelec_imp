@@ -55,7 +55,7 @@ public class StockDocIssueRequest {
 
         /** 本次实称重量(千克, 整行); 空或 0 = 没称。 */
         @DecimalMin("0")
-        @Digits(integer = 14, fraction = 4)
+        @Digits(integer = 40, fraction = 48)
         private BigDecimal weightKg;
 
         /** 本次数量是否按称重计数推算; 为真时本次出库不进单重学习。 */

@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -54,6 +55,7 @@ public class GlPostingService {
 
     private final EntityManager em;
     private final TxSessionVars tx;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativePostingAccounts;
 
     /** 重生成指定期间（YYYY-MM）的 AUTO 凭证。返回凭证数。 */
     @Transactional
@@ -65,10 +67,18 @@ public class GlPostingService {
 
     @Transactional(propagation=Propagation.MANDATORY)
     public void removeProcurementReturnCostProjection(UUID id,String family,String billNo,LocalDate billDate) {
-        String table=switch(family) {case "PURCHASE_RETURN"->"purchase_returns";case "SUBCONTRACT_RETURN"->"subcontract_returns";
-            default->throw new IllegalArgumentException("Unknown procurement return family");};
-        var rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT legacy_id,bill_no,bill_date FROM "+table+" WHERE id=:id")
-                .setParameter("id",id));
+        List<Object[]> rows;
+        if(Set.of("PURCHASE_IQC_CREDIT","SUBCONTRACT_IQC_CREDIT").contains(family)){
+            rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT NULL::integer,'IQCC-'||document.id::text,document.effective_date FROM procurement_iqc_credit_documents document
+                JOIN procurement_iqc_rejection_cases origin ON origin.id=document.case_id
+                WHERE document.id=:id AND origin.receipt_type||'_IQC_CREDIT'=:family
+                """).setParameter("id",id).setParameter("family",family));
+        }else{
+            String table=switch(family) {case "PURCHASE_RETURN"->"purchase_returns";case "SUBCONTRACT_RETURN"->"subcontract_returns";
+                default->throw new IllegalArgumentException("Unknown procurement return family");};
+            rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT legacy_id,bill_no,bill_date FROM "+table+" WHERE id=:id").setParameter("id",id));
+        }
         if(rows.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"退货价差反向缺少唯一原单身份");
         Object[] row=rows.getFirst();
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(row[0]==null?null:((Number)row[0]).intValue());
@@ -81,6 +91,7 @@ public class GlPostingService {
         ActualInventoryCostGlProjection.lock(em);
         PaymentStyleHierarchyLock.lock(em);
         lockAutoProjectionPeriod(period);
+        if(nativePostingAccounts!=null)nativePostingAccounts.requireNoImportedPeriod(YearMonth.parse(period).atDay(1));
         assertNoConfirmedExpenseVouchers(period);
         assertRequiredSystemPostingRoles(period);
         assertArPostingConfiguration(period);
@@ -100,6 +111,7 @@ public class GlPostingService {
         assertSourceDocumentIdentities(period);
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes) "
                 +"AND " + FinancialDocumentGlScope.managedVoucherPredicate("gl_vouchers") + " "
+                +"AND NOT fn_finance_native_projection_is_frozen(gl_vouchers.id) "
                 +"AND NOT (source_type='PAYMENT' AND EXISTS(SELECT 1 FROM finance_payments payment "
                 +"WHERE payment.id=gl_vouchers.source_doc_id AND payment.amount_authority_version=2))")
                 .setParameter("p", period)
@@ -108,6 +120,7 @@ public class GlPostingService {
 
         postAr(period);
         postAp(period);
+        em.createNativeQuery("SELECT fn_finance_attach_native_debt_allocations(:p)").setParameter("p",period).getSingleResult();
         SubcontractWasteLossGlProjection.post(em, period);
         ProcurementReturnCostGlProjection.post(em,period);
         postSupplierClaimLedger(period);
@@ -141,7 +154,9 @@ public class GlPostingService {
     public UUID postActualBankPayment(UUID paymentId) {
         tx.bind();
         FinancialDocumentGlScope.requireMutable(em, "PAYMENT", paymentId);
-        return (UUID)em.createNativeQuery("SELECT fn_post_payment_v2_gl(:id)").setParameter("id",paymentId).getSingleResult();
+        UUID voucher=(UUID)em.createNativeQuery("SELECT fn_post_payment_v2_gl(:id)").setParameter("id",paymentId).getSingleResult();
+        if(nativePostingAccounts!=null)nativePostingAccounts.attachCash("PAYMENT",paymentId);
+        return voucher;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -151,8 +166,10 @@ public class GlPostingService {
         PaymentStyleHierarchyLock.lock(em);
         lockAutoProjectionPeriod(reversedAt.atZoneSameInstant(BusinessTime.ZONE).toLocalDate());
         requireActualBankPaymentReversalPossible(paymentId);
-        return (UUID)em.createNativeQuery("SELECT fn_reverse_payment_v2_gl(:id,:reversedAt)")
+        UUID voucher=(UUID)em.createNativeQuery("SELECT fn_reverse_payment_v2_gl(:id,:reversedAt)")
                 .setParameter("id",paymentId).setParameter("reversedAt",reversedAt).getSingleResult();
+        if(nativePostingAccounts!=null)nativePostingAccounts.attachCash("PAYMENT",paymentId);
+        return voucher;
     }
 
     /**
@@ -596,7 +613,9 @@ public class GlPostingService {
                        '销售立帐 ' || l.source_doc_type
                 FROM ar_ap_ledger l
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
-                  AND to_char(l.bill_date,'YYYY-MM') = :p
+                  AND to_char(l.bill_date,'YYYY-MM') = :p AND l.amount_original_local<>0
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_debt_entry_refs frozen WHERE frozen.ledger_id=l.id)
+                  AND NOT EXISTS(SELECT 1 FROM gl_vouchers retained WHERE retained.source='AUTO' AND retained.source_type='AR_POST' AND retained.source_doc_id=l.source_doc_id AND retained.period=to_char(l.bill_date,'YYYY-MM') AND NOT retained.is_deleted AND fn_finance_native_projection_is_frozen(retained.id))
                 """;
         String entries = """
                 INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
@@ -610,11 +629,13 @@ public class GlPostingService {
                  AND v.source = 'AUTO'
                  AND v.status = 1
                  AND COALESCE(v.is_deleted,false)=false
-                CROSS JOIN (
-                  SELECT system_posting_style_id('AR_CONTROL') AS id
+                CROSS JOIN LATERAL (
+                  SELECT fn_finance_native_debt_style(l.id,'AR_CONTROL') AS id
                 ) s113
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
-                  AND to_char(l.bill_date,'YYYY-MM') = :p
+                  AND to_char(l.bill_date,'YYYY-MM') = :p AND l.amount_original_local<>0
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_debt_entry_refs frozen WHERE frozen.ledger_id=l.id)
+                  AND NOT EXISTS(SELECT 1 FROM gl_vouchers retained WHERE retained.source='AUTO' AND retained.source_type='AR_POST' AND retained.source_doc_id=l.source_doc_id AND retained.period=to_char(l.bill_date,'YYYY-MM') AND NOT retained.is_deleted AND fn_finance_native_projection_is_frozen(retained.id))
                 UNION ALL
                 SELECT v.id, 2, s031.id, -1, l.amount_original_local, l.bill_date, v.period,
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'销售立帐')
@@ -625,11 +646,13 @@ public class GlPostingService {
                  AND v.source = 'AUTO'
                  AND v.status = 1
                  AND COALESCE(v.is_deleted,false)=false
-                CROSS JOIN (
-                  SELECT system_posting_style_id('SALES_REVENUE') AS id
+                CROSS JOIN LATERAL (
+                  SELECT fn_finance_native_debt_style(l.id,'SALES_REVENUE') AS id
                 ) s031
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
-                  AND to_char(l.bill_date,'YYYY-MM') = :p
+                  AND to_char(l.bill_date,'YYYY-MM') = :p AND l.amount_original_local<>0
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_debt_entry_refs frozen WHERE frozen.ledger_id=l.id)
+                  AND NOT EXISTS(SELECT 1 FROM gl_vouchers retained WHERE retained.source='AUTO' AND retained.source_type='AR_POST' AND retained.source_doc_id=l.source_doc_id AND retained.period=to_char(l.bill_date,'YYYY-MM') AND NOT retained.is_deleted AND fn_finance_native_projection_is_frozen(retained.id))
                 """;
         run(vouchers, period);
         run(entries, period);
@@ -672,7 +695,10 @@ public class GlPostingService {
                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
                     'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
                     'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
-                  AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
+                  AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p AND l.amount_original_local<>0
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_debt_entry_refs frozen WHERE frozen.ledger_id=l.id)
+                  AND NOT EXISTS(SELECT 1 FROM gl_vouchers retained WHERE retained.source='AUTO' AND retained.source_type='AP_POST' AND retained.source_doc_id=l.source_doc_id AND retained.period=to_char(l.bill_date,'YYYY-MM') AND NOT retained.is_deleted AND fn_finance_native_projection_is_frozen(retained.id))
+                  AND fn_finance_procurement_uses_legacy_ap(l.source_doc_type,l.source_doc_id)
                 """;
         String entries = """
                 INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
@@ -686,14 +712,17 @@ public class GlPostingService {
                  AND v.source = 'AUTO'
                  AND v.status = 1
                  AND COALESCE(v.is_deleted,false)=false
-                CROSS JOIN (
-                  SELECT system_posting_style_id('INVENTORY_ASSET') AS id
+                CROSS JOIN LATERAL (
+                  SELECT fn_finance_native_debt_style(l.id,'INVENTORY_ASSET') AS id
                 ) s123
                 WHERE l.source_doc_type IN (
                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
                     'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
                     'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
-                  AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
+                  AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p AND l.amount_original_local<>0
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_debt_entry_refs frozen WHERE frozen.ledger_id=l.id)
+                  AND NOT EXISTS(SELECT 1 FROM gl_vouchers retained WHERE retained.source='AUTO' AND retained.source_type='AP_POST' AND retained.source_doc_id=l.source_doc_id AND retained.period=to_char(l.bill_date,'YYYY-MM') AND NOT retained.is_deleted AND fn_finance_native_projection_is_frozen(retained.id))
+                  AND fn_finance_procurement_uses_legacy_ap(l.source_doc_type,l.source_doc_id)
                 UNION ALL
                 SELECT v.id, 2, s203.id, -1, l.amount_original_local, l.bill_date, v.period,
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'采购/委外立帐')
@@ -704,14 +733,17 @@ public class GlPostingService {
                  AND v.source = 'AUTO'
                  AND v.status = 1
                  AND COALESCE(v.is_deleted,false)=false
-                CROSS JOIN (
-                  SELECT system_posting_style_id('AP_CONTROL') AS id
+                CROSS JOIN LATERAL (
+                  SELECT fn_finance_native_debt_style(l.id,'AP_CONTROL') AS id
                 ) s203
                 WHERE l.source_doc_type IN (
                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
                     'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
                     'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
-                  AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
+                  AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p AND l.amount_original_local<>0
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_debt_entry_refs frozen WHERE frozen.ledger_id=l.id)
+                  AND NOT EXISTS(SELECT 1 FROM gl_vouchers retained WHERE retained.source='AUTO' AND retained.source_type='AP_POST' AND retained.source_doc_id=l.source_doc_id AND retained.period=to_char(l.bill_date,'YYYY-MM') AND NOT retained.is_deleted AND fn_finance_native_projection_is_frozen(retained.id))
+                  AND fn_finance_procurement_uses_legacy_ap(l.source_doc_type,l.source_doc_id)
                 """;
         run(vouchers, period);
         run(entries, period);
@@ -1079,6 +1111,7 @@ public class GlPostingService {
                 CROSS JOIN LATERAL(
                     SELECT system_posting_style_id('CUSTOMER_ADVANCE') id) advance_style
                 WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_customer_offset_accounts native JOIN customer_open_item_offsets source ON source.id=native.offset_id WHERE source.offset_batch_id=batch.id)
                 GROUP BY voucher.id,advance_style.id,batch.id,batch.effective_date,voucher.period,voucher.voucher_no
                 UNION ALL
                 SELECT voucher.id,2,ar_style.id,-1,SUM(allocation.target_amount_local),
@@ -1093,6 +1126,7 @@ public class GlPostingService {
                   AND COALESCE(voucher.is_deleted,FALSE)=FALSE
                 CROSS JOIN LATERAL(SELECT system_posting_style_id('AR_CONTROL') id) ar_style
                 WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
+                  AND NOT EXISTS(SELECT 1 FROM finance_native_customer_offset_accounts native JOIN customer_open_item_offsets source ON source.id=native.offset_id WHERE source.offset_batch_id=batch.id)
                 GROUP BY voucher.id,ar_style.id,batch.id,batch.effective_date,voucher.period,voucher.voucher_no
                 UNION ALL
                 SELECT voucher.id,3,fx_style.id,
@@ -1110,9 +1144,24 @@ public class GlPostingService {
                 WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
                 GROUP BY voucher.id,fx_style.id,batch.id,batch.effective_date,voucher.period,voucher.voucher_no
                 HAVING SUM(allocation.exchange_difference)<>0
+                UNION ALL
+                SELECT voucher.id,1000+allocation.line_sequence*2,(native.source_account->>'styleId')::uuid,1,allocation.source_amount_local,
+                    batch.effective_date,voucher.period,'CUSTOMER_PREPAYMENT_OFFSET',batch.id,voucher.voucher_no,'按原客户预收科目转销'
+                FROM customer_open_item_offset_batches batch JOIN customer_open_item_offsets allocation ON allocation.offset_batch_id=batch.id AND allocation.status='APPLIED'
+                JOIN finance_native_customer_offset_accounts native ON native.offset_id=allocation.id
+                JOIN gl_vouchers voucher ON voucher.source='AUTO' AND voucher.source_type='CUSTOMER_PREPAYMENT_OFFSET' AND voucher.source_doc_id=batch.id AND voucher.status=1 AND NOT voucher.is_deleted
+                WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p AND allocation.source_amount_local<>0
+                UNION ALL
+                SELECT voucher.id,1001+allocation.line_sequence*2,(native.target_account->>'styleId')::uuid,-1,allocation.target_amount_local,
+                    batch.effective_date,voucher.period,'CUSTOMER_PREPAYMENT_OFFSET',batch.id,voucher.voucher_no,'按原正式应收科目冲减'
+                FROM customer_open_item_offset_batches batch JOIN customer_open_item_offsets allocation ON allocation.offset_batch_id=batch.id AND allocation.status='APPLIED'
+                JOIN finance_native_customer_offset_accounts native ON native.offset_id=allocation.id
+                JOIN gl_vouchers voucher ON voucher.source='AUTO' AND voucher.source_type='CUSTOMER_PREPAYMENT_OFFSET' AND voucher.source_doc_id=batch.id AND voucher.status=1 AND NOT voucher.is_deleted
+                WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p AND allocation.target_amount_local<>0
                 """;
         run(vouchers, period);
         run(entries, period);
+        em.createNativeQuery("SELECT fn_finance_attach_native_customer_offset_allocations(:p)").setParameter("p",period).getSingleResult();
     }
 
     private void assertCustomerPrepaymentPostingConfiguration(String period) {
@@ -1634,6 +1683,14 @@ public class GlPostingService {
                 .setParameter("billDate",billDate)
                 .setParameter("receiptId",receiptId)
                 .executeUpdate();
+        boolean authority=((Number)em.createNativeQuery("SELECT settlement_authority_version FROM finance_receipts WHERE id=:id").setParameter("id",receiptId).getSingleResult()).intValue()>=1;
+        if(authority){
+            em.createNativeQuery("""
+                INSERT INTO gl_entries(voucher_id,line_no,style_id,direction,amount,entry_date,period,source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT :voucher,e.line_no,e.style_id,e.direction,e.amount,r.bill_date,:period,'RECEIPT',r.id,r.bill_no,COALESCE(r.remark,'销售收款')
+                FROM v_receipt_expected_gl_entries e JOIN finance_receipts r ON r.id=e.receipt_id WHERE e.receipt_id=:receiptId
+                """).setParameter("voucher",voucherId).setParameter("period",period).setParameter("receiptId",receiptId).executeUpdate();
+        }else{
         em.createNativeQuery("""
                 INSERT INTO gl_entries(
                     voucher_id,line_no,style_id,direction,amount,entry_date,period,
@@ -1699,6 +1756,7 @@ public class GlPostingService {
                 .setParameter("period",period)
                 .setParameter("receiptId",receiptId)
                 .executeUpdate();
+        }
         Object[] balance=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT COUNT(*),COALESCE(SUM(direction*amount),0)
                 FROM gl_entries
@@ -1717,6 +1775,7 @@ public class GlPostingService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "销售收款总账凭证终态确认失败，禁止审核");
         }
+        if(nativePostingAccounts!=null)nativePostingAccounts.attachCash("RECEIPT",receiptId);
         return voucherId;
     }
 
@@ -1836,6 +1895,7 @@ public class GlPostingService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "收款原始凭证的反向关联保存失败，不能红冲，请重试");
         }
+        if(nativePostingAccounts!=null)nativePostingAccounts.attachCash("RECEIPT",receiptId);
         return reversalId;
     }
 

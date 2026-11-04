@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 // 上游单据明细引入面板（采购编辑页"从上游引入"用）。
@@ -377,7 +378,7 @@ List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
     width: 120,
     type: 'money',
     sortable: true,
-    value: (d) => d.totalLocal?.toStringAsFixed(2),
+    value: (d) => d.totalLocal?.toExactString(minimumFractionDigits: 2),
   ),
 ];
 
@@ -474,7 +475,7 @@ _middleItemColumns(PurchaseDocType upstream) => [
       cellBuilder: (context, row) => Text(
         row.item.allowedOverReceiptPct == null
             ? '—'
-            : purchasePercentText(row.item.allowedOverReceiptPct!),
+            : row.item.allowedOverReceiptPctText ?? '',
       ),
     ),
 ];

@@ -115,10 +115,14 @@ public class SubcontractReceiptService {
     private final com.uten.imp.common.finance.ProcurementReceiptAmountPreview receiptAmountPreview;
     private final ProcurementIqcReplacementAllocationService iqcReplacementAllocation;
     private final ArApLedgerService arApService;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ProcurementPayableRecognitionPort firstPayables;
     private final SupplierPaymentTermService paymentTerms;
     private final SupplierPeriodIdentityGuard periodIdentityGuard;
     private final TxSessionVars tx;
     private final EntityManager em;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.BusinessNumericInputEvidencePort numericInputEvidence;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
@@ -324,6 +328,7 @@ public class SubcontractReceiptService {
     /** Shared transaction kernel; warehouse commands do not need the commercial detail projection. */
     private void approveReceipt(UUID id) {
         tx.bind();
+        if(firstPayables!=null)firstPayables.beginApproval(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RECEIPT",id));
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RECEIPT, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "委外进仓审核");
@@ -389,7 +394,7 @@ public class SubcontractReceiptService {
                 items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
                         it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
                         it.getUnitRate(), it.getQty(), it.getAmountLocal(),
-                        it.getWeight())).toList(),
+                        it.getWeight(),"LEGACY",adoptedBase(it))).toList(),
                 now);
         for (SubcontractReceiptItem it : items) {
             // ② 回写订货明细 received_qty(订货单 is_closed 在本单落成已审核之后重算, 见下)
@@ -413,12 +418,12 @@ public class SubcontractReceiptService {
         }
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
         boolean chargeable=payable.original().signum()!=0||payable.local().signum()!=0;
-        if(chargeable)postAp(r,payable.original(),payable.local(),+1);
+        boolean formallyPosted=postAp(r,payable.original(),payable.local(),+1);
         r.setStatus(STATUS_APPROVED);
         // 正式生产供给由仓库确认 IQC 合格入库量后推进；整单质检结案只做终态校准。
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
-        r.setApPosted(chargeable);
+        r.setApPosted(formallyPosted);
         receiptRepo.save(r);
         arrivalControl.recordApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
@@ -456,6 +461,7 @@ public class SubcontractReceiptService {
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
     }
     private void requireReversibleBusiness(SubcontractReceipt r){UUID id=r.getId();
+        if(firstPayables!=null)firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RECEIPT",id));
         var items=itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if(items.stream().anyMatch(it->it.getReturnedQty()!=null&&it.getReturnedQty().signum()>0))throw new ApiException(ErrorCode.CONFLICT,"委外收货已有退货记录，请先反审下游退货单");
         var withdrawals=inspectionService.requireResolvedReversibleReadOnly("SUBCONTRACT",id);
@@ -477,7 +483,11 @@ public class SubcontractReceiptService {
             throw new ApiException(ErrorCode.CONFLICT,"原收货缺少可核对的质检/仓库成本来源，请专项核对历史数据");
         }
     }
+    private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
+        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+    }
     private void requireReversibleArAp(UUID id,String type){
+        if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;
         try{arApService.requireReversibleSource(id,type);}
         catch(IllegalStateException denied){throw new ApiException(ErrorCode.CONFLICT,denied.getMessage());}
     }
@@ -486,6 +496,7 @@ public class SubcontractReceiptService {
     private String unapprovalDependencyFacts(UUID id){return String.valueOf(em.createNativeQuery("""
         SELECT jsonb_build_object(
             'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM subcontract_receipt_items line WHERE line.receipt_id=:id),
+            'firstPayable',(SELECT to_jsonb(candidate) FROM finance_procurement_payable_candidates candidate WHERE candidate.source_type='SUBCONTRACT_RECEIPT' AND candidate.source_id=:id),
             'arAp',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger WHERE ledger.source_doc_id=:id),
             'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
             'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch JOIN subcontract_receipts doc ON doc.supplier_id=batch.supplier_id AND doc.currency_id=batch.currency_id WHERE doc.id=:id),
@@ -542,7 +553,7 @@ public class SubcontractReceiptService {
         // 库存 advisory 锁已在任何 receipt/inspection/AP 行锁之前取得。
         // 反立帐（若有核销 amount_settled<>0 抛 IllegalStateException，对齐老库文案）
         consideration.reverseReceipt("SUBCONTRACT",id,UUID.randomUUID(),"委外收货红冲");
-        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
+        if(firstPayables==null||!firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RECEIPT",r.getId())))arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
         boolean inspectionManaged = inspectionService.reverseResolvedStock(
                 ProcurementInspectionPort.SUBCONTRACT, id, now);
@@ -574,14 +585,20 @@ public class SubcontractReceiptService {
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         productionSupply.afterSubcontractReceiptReversed(id);
         procurementValue.receiptReversed("SUBCONTRACT",id,currentUser.requireId());
+        if(firstPayables!=null)firstPayables.sourceReversed(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RECEIPT",id));
         return detail(id);
+    }
+
+    private BigDecimal adoptedBase(SubcontractReceiptItem item){
+        return com.uten.imp.common.finance.DocumentUnitConversion.saved(em,"subcontract_receipt_items",item.getId(),item.getQty(),item.getUnitId(),item.getUnitRate()).basicQuantity();
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */
     private void applyMovement(SubcontractReceipt r, SubcontractReceiptItem it, short direction,
                                OffsetDateTime ts, BigDecimal overrideAmount) {
-        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        BigDecimal baseQty = it.getQty().multiply(rate);
+        var original=com.uten.imp.common.finance.DocumentUnitConversion.originalMovement(em,StockService.SRC_SUBCONTRACT_RECEIPT,
+                StockService.TYPE_SUBCONTRACT_RECEIPT,r.getId(),it.getId(),it.getGoodsId(),it.getColorId(),r.getWarehouseId(),1);
+        BigDecimal baseQty=original.quantity();
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
         stockService.recordMovement(new StockService.MovementRequest(
                 ts, StockService.TYPE_SUBCONTRACT_RECEIPT, StockService.SRC_SUBCONTRACT_RECEIPT,
@@ -610,18 +627,18 @@ public class SubcontractReceiptService {
     }
 
     /** 立应付 AP。sign=+1 进仓（应付增加）/ sign=-1 退货（应付减少，金额转负）。 */
-    private void postAp(
+    private boolean postAp(
             SubcontractReceipt r,
             BigDecimal amountOriginal,
             BigDecimal amountLocal,
             int sign) {
-        if (amountLocal == null) return;
+        if (amountLocal == null) return false;
         BigDecimal signedLocal = sign < 0 ? amountLocal.negate() : amountLocal;
         BigDecimal signedOriginal = amountOriginal == null
                 ? null : (sign < 0 ? amountOriginal.negate() : amountOriginal);
         LocalDate dueDate = paymentTerms.resolveDueDate(
                 r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
-        arApService.postArAp(new ArApPostingRequest(
+        return postOrDefer(new ArApPostingRequest(
                 "AP",
                 StockService.SRC_SUBCONTRACT_RECEIPT,
                 r.getId(),
@@ -834,10 +851,7 @@ public class SubcontractReceiptService {
         Map<UUID, BigDecimal> currentBaseByOrderItem = new java.util.LinkedHashMap<>();
         for (SubcontractReceiptItem item : items) {
             if (item.getOrderItemId() == null) continue;
-            BigDecimal rate = item.getUnitRate() == null
-                    ? BigDecimal.ONE : item.getUnitRate();
-            currentBaseByOrderItem.merge(item.getOrderItemId(),
-                    item.getQty().multiply(rate), BigDecimal::add);
+            currentBaseByOrderItem.merge(item.getOrderItemId(),adoptedBase(item),BigDecimal::add);
         }
         if (currentBaseByOrderItem.isEmpty()) return;
         com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireKnownReceiptBasis(
@@ -1025,6 +1039,7 @@ public class SubcontractReceiptService {
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
+            com.uten.imp.common.finance.DocumentUnitConversion.project(l.getQty(),l.getUnitId(),l.getUnitRate());
             it.setReplacementIntent(l.getReplacementIntent());
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外收货单价"));
             // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
@@ -1035,7 +1050,7 @@ public class SubcontractReceiptService {
             it.setCheckQty(l.getCheckQty());
             it.setOrderQty(l.getOrderQty());
             it.setOrderItemId(l.getOrderItemId());
-            it.setWeight(l.getWeight());
+            it.setWeight(com.uten.imp.features.stock.weight.DocumentWeightAdoption.adopt(l.getWeight()));
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             it.setGirthQty(l.getGirthQty());
@@ -1043,6 +1058,7 @@ public class SubcontractReceiptService {
             it.setReturnNo(l.getReturnNo());
             it.setOrderNo(l.getOrderNo());
             itemRepo.save(it);
+            com.uten.imp.features.stock.weight.DocumentWeightAdoption.capture(numericInputEvidence,"SUBCONTRACT_RECEIPT",r.getId(),it.getId(),l.getWeight(),it.getWeight());
             out.add(toItemDto(it, orderRefs));
             autoLine++;
         }

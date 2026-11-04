@@ -18,6 +18,10 @@ class ClientCreditFloorPolicyTest {
                 .isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(ClientService.normalizeCreditFloor(new BigDecimal("50000.0000")))
                 .isEqualByComparingTo("50000.0000");
+        assertThat(ClientService.normalizeCreditFloor(new BigDecimal("0.123456789012345678901234")))
+                .isEqualByComparingTo("0.123456789012345678901234");
+        assertThat(ClientService.normalizeCreditFloor(new BigDecimal("9999999999999999999999999999999999999999.999999999999999999999999")))
+                .isEqualByComparingTo("9999999999999999999999999999999999999999.999999999999999999999999");
     }
 
     @Test
@@ -25,10 +29,10 @@ class ClientCreditFloorPolicyTest {
         assertThatThrownBy(() -> ClientService.normalizeCreditFloor(new BigDecimal("-0.0001")))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("铺底额必须为非负数");
-        assertThatThrownBy(() -> ClientService.normalizeCreditFloor(new BigDecimal("0.00001")))
+        assertThatThrownBy(() -> ClientService.normalizeCreditFloor(new BigDecimal("1e-25")))
                 .isInstanceOf(ApiException.class);
         assertThatThrownBy(() -> ClientService.normalizeCreditFloor(
-                new BigDecimal("100000000000000.0000")))
+                new BigDecimal("1e40")))
                 .isInstanceOf(ApiException.class);
     }
 

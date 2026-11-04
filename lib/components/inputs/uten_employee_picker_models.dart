@@ -1,4 +1,5 @@
 import '../../shared/formatters/employee_display.dart';
+import '../../shared/models/department_node.dart';
 
 enum UtenEmployeePickerPresentation { standard, businessReference }
 
@@ -69,3 +70,93 @@ bool sameEmployeePickerSelection(
 
 typedef UtenEmployeePickerLoader =
     Future<List<UtenEmployeePickerItem>> Function(String? keyword);
+
+class UtenEmployeePickerQuery {
+  const UtenEmployeePickerQuery({
+    this.keyword,
+    this.page = 1,
+    this.departmentId,
+    this.organization,
+    this.departmentScopeKey,
+  });
+  final String? keyword;
+  final int page;
+  final String? departmentId;
+  final List<DepartmentNode>? organization;
+
+  /// Presentation scope preserves special directories such as unassigned
+  /// historical audit accounts. Business loaders translate it explicitly.
+  final String? departmentScopeKey;
+
+  /// Unmatched historical departments retain their exact factual membership.
+  bool get includeDepartmentSubtree =>
+      departmentId != null &&
+      _findPickerDepartment(organization ?? const [], departmentId!) != null;
+}
+
+DepartmentNode? _findPickerDepartment(
+  Iterable<DepartmentNode> nodes,
+  String id,
+) {
+  for (final node in nodes) {
+    if (node.id == id) return node;
+    final child = _findPickerDepartment(node.children, id);
+    if (child != null) return child;
+  }
+  return null;
+}
+
+class UtenEmployeePickerPage {
+  const UtenEmployeePickerPage({
+    required this.items,
+    required this.page,
+    required this.totalPages,
+  });
+  const UtenEmployeePickerPage.empty({this.page = 1})
+    : items = const [],
+      totalPages = 0;
+  final List<UtenEmployeePickerItem> items;
+  final int page;
+  final int totalPages;
+}
+
+typedef UtenEmployeePickerPagedLoader =
+    Future<UtenEmployeePickerPage> Function(UtenEmployeePickerQuery query);
+
+/// A tree click may narrow the calling workflow's scope, never widen it.
+Future<({String? id, bool subtree, bool empty})> employeePickerDepartmentScope(
+  UtenEmployeePickerQuery query, {
+  String? departmentId,
+  bool includeSubtree = false,
+  required Future<List<DepartmentNode>> Function() loadDepartments,
+}) async {
+  final selected = query.departmentId;
+  if (selected == null) {
+    return (id: departmentId, subtree: includeSubtree, empty: false);
+  }
+  if (departmentId == null) {
+    // Historical/unmatched departments are factual labels, not current tree
+    // roots. Preserve their exact membership without reopening a deleted tree.
+    return (
+      id: selected,
+      subtree: query.includeDepartmentSubtree,
+      empty: false,
+    );
+  }
+  if (selected == departmentId) {
+    return (id: selected, subtree: includeSubtree, empty: false);
+  }
+  final tree = query.organization ?? await loadDepartments();
+  final base = _findPickerDepartment(tree, departmentId);
+  final chosen = _findPickerDepartment(tree, selected);
+  if (includeSubtree &&
+      base != null &&
+      _findPickerDepartment(base.children, selected) != null) {
+    return (id: selected, subtree: true, empty: false);
+  }
+  if (chosen != null &&
+      _findPickerDepartment(chosen.children, departmentId) != null) {
+    return (id: departmentId, subtree: includeSubtree, empty: false);
+  }
+  return (id: departmentId, subtree: includeSubtree, empty: true);
+}

@@ -785,6 +785,18 @@ class _HistoryPageState extends ConsumerState<RecordHistoryPage>
                       ),
                   ],
                   toolbarActions: [
+                    UtenButton(
+                      key: const Key('record-history-select-dates'),
+                      type: UtenButtonType.secondary,
+                      icon: Icons.date_range_outlined,
+                      onPressed:
+                          nativeReadAccessConfirmed &&
+                              !_loading &&
+                              !_pickingDate
+                          ? _pickDate
+                          : null,
+                      child: Text(t('选择日期', 'Select dates', '날짜 선택')),
+                    ),
                     UtenPagination(
                       currentPage: _page,
                       totalPages: _totalPages,

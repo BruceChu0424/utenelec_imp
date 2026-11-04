@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../performance/ui_work_budget.dart';
+import '../tables/uten_table_header_group.dart';
 
 /// Authorised, already formatted data. No credentials, repository or UI state
 /// cross the worker boundary. Null font bytes are only for Latin test fixtures.
@@ -12,6 +13,12 @@ class PrintPdfRequest {
     required this.headers,
     required this.rows,
     this.subtitle,
+    this.pageHeader,
+    this.pageFooter,
+    this.headerGroups = const [],
+    this.documentHeader = const [],
+    this.documentFooter = const [],
+    this.repeatColumnHeaders = false,
     this.columnWidths,
     this.fontBytes,
   }) : orgChartLines = null,
@@ -25,6 +32,12 @@ class PrintPdfRequest {
     this.subtitle,
     this.fontBytes,
   }) : orgChartLines = lines,
+       pageHeader = null,
+       pageFooter = null,
+       headerGroups = const [],
+       documentHeader = const [],
+       documentFooter = const [],
+       repeatColumnHeaders = false,
        headers = const [],
        rows = const [],
        columnWidths = null,
@@ -44,6 +57,12 @@ class PrintPdfRequest {
        binaryRenderer = renderer,
        title = '',
        subtitle = null,
+       pageHeader = null,
+       pageFooter = null,
+       headerGroups = const [],
+       documentHeader = const [],
+       documentFooter = const [],
+       repeatColumnHeaders = false,
        headers = const [],
        rows = const [],
        columnWidths = null,
@@ -51,6 +70,11 @@ class PrintPdfRequest {
 
   final String title;
   final String? subtitle;
+  final String? pageHeader;
+  final String? pageFooter;
+  final List<List<UtenTableHeaderGroup>> headerGroups;
+  final List<String> documentHeader, documentFooter;
+  final bool repeatColumnHeaders;
   final List<String> headers;
   final List<List<String>> rows;
   final List<double>? columnWidths;
@@ -85,6 +109,15 @@ Future<Uint8List> renderPrintPdf(PrintPdfRequest request) async {
       ? pw.Font.helvetica()
       : pw.Font.ttf(ByteData.sublistView(request.fontBytes!));
   if (request.orgChartLines != null) return _renderOrgChartPdf(request, font);
+  if (request.columnWidths != null &&
+      (request.columnWidths!.length != request.headers.length ||
+          request.columnWidths!.any((w) => !w.isFinite || w <= 0))) {
+    throw const FormatException('打印列宽未完整对应字段');
+  }
+  if (request.headerGroups.isNotEmpty &&
+      request.headerGroups.length != request.headers.length) {
+    throw const FormatException('原分组表头未完整对应字段');
+  }
   final rows = await buildPrintPdfRows(request, font);
   final doc = pw.Document();
   doc.addPage(
@@ -92,6 +125,60 @@ Future<Uint8List> renderPrintPdf(PrintPdfRequest request) async {
       pageFormat: PdfPageFormat.a4.landscape,
       margin: const pw.EdgeInsets.all(28),
       maxPages: (request.rows.length + 2).clamp(20, 1 << 30),
+      header:
+          request.pageHeader == null &&
+              request.documentHeader.isEmpty &&
+              utenTableHeaderGroupDepth(request.headerGroups) == 0
+          ? null
+          : (context) => context.pageNumber == 1
+                ? pw.SizedBox()
+                : pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                    children: [
+                      if (request.pageHeader != null)
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.only(bottom: 6),
+                          child: pw.Text(
+                            request.pageHeader!,
+                            style: pw.TextStyle(font: font, fontSize: 9),
+                          ),
+                        ),
+                      for (final line in request.documentHeader)
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.only(bottom: 3),
+                          child: pw.Text(
+                            line,
+                            style: pw.TextStyle(font: font, fontSize: 9),
+                          ),
+                        ),
+                      ..._pdfGroupBands(request, font),
+                    ],
+                  ),
+      footer:
+          !request.repeatColumnHeaders &&
+              request.pageHeader == null &&
+              request.pageFooter == null &&
+              request.documentHeader.isEmpty &&
+              request.documentFooter.isEmpty &&
+              utenTableHeaderGroupDepth(request.headerGroups) == 0
+          ? null
+          : (context) => pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: [
+                if (request.pageFooter?.isNotEmpty == true)
+                  pw.Text(
+                    request.pageFooter!,
+                    style: pw.TextStyle(font: font, fontSize: 8),
+                  ),
+                pw.Align(
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Text(
+                    '${context.pageNumber} / ${context.pagesCount}',
+                    style: pw.TextStyle(font: font, fontSize: 8),
+                  ),
+                ),
+              ],
+            ),
       build: (_) => [
         pw.Center(
           child: pw.Text(
@@ -113,18 +200,89 @@ Future<Uint8List> renderPrintPdf(PrintPdfRequest request) async {
           ),
         ],
         pw.SizedBox(height: 10),
-        pw.Table(
-          columnWidths: {
-            for (var i = 0; i < request.headers.length; i++)
-              i: pw.FlexColumnWidth(request.columnWidths?[i] ?? 1),
-          },
-          border: pw.TableBorder.all(width: 0.5),
-          children: rows,
-        ),
+        for (final line in request.documentHeader)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 3),
+            child: pw.Text(line, style: pw.TextStyle(font: font, fontSize: 9)),
+          ),
+        ..._pdfGroupBands(request, font),
+        if (request.headers.isNotEmpty)
+          pw.Table(
+            columnWidths: {
+              for (var i = 0; i < request.headers.length; i++)
+                i: pw.FlexColumnWidth(request.columnWidths?[i] ?? 1),
+            },
+            border: pw.TableBorder.all(width: 0.5),
+            children: rows,
+          ),
+        if (request.headers.isEmpty)
+          pw.Text('暂无数据', style: pw.TextStyle(font: font, fontSize: 9)),
+        if (request.documentFooter.isNotEmpty) pw.SizedBox(height: 8),
+        for (final line in request.documentFooter)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 3),
+            child: pw.Text(line, style: pw.TextStyle(font: font, fontSize: 9)),
+          ),
       ],
     ),
   );
   return doc.save(enableEventLoopBalancing: true);
+}
+
+List<pw.Widget> _pdfGroupBands(PrintPdfRequest request, pw.Font font) {
+  if (request.headerGroups.isEmpty) return const [];
+  final result = <pw.Widget>[];
+  for (
+    int level = 0;
+    level < utenTableHeaderGroupDepth(request.headerGroups);
+    level++
+  ) {
+    final spans = buildUtenTableHeaderGroupBand(
+      request.headerGroups,
+      List.generate(request.headers.length, (i) => i),
+      level,
+    );
+    result.add(
+      pw.Table(
+        columnWidths: {
+          for (int i = 0; i < spans.length; i++)
+            i: pw.FlexColumnWidth(
+              spans[i].columnIndices.fold<double>(
+                0,
+                (width, index) => width + (request.columnWidths?[index] ?? 1),
+              ),
+            ),
+        },
+        border: pw.TableBorder.all(width: .5),
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFEFEFEF),
+            ),
+            children: [
+              for (final span in spans)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 3,
+                  ),
+                  child: pw.Text(
+                    span.label,
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      font: font,
+                      fontSize: 8,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  return result;
 }
 
 Future<Uint8List> _renderOrgChartPdf(
@@ -242,11 +400,19 @@ Future<List<pw.TableRow>> buildPrintPdfRows(
   }
   final rows = <pw.TableRow>[
     pw.TableRow(
+      repeat:
+          request.repeatColumnHeaders ||
+          request.pageHeader != null ||
+          request.documentHeader.isNotEmpty ||
+          utenTableHeaderGroupDepth(request.headerGroups) > 0,
       decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFEFEFEF)),
       children: header,
     ),
   ];
   for (final row in request.rows) {
+    if (row.length != request.headers.length) {
+      throw const FormatException('打印字段与明细列数不一致');
+    }
     final cells = <pw.Widget>[];
     for (final value in row) {
       cells.add(cell(value));

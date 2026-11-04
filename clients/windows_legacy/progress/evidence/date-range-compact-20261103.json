@@ -1,0 +1,119 @@
+{
+  "id": "E-DATE-RANGE-COMPACT-20261103",
+  "baselineCommit": "8937e02d2",
+  "branch": "uimp/date-range-compact-20261103",
+  "classification": "frontend-presentation-and-interaction",
+  "runtimeFamily": "wpf_legacy",
+  "architectures": [
+    "x86",
+    "x64"
+  ],
+  "status": "local-native-increment-verified",
+  "entryAudit": {
+    "search": "DatePicker|Calendar|开始日期|结束日期|StartDate|EndDate|UtenDateRange|选择日期 over all native cs/xaml",
+    "existingApplicableCallers": [
+      "UnitRecordHistoryWindow"
+    ],
+    "publicEntry": "Controls/UtenDateRangeButton.cs: UtenDateRangeButton and UtenDateRangePresentation",
+    "removedDuplicatePresentation": "UnitRecordHistoryWindow no longer builds its own yyyy-MM-dd 至 range or uses caption-close styling for date clear.",
+    "unportedConsumers": "Other Flutter date-range/history business consumers have no applicable native date-range page yet. They remain unported; this increment does not implement those business pages."
+  },
+  "contract": {
+    "source": "contracts/date-range-selection/v1.json",
+    "displayFixtureCases": 12,
+    "dateClock": "Asia/Shanghai wall dates; presentation does not convert instants or modify selected query bounds.",
+    "compactLabel": "Today: 今天; recent calendar month: 近1个月; other ranges ending today: 近N天; historical/future closed intervals: 共N天. Day count is inclusive.",
+    "tooltip": "yyyy.MM.dd-yyyy.MM.dd; mouse initial/between delay zero; keyboard focus opens the same ToolTip; UI Automation help contains exact dates.",
+    "height": "Normal Button dynamic style uses Uten.Height.Standard=40; clear is text 清除 using the same Button style. No calendar, help or close icon in the date entry.",
+    "businessSemantics": "Unchanged server dateFrom/dateTo query keys, cancellation and owner guards, old response sequence retirement, other filter preservation and unknown write state."
+  },
+  "verification": {
+    "compiler": "MSBuild .NET Framework 4.8, C# 7.3; Debug x86/x64 /warnaserror, isolated BuildScope/output; exit 0",
+    "command": "Uten.Legacy.Tests.exe --date-range-contracts",
+    "perArchitecture": "PASS dates=61; history UI=13",
+    "stress": "Existing 20 reopen/close cycles each with 40 rapid month/year panel switches; cancellations do not publish.",
+    "callerChecks": "Measured date-button height equals ordinary pager button; compact chosen label/full tooltip; real native picker selection; unchanged authoritative filter query; clear preserves unrelated text; owner retirement clears stale rows.",
+    "visualReview": "x64 unit-record-history-fixture.png inspected at 1080px: text-only near-month/clear group fits filter row, uses ordinary button height, no date icons or repeated range line.",
+    "screenshot": "build/windows-wpf/date-range-compact-verification/x64/unit-record-history-fixture.png",
+    "logs": [
+      "build/windows-wpf/date-range-compact-verification/x64-build.log",
+      "build/windows-wpf/date-range-compact-verification/x64-date-range.log",
+      "build/windows-wpf/date-range-compact-verification/x86-build.log",
+      "build/windows-wpf/date-range-compact-verification/x86-date-range.log"
+    ]
+  },
+  "sourceHashes": {
+    "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDateRangeButton.cs": "25e5905d6fabc9d6ee4670c4158e2e9280434f4f849c968f74e209c6214f238e",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecordHistoryWindow.cs": "ee07783d6f6f75b6f62470d7c1164aa5dbfd93e9c9f23354c787e0c352ce955e",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryContractChecks.cs": "705a868e6703d3d2d8791683ae63fb78aa2cbf778354e867088237d66a49016c",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DateRangeDialogChecks.cs": "3ef8066017f8f39cac08794c52f7a4e09ef894bbcfb2be5d0177b81bd9d5c67c",
+    "contracts/date-range-selection/v1.json": "2b28c13cda8b598c9785d64da5e9239892eb4086652b61fef5210c515a7c5fbb"
+  },
+  "logHashes": {
+    "build/windows-wpf/date-range-compact-verification/x64-build.log": "75fc71c889924477d4320f64ea4562456f606dc40c4f9c34d47342469eb20095",
+    "build/windows-wpf/date-range-compact-verification/x64-date-range.log": "b8c65681bddedbedadf22b9fd344c7b1455bcd9fdeee51914fc0969e1f07f79a",
+    "build/windows-wpf/date-range-compact-verification/x86-build.log": "80388c3d22c4e50d89f3209867a70896c21ac729bdebed34f6492825581d3fe4",
+    "build/windows-wpf/date-range-compact-verification/x86-date-range.log": "735f8dcc9fbdbee7f0cb9d9bb9933f764009c513b1afd5946e292e418164f92c"
+  },
+  "targetPcAcceptance": false,
+  "fullErpAcceptance": false,
+  "formalPackagesCreated": false,
+  "productionRequestsExecuted": false,
+  "inventorySynchronization": {
+    "rootCause": "The business inventory tracks Flutter/Java sources and direct import target hashes, not WPF controls. Three changed Flutter shared components updated target hashes in 27 page proofs.",
+    "commands": [
+      "business_inventory.py --write",
+      "progress_tracker.py sync",
+      "progress_tracker.py check"
+    ],
+    "checkExitCode": 0,
+    "changedSourceFiles": [
+      "lib/components/buttons/uten_date_range_selection_button.dart",
+      "lib/components/layout/uten_history_time_filter.dart",
+      "lib/components/layout/uten_segment_row.dart"
+    ],
+    "changedTaskProofs": [
+      "W7-BIZ-005",
+      "W7-BIZ-007",
+      "W7-BIZ-008",
+      "W7-BIZ-018",
+      "W7-BIZ-033",
+      "W7-BIZ-046",
+      "W7-BIZ-050",
+      "W7-BIZ-065",
+      "W7-BIZ-086",
+      "W7-BIZ-087",
+      "W7-BIZ-098",
+      "W7-BIZ-103",
+      "W7-BIZ-108",
+      "W7-BIZ-112",
+      "W7-BIZ-115",
+      "W7-BIZ-116",
+      "W7-BIZ-123",
+      "W7-BIZ-137",
+      "W7-BIZ-139",
+      "W7-BIZ-221",
+      "W7-BIZ-154",
+      "W7-BIZ-161",
+      "W7-BIZ-174",
+      "W7-BIZ-223",
+      "W7-BIZ-187",
+      "W7-BIZ-195",
+      "W7-BIZ-201"
+    ],
+    "preservedExactlyDuringSync": [
+      "all 362 task IDs",
+      "status",
+      "owner",
+      "definitionOfDone",
+      "dependencies",
+      "evidence",
+      "notes",
+      "nativeTargets",
+      "lastUpdated"
+    ],
+    "generatedDocumentDelta": "Only Win7兼容版/tasks/BIZ-basic_data.md renders the new W7-BIZ-037 evidence/note. No task completion change.",
+    "fullErpEquivalent": false,
+    "win7Accepted": false
+  }
+}

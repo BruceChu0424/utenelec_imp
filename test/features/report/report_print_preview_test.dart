@@ -15,6 +15,7 @@ class _Api extends ApiClient {
   int? actualSize;
   bool changeSchema = false;
   bool changeVersion = false;
+  Map<String, dynamic> metadata = const {};
   void Function(int page)? afterRead;
 
   @override
@@ -31,6 +32,7 @@ class _Api extends ApiClient {
       if (total != null) 'total': total,
       if (totalPages != null) 'totalPages': totalPages,
       'readScopeVersion': changeVersion && page > 1 ? 'changed' : 'same',
+      'documentMetadata': metadata,
       if (page == 1 || changeSchema)
         'columns': [
           {
@@ -46,6 +48,91 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  test(
+    'frozen originals read past 2000 and preserve the last row with one full metadata footer',
+    () async {
+      final source = [
+        for (int i = 0; i < 2501; i++) {'value': 'original-row-$i'},
+      ];
+      final api =
+          _Api([
+              for (int start = 0; start < source.length; start += 500)
+                source.sublist(start, (start + 500).clamp(0, source.length)),
+            ])
+            ..total = 2501
+            ..totalPages = 6
+            ..actualSize = 500
+            ..metadata = {
+              'reviewId': 'immutable-original',
+              'paperLayout': {
+                'footer': {'value': 'whole-original-total'},
+              },
+            };
+      final result = await loadBoundedReportPrintPreview(
+        api: api,
+        endpointOf: () => '/original',
+        queryOf: () => {},
+        isCurrent: () => true,
+        rowLimit: 20000,
+        requireComplete: true,
+      );
+      expect(result.rows, hasLength(2501));
+      expect(result.rows.last, ['original-row-2500']);
+      expect(api.requests, hasLength(6));
+      expect(api.requests, everyElement(containsPair('includeCount', true)));
+      expect(api.requests, everyElement(containsPair('includeTotals', true)));
+      expect(result.documentMetadata, api.metadata);
+    },
+  );
+  test(
+    'a source-paper prefix cannot escape with the complete original footer',
+    () async {
+      final api =
+          _Api([
+              List.generate(500, (i) => {'value': 'row-$i'}),
+            ])
+            ..total = 2501
+            ..totalPages = 6
+            ..actualSize = 500
+            ..metadata = {
+              'reviewId': 'immutable-original',
+              'paperLayout': {
+                'footer': {'value': 'whole-original-total'},
+              },
+            };
+      await expectLater(
+        loadBoundedReportPrintPreview(
+          api: api,
+          endpointOf: () => '/original',
+          queryOf: () => {},
+          isCurrent: () => true,
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      expect(api.requests, hasLength(1));
+    },
+  );
+  test(
+    'complete originals reject an incomplete page chain instead of treating unknown row count as complete',
+    () async {
+      final api = _Api([
+        [
+          {'value': 'only-known-prefix'},
+        ],
+      ])..metadata = {'reviewId': 'immutable-original'};
+      await expectLater(
+        loadBoundedReportPrintPreview(
+          api: api,
+          endpointOf: () => '/original',
+          queryOf: () => {},
+          isCurrent: () => true,
+          rowLimit: 20000,
+          requireComplete: true,
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    },
+  );
   test(
     'suggested widths are opt-in and do not change default report printing',
     () async {

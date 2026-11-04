@@ -13,6 +13,7 @@
 //   (历史单据仍按字典显示名称)，当前选中值总能看到。
 // - 所有选项（包括「全部」）先暂存，点底部「确定」才返回；取消/关闭放弃暂存。
 import 'package:flutter/material.dart';
+import '../search/keyword_search.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
@@ -350,12 +351,11 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
   Set<String>? _searchVisibleIds() {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return null;
+    final query = KeywordSearchQuery(q);
     final byId = {for (final e in widget.hierarchy) e.id: e};
     final visible = <String>{};
     for (final entry in widget.hierarchy) {
-      final hit =
-          entry.name.toLowerCase().contains(q) ||
-          (entry.code ?? '').toLowerCase().contains(q);
+      final hit = query.matches([entry.name, entry.code]);
       if (!hit) continue;
       visible.add(entry.id);
       var current = entry;

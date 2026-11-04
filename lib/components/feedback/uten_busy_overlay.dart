@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../buttons/uten_button.dart';
 import 'uten_overlay_lifecycle.dart';
 
 class UtenBusyOverlay extends StatefulWidget {
@@ -22,6 +23,8 @@ class UtenBusyOverlay extends StatefulWidget {
     this.description,
     this.semanticsKey,
     this.showDoNotLeaveHint = true,
+    this.onCancel,
+    this.cancelLabel = '取消',
   });
 
   /// 进度卡片的语义 key（宿主测试锁定用，如物料分析的
@@ -37,29 +40,61 @@ class UtenBusyOverlay extends StatefulWidget {
   /// Optional waiting guidance. Hiding the copy keeps the same blocking mask,
   /// task lifetime and accessibility progress announcement.
   final bool showDoNotLeaveHint;
+  final VoidCallback? onCancel;
+  final String cancelLabel;
 
-  /// 全局「让位」计数：大于 0 时所有忙碌遮罩暂不绘制、不挡点击。
+  /// Read/compute preparation shared by menu, header and dialog actions.
+  /// End it before asking for input or showing the result dialog.
+  static Future<T> run<T>(
+    BuildContext context, {
+    required String title,
+    required Future<T> Function() action,
+  }) async {
+    final entry = OverlayEntry(
+      builder: (_) => UtenBusyOverlay(title: title, showDoNotLeaveHint: false),
+    );
+    Overlay.of(context, rootOverlay: true).insert(entry);
+    try {
+      return await action();
+    } finally {
+      entry.remove();
+      entry.dispose();
+    }
+  }
+
+  /// 活跃「让位」作用域计数，仅暂停进入作用域前已经存在的忙碌遮罩。
   static final ValueNotifier<int> _yielding = ValueNotifier<int>(0);
+  static final _active = <_UtenBusyOverlayState>{};
+  static final _yieldOwners = <Set<_UtenBusyOverlayState>>{};
 
-  /// 在 [body] 运行期间让所有忙碌遮罩让位，结束(含异常)后恢复。
+  /// 在 [body] 运行期间让既有忙碌遮罩让位，结束(含异常)后恢复。
+  /// 弹窗内新开始的任务仍显示自身遮罩，避免验证等按钮只禁用而没有等待反馈。
   ///
   /// 给必须压在遮罩之上、等用户操作的全局弹窗用(如敏感操作的再认证密码框)：遮罩是
   /// root Overlay 里的裸 OverlayEntry，Navigator 每推一个路由都会把裸 entry 重新抬到最顶层，
   /// 盖住后弹出的对话框——请求在等密码、遮罩在等请求，整页卡死。让位期间对话框自带的
   /// 模态屏障照样挡住底下页面。
   static Future<T> yieldWhile<T>(Future<T> Function() body) async {
+    // Yield the operations which were already waiting. A newly started task
+    // inside the modal (for example password verification) owns its own mask.
+    final owners = Set<_UtenBusyOverlayState>.of(_active);
+    _yieldOwners.add(owners);
     _yielding.value++;
     try {
       return await body();
     } finally {
-      _yielding.value--;
+      _yieldOwners.remove(owners);
+      _yielding.value = _yieldOwners.length;
     }
   }
 
   /// 仅测试用：widget 测试卸树时弃掉的让位 Future 永不完成，全局计数永久
   /// 大于 0，后续用例的遮罩全部隐身。逐条用例复位。
   @visibleForTesting
-  static void debugResetYield() => _yielding.value = 0;
+  static void debugResetYield() {
+    _yieldOwners.clear();
+    _yielding.value = 0;
+  }
 
   @override
   State<UtenBusyOverlay> createState() => _UtenBusyOverlayState();
@@ -72,6 +107,12 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
     onAvailable: _ensureEntry,
     onUnavailable: _removeEntry,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    UtenBusyOverlay._active.add(this);
+  }
 
   @override
   void didChangeDependencies() {
@@ -122,6 +163,10 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
 
   @override
   void dispose() {
+    UtenBusyOverlay._active.remove(this);
+    for (final owners in UtenBusyOverlay._yieldOwners) {
+      owners.remove(this);
+    }
     _lifecycle.dispose();
     _removeEntry();
     super.dispose();
@@ -134,7 +179,12 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
     return ValueListenableBuilder<int>(
       valueListenable: UtenBusyOverlay._yielding,
       builder: (context, yielding, _) =>
-          yielding > 0 ? const SizedBox.shrink() : _buildMask(context),
+          yielding > 0 &&
+              UtenBusyOverlay._yieldOwners.any(
+                (owners) => owners.contains(this),
+              )
+          ? const SizedBox.shrink()
+          : _buildMask(context),
     );
   }
 
@@ -157,6 +207,8 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
             description: widget.description,
             semanticsKey: widget.semanticsKey,
             showDoNotLeaveHint: widget.showDoNotLeaveHint,
+            onCancel: widget.onCancel,
+            cancelLabel: widget.cancelLabel,
           ),
         ),
       ],
@@ -183,6 +235,8 @@ class UtenBusyOverlayCard extends StatelessWidget {
     this.description,
     this.semanticsKey,
     this.showDoNotLeaveHint = true,
+    this.onCancel,
+    this.cancelLabel = '取消',
   });
 
   final Key? semanticsKey;
@@ -192,6 +246,8 @@ class UtenBusyOverlayCard extends StatelessWidget {
   /// 是否附带通用等待说明。主档操作或首屏加载可只保留动作标题，
   /// 其余场景保持默认提示；这只控制文案，不改变阻止重复操作的蒙版。
   final bool showDoNotLeaveHint;
+  final VoidCallback? onCancel;
+  final String cancelLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -245,35 +301,49 @@ class UtenBusyOverlayCard extends StatelessWidget {
             ?description,
             if (showDoNotLeaveHint) '请勿重复提交或关闭页面',
           ].map((line) => '$line。').join(),
-          child: ExcludeSemantics(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Material(
-                color: theme.colorScheme.surface,
-                elevation: 12,
-                borderRadius: UtenRadius.lgAll,
-                child: Padding(
-                  padding: EdgeInsets.all(
-                    compact ? UtenSpacing.s16 : UtenSpacing.s24,
-                  ),
-                  child: compact
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            progress,
-                            const SizedBox(height: UtenSpacing.s12),
-                            text,
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            progress,
-                            const SizedBox(width: UtenSpacing.s16),
-                            Expanded(child: text),
-                          ],
-                        ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Material(
+              color: theme.colorScheme.surface,
+              elevation: 12,
+              borderRadius: UtenRadius.lgAll,
+              child: Padding(
+                padding: EdgeInsets.all(
+                  compact ? UtenSpacing.s16 : UtenSpacing.s24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ExcludeSemantics(
+                      child: compact
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                progress,
+                                const SizedBox(height: UtenSpacing.s12),
+                                text,
+                              ],
+                            )
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                progress,
+                                const SizedBox(width: UtenSpacing.s16),
+                                Expanded(child: text),
+                              ],
+                            ),
+                    ),
+                    if (onCancel != null) ...[
+                      const SizedBox(height: UtenSpacing.s16),
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        onPressed: onCancel,
+                        child: Text(cancelLabel),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

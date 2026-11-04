@@ -49,7 +49,9 @@ public class BusinessMasterReferenceAccess {
 
     public static boolean allowed(String resource, Set<String> granted) {
         return switch (resource) {
-            case "supplier" -> granted.contains("supplier:view") || document(granted, SUPPLIER_CONTEXTS);
+            case "supplier" -> granted.contains("supplier:view") || granted.contains("application:apply")
+                    || granted.contains("application:apply:prepayment") || granted.contains("application:apply:supplier_payment")
+                    || document(granted, SUPPLIER_CONTEXTS);
             case "client" -> granted.contains("client:view") || document(granted, CLIENT_CONTEXTS);
             case "goods" -> granted.contains("goods:view") || granted.contains("stock:view")
                     || granted.contains("stock:count:submit") || granted.contains("stock:count:finance_review")

@@ -41,6 +41,8 @@ public class ReportExportController {
         return java.util.Map.of("authorized",true);
     }
     @PostMapping("/{id}/cancel") public ReportExportService.View cancel(@PathVariable UUID id) { return service.cancel(id); }
+    @PostMapping("/{id}/precision") public ReportExportService.View precision(@PathVariable UUID id,@RequestBody ReportExportService.PrecisionResume request){return service.resumePrecision(id,request);}
+    @GetMapping("/{id}/precision-receipts/{requestId}") public java.util.Map<String,Object> precisionReceipt(@PathVariable UUID id,@PathVariable UUID requestId){return service.precisionReceipt(id,requestId);}
     @PostMapping("/{id}/download")
     public void download(@PathVariable UUID id,@Valid @RequestBody ExportPasswordRequest request,HttpServletResponse response) throws IOException {
         var job=service.authorizedArtifact(id);

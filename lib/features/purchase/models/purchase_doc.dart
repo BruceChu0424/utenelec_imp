@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/models/procurement_order_closure.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/models/procurement_quantity.dart';
@@ -96,7 +97,7 @@ double purchaseOverReceiptTolerance(double qty, double? pct) {
 String purchasePercentText(double value) => value == value.roundToDouble()
     ? value.toInt().toString()
     : value
-          .toStringAsFixed(2)
+          .toExactString(minimumFractionDigits: 2)
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
 
@@ -226,6 +227,7 @@ class PurchaseDocItem {
     this.salesOrderNo,
     this.remark,
     this.allowedOverReceiptPct,
+    this.allowedOverReceiptPctExact,
     this.sourceRequests = const [],
   });
 
@@ -305,6 +307,9 @@ class PurchaseDocItem {
   /// 订货明细允许超收%（ADR-144，0..100；空 = 不允许超收，按 0%）。
   /// 冻结在明细上，财务批准后不能再改；不受价格遮蔽。
   final double? allowedOverReceiptPct;
+  final String? allowedOverReceiptPctExact;
+  String? get allowedOverReceiptPctText =>
+      allowedOverReceiptPctExact ?? allowedOverReceiptPct?.toString();
 
   /// 允许超收量 T = ROUND(数量 × 允许超收% / 100, 4)（订货单位）。
   double get allowedOverReceiptQty =>
@@ -397,6 +402,9 @@ class PurchaseDocItem {
     salesOrderNo: json['salesOrderNo'] as String?,
     remark: json['remark'] as String?,
     allowedOverReceiptPct: _decimalOrNull(json['allowedOverReceiptPct']),
+    allowedOverReceiptPctExact:
+        (json['allowedOverReceiptPctExact'] ?? json['allowedOverReceiptPct'])
+            ?.toString(),
     sourceRequests: [
       for (final entry
           in (json['sourceRequests'] as List<dynamic>? ?? const <dynamic>[]))

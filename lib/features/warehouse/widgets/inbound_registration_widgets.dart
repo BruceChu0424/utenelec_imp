@@ -52,9 +52,32 @@ Future<void> warehouseWeighCount(
   UtenAutofillTextController? qty,
   required WeightParamsCache cache,
   required Iterable<WeightParamsLine> refetch,
+  bool Function()? isCurrent,
+  List<Listenable> sourceChanges = const [],
 }) async {
-  final result = await showWeighCountDialog(context, request: request);
-  if (result == null) return;
+  var sourceChanged = false;
+  void changed() => sourceChanged = true;
+  weight.text.addListener(changed);
+  qty?.addListener(changed);
+  for (final source in sourceChanges) {
+    source.addListener(changed);
+  }
+  WeighCountResult? result;
+  try {
+    result = await showWeighCountDialog(context, request: request);
+  } finally {
+    weight.text.removeListener(changed);
+    qty?.removeListener(changed);
+    for (final source in sourceChanges) {
+      source.removeListener(changed);
+    }
+  }
+  if (result == null ||
+      !context.mounted ||
+      sourceChanged ||
+      !(isCurrent?.call() ?? true)) {
+    return;
+  }
   applyWeighCountResult(result, weight: weight, qty: qty);
   if (result.sample?.saved ?? false) {
     cache.invalidateGoods(request.goodsId);
@@ -75,7 +98,7 @@ String warehouseWeightKeySuffix(Iterable<String> parts) {
 /// 一行实际要提交的重量片段 `行键=千克|0/1`；不提交重量也没按称重改数量时返回 null。
 String? warehouseWeightKeyPart(
   String lineKey,
-  double? sentKg,
+  Object? sentKg,
   bool fromWeight,
 ) {
   if (sentKg == null && !fromWeight) return null;
@@ -400,14 +423,14 @@ Widget inboundTotalsBar<T extends InboundRegistrationLine>({
 WeightTotalsSummary warehouseWeightTotals<T>(
   Iterable<T> lines, {
   required WeightEntryController Function(T line) weightOf,
-  required double? Function(T line) exactKgOf,
+  required Object? Function(T line) exactKgOf,
   required WeightParams? Function(T line) paramsOf,
   required double? Function(T line) qtyBaseOf,
   WeightCaptureMode mode = WeightCaptureMode.inbound,
 }) {
   final list = lines.toList(growable: false);
   return WeightTotalsSummary.of(
-    list.map((line) => exactKgOf(line) ?? weightOf(line).kg),
+    list.map((line) => exactKgOf(line) ?? weightOf(line).kgText),
     deviationRows: weightDeviationRowCount(
       list.where((line) => exactKgOf(line) == null),
       controllerOf: weightOf,
@@ -594,7 +617,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     required Listenable paramsListenable,
     required double? Function(T line) qtyBaseOf,
     Listenable? Function(T line)? qtyListenableOf,
-    double? Function(T line)? exactKgOf,
+    Object? Function(T line)? exactKgOf,
     String? Function(T line)? baseUnitNameOf,
     Future<void> Function(BuildContext context, T line)? onWeighCount,
   }) => weightGridColumn<T>(
@@ -685,7 +708,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
             return Tooltip(
               key: ValueKey('$keyPrefix-weight-check-${lineKeyOf(line)}'),
               message:
-                  '$text；${stock.source}；实称 ${formatWeight(line.weight.kg!)}，'
+                  '$text；${stock.source}；实称 ${formatWeight(line.weight.kgText)}，'
                   '偏差 ${formatSignedPct((line.weight.kg! / stock.kg - 1) * 100)}。'
                   '请核对数量、重量单位和皮重。',
               child: Text(text),

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "header": "X-Uten-Precision-Choices",
+  "maxScale": 30,
+  "modes": ["HALF_UP", "DOWN"],
+  "rule": "Finite values are preserved. Only repeating or field-limited results consume an explicit choice. Numeric facts are decimal strings.",
+  "cases": [
+    {"id":"finite-eighth","numerator":"1","denominator":"8","maxScale":30,"expected":"0.125"},
+    {"id":"finite-twenty-places","numerator":"1","denominator":"1048576","maxScale":30,"expected":"0.00000095367431640625"},
+    {"id":"finite-reduction","numerator":"7","denominator":"56","maxScale":30,"expected":"0.125"},
+    {"id":"finite-negative","numerator":"-125","denominator":"1000","maxScale":30,"expected":"-0.125"},
+    {"id":"long-decimal-text","numerator":"123456789012345678901234567890.123456789012345678901234","denominator":"1","maxScale":30,"expected":"123456789012345678901234567890.123456789012345678901234"},
+    {"id":"finite-ignores-unneeded-choice","numerator":"1","denominator":"8","maxScale":30,"choice":{"scale":0,"rounding":"HALF_UP"},"expected":"0.125"},
+    {"id":"repeating-needs-choice","numerator":"1","denominator":"3","maxScale":30,"required":"NON_TERMINATING"},
+    {"id":"repeating-half-up","numerator":"2","denominator":"3","maxScale":30,"choice":{"scale":2,"rounding":"HALF_UP"},"expected":"0.67"},
+    {"id":"repeating-down","numerator":"2","denominator":"3","maxScale":30,"choice":{"scale":2,"rounding":"DOWN"},"expected":"0.66"},
+    {"id":"negative-half-up","numerator":"-2","denominator":"3","maxScale":30,"choice":{"scale":2,"rounding":"HALF_UP"},"expected":"-0.67"},
+    {"id":"negative-down","numerator":"-2","denominator":"3","maxScale":30,"choice":{"scale":2,"rounding":"DOWN"},"expected":"-0.66"},
+    {"id":"negative-denominator","numerator":"2","denominator":"-3","maxScale":30,"choice":{"scale":2,"rounding":"HALF_UP"},"expected":"-0.67"},
+    {"id":"two-negatives","numerator":"-2","denominator":"-3","maxScale":30,"choice":{"scale":2,"rounding":"DOWN"},"expected":"0.66"},
+    {"id":"finite-field-limit-needs-choice","numerator":"1.005","denominator":"1","maxScale":2,"required":"PRECISION_LIMIT"},
+    {"id":"finite-field-half-up","numerator":"1.005","denominator":"1","maxScale":2,"choice":{"scale":2,"rounding":"HALF_UP"},"expected":"1.01"},
+    {"id":"finite-field-down","numerator":"1.005","denominator":"1","maxScale":2,"choice":{"scale":2,"rounding":"DOWN"},"expected":"1"},
+    {"id":"negative-half-tie","numerator":"-1.005","denominator":"1","maxScale":2,"choice":{"scale":2,"rounding":"HALF_UP"},"expected":"-1.01"},
+    {"id":"explicit-zero-places","numerator":"1","denominator":"3","maxScale":30,"choice":{"scale":0,"rounding":"DOWN"},"expected":"0"},
+    {"id":"tiny-needs-choice","numerator":"0.0000000000000000000000000000001","denominator":"1","maxScale":30,"required":"PRECISION_LIMIT"},
+    {"id":"tiny-explicit-down","numerator":"0.0000000000000000000000000000001","denominator":"1","maxScale":30,"choice":{"scale":30,"rounding":"DOWN"},"expected":"0"}
+  ]
+}

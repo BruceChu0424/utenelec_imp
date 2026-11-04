@@ -168,6 +168,22 @@ class AttachmentService {
         .toList();
   }
 
+  /// Only the frozen originals linked to this currently readable native owner.
+  /// The server checks exact membership and current clean/hash availability;
+  /// history download retains the existing verified-byte path.
+  Future<List<Attachment>> listLinked({
+    required String ownerType,
+    required String ownerId,
+  }) async {
+    final rows = await _api.getList(
+      '$_base/linked',
+      query: {'ownerType': ownerType, 'ownerId': ownerId},
+    );
+    return rows
+        .map((row) => Attachment.fromJson(row, forceHistoryReadOnly: true))
+        .toList();
+  }
+
   /// 上传完成后设置/清除文件分类（`PUT /attachments/{id}/category`）。
   /// [category] 传 null = 清除；后端与删除同一条对象授权路径，单据锁定后会拒绝。
   Future<Attachment> setCategory(String id, String? category) async {

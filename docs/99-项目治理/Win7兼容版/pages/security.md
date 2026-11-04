@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SecurityBlacklistPage @68 (page-class)<br>_SecurityBlacklistPageState @76 (state-class) |
-| 真实路由绑定 | /security/blacklist；router @2299；builder ['SecurityBlacklistPage']；redirect None |
+| 真实路由绑定 | /security/blacklist；router @2391；builder ['SecurityBlacklistPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,14 +22,14 @@
 
 ## W7-BIZ-144 · lib/features/security/pages/security_scan_page.dart
 
-模块 `security`；202 行；SHA256 `7dfcb1488b079bbcf9b30684cac265825438056be3328324d71e2fe3eed2bcad`。
+模块 `security`；202 行；SHA256 `9ae75fc2ccb93887665c42f14c17d6b2139ae89b8d259d08323d9abde0e9b853`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SecurityScanPage @23 (page-class)<br>_SecurityScanPageState @30 (state-class) |
-| 真实路由绑定 | /security/scan；router @2294；builder ['SecurityScanPage']；redirect None |
+| 真实路由绑定 | /security/scan；router @2386；builder ['SecurityScanPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | visitor:blacklist @98；定义 lib/shared/auth/permissions.dart:74 |
+| 权限 | visitor:blacklist @98；定义 lib/shared/auth/permissions.dart:124 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
 | 动作处理 | stop @56 [action-like-invocation] 提示 ['stop']；_controller?.stop();<br>start @66 [action-like-invocation] 提示 ['start']；_controller?.start(); |
@@ -47,7 +47,7 @@
 | 页面/状态类 | VisitorCheckResultPage @27 (page-class)<br>_VisitorCheckResultPageState @37 (state-class) |
 | 真实路由绑定 | 未静态确认；不能当作不存在 |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | visitor:check_in @187；定义 lib/shared/auth/permissions.dart:73<br>visitor:blacklist @193；定义 lib/shared/auth/permissions.dart:74 |
+| 权限 | visitor:check_in @187；定义 lib/shared/auth/permissions.dart:123<br>visitor:blacklist @193；定义 lib/shared/auth/permissions.dart:124 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/visitor/repositories/visitor_staff_repository.dart；接口：/security/blacklist、/security/blacklist/{id}、/security/check-in/{id}、/security/verify、/visitor-approval、/visitor-approval/as-host、/visitor-approval/facets、/visitor-approval/{id}、/visitor-approval/{id}/action、/visitor-approval/{id}/host-confirm |
 | 动作处理 | copyWith @248 [action-like-invocation] 提示 ['copy']；?.copyWith( |

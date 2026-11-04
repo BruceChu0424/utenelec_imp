@@ -323,10 +323,10 @@ class _ProductionFinishedArrivalRegistrationPageState
   }
 
   /// 货品或报工单位按重量计时由报工数量精确换算(只读、不提交)；需要实称时为 null。
-  double? _exactKg(_FinishedLotLine row) => warehouseExactLineKg(
-    lineQty: row.lot.reportedQty,
+  String? _exactKg(_FinishedLotLine row) => warehouseExactLineKg(
+    lineQty: row.lot.reportedQtyText,
     lineMassUnit: _massUnits[row.lot.unitId],
-    unitRate: row.lot.unitRate,
+    unitRate: row.lot.unitRateText,
     params: _paramsOf(row),
   );
 
@@ -337,8 +337,8 @@ class _ProductionFinishedArrivalRegistrationPageState
       : null;
 
   /// 随登记提交的整批实称净重(千克)；精确换算行与没称的批不带。
-  double? _sentKg(_FinishedLotLine row) =>
-      _exactKg(row) == null ? row.weight.kg : null;
+  String? _sentKg(_FinishedLotLine row) =>
+      _exactKg(row) == null ? row.weight.kgText : null;
 
   @override
   void initState() {
@@ -1347,7 +1347,7 @@ class _FinishedLotLine extends InboundRegistrationLine {
             : InboundPlaceSource.none,
       ) {
     // 已登记的批：只读显示登记时的整批实称重量(没称的空着)。
-    if (registered) weight.setKg(lot.weight);
+    if (registered) weight.setKgText(lot.weightText);
   }
 
   final ProductionFinishedArrivalRegistration report;

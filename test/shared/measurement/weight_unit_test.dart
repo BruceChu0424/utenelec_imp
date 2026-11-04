@@ -12,7 +12,7 @@ import 'package:uten_imp/shared/measurement/weight_prefs.dart';
 import 'package:uten_imp/shared/measurement/weight_unit.dart';
 
 void main() {
-  group('换算系数与单据行舍入', () {
+  group('换算系数与有限原值', () {
     test('六个单位的千克系数与服务端同表', () {
       expect(WeightUnit.g.kgPerUnit, 0.001);
       expect(WeightUnit.kg.kgPerUnit, 1);
@@ -30,34 +30,39 @@ void main() {
       ]);
     });
 
-    test('toKgLine 十进制精确 HALF_UP 4 位 (double 乘法会在 .5 边界误舍)', () {
-      // 1.00005 x 10000 在 double 里是 10000.4999..., 必须仍进位到 1.0001。
-      expect(WeightUnit.kg.toKgLine(1.00005), 1.0001);
-      expect(WeightUnit.g.toKgLine(0.05), 0.0001);
-      expect(WeightUnit.g.toKgLine(0.04), 0.0);
+    test('toKgLine 保留有限乘积，不固定四位', () {
+      // 原来四位边界的输入现在必须完整保留。
+      expect(WeightUnit.kg.toKgLine(1.00005), 1.00005);
+      expect(WeightUnit.g.toKgLine(0.05), 0.00005);
+      expect(WeightUnit.g.toKgLine(0.04), 0.00004);
       expect(WeightUnit.g.toKgLine(850), 0.85);
       expect(WeightUnit.jin.toKgLine(3), 1.5);
-      expect(WeightUnit.lb.toKgLine(1), 0.4536);
-      expect(WeightUnit.lb.toKgLine(2), 0.9072);
-      expect(WeightUnit.oz.toKgLine(5), 0.1417);
+      expect(WeightUnit.lb.toKgLine(1), 0.45359237);
+      expect(WeightUnit.lb.toKgLine(2), 0.90718474);
+      expect(WeightUnit.oz.toKgLine(5), 0.141747615625);
       expect(WeightUnit.t.toKgLine(1.2), 1200);
     });
 
-    test('roundKgLine / weightKeyPart: 4 位、去尾零、null 为空串', () {
-      expect(roundKgLine(1.23456), 1.2346);
+    test('roundKgLine / weightKeyPart: 原值、去尾零、null 为空串', () {
+      expect(roundKgLine(1.23456), 1.23456);
       expect(roundKgLine(null), isNull);
       expect(weightKeyPart(null), '');
       expect(weightKeyPart(12.0), '12');
       expect(weightKeyPart(0.85), '0.85');
-      expect(weightKeyPart(1.23456), '1.2346');
+      expect(weightKeyPart(1.23456), '1.23456');
     });
 
-    test('editText 把千克值写回录入单位 (不丢 4 位千克精度)', () {
+    test('editText 有限换算完整，除不尽明确待选', () {
       expect(WeightUnit.kg.editText(0.85), '0.85');
       expect(WeightUnit.g.editText(0.85), '850');
       expect(WeightUnit.g.editText(0.0001), '0.1');
       expect(WeightUnit.t.editText(0.85), '0.00085');
-      expect(WeightUnit.lb.editText(1), '2.2046');
+      expect(WeightUnit.lb.editText(1), '1 kg');
+      expect(
+        WeightUnit.lb.editText(1, precisionScale: 4, precisionRounding: 'DOWN'),
+        '2.2046',
+      );
+      expect(WeightUnit.lb.fromKgText('1').reason, 'NON_TERMINATING');
       expect(WeightUnit.jin.editText(1.5), '3');
     });
   });
@@ -71,9 +76,9 @@ void main() {
       expect(p('850g')!.kgLine, 0.85);
       expect(p('1.2t')!.kgLine, 1200);
       expect(p('3斤')!.kgLine, 1.5);
-      expect(p('2lb')!.kgLine, 0.9072);
+      expect(p('2lb')!.kgLine, 0.90718474);
       expect(p('0.5 kg')!.kgLine, 0.5);
-      expect(p('5 oz')!.kgLine, 0.1417);
+      expect(p('5 oz')!.kgLine, 0.141747615625);
       expect(p('3 公斤')!.kgLine, 3);
       expect(p('2磅')!.unit, WeightUnit.lb);
       expect(p('1吨')!.unit, WeightUnit.t);
@@ -118,7 +123,7 @@ void main() {
       expect(formatWeight(12.5), '12.5 kg');
       expect(formatWeight(12.0), '12 kg');
       expect(formatWeight(3520), '3.52 t');
-      expect(formatWeight(1234.5678), '1.235 t');
+      expect(formatWeight(1234.5678), '1.2345678 t');
       expect(formatWeight(0), '0 kg');
     });
 

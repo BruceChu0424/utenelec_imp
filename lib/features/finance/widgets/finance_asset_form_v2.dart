@@ -423,30 +423,17 @@ class _FinanceAssetFormSurfaceState
     }
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
-    final result = await ref
-        .read(employeeReferenceRepositoryProvider)
-        .listPickerCandidates(
-          purpose: EmployeeReferencePurpose.financeAssetCustodian,
-          size: 30,
-          search: keyword,
-          departmentId: _departmentId,
-          includeSubtree: true,
-        );
-    return [
-      for (final employee in result)
-        UtenEmployeePickerItem(
-          id: employee.id,
-          name: employee.fullName,
-          employeeCode: employee.code,
-          accountStatus: employee.accountStatus,
-          employmentStatus: employee.status,
-          departmentId: employee.departmentId,
-          departmentName: employee.departmentName,
-          positionName: employee.positionName,
-        ),
-    ];
-  }
+  Future<UtenEmployeePickerPage> _loadEmployees(
+    UtenEmployeePickerQuery query,
+  ) => ref
+      .read(employeeReferenceRepositoryProvider)
+      .listPickerPage(
+        query,
+        purpose: EmployeeReferencePurpose.financeAssetCustodian,
+        size: 30,
+        departmentId: _departmentId,
+        includeSubtree: true,
+      );
 
   Future<void> _requestClose() async {
     if (_saving) return;
@@ -671,7 +658,7 @@ class _FinanceAssetFormSurfaceState
                                   UtenInput(
                                     key: const Key('finance-asset-amount'),
                                     label: '${widget.ledger.amountLabel} *',
-                                    hint: '最多 2 位小数',
+                                    hint: '按原始金额填写',
                                     controller: _amount,
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
@@ -764,6 +751,7 @@ class _FinanceAssetFormSurfaceState
                                           presentation:
                                               UtenEmployeePickerPresentation
                                                   .businessReference,
+                                          cancelDepartmentTreeReadOnClose: true,
                                           departmentTreeLoader: () => ref
                                               .read(
                                                 employeeReferenceRepositoryProvider,
@@ -786,7 +774,7 @@ class _FinanceAssetFormSurfaceState
                                               : '选择待摊责任人',
                                           initial: _custodian,
                                           departmentName: _departmentName,
-                                          loader: _loadEmployees,
+                                          pagedLoader: _loadEmployees,
                                           onChanged: (item) {
                                             setState(() {
                                               _custodianSelectionRevision++;
@@ -858,7 +846,9 @@ class _FinanceAssetFormSurfaceState
                                             }.contains(_sourceType))
                                           UtenDropdownItem(
                                             value: _sourceType!,
-                                            label: '现有类型 · $_sourceType',
+                                            label: financeAssetSourceTypeLabel(
+                                              _sourceType,
+                                            ),
                                           ),
                                         const UtenDropdownItem(
                                           value: 'PURCHASE',
@@ -1162,10 +1152,7 @@ class _FinanceAssetFormSurfaceState
                 decimal: true,
               ),
               validator: (value) =>
-                  value != null &&
-                      RegExp(r'^\d{1,14}(\.\d{1,4})?$').hasMatch(value.trim())
-                  ? null
-                  : '请输入非负金额，最多 4 位小数',
+                  validateNonNegativeFinanceBookAmount(value, label: '期初累计折旧'),
             ),
             UtenInput(
               key: const Key('asset-opening-remaining'),

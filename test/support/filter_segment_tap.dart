@@ -38,9 +38,11 @@ Future<void> selectFilterSegment(WidgetTester tester, String label) async {
     final opensPanel =
         tester.any(compactButtons) &&
         tester.any(
-          find.descendant(
+          find.ancestor(
             of: compactButtons.first,
-            matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is UtenSegmentRow,
+            ),
           ),
         );
     await tester.tap(segment.first);
@@ -59,17 +61,15 @@ Future<void> selectFilterSegment(WidgetTester tester, String label) async {
     return;
   }
   // 收起形态：打开「分类」下拉再点目标菜单项。触发按钮文案会变成已选分类名，
-  // 统一用下拉箭头图标定位；菜单项在遮罩层里，取最后一个匹配。
-  final arrows = find
-      .descendant(
-        of: toolbars,
-        matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
-      )
+  // 使用分段行的真实触发按钮；日期入口依用户口径不再带箭头图标。
+  // 菜单项在遮罩层里，取最后一个匹配。
+  final triggers = find
+      .descendant(of: toolbars, matching: find.byType(OutlinedButton))
       .hitTestable();
-  final count = arrows.evaluate().length;
+  final count = triggers.evaluate().length;
   for (var index = 0; index < count; index++) {
-    var offersLabel = true;
-    tester.element(arrows.at(index)).visitAncestorElements((element) {
+    var offersLabel = false;
+    tester.element(triggers.at(index)).visitAncestorElements((element) {
       final widget = element.widget;
       if (widget is UtenSegmentRow<Object?>) {
         offersLabel = widget.segments.any((segment) {
@@ -83,7 +83,7 @@ Future<void> selectFilterSegment(WidgetTester tester, String label) async {
       return true;
     });
     if (!offersLabel) continue;
-    await tester.tap(arrows.at(index));
+    await tester.tap(triggers.at(index));
     await _pumpMenuAnimation(tester);
     await _revealMenuItem(tester, label);
     if (await _tapMenuItem(tester, label)) {

@@ -12,6 +12,7 @@ import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/account_action_owner.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../models/product_category_node.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/product_category_repository.dart';
@@ -213,9 +214,11 @@ class _NamedReferencePickerState extends State<_NamedReferencePicker> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final choices = widget.choices
-        .where((choice) => choice.name.toLowerCase().contains(_query))
-        .toList();
+    final choices = rankedKeywordMatches(
+      widget.choices,
+      _query,
+      fields: (choice) => [choice.name],
+    );
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

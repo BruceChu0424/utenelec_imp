@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
 import 'dart:async';
@@ -284,16 +285,26 @@ class _Repository extends CompanyFileRepository {
   ];
 
   @override
-  Future<List<CompanyFilePrincipal>> principals({
+  Future<PagedResult<CompanyFilePrincipal>> principalsPage({
     required String type,
     String search = '',
-  }) async => [
-    CompanyFilePrincipal(
-      id: type == 'USER' ? 'person' : 'department',
-      name: type == 'USER' ? '查看人(10010)' : '研发部',
-      type: type,
-    ),
-  ];
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  }) async => PagedResult(
+    items: [
+      CompanyFilePrincipal(
+        id: type == 'USER' ? 'person' : 'department',
+        name: type == 'USER' ? '查看人(10010)' : '研发部',
+        type: type,
+      ),
+    ],
+    page: page,
+    size: size,
+    total: 1,
+    totalPages: 1,
+  );
 
   @override
   Future<CompanyFile> complete(CompanyFile file, String attachmentId) async {

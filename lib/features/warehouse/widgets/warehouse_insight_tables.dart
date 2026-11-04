@@ -84,12 +84,12 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     exactValueOf: (r) => r.weightKg?.toString(),
     info: '≈ = 含估算重量; 未称 = 有没称过的库存, 不当 0 算',
     value: (r) => formatWeightValue(
-      r.weightKg,
+      r.weightKgText,
       display: display,
       estimated: r.weightEstimated,
     ),
     cellBuilder: (_, r) => WeightText(
-      kg: r.weightKg,
+      kg: r.weightKgText,
       estimated: r.weightEstimated,
       display: display,
     ),
@@ -303,12 +303,12 @@ List<MasterColumnDef<InsightCycleCountRow>> insightCycleCountColumns({
     type: 'weight',
     exactValueOf: (r) => r.weightKg?.toString(),
     value: (r) => formatWeightValue(
-      r.weightKg,
+      r.weightKgText,
       display: display,
       estimated: r.weightEstimated,
     ),
     cellBuilder: (_, r) => WeightText(
-      kg: r.weightKg,
+      kg: r.weightKgText,
       estimated: r.weightEstimated,
       display: display,
     ),
@@ -543,7 +543,7 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     label: '当前单重',
     width: 120,
     type: 'number',
-    value: (r) => formatUnitWeight(r.unitWeightKg),
+    value: (r) => formatUnitWeight(r.unitWeightKgText),
     exactValueOf: (r) => r.unitWeightKg?.toString(),
   ),
   MasterColumnDef(
@@ -567,7 +567,7 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     width: 110,
     type: 'number',
     info: '货品资料里填的单重 (只作参考, 学到的单重不会回写货品资料)',
-    value: (r) => formatUnitWeight(r.masterUnitWeightKg),
+    value: (r) => formatUnitWeight(r.masterUnitWeightKgText),
     exactValueOf: (r) => r.masterUnitWeightKg?.toString(),
   ),
   MasterColumnDef(

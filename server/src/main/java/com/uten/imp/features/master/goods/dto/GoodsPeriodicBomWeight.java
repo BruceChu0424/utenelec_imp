@@ -12,4 +12,7 @@ import java.util.UUID;
 public record GoodsPeriodicBomWeight(UUID bomItemId, UUID materialGoodsId, String materialCode,
                                      String materialName, UUID colorId, String colorName,
                                      BigDecimal qty, String unitName, BigDecimal unitWeightGrams) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("unitWeightGramsExact")
+    public String getUnitWeightGramsExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightGrams);}
 }

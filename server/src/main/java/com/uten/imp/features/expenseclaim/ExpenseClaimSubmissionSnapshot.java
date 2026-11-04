@@ -26,6 +26,9 @@ final class ExpenseClaimSubmissionSnapshot {
         var snapshot = JsonNodeFactory.instance.objectNode();
         snapshot.put("schemaVersion", platformFields==null?1:2);
         snapshot.put("title", claim.getTitle());
+        snapshot.put("expenseKind", claim.getExpenseKind());
+        snapshot.put("departmentId", text(claim.getApplicantDepartmentId()));
+        snapshot.put("applicantName", claim.getApplicantNameSnapshot());
         snapshot.put("remark", claim.getRemark());
         snapshot.put("totalAmount", text(claim.getTotalAmount()));
         if(headerFields!=null)snapshot.set("platformFields",JSON.valueToTree(headerFields));

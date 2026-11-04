@@ -4,7 +4,6 @@ import com.uten.imp.common.util.FinancialExactAmount;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 
 /** Shared forecast arithmetic. Quantity is not silently forced through the four-place posting boundary. */
 public final class CostCalculationMath {
@@ -33,10 +32,7 @@ public final class CostCalculationMath {
     /** Finite divisions stay exact; repeating projections have one explicit 24-place policy. */
     public static BigDecimal divide(BigDecimal numerator,BigDecimal denominator) {
         if(denominator==null || denominator.signum()<=0) throw invalid("成本计算分母必须大于零");
-        try { return FinancialExactAmount.book(numerator.divide(denominator),"成本计算结果"); }
-        catch(ArithmeticException repeating) {
-            return FinancialExactAmount.book(numerator.divide(denominator,24,RoundingMode.HALF_EVEN),"成本计算结果");
-        }
+        return FinancialExactAmount.book(BusinessPrecisionContext.divide(numerator,denominator,"cost.calculation","本次成本计算",FinancialExactAmount.MAX_BOOK_FRACTION_DIGITS),"成本计算结果");
     }
     public static String text(BigDecimal value) { return value==null?null:value.stripTrailingZeros().toPlainString(); }
     public static ApiException invalid(String message) { return new ApiException(ErrorCode.VALIDATION_FAILED,message); }

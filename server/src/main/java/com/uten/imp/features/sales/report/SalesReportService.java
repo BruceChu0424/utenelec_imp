@@ -314,7 +314,7 @@ public class SalesReportService {
     private static void addCommonDocFilters(WhereBuilder w, String billNo, UUID clientId, UUID warehouseId,
                                             Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                             String billNoCol, String dateCol) {
-        if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, billNoCol, "billNo");
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         // 默认口径（草稿不进报表）2026-09-16 收敛到 ReportQueryKit.addApprovedByDefault。
@@ -657,7 +657,7 @@ public class SalesReportService {
     private static WhereBuilder summaryInnerWhere(String billNo, UUID clientId, UUID warehouseId,
                                                   Short status, LocalDate dateFrom, LocalDate dateTo, String kw) {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
-        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "o.bill_no", "billNo");
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         ReportQueryKit.addApprovedByDefault(w, status);

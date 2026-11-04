@@ -5,6 +5,7 @@ import com.uten.imp.common.web.*;
 import com.uten.imp.application.port.MasterReportExportPort;
 import com.uten.imp.application.port.WorkbenchReportExportPort;
 import com.uten.imp.security.*;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,11 +44,14 @@ public class ReportExportService {
         this(repository,users,restorer,json,buildIdentity,rateLimiter,readScopes,projectionAccess,null,null,directory);
     }
     public record View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
-            String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request) {
+            String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request,
+            int attempt,Map<String,Object> precisionRequirement,Map<String,BusinessPrecisionContext.Choice> precisionChoices) {
+        public View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
+                String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request){this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,request,0,null,null);}
         /** Preserve source compatibility for existing producers/fixtures and old JSON consumers. */
         public View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
                 String error,OffsetDateTime createdAt,OffsetDateTime finishedAt) {
-            this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,null);
+            this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,null,0,null,null);
         }
     }
 
@@ -104,6 +108,7 @@ public class ReportExportService {
         if(old.isPresent()) {
             var job=authorize(old.get());
             if(!decode(job.request()).equals(request)) throw new ApiException(ErrorCode.CONFLICT,"该导出编号已用于另一组条件，请核对原任务");
+            if(!precision(job).equals(BusinessPrecisionContext.choices()))throw new ApiException(ErrorCode.CONFLICT,"原导出编号已冻结其精度选择，请从原等待任务继续处理");
             return view(job);
         }
         if(repository.active(user.getId())>=2 || repository.active(null)>=40)
@@ -123,6 +128,41 @@ public class ReportExportService {
         repository.cancel(id,job.owner());
         return view(repository.find(id).orElseThrow());
     }
+    public record PrecisionResume(UUID requestId,int expectedAttempt) { }
+    @Transactional public View resumePrecision(UUID id,PrecisionResume command){
+        if(command==null||command.requestId()==null||command.expectedAttempt()<1)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请保留原导出精度续处理编号和尝试版本");
+        var initial=authorized(id);requireCompatibleReader(initial);requireCurrentAccess(initial);
+        repository.lockQueue();var job=authorized(id);requireCompatibleReader(job);requireCurrentAccess(job);
+        var selected=BusinessPrecisionContext.choices();var previous=repository.precisionReceipt(command.requestId());
+        if(previous.isPresent()){
+            var receipt=previous.get();if(!id.equals(receipt.get("job_id"))||!principal().getId().equals(receipt.get("actor_id"))||((Number)receipt.get("expected_attempt")).intValue()!=command.expectedAttempt()
+                ||!decodePrecision(receipt.get("precision_choices").toString()).equals(selected))throw new ApiException(ErrorCode.CONFLICT,"原精度续处理编号已有不同内容或办理人");
+            return view(job);
+        }
+        if(!"WAITING_PRECISION".equals(job.status())||job.attempt()!=command.expectedAttempt()||job.cancelRequested()||job.expiresAt()==null||!job.expiresAt().isAfter(OffsetDateTime.now()))throw new ApiException(ErrorCode.CONFLICT,"原导出等待状态已变化，请读取原任务回执");
+        if(job.sha256()!=null||job.bytes()!=0||Files.exists(artifact(job),LinkOption.NOFOLLOW_LINKS))throw new ApiException(ErrorCode.CONFLICT,"原任务存在产物或发布状态待核对，不能重新生成");
+        var required=precisionRequirement(job);String key=Objects.toString(required.get("calculationKey"),"");
+        var choice=selected.get(key);if(choice==null||!(required.get("maxScale") instanceof Number maximum)||choice.scale()>maximum.intValue())throw new ApiException(ErrorCode.VALIDATION_FAILED,"请明确选择本原任务所需的精度及处理方式");
+        var merged=new TreeMap<>(precision(job));for(var entry:selected.entrySet()){
+            var prior=merged.putIfAbsent(entry.getKey(),entry.getValue());if(prior!=null&&!prior.equals(entry.getValue())){if(Boolean.TRUE.equals(required.get("selectionRejected"))&&Boolean.TRUE.equals(required.get("notWritten"))&&entry.getKey().equals(key))merged.put(key,entry.getValue());else throw new ApiException(ErrorCode.CONFLICT,"原任务已确认的其他精度选择保留；仅可明确重选本次被拒绝的计算");}
+        }
+        // The client resumes with the complete frozen policy, so a lost receipt can
+        // compare the exact same choice set and cannot silently replace a choice.
+        if(!merged.equals(selected))throw new ApiException(ErrorCode.VALIDATION_FAILED,"请保留原任务已经确认的全部精度选择");
+        String snapshot=BusinessPrecisionContext.json();if(!repository.resumePrecision(job,command.requestId(),principal().getId(),snapshot))throw new ApiException(ErrorCode.CONFLICT,"原精度续处理未进入队列，请核对原任务");
+        return view(repository.find(id).orElseThrow());
+    }
+    @Transactional(readOnly=true) public Map<String,Object> precisionReceipt(UUID id,UUID requestId){
+        var job=authorized(id);var receipt=repository.precisionReceipt(requestId);if(receipt.isEmpty())return Map.of("found",false);
+        if(!id.equals(receipt.get().get("job_id"))||!principal().getId().equals(receipt.get().get("actor_id")))throw new ApiException(ErrorCode.NOT_FOUND);
+        return Map.of("found",true,"job",view(job));
+    }
+    public Map<String,BusinessPrecisionContext.Choice> precision(ReportExportRepository.Job job){return decodePrecision(job.precisionChoices());}
+    private Map<String,BusinessPrecisionContext.Choice> decodePrecision(String value){return value==null?Map.of():BusinessPrecisionContext.parse(Base64.getUrlEncoder().encodeToString(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
+    public Map<String,Object> precisionRequirement(ReportExportRepository.Job job){
+        if(job.precisionRequirement()==null)return Map.of();try{return json.readValue(job.precisionRequirement(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});}catch(java.io.IOException invalid){throw new IllegalStateException("Export precision receipt cannot be read",invalid);}
+    }
+    public String encodePrecisionRequirement(Map<String,Object> details){try{return json.writeValueAsString(details);}catch(java.io.IOException invalid){throw new IllegalStateException("Export precision receipt cannot be stored",invalid);}}
     public ReportExportRepository.Job authorized(UUID id) {
         return authorize(repository.find(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND)));
     }
@@ -206,7 +246,7 @@ public class ReportExportService {
     }
     private View view(ReportExportRepository.Job job) {
         var request=decode(job.request());
-        String state="SUCCEEDED".equals(job.status()) && job.expiresAt().isBefore(OffsetDateTime.now())?"EXPIRED":job.status();
+        String state=Set.of("SUCCEEDED","WAITING_PRECISION").contains(job.status()) && job.expiresAt()!=null && job.expiresAt().isBefore(OffsetDateTime.now())?"EXPIRED":job.status();
         // A named job/status alone cannot prove which lost submit was accepted. Return the
         // persisted typed request only for the audited Unit adapter and only while its
         // original data/projection access is still current. Old metadata remains readable
@@ -216,6 +256,8 @@ public class ReportExportService {
             try {requireCurrentAccess(job);proof=request;}
             catch(ApiException noLongerCurrent) { /* Preserve legacy metadata behavior, omit proof. */ }
         }
-        return new View(job.id(),request.domain(),request.report(),request.format(),state,job.cancelRequested(),job.rows(),job.bytes(),job.snapshotAt(),job.error(),job.createdAt(),job.finishedAt(),proof);
+        Map<String,Object> precisionRequirement=null;Map<String,BusinessPrecisionContext.Choice> precisionChoices=null;
+        if("WAITING_PRECISION".equals(state)){try{requireCompatibleReader(job);requireCurrentAccess(job);precisionRequirement=precisionRequirement(job);precisionChoices=precision(job);}catch(ApiException retired){/* Never disclose a retired request's policy/labels as current. */}}
+        return new View(job.id(),request.domain(),request.report(),request.format(),state,job.cancelRequested(),job.rows(),job.bytes(),job.snapshotAt(),job.error(),job.createdAt(),job.finishedAt(),proof,job.attempt(),precisionRequirement,precisionChoices);
     }
 }

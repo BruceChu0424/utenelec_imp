@@ -21,6 +21,7 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -92,6 +93,18 @@ void main() {
           .first,
     );
     await tester.pumpAndSettle();
+    final candidates = tester
+        .widget<MasterDataTableView<UtenEmployeePickerItem>>(
+          find.byKey(const Key('uten-employee-picker-candidates')),
+        );
+    expect(candidates.columns.map((column) => column.key), [
+      'employeeCode',
+      'name',
+      'department',
+    ]);
+    expect(find.text('职位'), findsNothing);
+    expect(find.text('账号状态'), findsNothing);
+    expect(find.text('在职状态'), findsNothing);
     await tester.tap(
       find.byKey(const ValueKey('employee-picker-item-emp-other')),
     );

@@ -12,6 +12,7 @@ import java.util.UUID;
 @Getter
 
 public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputResponse {
+    public String getAllowedOverReceiptPctExact() { return com.uten.imp.common.util.DecimalText.of(allowedOverReceiptPct); }
     @lombok.Setter private String quantitySemantics = "LEGACY_RECORDED";
     @lombok.Setter private BigDecimal giftReceivedQty = BigDecimal.ZERO;
     @lombok.Setter private BigDecimal giftReturnedQty = BigDecimal.ZERO;

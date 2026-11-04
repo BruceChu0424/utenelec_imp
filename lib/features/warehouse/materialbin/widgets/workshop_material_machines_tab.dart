@@ -7,6 +7,8 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter/material.dart';
+import '../../../../shared/formatters/financial_amount_validation.dart';
+import '../../../../shared/formatters/exact_decimal.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -26,7 +28,7 @@ import '../repositories/workshop_material_repository.dart';
 import 'workshop_material_labels.dart';
 
 /// 批量新增默认的容器。
-const wmDefaultContainers = <({String name, double capacityQty})>[
+const wmDefaultContainers = <({String name, Object capacityQty})>[
   (name: '干燥机料斗', capacityQty: 50),
   (name: '储料桶', capacityQty: 100),
 ];
@@ -70,7 +72,7 @@ class WmMachineRow extends EditableGridRow {
   bool get machineDirty =>
       name.text.trim() != machine.name ||
       model.text.trim() != (machine.model ?? '') ||
-      wmParseQty(tonnage.text) != machine.tonnage ||
+      wmParseExactQty(tonnage.text) != financeExactDecimal(machine.tonnage) ||
       int.tryParse(sortOrder.text.trim()) != machine.sortOrder ||
       enabled.value != machine.enabled;
 
@@ -332,13 +334,23 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         context.appWarning('「${r.machine.code}」的名称不能空着');
         return;
       }
+      if (r.tonnage.text.trim().isNotEmpty) {
+        final error = validateNonNegativeFinanceAmount(
+          r.tonnage.text,
+          label: '机台吨位',
+        );
+        if (error != null) {
+          context.appWarning(error);
+          return;
+        }
+      }
       if (r.machineDirty) {
         machineItems.add({
           'id': r.machine.id,
           'expectedVersion': r.machine.rowVersion,
           'name': r.name.text.trim(),
           'model': r.model.text.trim().isEmpty ? null : r.model.text.trim(),
-          'tonnage': wmParseQty(r.tonnage.text),
+          'tonnage': wmParseExactQty(r.tonnage.text),
           'enabled': r.enabled.value,
           'sortOrder': int.tryParse(r.sortOrder.text.trim()) ?? 0,
         });
@@ -348,12 +360,21 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         final text = r.capacity[containerName]?.text.trim() ?? '';
         final existing = r.container(containerName);
         if (text.isEmpty) continue;
-        final qty = wmParseQty(text);
-        if (qty == null || qty <= 0) {
-          context.appWarning('「${r.machine.code} $containerName」的容量要大于 0');
+        final qty = wmParseExactQty(text);
+        if (qty == null || validateFinanceAmount(text, label: '容量') != null) {
+          context.appWarning(
+            validateFinanceAmount(
+                  text,
+                  label: '「${r.machine.code} $containerName」的容量',
+                ) ??
+                '请核对容量',
+          );
           return;
         }
-        if (existing != null && existing.capacityQty == qty) continue;
+        if (existing != null &&
+            financeExactDecimal(existing.capacityQty) == qty) {
+          continue;
+        }
         containerItems.add({
           'id': existing?.id,
           'machineId': r.machine.id,
@@ -568,11 +589,11 @@ class _BatchCreateInput {
   final int count;
   final String codePrefix;
   final int startNo;
-  final List<({String name, double capacityQty})> containers;
+  final List<({String name, Object capacityQty})> containers;
 }
 
 class _ContainerDraft {
-  _ContainerDraft(String name, double? capacity)
+  _ContainerDraft(String name, Object? capacity)
     : name = TextEditingController(text: name),
       capacity = TextEditingController(
         text: capacity == null ? '' : wmQty(capacity),
@@ -627,14 +648,20 @@ class _BatchCreateDialogState extends State<_BatchCreateDialog> {
       setState(() => _error = '起始号请填 0 或更大的整数');
       return;
     }
-    final containers = <({String name, double capacityQty})>[];
+    final containers = <({String name, Object capacityQty})>[];
     final names = <String>{};
     for (final c in _containers) {
       final name = c.name.text.trim();
-      final capacity = wmParseQty(c.capacity.text);
+      final capacity = wmParseExactQty(c.capacity.text);
       if (name.isEmpty && c.capacity.text.trim().isEmpty) continue;
-      if (name.isEmpty || capacity == null || capacity <= 0) {
-        setState(() => _error = '每个容器都要填名称和大于 0 的容量');
+      if (name.isEmpty ||
+          capacity == null ||
+          validateFinanceAmount(c.capacity.text, label: '容器容量') != null) {
+        setState(
+          () => _error = name.isEmpty
+              ? '请填写容器名称'
+              : validateFinanceAmount(c.capacity.text, label: '容器容量'),
+        );
         return;
       }
       if (!names.add(name)) {

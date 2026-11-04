@@ -1,3 +1,5 @@
+import '../formatters/exact_decimal.dart';
+
 enum WarehouseInboundAllocationKind {
   // 2026-09-27 用户口径：登记实际到货的「预计去向」汇总用业务语言——
   // EXACT_ANALYSIS 显示「计划部预定」，PUBLIC 显示「仓库存放」。
@@ -27,6 +29,7 @@ class WarehouseInboundAllocation {
   const WarehouseInboundAllocation({
     required this.kind,
     required this.qty,
+    this.qtyExact,
     this.passEventId,
     this.stockInBatchItemId,
     this.actualWarehouseId,
@@ -56,6 +59,8 @@ class WarehouseInboundAllocation {
   final String? stockInBatchItemId;
   final WarehouseInboundAllocationKind kind;
   final double qty;
+  final String? qtyExact;
+  String? get quantityText => financeExactDecimal(qtyExact ?? qty);
   final String? actualWarehouseId;
   final String? actualWarehouseName;
   final String? targetWarehouseId;
@@ -89,15 +94,19 @@ class WarehouseInboundAllocation {
     productName,
   ].where((value) => value?.trim().isNotEmpty == true).join(' · ');
 
-  WarehouseInboundAllocation copyWithQty(double value) =>
-      _copyAllocation(this, qty: value);
+  WarehouseInboundAllocation copyWithQty(Object value) => _copyAllocation(
+    this,
+    qty: double.tryParse(value.toString()),
+    qtyExact: financeExactDecimal(value),
+  );
 
   factory WarehouseInboundAllocation.fromJson(Map<String, dynamic> json) =>
       WarehouseInboundAllocation(
         passEventId: _text(json['passEventId']),
         stockInBatchItemId: _text(json['stockInBatchItemId']),
         kind: WarehouseInboundAllocationKind.from(json['kind']),
-        qty: _decimal(json['qty']),
+        qty: _decimal(json['qtyExact'] ?? json['qty']),
+        qtyExact: financeExactDecimal(json['qtyExact'] ?? json['qty']),
         actualWarehouseId: _text(json['actualWarehouseId']),
         actualWarehouseName: _text(json['actualWarehouseName']),
         targetWarehouseId: _text(json['targetWarehouseId']),
@@ -122,28 +131,40 @@ class WarehouseInboundAllocation {
       );
 }
 
+BigInt? warehouseInboundQuantityUnits(Object? value) =>
+    financeExactDecimalUnits(
+      financeExactTrimmed(financeExactDecimal(value)),
+      scale: 24,
+    );
+String warehouseInboundQuantityText(BigInt units) =>
+    financeExactTrimmed(financeExactDecimalFromUnits(units, scale: 24))!;
+
 List<WarehouseInboundAllocation> warehouseInboundAllocationPreview(
   Iterable<WarehouseInboundAllocation> allocations,
-  double requestedQty,
+  Object requestedQty,
 ) {
-  if (!requestedQty.isFinite || requestedQty <= 0) return const [];
+  final requested = warehouseInboundQuantityUnits(requestedQty);
+  if (requested == null || requested <= BigInt.zero) return const [];
   final source = allocations.toList(growable: false);
-  var remaining = requestedQty;
+  var remaining = requested;
   final result = <WarehouseInboundAllocation>[];
   for (final allocation in source) {
-    if (remaining <= 0) break;
-    if (!allocation.qty.isFinite || allocation.qty <= 0) continue;
-    final take = allocation.qty < remaining ? allocation.qty : remaining;
-    result.add(allocation.copyWithQty(take));
+    if (remaining <= BigInt.zero) break;
+    final capacity = warehouseInboundQuantityUnits(allocation.quantityText);
+    if (capacity == null) break;
+    if (capacity <= BigInt.zero) continue;
+    final take = capacity < remaining ? capacity : remaining;
+    result.add(allocation.copyWithQty(warehouseInboundQuantityText(take)));
     remaining -= take;
   }
-  if (source.isNotEmpty && remaining > 0.0000001) {
+  if (source.isNotEmpty && remaining > BigInt.zero) {
     final context = source.first;
     result.add(
       WarehouseInboundAllocation(
         passEventId: context.passEventId,
         kind: WarehouseInboundAllocationKind.unknown,
-        qty: remaining,
+        qty: double.parse(warehouseInboundQuantityText(remaining)),
+        qtyExact: warehouseInboundQuantityText(remaining),
         actualWarehouseId: context.actualWarehouseId,
         actualWarehouseName: context.actualWarehouseName,
         baseUnitName: context.baseUnitName,
@@ -154,37 +175,43 @@ List<WarehouseInboundAllocation> warehouseInboundAllocationPreview(
   return List.unmodifiable(result);
 }
 
-/// Reprojects order-item allocations for the warehouse selected on the arrival
-/// form. Server and returned allocation quantities remain base-unit values;
-/// only the row input is converted through [unitRate].
+/// Same warehouse/ownership rules as the authoritative source; decimal text
+/// keeps every source digit. No epsilon, implicit unit rate, or rounded slices.
 List<WarehouseInboundAllocation> warehouseInboundAllocationForWarehouse(
   Iterable<WarehouseInboundAllocation> allocations,
-  double requestedDisplayQty, {
+  Object requestedDisplayQty, {
   required String? actualWarehouseId,
   String? actualWarehouseName,
   bool Function(String? targetWarehouseId, String actualWarehouseId)?
   sameMainWarehouse,
-  double unitRate = 1,
+  Object unitRate = 1,
 }) {
-  if (!requestedDisplayQty.isFinite || requestedDisplayQty <= 0) {
-    return const [];
-  }
-  final rate = unitRate.isFinite && unitRate > 0 ? unitRate : 1.0;
-  final requestedBaseQty = requestedDisplayQty * rate;
+  final requested = warehouseInboundQuantityUnits(
+    financeExactMultiplyTexts([
+      financeExactDecimal(requestedDisplayQty),
+      financeExactDecimal(unitRate),
+    ]),
+  );
+  if (requested == null || requested <= BigInt.zero) return const [];
   final source = allocations
-      .where((item) => item.qty.isFinite && item.qty > 0)
+      .where(
+        (item) =>
+            (warehouseInboundQuantityUnits(item.quantityText) ?? BigInt.zero) >
+            BigInt.zero,
+      )
       .toList(growable: false);
   if (source.isEmpty) return const [];
-
   if (actualWarehouseId == null || actualWarehouseId.trim().isEmpty) {
     final neutral = [
       for (final item in source) _copyAllocation(item, warehouseMatches: true),
     ];
-    return warehouseInboundAllocationPreview(neutral, requestedBaseQty);
+    return warehouseInboundAllocationPreview(
+      neutral,
+      warehouseInboundQuantityText(requested),
+    );
   }
-
   final selectedId = actualWarehouseId.trim();
-  var remaining = requestedBaseQty;
+  var remaining = requested;
   final result = <WarehouseInboundAllocation>[];
   final targeted = source
       .where((item) => !item.isPublic)
@@ -193,80 +220,74 @@ List<WarehouseInboundAllocation> warehouseInboundAllocationForWarehouse(
       item.targetWarehouseId == selectedId ||
       (item.kind != WarehouseInboundAllocationKind.formalDemand &&
           sameMainWarehouse?.call(item.targetWarehouseId, selectedId) == true);
-  final matching = targeted.where(matches).toList(growable: false);
-  for (final allocation in matching) {
-    if (remaining <= 0) break;
-    final take = allocation.qty < remaining ? allocation.qty : remaining;
+  void take(
+    WarehouseInboundAllocation allocation, {
+    bool mismatch = false,
+    bool public = false,
+  }) {
+    if (remaining <= BigInt.zero) return;
+    final capacity = warehouseInboundQuantityUnits(allocation.quantityText)!;
+    final taken = capacity < remaining ? capacity : remaining;
+    final text = warehouseInboundQuantityText(taken);
     result.add(
       _copyAllocation(
         allocation,
-        qty: take,
+        qty: double.parse(text),
+        qtyExact: text,
+        kind: mismatch ? WarehouseInboundAllocationKind.publicStock : null,
         actualWarehouseId: selectedId,
         actualWarehouseName: actualWarehouseName,
-        warehouseMatches: true,
+        intendedWarehouseNames: mismatch
+            ? <String>{
+                ...allocation.intendedWarehouseNames,
+                ?allocation.targetWarehouseName,
+              }.where((v) => v.isNotEmpty).toList(growable: false)
+            : public
+            ? const []
+            : null,
+        warehouseMatches: !mismatch,
+        formationStatus: mismatch
+            ? '原预定因所选实际仓不符，本部分预计不绑定计划，按实际仓公共入库'
+            : public
+            ? '未被生产需求预定；预计按所选实际仓进入公共库存'
+            : null,
       ),
     );
-    remaining -= take;
+    remaining -= taken;
   }
 
-  final mismatched = targeted
-      .where((item) => !matches(item))
-      .toList(growable: false);
-  for (final allocation in mismatched) {
-    if (remaining <= 0) break;
-    final take = allocation.qty < remaining ? allocation.qty : remaining;
-    final intended = <String>{
-      ...allocation.intendedWarehouseNames,
-      ?allocation.targetWarehouseName,
-    }.where((name) => name.isNotEmpty).toList(growable: false);
-    result.add(
-      _copyAllocation(
-        allocation,
-        kind: WarehouseInboundAllocationKind.publicStock,
-        qty: take,
-        actualWarehouseId: selectedId,
-        actualWarehouseName: actualWarehouseName,
-        intendedWarehouseNames: intended,
-        warehouseMatches: false,
-        formationStatus: '原预定因所选实际仓不符，本部分预计不绑定计划，按实际仓公共入库',
-      ),
-    );
-    remaining -= take;
+  for (final allocation in targeted.where(matches)) {
+    take(allocation);
   }
-
+  for (final allocation in targeted.where((item) => !matches(item))) {
+    take(allocation, mismatch: true);
+  }
   final publicSource = source
       .where((item) => item.isPublic)
       .toList(growable: false);
-  final publicCapacity = publicSource.fold<double>(
-    0,
-    (sum, item) => sum + item.qty,
-  );
-  if (remaining > 0 && publicCapacity > 0) {
-    final take = publicCapacity < remaining ? publicCapacity : remaining;
-    final context = publicSource.first;
-    result.add(
-      _copyAllocation(
-        context,
-        qty: take,
-        actualWarehouseId: selectedId,
-        actualWarehouseName: actualWarehouseName,
-        baseUnitName: source
-            .map((item) => item.baseUnitName)
-            .whereType<String>()
-            .firstOrNull,
-        intendedWarehouseNames: const [],
-        warehouseMatches: true,
-        formationStatus: '未被生产需求预定；预计按所选实际仓进入公共库存',
-      ),
+  if (publicSource.isNotEmpty && remaining > BigInt.zero) {
+    final capacity = publicSource.fold(
+      BigInt.zero,
+      (sum, item) => sum + warehouseInboundQuantityUnits(item.quantityText)!,
     );
-    remaining -= take;
+    final merged = _copyAllocation(
+      publicSource.first,
+      qty: double.parse(warehouseInboundQuantityText(capacity)),
+      qtyExact: warehouseInboundQuantityText(capacity),
+      baseUnitName: source
+          .map((item) => item.baseUnitName)
+          .whereType<String>()
+          .firstOrNull,
+    );
+    take(merged, public: true);
   }
-
-  if (remaining > 0.0000001) {
+  if (remaining > BigInt.zero) {
+    final text = warehouseInboundQuantityText(remaining);
     result.add(
       WarehouseInboundAllocation(
         kind: WarehouseInboundAllocationKind.unknown,
-        qty: remaining,
+        qty: double.parse(text),
+        qtyExact: text,
         actualWarehouseId: selectedId,
         actualWarehouseName: actualWarehouseName,
         formationStatus: '预计去向合计小于本次实收，差额去向待服务端复核',
@@ -280,6 +301,7 @@ WarehouseInboundAllocation _copyAllocation(
   WarehouseInboundAllocation value, {
   WarehouseInboundAllocationKind? kind,
   double? qty,
+  String? qtyExact,
   String? actualWarehouseId,
   String? actualWarehouseName,
   String? baseUnitName,
@@ -291,6 +313,8 @@ WarehouseInboundAllocation _copyAllocation(
   stockInBatchItemId: value.stockInBatchItemId,
   kind: kind ?? value.kind,
   qty: qty ?? value.qty,
+  qtyExact:
+      qtyExact ?? (qty == null ? value.qtyExact : financeExactDecimal(qty)),
   actualWarehouseId: actualWarehouseId ?? value.actualWarehouseId,
   actualWarehouseName: actualWarehouseName ?? value.actualWarehouseName,
   targetWarehouseId: value.targetWarehouseId,

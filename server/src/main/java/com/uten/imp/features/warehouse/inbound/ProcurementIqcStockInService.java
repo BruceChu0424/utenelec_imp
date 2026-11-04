@@ -44,7 +44,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -571,20 +570,22 @@ public class ProcurementIqcStockInService {
                 .executeUpdate();
         int position = 0;
         List<PlannedStockIn> planned=new ArrayList<>();
+        Map<UUID,BigDecimal> plannedAmounts=new java.util.HashMap<>(),plannedWeights=new java.util.HashMap<>();
         for (NormalizedItem item : command.items()) {
             position++;
             PassSlice slice = locked.get(item.passEventId());
             Allocation eventAllocation = allocation(slice);
             BigDecimal previouslyStocked=slice.stockedForReleaseBaseQty()
                     .add(slice.remainingBaseQty().subtract(item.expectedRemainingBaseQty()));
-            // 一个合格事件分几批入库: 金额按 MoneyPolicy 累计份额差(末批取余, 与库级守卫 V449 的 ROUND(.., 4) 逐位一致),
-            // 重量按数量口径切片。
-            BigDecimal amount = ProcurementInspectionService.releasedAmountSlice(
-                    eventAllocation.amount(), slice.releasedBaseQty(),
-                    previouslyStocked, item.baseQty());
-            BigDecimal weight = ProcurementInspectionService.releasedWeightSlice(
-                    eventAllocation.weight(), slice.releasedBaseQty(),
-                    previouslyStocked, item.baseQty());
+            // A new target uses this operation's explicit policy; the prior
+            // amount/weight is the actual immutable ledger, never recalculated.
+            BigDecimal actualAmount=slice.stockedForReleaseAmountLocal().add(plannedAmounts.getOrDefault(slice.passEventId(),BigDecimal.ZERO));
+            BigDecimal amount=amountAfterActual(eventAllocation.amount(),slice.releasedBaseQty(),previouslyStocked.add(item.baseQty()),actualAmount);
+            BigDecimal actualWeight=slice.stockedForReleaseWeight();
+            if(actualWeight!=null)actualWeight=actualWeight.add(plannedWeights.getOrDefault(slice.passEventId(),BigDecimal.ZERO));
+            BigDecimal weight=eventAllocation.weight()==null?null:weightAfterActual(eventAllocation.weight(),slice.releasedBaseQty(),previouslyStocked.add(item.baseQty()),actualWeight);
+            plannedAmounts.merge(slice.passEventId(),amount,BigDecimal::add);
+            if(weight!=null)plannedWeights.merge(slice.passEventId(),weight,BigDecimal::add);
 
             UUID stockInItemId = UUID.randomUUID();
             UUID movementId = UUID.randomUUID();
@@ -899,13 +900,16 @@ public class ProcurementIqcStockInService {
                                COALESCE(purchase_order.bill_no,
                                         subcontract_order.bill_no),
                                COALESCE(goods.unit_id, inspection.unit_id),
-                               event.actor_employee_id,source_warehouse.name,inspection.quantity_tranche
+                               event.actor_employee_id,source_warehouse.name,inspection.quantity_tranche,
+                               event_stocked.stocked_amount,CASE WHEN event.released_weight IS NOT NULL THEN event_stocked.stocked_weight END
                         FROM procurement_inspection_events event
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = event.inspection_item_id
                         LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
                         LEFT JOIN LATERAL (
-                            SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty
+                            SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty,
+                              COALESCE(SUM(item.amount_local),0) AS stocked_amount,
+                              CASE WHEN count(*)=0 THEN 0 WHEN count(item.weight)=count(*) THEN SUM(item.weight) END AS stocked_weight
                             FROM procurement_iqc_stock_in_batch_items item
                             WHERE item.pass_event_id = event.id
                         ) event_stocked ON TRUE
@@ -953,7 +957,8 @@ public class ProcurementIqcStockInService {
                 NativeValueConverters.toBigDecimal(row[15]), NativeValueConverters.toBigDecimal(row[16]), str(row[17]),
                 NativeValueConverters.toOffsetDateTime(row[18]), str(row[19]), str(row[20]), str(row[21]),
                 str(row[22]), str(row[23]), str(row[24]), str(row[25]),
-                NativeValueConverters.uuid(row[26]), NativeValueConverters.uuid(row[27]),str(row[28]),str(row[29])))
+                NativeValueConverters.uuid(row[26]), NativeValueConverters.uuid(row[27]),str(row[28]),str(row[29]),
+                NativeValueConverters.toBigDecimal(row[30]),nullableDecimal(row[31])))
                 .toList();
     }
 
@@ -970,7 +975,7 @@ public class ProcurementIqcStockInService {
                 slice.stockedForReleaseBaseQty(), slice.remainingBaseQty(),
                 allocation.weight(),
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
-                slice.releasedAt(), inboundAllocations(expectedAllocations),slice.warehouseId(),slice.warehouseName(),slice.quantityTranche());
+                slice.releasedAt(), inboundAllocations(expectedAllocations),slice.warehouseId(),slice.warehouseName(),slice.quantityTranche(),slice.stockedForReleaseWeight());
     }
 
     private Allocation allocation(PassSlice slice) {
@@ -1220,11 +1225,24 @@ public class ProcurementIqcStockInService {
         if (value == null || value.signum() <= 0) {
             throw validation(label + "必须大于 0");
         }
-        try {
-            return value.setScale(4, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException error) {
-            throw validation(label + "最多保留 4 位小数");
-        }
+        return com.uten.imp.common.util.FinancialExactAmount.quantity(value,label);
+    }
+
+    static BigDecimal amountAfterActual(BigDecimal total,BigDecimal whole,BigDecimal cumulativeAfter,BigDecimal actualBefore){
+        requireActualBefore(total,actualBefore,"本次入库金额");
+        return afterActual(ProcurementInspectionService.releasedAmountSlice(total,whole,BigDecimal.ZERO,cumulativeAfter),actualBefore,total,"money.cumulative-share","本次入库金额");
+    }
+    static BigDecimal weightAfterActual(BigDecimal total,BigDecimal whole,BigDecimal cumulativeAfter,BigDecimal actualBefore){
+        requireActualBefore(total,actualBefore,"本次入库重量");
+        return afterActual(ProcurementInspectionService.releasedWeightSlice(total,whole,BigDecimal.ZERO,cumulativeAfter),actualBefore,total,"quantity.slice","本次入库重量");
+    }
+    private static void requireActualBefore(BigDecimal total,BigDecimal actualBefore,String label){
+        if(total==null||actualBefore==null||actualBefore.signum()<0||actualBefore.compareTo(total)>0)throw conflict(label+"缺少完整的原实际入库份额，请先核对原记录");
+    }
+    private static BigDecimal afterActual(BigDecimal target,BigDecimal actualBefore,BigDecimal total,String key,String label){
+        BigDecimal result=target.subtract(actualBefore);
+        if(result.signum()<0||target.compareTo(total)>0)throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException(key,label+"：本次选择不能覆盖原实际份额，请明确重新选择",24,"PRECISION_LIMIT",true);
+        return result;
     }
 
     private static boolean hasAuthority(String authority) {
@@ -1326,6 +1344,8 @@ public class ProcurementIqcStockInService {
             UUID displayUnitId,
             UUID releasedByEmployeeId,
             String warehouseName,
-            String quantityTranche) {
+            String quantityTranche,
+            BigDecimal stockedForReleaseAmountLocal,
+            BigDecimal stockedForReleaseWeight) {
     }
 }

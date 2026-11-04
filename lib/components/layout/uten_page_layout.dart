@@ -18,6 +18,32 @@ abstract final class UtenPageChromeMetrics {
 
 enum UtenPageScrollRole { main, local }
 
+/// Hides only the owning route's page rail, preserving scrolling and local
+/// panels. Pushed pages and popup routes keep their own scrollbar policy.
+class UtenPageScrollbarVisibilityScope extends InheritedWidget {
+  const UtenPageScrollbarVisibilityScope({
+    super.key,
+    required this.hidden,
+    required this.route,
+    required super.child,
+  });
+
+  final bool hidden;
+  final ModalRoute<dynamic>? route;
+
+  static bool isHiddenOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<UtenPageScrollbarVisibilityScope>();
+    if (scope == null || !scope.hidden) return false;
+    return identical(scope.route, ModalRoute.of(context)) &&
+        UtenPageScrollRoleScope.isPageOf(context);
+  }
+
+  @override
+  bool updateShouldNotify(UtenPageScrollbarVisibilityScope oldWidget) =>
+      hidden != oldWidget.hidden || !identical(route, oldWidget.route);
+}
+
 class UtenPageScrollRoleScope extends InheritedWidget {
   const UtenPageScrollRoleScope({
     super.key,

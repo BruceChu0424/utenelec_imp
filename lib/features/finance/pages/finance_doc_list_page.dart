@@ -425,7 +425,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     _reload(1);
   }
 
-  Widget _lifecycleFilters(Map<String, int>? counts) =>
+  UtenDocumentLifecycleFilter _lifecycleFilters(Map<String, int>? counts) =>
       UtenDocumentLifecycleFilter(
         selected: _statusFilterSelected,
         history: _historyMode,
@@ -707,6 +707,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                   filterPane: _lifecycleFilters(statusCounts),
                   tablePane: _withFormDraftRows(
                     MasterDataTableView<FinanceDocListItem>(
+                      toolbarLeadingActions: [
+                        ?_lifecycleFilters(null).historyToolbarAction,
+                      ],
                       rowsController: _tableRows,
                       tableKey: 'finance.${widget.docType.name}.list',
                       bottomContentPadding:

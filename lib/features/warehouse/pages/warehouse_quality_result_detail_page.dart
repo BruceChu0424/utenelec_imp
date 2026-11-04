@@ -1,3 +1,4 @@
+import '../../../core/network/api_mutation_reload_safety.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -407,7 +408,7 @@ class _WarehouseQualityResultDetailPageState
         WarehouseInboundAllocationSection(
           id: draft.slice.passEventId,
           goodsLabel: draft.slice.goodsLabel,
-          quantity: double.parse(draft.quantity.text.trim()),
+          quantity: draft.quantity.text.trim(),
           unitName: draft.slice.unitName,
           sourceOrderNo: draft.slice.sourceOrderNo,
           allocations: draft.usesSuggestedWarehouse
@@ -522,6 +523,7 @@ class _WarehouseQualityResultDetailPageState
         }),
         isDefiniteRejection: (error) =>
             previousPending == null &&
+            ApiMutationReloadSafety.isDefiniteRejection(error) &&
             (locallyRejected ||
                 error.httpStatus == 400 ||
                 error.httpStatus == 403 ||
@@ -553,7 +555,9 @@ class _WarehouseQualityResultDetailPageState
       );
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (previousPending == null && error.code == 'CONFLICT') {
+      if (previousPending == null &&
+          ApiMutationReloadSafety.isDefiniteRejection(error) &&
+          error.code == 'CONFLICT') {
         _pendingCommand = null;
         final message = '${error.message}；已保留当前输入，请按刷新后的余量重新核对。';
         context.appWarning(message, force: true);
@@ -571,13 +575,14 @@ class _WarehouseQualityResultDetailPageState
         }
       } else {
         if (previousPending == null &&
+            ApiMutationReloadSafety.isDefiniteRejection(error) &&
             (error.httpStatus == 400 ||
                 error.httpStatus == 403 ||
                 error.httpStatus == 422)) {
           _pendingCommand = null;
         }
         context.appError(
-          previousPending == null
+          _pendingCommand == null
               ? error.message
               : '${error.message}；这次拒绝不能确认原提交结果，原明细、数量和幂等键继续保留待核对',
         );
@@ -1060,7 +1065,7 @@ class _WarehouseQualityResultDetailPageState
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
                     [
-                      '入库 ${_qty(item.baseQty, item.unitName)}',
+                      '入库 ${_qty(item.baseQtyText ?? item.baseQty, item.unitName)}',
                       '实际仓库 ${item.warehouseName ?? item.warehouseId ?? '历史未记录'}',
                       '实际库位 ${item.place}',
                       item.originLabel,
@@ -1081,7 +1086,7 @@ class _WarehouseQualityResultDetailPageState
                         WarehouseInboundAllocationSection(
                           id: item.stockInItemId,
                           goodsLabel: item.goodsLabel,
-                          quantity: item.baseQty,
+                          quantity: item.baseQtyText ?? '待核对',
                           unitName: item.unitName,
                           allocations: item.actualAllocations,
                         ),
@@ -1406,5 +1411,5 @@ String? _required(String? value, int maxLength, String label) {
   return null;
 }
 
-String _qty(double value, String? unit) =>
+String _qty(Object value, String? unit) =>
     '${warehouseQualityQuantity(value)}${unit == null ? '' : ' $unit'}';

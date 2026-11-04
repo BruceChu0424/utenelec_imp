@@ -12,6 +12,7 @@ import '../../core/performance/ui_work_budget.dart';
 import '../../core/network/server_config.dart';
 import '../../core/ui/human_error_message.dart';
 import '../../core/router/route_access_policy.dart';
+import '../../core/web_update/web_update_safety.dart';
 import '../auth/permissions.dart';
 import '../attachments/attachment.dart';
 import '../attachments/attachment_upload_attempt.dart';
@@ -57,6 +58,126 @@ class FormDraftUnknownSubmission implements Exception {
   String toString() => formDraftUnknownSubmissionMessage;
 }
 
+/// A local preservation capability issued while the editor still owns its
+/// namespace. It cannot authorize a business request or adopt another owner.
+class FormDraftPreservationLease {
+  FormDraftPreservationLease._({
+    required this.draftId,
+    required this.ownerKey,
+    required this._spec,
+    required this._route,
+    required this._revision,
+    required this._commit,
+    required this._readOriginal,
+    required this._resetBaseAttested,
+  });
+
+  final String draftId;
+  final String ownerKey;
+  final FormDraftSpec _spec;
+  final String _route;
+  final Future<FormDraft> Function(FormDraft, String?) _commit;
+  final Future<Map<String, dynamic>?> Function() _readOriginal;
+  String? _revision;
+  Future<FormDraft>? _preserving;
+  Map<String, dynamic>? _retiredSnapshot;
+  bool _resetBaseAttested;
+
+  void _committed(FormDraft draft) {
+    if (draft.id == draftId) {
+      _revision = draft.revision;
+      _resetBaseAttested = true;
+    }
+  }
+
+  Future<FormDraft> preserve(
+    Map<String, dynamic> snapshot, {
+    Future<void>? pendingWrite,
+  }) {
+    final active = _preserving;
+    if (active != null) return active;
+    _retiredSnapshot ??= snapshotJsonValue(snapshot) as Map<String, dynamic>;
+    webUpdateSafety.register(
+      this,
+      () => const WebUpdateSafetyState(busy: true),
+    );
+    late final Future<FormDraft> pending;
+    pending = _preserve(_retiredSnapshot!, pendingWrite).then(
+      (saved) {
+        _retiredSnapshot = null;
+        webUpdateSafety.unregister(this);
+        return saved;
+      },
+      onError: (Object error, StackTrace stack) {
+        _preserving = null;
+        if (error is FormDraftGenerationMismatch &&
+            _resetBaseAttested &&
+            error.latestGeneration > error.generation) {
+          // An intentional business reset is an authoritative local-storage
+          // fence too. Do not recreate its removed records or hold exit forever.
+          _retiredSnapshot = null;
+          webUpdateSafety.unregister(this);
+        } else {
+          webUpdateSafety.register(
+            this,
+            () => const WebUpdateSafetyState(blocked: true),
+          );
+        }
+        Error.throwWithStackTrace(error, stack);
+      },
+    );
+    _preserving = pending;
+    webUpdateSafety.registerServerReloadCheckpoint(this, () async {
+      final retained = _retiredSnapshot;
+      if (retained != null) await preserve(retained);
+    });
+    return pending;
+  }
+
+  Future<FormDraft> _preserve(
+    Map<String, dynamic> snapshot,
+    Future<void>? writer,
+  ) async {
+    try {
+      await writer;
+    } catch (_) {
+      /* The durable CAS may already have committed. */
+    }
+    final data =
+        await materializeJsonResponsive(snapshot) as Map<String, dynamic>;
+    FormDraft draft(String id, Map<String, dynamic> values) => FormDraft(
+      id: id,
+      title: _spec.title,
+      module: _spec.module,
+      route: _route,
+      permission: _spec.permission,
+      draftKind: _spec.draftKind,
+      updatedAt: DateTime.now(),
+      data: values,
+    );
+    try {
+      return await _commit(draft(draftId, data), _revision);
+    } on FormDraftConflict {
+      // Never overwrite another editor or revive a completed/deleted record.
+      // Preserve every frozen command/receipt with a new local snapshot ID;
+      // it is view-only and cannot create or replay a business command.
+      final original = await _readOriginal();
+      return _commit(
+        draft(const Uuid().v4(), {
+          ...data,
+          '_formDraftRetiredOriginalId': draftId,
+          if (original?['data'] is Map)
+            '_formDraftRetiredPreviousSnapshot': original!['data'],
+          formDraftRetirementConflictKey: true,
+          formDraftUnknownSubmissionKey: true,
+          '_formDraftSubmissionPending': true,
+        }),
+        null,
+      );
+    }
+  }
+}
+
 /// 单据保存失败的公共类型化解读：草稿保护抛出的 StateError / FormDraftConflict /
 /// 存储格式异常自带「下一步怎么办」的大白话文案，必须原样带给用户；Dart/框架内部的英文异常
 /// ('No element'、'Invalid date format') 与其余未知异常返回 null，调用方兜底提示并记日志——
@@ -87,6 +208,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   FormDraftStorage? _storage;
   bool _readOnly = false;
   bool _closed = false;
+  bool _readyAttested = false;
   Future<void> _ready = Future.value();
   Future<void>? _tail;
 
@@ -112,9 +234,57 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   /// Bound namespace for late editor callbacks, including after widget disposal.
   String? get ownerKey => _prefix;
 
+  FormDraftPreservationLease? capturePreservationLease({
+    required String draftId,
+    required FormDraftSpec spec,
+    required String route,
+    String? revision,
+  }) {
+    final prefix = _prefix, storage = _storage;
+    final prototype = FormDraft(
+      id: draftId,
+      title: spec.title,
+      module: spec.module,
+      route: route,
+      permission: spec.permission,
+      draftKind: spec.draftKind,
+      updatedAt: DateTime.now(),
+      data: const {},
+    );
+    if (_closed ||
+        prefix == null ||
+        storage == null ||
+        !_normalAllowed(prototype)) {
+      return null;
+    }
+    _validateId(draftId);
+    return FormDraftPreservationLease._(
+      draftId: draftId,
+      ownerKey: prefix,
+      spec: spec,
+      route: route,
+      revision: revision,
+      resetBaseAttested: _readyAttested,
+      commit: (draft, expected) => _commitLocalDraft(
+        storage,
+        prefix,
+        draft,
+        expected,
+        preserveOnly: true,
+      ),
+      readOriginal: () async {
+        final raw = await storage.read('$prefix$draftId');
+        return raw == null
+            ? null
+            : await decodeJsonResponsive(raw) as Map<String, dynamic>;
+      },
+    );
+  }
+
   @override
   List<FormDraft> build() {
     _closed = false;
+    _readyAttested = false;
     final generation = ++_generation;
     ref.onDispose(() {
       _generation++;
@@ -172,6 +342,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         }
       }
       drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      _readyAttested = true;
       state = drafts;
     });
     // The editor awaits ready and displays a storage failure. Listing stays safe.
@@ -768,7 +939,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
     }
   }
 
-  Map<String, dynamic> _preserveFrozenDailyReportCommand(
+  static Map<String, dynamic> _preserveFrozenDailyReportCommand(
     FormDraft incoming,
     Map<String, dynamic>? stored,
   ) {
@@ -804,7 +975,87 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
     };
   }
 
-  Future<FormDraft> save(FormDraft draft, {String? expectedRevision}) {
+  static Future<FormDraft> _commitLocalDraft(
+    FormDraftStorage storage,
+    String prefix,
+    FormDraft draft,
+    String? expectedRevision, {
+    bool Function()? isCurrent,
+    void Function(FormDraft)? committed,
+    bool preserveOnly = false,
+  }) async {
+    void check() {
+      if (isCurrent?.call() == false) throw StateError('登录身份已变化');
+    }
+
+    check();
+    _validateId(draft.id);
+    final key = '$prefix${draft.id}';
+    final existing = await storage.read(key);
+    check();
+    final current = existing == null
+        ? null
+        : await decodeJsonResponsive(existing, isCurrent: isCurrent)
+              as Map<String, dynamic>;
+    check();
+    if (current != null && current['id'] != draft.id) {
+      throw const FormDraftConflict();
+    }
+    final reusable =
+        // Only an autosaved clean marker is reusable by the same editor after
+        // it dropped its revision. Explicit deletion/completion stay terminal.
+        current != null &&
+        isCleanDiscardedFormDraftRecord(current) &&
+        expectedRevision == null;
+    if (!reusable &&
+        ((current != null && !isActiveFormDraftRecord(current)) ||
+            current?['revision'] != expectedRevision)) {
+      throw const FormDraftConflict();
+    }
+    if (preserveOnly && current != null && isActiveFormDraftRecord(current)) {
+      final original = FormDraft.fromJson(current);
+      if (original.hasUnknownSubmission &&
+          !jsonValuesEqual(original.data, draft.data)) {
+        // A retired snapshot cannot infer rejection or rewrite the command
+        // evidence. Keep the stored original and preserve a view-only copy.
+        throw const FormDraftConflict();
+      }
+    }
+    final saved = FormDraft(
+      id: draft.id,
+      title: draft.title,
+      module: draft.module,
+      route: draft.route,
+      permission: draft.permission,
+      draftKind: draft.draftKind,
+      updatedAt: DateTime.now(),
+      data: _preserveFrozenDailyReportCommand(draft, reusable ? null : current),
+      revision: const Uuid().v4(),
+    );
+    final encoded = await encodeJsonResponsive({
+      ...saved.toJson(),
+      if (saved.data[formDraftRetirementConflictKey] == true)
+        'lifecycle': 'RETIRED',
+    }, isCurrent: isCurrent);
+    check();
+    if (!await storage.compareAndSet(
+      key,
+      expectedValue: existing,
+      value: encoded,
+    )) {
+      throw const FormDraftConflict();
+    }
+    // A durable write remains a fact even if its visible owner retired during
+    // the storage await. Publish its revision to the original lease first.
+    committed?.call(saved);
+    return saved;
+  }
+
+  Future<FormDraft> save(
+    FormDraft draft, {
+    String? expectedRevision,
+    FormDraftPreservationLease? preservationLease,
+  }) {
     final generation = _generation;
     final prefix = _prefix;
     final storage = _storage;
@@ -821,49 +1072,16 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
           !_normalAllowed(draft)) {
         throw StateError('登录身份或权限已变化，草稿未写入其他账号');
       }
-      _validateId(draft.id);
-      final key = '$prefix${draft.id}';
-      final existing = await storage.read(key);
-      if (generation != _generation) throw StateError('登录身份已变化');
-      final current = existing == null
-          ? null
-          : await _decodeForGeneration(existing, generation)
-                as Map<String, dynamic>;
-      if (current != null && current['id'] != draft.id) {
-        throw const FormDraftConflict();
-      }
-      // A cleanly discarded record carries no facts: the same editor (which
-      // dropped its revision when it discarded) may reuse the identity as if
-      // new. A stale tab that still holds the old revision cannot.
-      final reusable =
-          current != null &&
-          isCleanDiscardedFormDraftRecord(current) &&
-          expectedRevision == null;
-      if (!reusable &&
-          ((current != null && !isActiveFormDraftRecord(current)) ||
-              current?['revision'] != expectedRevision)) {
-        throw const FormDraftConflict();
-      }
-      final saved = FormDraft(
-        id: draft.id,
-        title: draft.title,
-        module: draft.module,
-        route: draft.route,
-        permission: draft.permission,
-        draftKind: draft.draftKind,
-        updatedAt: DateTime.now(),
-        data: _preserveFrozenDailyReportCommand(
-          draft,
-          reusable ? null : current,
-        ),
-        revision: const Uuid().v4(),
+      final saved = await _commitLocalDraft(
+        storage,
+        prefix,
+        draft,
+        expectedRevision,
+        isCurrent: () => !_closed && generation == _generation,
+        committed: preservationLease?.ownerKey == prefix
+            ? preservationLease?._committed
+            : null,
       );
-      final written = await storage.compareAndSet(
-        key,
-        expectedValue: existing,
-        value: await _encodeForGeneration(saved.toJson(), generation),
-      );
-      if (!written) throw const FormDraftConflict();
       if (generation == _generation) {
         state = [
           _visible(saved),
@@ -951,7 +1169,11 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   /// Replay protection is unchanged: a record with an unknown submission still
   /// refuses ([FormDraftUnknownSubmission]), and terminal records or another
   /// tab's newer revision are conflicts.
-  Future<void> discardClean(String id, {required String expectedRevision}) {
+  Future<void> discardClean(
+    String id, {
+    required String expectedRevision,
+    FormDraftPreservationLease? preservationLease,
+  }) {
     final generation = _generation;
     final prefix = _prefix;
     final storage = _storage;
@@ -994,6 +1216,10 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
           ),
         );
         if (!discarded) throw const FormDraftConflict();
+      }
+      if (preservationLease?.ownerKey == prefix &&
+          preservationLease?.draftId == id) {
+        preservationLease!._revision = null;
       }
       if (generation == _generation) {
         state = state.where((item) => item.id != id).toList();
@@ -1115,7 +1341,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
     }
   }
 
-  void _validateId(String id) {
+  static void _validateId(String id) {
     if (!RegExp(r'^[a-zA-Z0-9-]+$').hasMatch(id)) {
       throw const FormatException('草稿标识无效');
     }

@@ -610,6 +610,7 @@ class _MaterialPriorityReplenishmentDialogState
                                       presentation:
                                           UtenEmployeePickerPresentation
                                               .businessReference,
+                                      cancelDepartmentTreeReadOnClose: true,
                                       departmentTreeLoader: () => ref
                                           .read(
                                             employeeReferenceRepositoryProvider,
@@ -626,16 +627,16 @@ class _MaterialPriorityReplenishmentDialogState
                                       label: '负责人',
                                       initial: _worker,
                                       enabled: !_locked,
-                                      loader: (keyword) async {
-                                        final result = await ref
+                                      pagedLoader: (query) async {
+                                        return await ref
                                             .read(
                                               employeeReferenceRepositoryProvider,
                                             )
-                                            .listPickerCandidates(
+                                            .listPickerPage(
+                                              query,
                                               purpose: EmployeeReferencePurpose
                                                   .productionMaterialOwner,
                                               size: 30,
-                                              search: keyword,
                                               statuses: const {
                                                 'active',
                                                 'probation',
@@ -643,20 +644,6 @@ class _MaterialPriorityReplenishmentDialogState
                                               departmentId: _departmentId,
                                               includeSubtree: true,
                                             );
-                                        return [
-                                          for (final person in result)
-                                            UtenEmployeePickerItem(
-                                              id: person.id,
-                                              name: person.fullName,
-                                              employeeCode: person.code,
-                                              accountStatus:
-                                                  person.accountStatus,
-                                              employmentStatus: person.status,
-                                              departmentId: person.departmentId,
-                                              departmentName:
-                                                  person.departmentName,
-                                            ),
-                                        ];
                                       },
                                       onChanged: (worker) =>
                                           setState(() => _worker = worker),

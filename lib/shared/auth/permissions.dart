@@ -56,6 +56,56 @@ abstract final class Perm {
   static const expenseView = 'expense:view';
   static const expenseViewAll = 'expense:view:all';
   static const expenseApprove = 'expense:approve';
+  static const expenseApproveDepartment = 'expense:approve:department';
+  static const expenseApproveFinanceInitial = 'expense:approve:finance_initial';
+  static const expenseApproveFinanceReview = 'expense:approve:finance_review';
+  static const expenseApproveExecutive = 'expense:approve:executive';
+  static const approvalPolicyManage = 'approval_policy:manage';
+  static const applicationApply = 'application:apply';
+  static const applicationApplyTravel = 'application:apply:travel';
+  static const applicationApplyPayment = 'application:apply:payment';
+  static const applicationApplyPrepayment = 'application:apply:prepayment';
+  static const applicationApplySupplierPayment =
+      'application:apply:supplier_payment';
+  static const applicationKindApplyPermissions = <String, String>{
+    'TRAVEL': applicationApplyTravel,
+    'PAYMENT': applicationApplyPayment,
+    'PREPAYMENT': applicationApplyPrepayment,
+    'SUPPLIER_PAYMENT': applicationApplySupplierPayment,
+  };
+  static const applicationView = 'application:view';
+  static const applicationApproveDepartment = 'application:approve:department';
+  static const applicationApproveFinanceInitial =
+      'application:approve:finance_initial';
+  static const applicationApproveFinanceReview =
+      'application:approve:finance_review';
+  static const applicationApproveViceExecutive =
+      'application:approve:vice_executive';
+  static const applicationApproveExecutive = 'application:approve:executive';
+  static const applicationApproveProcurement =
+      'application:approve:procurement';
+  static const applicationReceive = 'application:receive';
+  static const applicationPay = 'application:pay';
+  static const applicationPrepaymentLinkFinance =
+      'application:prepayment:link_finance';
+  static const applicationApprovalPermissions = <String>[
+    applicationApproveDepartment,
+    applicationApproveFinanceInitial,
+    applicationApproveFinanceReview,
+    applicationApproveViceExecutive,
+    applicationApproveExecutive,
+    applicationApproveProcurement,
+    applicationReceive,
+    applicationPay,
+    applicationPrepaymentLinkFinance,
+  ];
+  static const expenseApprovalPermissions = <String>[
+    expenseApprove,
+    expenseApproveDepartment,
+    expenseApproveFinanceInitial,
+    expenseApproveFinanceReview,
+    expenseApproveExecutive,
+  ];
   static const expensePay = 'expense:pay';
   static const expenseSettings = 'expense:settings';
   static const companyFileView = 'company_file:view';
@@ -453,6 +503,12 @@ abstract final class Perm {
   static const financeAssetDispose = 'finance_asset:dispose';
   static const financeAssetPeriodManage = 'finance_asset_period:manage';
   static const financePostExecute = 'finance_post:execute';
+  static const financeApplicationView = 'finance_application:view';
+  static const financeApplicationApply = 'finance_application:apply';
+  static const financeApplicationReview = 'finance_application:review';
+  static const financeApplicationExecute = 'finance_application:execute';
+  static const financeApplicationConfirm = 'finance_application:confirm';
+  static const financeApplicationReverse = 'finance_application:reverse';
 
   /// 出货财务审核(permissions-09：查看 / 放行 / 退回 / 反审四个动作码)。
   static const salesShipmentFinanceView = 'sales_shipment_finance:view';

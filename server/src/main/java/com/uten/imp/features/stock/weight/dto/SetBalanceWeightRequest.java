@@ -24,8 +24,8 @@ public record SetBalanceWeightRequest(
         @NotNull UUID warehouseId,
         @NotNull UUID goodsId,
         UUID colorId,
-        @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal expectedWeightKg,
-        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 14, fraction = 4)
+        @DecimalMin("0") @Digits(integer = 40, fraction = 24) BigDecimal expectedWeightKg,
+        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 40, fraction = 48)
         BigDecimal targetWeightKg,
         @NotBlank @Size(min = 2, max = 200) String reason,
         @NotBlank @Size(max = 100) String idempotencyKey) {

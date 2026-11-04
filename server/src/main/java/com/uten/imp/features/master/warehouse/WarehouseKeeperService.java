@@ -2,7 +2,10 @@ package com.uten.imp.features.master.warehouse;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.DepartmentSearchSql;
+import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeper;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperAssignment;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperSaveRequest;
@@ -172,26 +175,63 @@ public class WarehouseKeeperService {
     /** 负责人候选: 在职员工, 仓库部门的人排前面; 标出有没有账号、在不在仓库部门。 */
     @Transactional(readOnly = true)
     public List<WarehouseKeeper> candidates(String keyword) {
-        String search = keyword == null ? "" : keyword.strip();
-        String condition=KeywordSearch.terms(search).isEmpty() ? "TRUE"
-                : KeywordSearch.nativeCondition(search,"keeperSearch","e.full_name","e.code","d.name");
-        String relevance=KeywordSearch.nativeRank(search,"keeperSearch","full_name","code");
-        List<WarehouseKeeper> candidates = jdbc.sql("""
+        List<WarehouseKeeper> candidates = candidateRows(candidateRead(keyword, null, false), 5001, 0);
+        if (candidates.size() > 5000) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "候选人员超过5000人，请输入姓名或工号缩小范围");
+        }
+        return candidates;
+    }
+
+    /** Interactive picker reads only its requested page; eligibility and warning facts retain their original owner. */
+    @Transactional(readOnly = true)
+    public PageResponse<WarehouseKeeper> candidatesPage(String keyword, int page, int size,
+            UUID departmentId, boolean includeSubtree) {
+        int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, size));
+        CandidateRead read = candidateRead(keyword, departmentId, includeSubtree);
+        long total = jdbc.sql(read.prefix() + "SELECT count(*) " + read.fromWhere())
+                .params(read.parameters()).query(Long.class).single();
+        return new PageResponse<>(candidateRows(read, safeSize, ((long) safePage - 1) * safeSize),
+                safePage, safeSize, total, total == 0 ? 0 : Math.toIntExact((total + safeSize - 1) / safeSize));
+    }
+
+    private record CandidateRead(String prefix, String fromWhere, String relevance,
+            java.util.Map<String,Object> parameters) { }
+
+    private CandidateRead candidateRead(String keyword, UUID departmentId, boolean includeSubtree) {
+        boolean searched = !KeywordSearch.terms(keyword).isEmpty();
+        String condition = searched ? KeywordSearch.nativeCondition(keyword, "keeperSearch",
+                "e.full_name", "e.code", DepartmentSearchSql.name("d.name")) : "TRUE";
+        var narrowing = EmployeeCandidateFilter.of(departmentId, includeSubtree, List.of(), "e.id", "e.department_id");
+        var parameters = new java.util.LinkedHashMap<>(KeywordSearch.nativeRankParameters(keyword, "keeperSearch"));
+        parameters.putAll(narrowing.parameters());
+        String fromWhere = """
+                FROM employees e
+                LEFT JOIN departments d ON d.id = e.department_id
+                LEFT JOIN users account ON account.employee_id = e.id AND account.is_deleted = FALSE
+                """ + DepartmentSearchSql.joins(searched, "e.department_id")
+                + " WHERE e.is_deleted = FALSE AND e.status <> 'resigned' AND (" + condition + ")"
+                + narrowing.sql();
+        return new CandidateRead(DepartmentSearchSql.prefix(searched), fromWhere,
+                KeywordSearch.nativeRank(keyword, "keeperSearch", "full_name", "code"), parameters);
+    }
+
+    private List<WarehouseKeeper> candidateRows(CandidateRead read, int limit, long offset) {
+        var parameters = new java.util.LinkedHashMap<>(read.parameters());
+        parameters.put("candidateLimit", limit);
+        parameters.put("candidateOffset", offset);
+        return jdbc.sql(read.prefix() + """
                         SELECT * FROM (
                             SELECT e.id, e.full_name, e.code, e.department_id, d.name AS department_name,
                                    e.status AS employment_status,
                                    COALESCE(account.status, 'notProvisioned') AS account_status,
                                    %s AS has_account, %s AS warehouse_member, %s AS duplicate_name
-                            FROM employees e
-                            LEFT JOIN departments d ON d.id = e.department_id
-                            LEFT JOIN users account ON account.employee_id = e.id AND account.is_deleted = FALSE
-                            WHERE e.is_deleted = FALSE
-                              AND e.status <> 'resigned'
-                              AND (%s)) candidate
-                        ORDER BY %s, warehouse_member DESC, has_account DESC, full_name, code
-                        LIMIT 5001
-                        """.formatted(ACTIVE_ACCOUNT_SQL, WAREHOUSE_MEMBER_SQL, DUPLICATE_NAME_SQL, condition, relevance))
-                .params(KeywordSearch.nativeRankParameters(search,"keeperSearch"))
+                            %s) candidate
+                        ORDER BY %s, warehouse_member DESC, has_account DESC, full_name, code, id
+                        LIMIT :candidateLimit OFFSET :candidateOffset
+                        """.formatted(ACTIVE_ACCOUNT_SQL, WAREHOUSE_MEMBER_SQL, DUPLICATE_NAME_SQL,
+                                read.fromWhere(), read.relevance()))
+                .params(parameters)
                 .query((rs, row) -> new WarehouseKeeper(
                         rs.getObject("id", UUID.class),
                         rs.getString("full_name"),
@@ -203,11 +243,6 @@ public class WarehouseKeeperService {
                         rs.getBoolean("duplicate_name"),
                         rs.getString("account_status"), rs.getString("employment_status")))
                 .list();
-        if (candidates.size() > 5000) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "候选人员超过5000人，请输入姓名或工号缩小范围");
-        }
-        return candidates;
     }
 
     // ---- helpers -------------------------------------------------------------------

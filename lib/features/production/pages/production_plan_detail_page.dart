@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../widgets/production_sales_requirements.dart';
 import '../../../shared/documents/document_unapproval.dart';
@@ -1041,8 +1042,8 @@ class _ProductionPlanDetailPageState
     String fmt(double? v) => v == null
         ? '—'
         : (v == v.roundToDouble()
-              ? v.toStringAsFixed(0)
-              : v.toStringAsFixed(2));
+              ? v.toExactString()
+              : v.toExactString(minimumFractionDigits: 2));
     return InkWell(
       borderRadius: UtenRadius.mdAll,
       onTap: () => _openChildPlan(sp),

@@ -15,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AutomaticRequestPolicyTest {
 
+    @Test
+    void sessionWatchNeverRenewsIdleEvenWithoutTheClientMarker() {
+        assertTrue(AutomaticRequestPolicy.isAutomatic(
+                new MockHttpServletRequest("GET", "/api/auth/session/watch")));
+    }
+
     @ParameterizedTest(name = "header [{0}] -> automatic={1}")
     @CsvSource(value = {
             "1, true",

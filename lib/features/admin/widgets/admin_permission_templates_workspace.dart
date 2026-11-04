@@ -19,6 +19,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/admin_models.dart';
 import '../models/permission_template.dart';
@@ -481,13 +482,12 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
               () => ref.invalidate(permissionTemplatesProvider),
             ),
             data: (items) {
-              final rows = items
-                  .where(
-                    (row) => '${row.name} ${row.description}'
-                        .toLowerCase()
-                        .contains(_query),
-                  )
-                  .toList();
+              final rows = rankedKeywordMatches(
+                items,
+                _query,
+                primaryFields: (row) => [row.name],
+                fields: (row) => [row.name, row.description],
+              );
               if (rows.isEmpty) {
                 return UtenEmpty(
                   icon: Icons.fact_check_outlined,

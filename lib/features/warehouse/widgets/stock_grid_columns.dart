@@ -50,7 +50,21 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   String? executionSegmentSalesAllocationId;
   String? colorId;
   String? unitId;
-  double unitRate = 1;
+  double _unitRate = 1;
+  String? _unitRateText;
+  double get unitRate => _unitRate;
+  set unitRate(double value) {
+    _unitRate = value;
+    _unitRateText = null;
+  }
+
+  String get unitRateText => _unitRateText ?? financeExactDecimal(_unitRate)!;
+  set unitRateText(String value) {
+    final exact = financeExactDecimal(value);
+    if (exact == null) throw const FormatException('原单位换算率缺失');
+    _unitRateText = exact;
+    _unitRate = double.parse(exact);
+  }
 
   // 只读主档展示（选品/载入时填充）：编号/系列/库位号/颜色名/单位名——仓库对位拣货用。
   String? goodsCode;
@@ -93,7 +107,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   final WeightEntryController countWeight = WeightEntryController();
 
   /// 盘点模式的账面重量(千克，读余额时带出/保存后的快照；null = 未知或未读取)。
-  final ValueNotifier<double?> bookWeightKg = ValueNotifier<double?>(null);
+  final ValueNotifier<Object?> bookWeightKg = ValueNotifier<Object?>(null);
 
   /// 账面重量含估算(显示「≈」)。先写它再写 [bookWeightKg]，格子随后者重绘。
   bool bookWeightEstimated = false;
@@ -133,7 +147,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
       ..goods = goods
       ..colorId = colorId
       ..unitId = unitId
-      ..unitRate = unitRate
+      ..unitRateText = unitRateText
       ..goodsCode = goodsCode
       ..goodsSeries = goodsSeries
       ..goodsStockPlace = goodsStockPlace
@@ -143,15 +157,15 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
       ..bookWeightEstimated = bookWeightEstimated;
     c.qty.text = qty.text;
     c.place.text = place.text;
-    c.weight.setKg(
-      weight.kg,
+    c.weight.setKgText(
+      weight.kgText,
       qtyFromWeight: weight.qtyFromWeight,
       userEdited: weight.userEdited,
     );
     c.bookQty.text = bookQty.text;
     c.checkQty.text = checkQty.text;
-    c.countWeight.setKg(
-      countWeight.kg,
+    c.countWeight.setKgText(
+      countWeight.kgText,
       qtyFromWeight: countWeight.qtyFromWeight,
       userEdited: countWeight.userEdited,
     );
@@ -233,7 +247,7 @@ class StockGridWeightWiring {
 
   /// 按数量精确换算的重量(货品或行单位是重量单位时，格子只读「=25 kg」)；
   /// 不给则只按参数 EXACT × 基本数量判断。
-  final double? Function(StockGridRow row)? exactKgOf;
+  final Object? Function(StockGridRow row)? exactKgOf;
 
   /// 格内 ⚖ 称重计数；null 不挂按钮。
   final Future<void> Function(BuildContext context, StockGridRow row)?
@@ -265,6 +279,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       ? WeightQtyAutofill<StockGridRow>(
           qtyControllerOf: (r) => r.activeQty,
           unitRateOf: (r) => r.isCheck ? 1 : r.unitRate,
+          unitRateTextOf: (r) => r.isCheck ? '1' : r.unitRateText,
         )
       : null;
   String? baseUnitName(StockGridRow r) =>
@@ -469,7 +484,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
             '填了实盘重量，审核后账面重量按实盘重量定。',
         textOf: (r) => _bookWeightText(r, weight.display),
         listenableOf: (r) => r.bookWeightKg,
-        cellBuilder: (context, row) => ValueListenableBuilder<double?>(
+        cellBuilder: (context, row) => ValueListenableBuilder<Object?>(
           valueListenable: row.bookWeightKg,
           builder: (context, kg, _) => Text(
             _bookWeightText(row, weight.display),

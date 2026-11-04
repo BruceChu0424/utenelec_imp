@@ -61,6 +61,7 @@ MasterColumnDef<R> outboundWeightColumn<R>({
     qtyAutofill: WeightQtyAutofill<OutboundWeightEntry>(
       qtyControllerOf: (entry) => entry.qtyController!,
       unitRateOf: (entry) => entry.unitRate,
+      unitRateTextOf: (entry) => entry.unitRateExact,
       enabledOf: (entry) =>
           entry.qtyController != null &&
           entry.unitRate != null &&
@@ -213,7 +214,7 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
             if (body.isEmpty) return const SizedBox.shrink();
             return Tooltip(
               message:
-                  '$body；实称 ${formatWeight(entry.kg!)}。请核对数量、重量单位和包装；确认无误仍可出库。',
+                  '$body；实称 ${formatWeight(entry.kgText)}。请核对数量、重量单位和包装；确认无误仍可出库。',
               child: Text(body),
             );
           }
@@ -271,6 +272,7 @@ Future<void> weighOutboundEntry(
       unitRate: entry.unitRate ?? 1,
       currentQty: entry.unitRate == null ? null : entry.qty,
       initialNetKg: entry.kg,
+      initialNetKgExact: entry.kgText,
       sampleRemark: sampleRemark,
     ),
   );

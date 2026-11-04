@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "writtenAtUtc": "2026-11-04T10:44:33.030023+00:00",
+  "scope": "S09 search request minimization, correctness and readiness only",
+  "baselineCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+  "worktree": "D:\\Projects\\uten_imp_worktrees\\platform-search-integration-20261104",
+  "status": "integrated locally; stopped after search",
+  "sourceManifest": "followup-source-manifest.json",
+  "followupChangedCodeFiles": 41,
+  "currentSearchCodeFiles": 211,
+  "backendReview": "backend-query-elision-followup-review.json",
+  "wpfReview": "clients/windows_legacy/progress/evidence/platform-search-followup-20261104.json",
+  "checks": {
+    "backend": {
+      "uniqueCases": 40,
+      "classes": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "migrations": 928,
+      "flywayHead": "V1002"
+    },
+    "flutterBatches": {
+      "networkInputSafety": 17,
+      "employeeLifecycleIncludingOrganization": 41,
+      "employeeEchoDisplayRace": 31,
+      "goodsPickerRepositoryFacet": 40,
+      "largeScopeColumns": 4,
+      "counting": "Separate batches; overlapping cases are not added."
+    },
+    "nativeFlutterWindow": {
+      "passed": 9,
+      "failed": 0,
+      "scenarios": "6 Goods readiness/scope cases and 3 organization ownership cases",
+      "input": "Scripted inputs explicitly focus and assert the actual field value; controlled service fixtures."
+    },
+    "wpf": {
+      "x86Assertions": 125,
+      "x64Assertions": 125,
+      "counting": "Same 5 input + 16 leaf + 66 goods + 38 unit assertions repeated by architecture, not 250 unique cases."
+    },
+    "dartAnalyze": {
+      "roots": [
+        "lib",
+        "test",
+        "integration_test"
+      ],
+      "issues": 0,
+      "dartFiles": 3645,
+      "normalizedInputSha256": "3a607f4f731f30f16586053929d14614d97514b3db7687d5594f0d962703c291"
+    }
+  },
+  "initialFailuresRetained": {
+    "organizationFixture": "Required level missing and zero-duration pump did not dispatch Dio timer; fixed fixture and bounded event-loop pumping, no product weakening.",
+    "goodsColumns": "Old fixture expected split GET batches; updated to production ApiClient exact one-body POST plus bounded page and small GET checks.",
+    "nativeClear": "Diagnostics prove text remained G-, focus false and no clear edit; explicit native focus and empty-text assertion repair the fixture. The controlled category gate also verifies both debounce and in-flight reads.",
+    "analysis": "Fixture type/default argument and braces issues fixed; final all-root analysis has no issues."
+  },
+  "logs": [
+    {
+      "path": "build/search-validation/followup-request-safety.log",
+      "sha256": "7cbe44838f9fb9bd3b27b4bbc369a23dd412bebf6c2e56870cb3cc07350d197e"
+    },
+    {
+      "path": "build/search-validation/followup-employee-lifecycle.log",
+      "sha256": "a411f2936564f4e187e6acf45e3647616584388b453c508f5418a1faee22a301"
+    },
+    {
+      "path": "build/search-validation/followup-organization-read-initial-fixture.log",
+      "sha256": "9a2358dd47d44a644ae25528005acb832875d23909d511d20bf207ef3b54ae1a"
+    },
+    {
+      "path": "build/search-validation/followup-organization-read-fixture-timing.log",
+      "sha256": "d98b5fcbf76de10e67e24280e38248bfe535a68725cafd7592712f1206a886b7"
+    },
+    {
+      "path": "build/search-validation/followup-native-window-initial.log",
+      "sha256": "44261164f07abbd6e6c0406892744381f09395ea35ec211e69cacd79029c8c65"
+    },
+    {
+      "path": "build/search-validation/followup-native-window-gated-initial.log",
+      "sha256": "2b022f47eb020df716d76d82eeb15ea83b2c930f21617f8b070cf8d137eb7e52"
+    },
+    {
+      "path": "build/search-validation/followup-native-clear-only-initial.log",
+      "sha256": "1ff1fa095d95cbd9056a9d04862a691458af2ec541587c9b4072e187391ed6c0"
+    },
+    {
+      "path": "build/search-validation/followup-native-clear-diagnostic.log",
+      "sha256": "b9ac621b73ab10ea75561f767dde8b7a1e7ac13a6724c4fbbfc0b055bb5d4b72"
+    },
+    {
+      "path": "build/search-validation/followup-native-window.log",
+      "sha256": "e268df4b8d6b5d64bffbf97716f517b73829d6d361d1a4bcaf40c394c049b214"
+    },
+    {
+      "path": "build/search-validation/followup-all-dart-analyze-final.log",
+      "sha256": "9a9d35ce9d6fac973a72f078461e18cde1f1c7f2ae7fa7a5916ae87adef4b99a"
+    },
+    {
+      "path": "build-search-goods-review-targeted.log",
+      "sha256": "237a9735d17ba3b8c172c44f39d6a81bf49b3ba84b91dba1946b47d6ce4bed83"
+    },
+    {
+      "path": "build-search-goods-columns-final.log",
+      "sha256": "157ca4a93e98c3fe467ee9ddd325cb3ea6fe02d3e9ff68f6ce656314bfc3dc6d"
+    },
+    {
+      "path": "build-search-goods-clear-native-fixture-verified.log",
+      "sha256": "28aa71ff79f7f912b9c28b6cd5a2a23b831089d52caa0189abc917083cd180a9"
+    },
+    {
+      "path": "server/target-search-query-elision.log",
+      "sha256": "47f0f63ca63a9669f78cb5d5b19ede16e35ceb17b97e1800a9f2a5eaf49fb447"
+    }
+  ],
+  "limits": {
+    "productionP95Measured": false,
+    "companyServerChanged": false,
+    "fullCI": false,
+    "productionDeployed": false,
+    "targetPcWin7Accepted": false,
+    "nonSearchLoadingChanged": false,
+    "formalPackagesCreated": false
+  },
+  "mainIntegrationReceipt": "followup-main-integration-receipt.json"
+}

@@ -42,7 +42,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         // Cross-module FLOW entry: opens the owning unit by its real UUID relationship key.
         private readonly Button openUnit = new Button { Content = "查看单位资料", Visibility = Visibility.Collapsed,
             HorizontalAlignment = HorizontalAlignment.Left };
-        private readonly DispatcherTimer searchDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        private readonly DebouncedSearchInput searchDelay;
         private CancellationTokenSource lifetime;
         private CancellationTokenSource listRead;
         private CancellationTokenSource treeRead;
@@ -70,23 +70,12 @@ namespace Uten.Legacy.Desktop.Features.Goods
             previous.Click += async (sender, args) => await LoadPageAsync(Math.Max(1, page - 1));
             next.Click += async (sender, args) => await LoadPageAsync(page + 1);
             retry.Click += async (sender, args) => await LoadAsync();
-            search.TextChanged += (sender, args) =>
+            searchDelay = new DebouncedSearchInput(search, () =>
             {
-                searchDelay.Stop();
-                if (!IsLoaded) return;
                 Cancel(listRead); listGeneration++; Cancel(detailRead); detailGeneration++;
                 detail.Visibility = Visibility.Collapsed; listBusy = true; UpdatePager();
                 status.Text = "搜索条件已变化，正在准备读取…";
-                searchDelay.Start();
-            };
-            search.KeyDown += async (sender, args) =>
-            {
-                if (args.Key != Key.Enter) return;
-                args.Handled = true;
-                searchDelay.Stop();
-                await LoadPageAsync(1);
-            };
-            searchDelay.Tick += async (sender, args) => { searchDelay.Stop(); await LoadPageAsync(1); };
+            }, () => LoadPageAsync(1), () => IsLoaded && lifetime != null && !lifetime.IsCancellationRequested);
         }
 
         private static TextBlock Label(string text, double size = 12)
@@ -310,7 +299,18 @@ namespace Uten.Legacy.Desktop.Features.Goods
             selectedCategoryName = category == null ? "全部货品" : category.ToString();
             await LoadPageAsync(1);
         }
-        private async Task LoadPageAsync(int requestedPage)
+        private Task LoadPageAsync(int requestedPage)
+        {
+            if (!IsLoaded || lifetime == null || lifetime.IsCancellationRequested || !Allowed(GoodsReadService.GoodsViewPermission)) return Task.CompletedTask;
+            long owner = session.Generation, revision = session.ReadScopeRevision, expectedRead = listGeneration + 1;
+            var key = Tuple.Create(selectedCategory, (search.Text ?? "").Trim(), requestedPage, owner, revision);
+            return searchDelay.RunReadAsync(key,
+                () => IsLoaded && !lifetime.IsCancellationRequested && listGeneration == expectedRead
+                    && session.Generation == owner && session.ReadScopeRevision == revision,
+                () => LoadPageCoreAsync(requestedPage));
+        }
+
+        private async Task LoadPageCoreAsync(int requestedPage)
         {
             if (!IsLoaded || lifetime == null || lifetime.IsCancellationRequested || !Allowed(GoodsReadService.GoodsViewPermission)) return;
             Cancel(listRead); long generation = ++listGeneration;

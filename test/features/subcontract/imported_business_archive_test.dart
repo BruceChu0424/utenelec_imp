@@ -7,6 +7,8 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
@@ -130,11 +132,29 @@ void main() {
 
   for (final type in _types) {
     testWidgets(
-      '${type.name} archive loads all years and raw0/-1/1 independently',
+      '${type.name} archive defaults to recent month and all years retains raw0/-1/1',
       (tester) async {
         final api = _ArchiveApi(type);
         await _mount(tester, api, SubcontractLegacyHistoryPage(type: type));
+        final recent = recentMonthDateRange();
         expect(api.listQueries.single, {
+          'page': 1,
+          'size': 20,
+          'originScope': 'LEGACY',
+          'dateFrom': ChinaDateTime.formatDate(recent.start),
+          'dateTo': ChinaDateTime.formatDate(recent.end),
+        });
+        final timeFilter = find.byType(UtenHistoryTimeFilter);
+        expect(
+          tester.widget<UtenHistoryTimeFilter>(timeFilter).value.all,
+          isFalse,
+        );
+        expect(find.text('OLD0'), findsNothing);
+        await tester.tap(
+          find.descendant(of: timeFilter, matching: find.text('全部')),
+        );
+        await tester.pumpAndSettle();
+        expect(api.listQueries.last, {
           'page': 1,
           'size': 20,
           'originScope': 'LEGACY',
@@ -273,21 +293,28 @@ class _ArchiveApi extends ApiClient {
   }) async {
     if (path == base) {
       listQueries.add({...?query});
+      const billDate = '2014-10-28';
+      final from = query?['dateFrom'] as String?;
+      final to = query?['dateTo'] as String?;
+      final visible =
+          (from == null || billDate.compareTo(from) >= 0) &&
+          (to == null || billDate.compareTo(to) <= 0);
       return {
         'items': [
-          for (final value in [0, -1, 1])
-            {
-              'id': 'old$value',
-              'legacyId': 901 + value,
-              'status': value,
-              'billNo': 'OLD$value',
-              'billDate': '2014-10-28',
-            },
+          if (visible)
+            for (final value in [0, -1, 1])
+              {
+                'id': 'old$value',
+                'legacyId': 901 + value,
+                'status': value,
+                'billNo': 'OLD$value',
+                'billDate': '2014-10-28',
+              },
         ],
         'page': 1,
         'size': 20,
-        'total': 3,
-        'totalPages': 1,
+        'total': visible ? 3 : 0,
+        'totalPages': visible ? 1 : 0,
       };
     }
     if (path == '$base/history') {

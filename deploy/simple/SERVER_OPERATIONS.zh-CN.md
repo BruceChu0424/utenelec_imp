@@ -113,10 +113,17 @@ sudo bash /reviewed/deploy/simple/install-server-operations.sh /reviewed/deploy/
 始终保留全部能力。已确认的旧单元故障是有效能力缺少 `CAP_SETUID`，`runuser` 在 PostgreSQL 实例身份
 核对前报 `cannot set user id: Operation not permitted`，作业停在 `FAILED/CHECKING`；仅检查版本成功
 不能证明更新前置核对通过。worker 的 `CapabilityBoundingSet` 与 `AmbientCapabilities` 因此明确且仅包含
-`CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID`，分别用于发行归属、私有备份来源读取、
-子进程清理和切换数据库/应用身份，其余沙箱保持不变。相同显式身份与沙箱的实机只读诊断已确认这组能力
+`CAP_CHOWN CAP_DAC_READ_SEARCH CAP_KILL CAP_SETGID CAP_SETUID CAP_SYS_PTRACE`，分别用于发行归属、私有备份来源读取、
+子进程清理、切换数据库/应用身份和受控清理前的 `/proc/<pid>/fd` 文件占用核对，其余沙箱保持不变。
+相同显式身份与沙箱的实机只读诊断已确认这组能力
 可完成实例核对及版本检查；切换到 `postgres`、`uten-imp` 后 Effective、Permitted、Ambient 能力均为零，
 且 `NoNewPrivileges` 保留，不能改成无界能力或关闭沙箱作为修复。
+
+健康升级成功而 `post-update-backup-cleanup-<任务UUID>.json` 显示 `FAILED/UNAVAILABLE` 时，另核对实际 worker
+是否包含 `CAP_SYS_PTRACE`。只有 `CAP_DAC_READ_SEARCH` 时，跨账号 `/proc` 访问仍会被内核的 ptrace 规则拒绝，
+清理因此保留全部候选；不能忽略 `PermissionError` 或把未知文件占用当作未使用。2026-11-03 同沙箱实机对照
+确认旧能力集合无法核对 67 个进程，增加这一项后可核对全部描述符，降权子进程的有效、许可和环境能力仍为零。
+已有失败清理回执保持原样，修复后通过新请求走正常清理预览和删除，不重放旧请求或为测试再次启动更新。
 
 已有主机只修此故障时，由 root 确认没有未完成更新、清理或备份作业并核对共同锁，私有备份现有
 `uten-imp-update-job.service`，对受审候选运行 `systemd-analyze verify` 后原子替换为 root `0644`，

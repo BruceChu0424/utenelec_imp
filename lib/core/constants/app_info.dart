@@ -9,7 +9,7 @@ abstract final class AppInfo {
       : ClientRuntimeProfile.formalDisplayName;
   static const version = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '2.5.46',
+    defaultValue: '2.5.47',
   );
   static const buildId = String.fromEnvironment(
     'APP_BUILD_ID',

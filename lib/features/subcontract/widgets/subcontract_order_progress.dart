@@ -1,4 +1,8 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../components/feedback/uten_workflow_progress.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 // 委外订货单「全链路进度」区(ADR-143 §4.6)。
 //
 // 每条订货明细 = 一个委外任务，一条时间线：下单 → 财务审批 → 领料发外(已领 x/Q) →
@@ -39,6 +43,7 @@ class _SubcontractOrderProgressSectionState
     extends ConsumerState<SubcontractOrderProgressSection> {
   SubcontractOrderProgress? _progress;
   bool _loading = true;
+  bool _refreshing = false;
   String? _error;
 
   @override
@@ -76,53 +81,71 @@ class _SubcontractOrderProgressSectionState
     }
   }
 
+  Future<void> _refresh() async {
+    if (_loading || _refreshing) return;
+    setState(() => _refreshing = true);
+    try {
+      await _load();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      shape: utenTableCardShape(context),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Stack(
+      children: [
+        Card(
+          shape: utenTableCardShape(context),
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    '全链路进度',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '全链路进度',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
+                    UtenRefreshButton(
+                      onRefresh: _refresh,
+                      busy: _loading,
+                      tooltip: '刷新进度',
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  tooltip: '刷新进度',
-                  onPressed: _loading ? null : _load,
-                ),
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  )
+                else if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s8,
+                    ),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  )
+                else if (_progress != null)
+                  _buildContent(theme, _progress!),
               ],
             ),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-                child: Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-              )
-            else if (_error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-              )
-            else if (_progress != null)
-              _buildContent(theme, _progress!),
-          ],
+          ),
         ),
-      ),
+        if (_refreshing)
+          const UtenBusyOverlay(title: '正在刷新委外进度', showDoNotLeaveHint: false),
+      ],
     );
   }
 
@@ -186,7 +209,7 @@ class _SubcontractOrderProgressSectionState
             docs: p.wastes,
             segment: 'wastes',
             trailing: (d) => canViewPrice && (d.deductAmount ?? 0) > 0
-                ? '建议索赔 ${d.deductAmount!.toStringAsFixed(2)}'
+                ? '建议索赔 ${financeExactMoneyDisplay(d.quantityText('deductAmount'))}'
                 : null,
           ),
         ],
@@ -235,7 +258,7 @@ class _SubcontractOrderProgressSectionState
                   ),
                 ),
               Text(
-                '订货 ${_qty(item.orderQty, item.unitName)}',
+                '订货 ${_qty(item.quantityText('orderQty'), item.unitName)}',
                 style: theme.textTheme.bodySmall,
               ),
               if (item.bomMissing) _bomMissingTag(theme),
@@ -280,106 +303,30 @@ class _SubcontractOrderProgressSectionState
   );
 
   /// 下单 → 财务审批 → 领料发外 → 加工回厂 → 品质检验 → 仓库确认入仓 → 结案核销。
-  Widget _timelineStrip(ThemeData theme, SubcontractItemProgress item) {
-    final nodes = item.timeline;
-    if (nodes.isEmpty) return _hint(theme, '进度暂未生成');
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < nodes.length; i++) ...[
-            _nodeChip(theme, item, nodes[i]),
-            if (i != nodes.length - 1)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  size: 14,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+  Widget _timelineStrip(ThemeData theme, SubcontractItemProgress item) =>
+      UtenWorkflowProgress(
+        horizontalScroll: true,
+        emptyText: '进度暂未生成',
+        nodes: [
+          for (final node in item.timeline)
+            UtenWorkflowNode(
+              key: ValueKey(
+                'subcontract-progress-node-${item.orderItemId}-${node.key}',
               ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _nodeChip(
-    ThemeData theme,
-    SubcontractItemProgress item,
-    SubcontractProgressNode node,
-  ) {
-    final (color, icon) = switch (node.state) {
-      SubcontractProgressNodeState.done => (
-        theme.colorScheme.primary,
-        Icons.check_circle_rounded,
-      ),
-      SubcontractProgressNodeState.active => (
-        theme.colorScheme.tertiary,
-        Icons.timelapse_rounded,
-      ),
-      SubcontractProgressNodeState.pending => (
-        theme.colorScheme.onSurfaceVariant,
-        Icons.radio_button_unchecked,
-      ),
-      SubcontractProgressNodeState.skipped => (
-        theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-        Icons.remove_circle_outline,
-      ),
-    };
-    final emphasized =
-        node.state == SubcontractProgressNodeState.done ||
-        node.state == SubcontractProgressNodeState.active;
-    final detail = node.detail?.trim();
-    return Container(
-      key: ValueKey(
-        'subcontract-progress-node-${item.orderItemId}-${node.key}',
-      ),
-      constraints: const BoxConstraints(maxWidth: 240),
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: emphasized ? 0.12 : 0.06),
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 13, color: color),
-              const SizedBox(width: 4),
-              Text(
-                node.label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: color,
-                  fontWeight: emphasized ? FontWeight.w700 : null,
-                  decoration: node.state == SubcontractProgressNodeState.skipped
-                      ? TextDecoration.lineThrough
-                      : null,
-                ),
-              ),
-            ],
-          ),
-          if (detail != null && detail.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                detail,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              title: node.label,
+              details: node.detail,
+              state: switch (node.state) {
+                SubcontractProgressNodeState.done => UtenWorkflowNodeState.done,
+                SubcontractProgressNodeState.active =>
+                  UtenWorkflowNodeState.current,
+                SubcontractProgressNodeState.pending =>
+                  UtenWorkflowNodeState.pending,
+                SubcontractProgressNodeState.skipped =>
+                  UtenWorkflowNodeState.skipped,
+              },
             ),
         ],
-      ),
-    );
-  }
+      );
 
   /// 与委外任务详情物料表同列；数量都是服务端算好的结果。
   Widget _materialTable(SubcontractItemProgress item) =>
@@ -437,7 +384,8 @@ class _SubcontractOrderProgressSectionState
                           d.billNo ?? '—',
                           if ((d.warehouseName ?? '').trim().isNotEmpty)
                             d.warehouseName!.trim(),
-                          if (showQty) subcontractDrawQty(d.totalQty ?? 0),
+                          if (showQty)
+                            subcontractDrawQty(d.quantityText('totalQty')),
                           if (d.billDate != null) d.billDate!,
                           if (d.approverName != null) d.approverName!,
                         ].join(' · '),
@@ -500,11 +448,11 @@ class _SubcontractOrderProgressSectionState
               scope: 'view_subcontract',
               recordIdOf: (_) => null,
               factValuesOf: (row) => {
-                'atSupplierQty': row.atSupplierQty.toString(),
-                'consumedQty': row.consumedQty.toString(),
-                'returnedQty': row.returnedQty.toString(),
-                'wastedQty': row.wastedQty.toString(),
-                'supplierEnding': row.supplierEnding.toString(),
+                'atSupplierQty': row.quantityText('atSupplierQty'),
+                'consumedQty': row.quantityText('consumedQty'),
+                'returnedQty': row.quantityText('returnedQty'),
+                'wastedQty': row.quantityText('wastedQty'),
+                'supplierEnding': row.quantityText('supplierEnding'),
               },
             ),
             columns: [
@@ -535,52 +483,66 @@ class _SubcontractOrderProgressSectionState
                 key: 'atSupplierQty',
                 label: '发出',
                 sortable: true,
-                exactValueOf: (row) => row.atSupplierQty.toString(),
+                exactValueOf: (row) => row.quantityText('atSupplierQty'),
                 width: 120,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.atSupplierQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('atSupplierQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'consumedQty',
                 label: '回厂核销',
                 sortable: true,
-                exactValueOf: (row) => row.consumedQty.toString(),
+                exactValueOf: (row) => row.quantityText('consumedQty'),
                 width: 140,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.consumedQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('consumedQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'returnedQty',
                 label: '已退',
                 sortable: true,
-                exactValueOf: (row) => row.returnedQty.toString(),
+                exactValueOf: (row) => row.quantityText('returnedQty'),
                 width: 110,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.returnedQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('returnedQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'wastedQty',
                 label: '损耗',
                 sortable: true,
-                exactValueOf: (row) => row.wastedQty.toString(),
+                exactValueOf: (row) => row.quantityText('wastedQty'),
                 width: 110,
                 type: 'number',
-                value: (row) => formatQtyWithUnit(row.wastedQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('wastedQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'supplierEnding',
                 label: '结存',
                 sortable: true,
-                exactValueOf: (row) => row.supplierEnding.toString(),
+                exactValueOf: (row) => row.quantityText('supplierEnding'),
                 width: 120,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.supplierEnding, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('supplierEnding'),
+                  row.unitName,
+                ),
                 cellBuilder: (_, row) => Text(
-                  formatQtyWithUnit(row.supplierEnding, row.unitName),
+                  formatExactQtyWithUnit(
+                    row.quantityText('supplierEnding'),
+                    row.unitName,
+                  ),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -603,9 +565,17 @@ class _SubcontractOrderProgressSectionState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _kv(theme, '已立加工费应付(本币)', p.apPostedTotal.toStringAsFixed(2)),
+          _kv(
+            theme,
+            '已立加工费应付(本币)',
+            financeExactMoneyDisplay(p.quantityText('apPostedTotal')),
+          ),
           if (p.wasteDeductTotal > 0)
-            _kv(theme, '损耗建议索赔(不计入应付)', p.wasteDeductTotal.toStringAsFixed(2)),
+            _kv(
+              theme,
+              '损耗建议索赔(不计入应付)',
+              financeExactMoneyDisplay(p.quantityText('wasteDeductTotal')),
+            ),
         ],
       ),
     );
@@ -694,16 +664,16 @@ class _SubcontractOrderProgressSectionState
     };
     final quantities = <String>[
       if (receipt.iqcPassedBaseQty != null)
-        '合格 ${subcontractDrawQty(receipt.iqcPassedBaseQty!)}',
+        '合格 ${subcontractDrawQty(receipt.quantityText('iqcPassedBaseQty'))}',
       if (receipt.warehouseStockedBaseQty != null)
-        '已入库 ${subcontractDrawQty(receipt.warehouseStockedBaseQty!)}',
+        '已入库 ${subcontractDrawQty(receipt.quantityText('warehouseStockedBaseQty'))}',
       if (receipt.pendingStockInBaseQty != null)
-        '待入库 ${subcontractDrawQty(receipt.pendingStockInBaseQty!)}',
+        '待入库 ${subcontractDrawQty(receipt.quantityText('pendingStockInBaseQty'))}',
     ];
     return [?_iqcText(receipt.iqcStatus), status, ...quantities].join(' · ');
   }
 
-  static String _qty(double value, String unit) {
+  static String _qty(Object? value, String unit) {
     final trimmed = unit.trim();
     return '${subcontractDrawQty(value)}${trimmed.isEmpty ? '' : ' $trimmed'}';
   }

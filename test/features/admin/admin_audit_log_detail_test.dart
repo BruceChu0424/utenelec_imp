@@ -2637,6 +2637,10 @@ class _AuditRepository implements AuditLogRepository {
     int page = 1,
     int size = 20,
     String? keyword,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? actorType,
+    bool unassignedOnly = false,
   }) async {
     actorCalls++;
     final entry = primaryEntry;

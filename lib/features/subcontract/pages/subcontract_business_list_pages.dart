@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
@@ -1077,14 +1078,6 @@ class _SubcontractBusinessListPageState
                           trailing: _clearSubstageAction(),
                         ),
                       ],
-                      const SizedBox(height: UtenSpacing.s8),
-                      UtenHistoryTimeFilter(
-                        key: Key(
-                          'subcontract-biz-history-time-${_p.type.name}',
-                        ),
-                        value: _historyTime,
-                        onChanged: _onHistoryTime,
-                      ),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                   ],
@@ -1092,9 +1085,27 @@ class _SubcontractBusinessListPageState
                 body: seg == null
                     ? const UtenFilterPlaceholder()
                     : seg.history && _historyTime.isNone
-                    ? const UtenHistoryTimePlaceholder()
+                    ? UtenHistoryTimePlaceholder(
+                        controls: UtenHistoryTimeFilter(
+                          key: Key(
+                            'subcontract-biz-history-time-${_p.type.name}',
+                          ),
+                          value: _historyTime,
+                          onChanged: _onHistoryTime,
+                        ),
+                      )
                     : _withDraftCategory(
                         MasterDataTableView<SubcontractDocListItem>(
+                          toolbarLeadingActions: [
+                            if (seg.history)
+                              UtenHistoryTimeFilter(
+                                key: Key(
+                                  'subcontract-biz-history-time-${_p.type.name}',
+                                ),
+                                value: _historyTime,
+                                onChanged: _onHistoryTime,
+                              ),
+                          ],
                           rowsController: _tableRows,
                           tableKey:
                               'features.subcontract.pages.subcontract_business_list_pages.SubcontractBusinessListPageState.build.1',
@@ -1308,11 +1319,13 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
       sortable: true,
       columnSearchEnabled: true,
       exactValueOf: (row) =>
-          row.totalWeightDisplayText ?? row.totalWeight?.toStringAsFixed(3),
+          row.totalWeightDisplayText ??
+          row.totalWeight?.toExactString(minimumFractionDigits: 3),
       width: 130,
       type: 'number',
       value: (row) =>
-          row.totalWeightDisplayText ?? row.totalWeight?.toStringAsFixed(3),
+          row.totalWeightDisplayText ??
+          row.totalWeight?.toExactString(minimumFractionDigits: 3),
     ),
   if (closed)
     MasterColumnDef(

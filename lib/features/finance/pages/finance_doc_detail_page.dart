@@ -1,3 +1,4 @@
+import '../../../shared/models/accounting_expense_purpose.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
@@ -160,6 +161,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             .loadStyleCategory(
               _cfg.type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
             );
+        if (_cfg.type == FinanceDocType.expense) {
+          await ref
+              .read(financeNameServiceProvider)
+              .loadStyleCategory(
+                AccountingExpensePurpose.manufacturingCost.apiValue,
+                force: true,
+              );
+        }
       }
       if (!acceptsRead()) return;
       final d = await ref
@@ -1144,7 +1153,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: _cfg.isClient ? '本次分配收款(原币)' : '本次付款金额',
+          label: _cfg.isClient ? '本次收款金额' : '本次付款金额',
           width: _cfg.isClient ? 180 : 130,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
@@ -1224,7 +1233,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: '本次付款(原币)',
+          label: '本次付款金额',
           width: 110,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
@@ -1251,12 +1260,20 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           value: (it) => financeExactMoneyDisplay(it.exchangeDiffText),
         ),
       ] else if (_cfg.isAllocate) ...[
+        if (_cfg.type == FinanceDocType.expense)
+          MasterColumnDef(
+            key: 'postingPurpose',
+            label: '支出类型',
+            width: 130,
+            value: (it) => it.postingPurpose.label,
+          ),
         MasterColumnDef(
           key: 'style',
           label: _cfg.type == FinanceDocType.expense ? '费用项目' : '收入项目',
           width: 160,
-          value: (it) =>
-              names.styleName(it.expenseStyleId ?? it.incomeStyleId, styleCat),
+          value: (it) => _cfg.type == FinanceDocType.expense
+              ? names.expenseStyleName(it.expenseStyleId, it.postingPurpose)
+              : names.styleName(it.incomeStyleId, styleCat),
         ),
         MasterColumnDef(
           key: 'department',

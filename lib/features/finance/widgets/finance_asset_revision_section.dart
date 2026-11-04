@@ -14,6 +14,7 @@ const _labels = <String, String>{
   'originalValue': '资产原值',
   'openingAsOf': '接续日',
   'openingAccumulated': '期初累计折旧',
+  'openingAmortized': '期初累计摊销',
   'openingRemaining': '剩余计提月数',
   'openingVoucher': '关联期初凭证',
   'totalAmount': '待摊金额',
@@ -45,6 +46,7 @@ const _labels = <String, String>{
 const _numbers = {
   'originalValue',
   'openingAccumulated',
+  'openingAmortized',
   'openingRemaining',
   'totalAmount',
   'usefulMonths',
@@ -66,7 +68,9 @@ Map<String, dynamic>? _snapshot(String? text) {
     if (value is Map<String, dynamic>) {
       final opening = value['openingBalance'];
       value['openingAsOf'] = opening is Map ? opening['asOf'] : null;
-      value['openingAccumulated'] = opening is Map
+      value[value['objectType'] == 'DEFERRED_EXPENSE'
+          ? 'openingAmortized'
+          : 'openingAccumulated'] = opening is Map
           ? opening['accumulatedAmount']
           : null;
       value['openingRemaining'] = opening is Map

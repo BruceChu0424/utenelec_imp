@@ -16,6 +16,10 @@ public class ApiError {
     private final String code;
     private final String message;
     private final List<FieldError> fieldErrors;
+    private final java.util.Map<String,Object> details;
+
+    public ApiError(OffsetDateTime timestamp,int status,String code,String message,List<FieldError> fields){this(timestamp,status,code,message,fields,null);}
+    public ApiError withDetails(java.util.Map<String,Object> value){return new ApiError(timestamp,status,code,message,fieldErrors,value);}
 
     public record FieldError(String field, String message) {}
 

@@ -8,11 +8,27 @@ abstract final class PagedReadIntent {
   static final _readingPageKey = Object();
   static final _acceptedPageKey = Object();
   static final _replaceWindowKey = Object();
+  static final _readCurrentKey = Object();
 
   static bool get isBufferSeed => Zone.current[_bufferSeedKey] == true;
 
   static int? get readingPage => Zone.current[_readingPageKey] as int?;
   static bool get replaceWindow => Zone.current[_replaceWindowKey] == true;
+
+  /// The same immutable query/reader fence used for publication also retires
+  /// its HTTP reads. It never applies to a business command or write retry.
+  static bool Function()? get currentRead =>
+      Zone.current[_readCurrentKey] as bool Function()?;
+
+  static R scopedRead<R>(bool Function() isCurrent, R Function() action) {
+    final parent = currentRead;
+    return runZoned(
+      action,
+      zoneValues: {
+        _readCurrentKey: () => (parent?.call() ?? true) && isCurrent(),
+      },
+    );
+  }
 
   /// Separates a reader's visible page from the last fetched page. A completed
   /// cache hit can acknowledge navigation even when every DTO is unchanged.

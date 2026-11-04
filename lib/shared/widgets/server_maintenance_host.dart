@@ -55,6 +55,8 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
   final _acknowledged = <String>{};
   final _reminderFocus = FocusScopeNode();
   final _pageFocus = FocusScopeNode();
+  final _reminderAnchor = GlobalKey();
+  OverlayEntry? _reminderEntry;
   Timer? _ticker;
 
   @override
@@ -62,7 +64,10 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
     super.initState();
     widget.controller.addListener(_changed);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.controller.setVisible(widget.visible);
+      if (mounted) {
+        widget.controller.setVisible(widget.visible);
+        _syncReminderEntry();
+      }
     });
   }
 
@@ -89,6 +94,7 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
 
   void _changed() {
     if (!mounted) return;
+    _syncReminderEntry();
     final snapshot = widget.controller.snapshot;
     if (!widget.controller.checking &&
         !widget.controller.lastCheckFailed &&
@@ -110,8 +116,49 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
     setState(() {});
   }
 
+  void _syncReminderEntry() {
+    final snapshot = widget.controller.snapshot;
+    final show =
+        widget.controller.shouldWarn &&
+        snapshot != null &&
+        !_acknowledged.contains(snapshot.noticeKey);
+    if (show) {
+      final anchor = _reminderAnchor.currentContext;
+      if (anchor == null) return;
+      if (_reminderEntry == null) {
+        _reminderEntry = OverlayEntry(builder: _buildReminder);
+        Overlay.of(anchor, rootOverlay: true).insert(_reminderEntry!);
+      } else {
+        _reminderEntry!.markNeedsBuild();
+      }
+    } else {
+      _removeReminder();
+    }
+  }
+
+  void _removeReminder() {
+    _reminderEntry?.remove();
+    _reminderEntry?.dispose();
+    _reminderEntry = null;
+  }
+
+  @override
+  void deactivate() {
+    _removeReminder();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncReminderEntry();
+    });
+  }
+
   @override
   void dispose() {
+    _removeReminder();
     _ticker?.cancel();
     widget.controller.removeListener(_changed);
     _reminderFocus.dispose();
@@ -125,6 +172,7 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
     final snapshot = widget.controller.snapshot;
     if (snapshot != null) {
       setState(() => _acknowledged.add(snapshot.noticeKey));
+      _syncReminderEntry();
     }
   }
 
@@ -136,9 +184,13 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
     final warns = controller.shouldWarn;
     final showReminder = warns && !_acknowledged.contains(snapshot!.noticeKey);
     final modal = blocksWork || showReminder;
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Stack(
+    // Subscribe to changes outside the routed Navigator, including display zoom
+    // and keyboard insets, then refresh the separate window overlay after layout.
+    MediaQuery.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reminderEntry?.markNeedsBuild();
+    });
+    final page = Stack(
       fit: StackFit.expand,
       children: [
         ExcludeFocus(
@@ -167,9 +219,12 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
                         child: _MaintenanceCountdown(
                           remaining: controller.remaining,
                           animate: widget.animateCountdown,
-                          onTap: () => setState(
-                            () => _acknowledged.remove(snapshot!.noticeKey),
-                          ),
+                          onTap: () {
+                            setState(
+                              () => _acknowledged.remove(snapshot!.noticeKey),
+                            );
+                            _syncReminderEntry();
+                          },
                         ),
                       ),
                     ),
@@ -178,53 +233,6 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
               ),
             ),
           ),
-        if (showReminder) ...[
-          ModalBarrier(
-            dismissible: false,
-            color: scheme.scrim.withValues(alpha: 0.36),
-          ),
-          Center(
-            child: FocusScope(
-              autofocus: true,
-              node: _reminderFocus,
-              child: Focus(
-                autofocus: true,
-                onKeyEvent: (node, event) {
-                  if (event is KeyDownEvent &&
-                      event.logicalKey == LogicalKeyboardKey.escape) {
-                    _acknowledge();
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: Semantics(
-                  scopesRoute: true,
-                  namesRoute: true,
-                  explicitChildNodes: true,
-                  label: maintenanceText(context, '服务器即将更新'),
-                  child: UtenAlertDialog(
-                    key: const ValueKey('server-maintenance-reminder'),
-                    maxWidth: 520,
-                    title: UtenDialogHeading(
-                      title: Text(maintenanceText(context, '服务器即将更新')),
-                      icon: Icons.schedule_rounded,
-                    ),
-                    content: _ScheduledContent(
-                      snapshot: snapshot,
-                      remaining: controller.remaining,
-                    ),
-                    actions: [
-                      UtenButton(
-                        onPressed: _acknowledge,
-                        child: Text(maintenanceText(context, '我知道了，继续保存工作')),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
         if (blocksWork)
           Positioned.fill(
             child: FocusScope(
@@ -239,6 +247,98 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
             ),
           ),
       ],
+    );
+    // The builder is outside the routed Navigator in production. A stable local
+    // overlay also supports Web/mobile hosts without an enclosing window overlay.
+    return Overlay.wrap(
+      child: SizedBox.expand(key: _reminderAnchor, child: page),
+    );
+  }
+
+  Widget _buildReminder(BuildContext overlayContext) {
+    final anchor = _reminderAnchor.currentContext;
+    final snapshot = widget.controller.snapshot;
+    if (anchor == null || snapshot == null) return const SizedBox.shrink();
+    final box = anchor.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(anchor, rootOverlay: true).context.findRenderObject()
+            as RenderBox?;
+    if (box == null || overlay == null || !box.hasSize) {
+      return const SizedBox.shrink();
+    }
+    final bounds = MatrixUtils.transformRect(
+      box.getTransformTo(overlay),
+      Offset.zero & box.size,
+    );
+    return InheritedTheme.captureAll(
+      anchor,
+      MediaQuery(
+        data: MediaQuery.of(context),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ModalBarrier(
+              key: const ValueKey('server-maintenance-reminder-barrier'),
+              dismissible: false,
+              color: Theme.of(context).colorScheme.scrim.withValues(alpha: .36),
+            ),
+            Positioned.fromRect(
+              rect: bounds,
+              // Preserve the original canvas and display zoom for the dialog;
+              // only its backdrop extends into the native title strip.
+              child: FittedBox(
+                fit: BoxFit.fill,
+                child: SizedBox.fromSize(
+                  size: box.size,
+                  child: Center(
+                    child: FocusScope(
+                      autofocus: true,
+                      node: _reminderFocus,
+                      child: Focus(
+                        autofocus: true,
+                        onKeyEvent: (node, event) {
+                          if (event is KeyDownEvent &&
+                              event.logicalKey == LogicalKeyboardKey.escape) {
+                            _acknowledge();
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        child: Semantics(
+                          scopesRoute: true,
+                          namesRoute: true,
+                          explicitChildNodes: true,
+                          label: maintenanceText(context, '服务器即将更新'),
+                          child: UtenAlertDialog(
+                            key: const ValueKey('server-maintenance-reminder'),
+                            maxWidth: 520,
+                            title: UtenDialogHeading(
+                              title: Text(maintenanceText(context, '服务器即将更新')),
+                              icon: Icons.schedule_rounded,
+                            ),
+                            content: _ScheduledContent(
+                              snapshot: snapshot,
+                              remaining: widget.controller.remaining,
+                            ),
+                            actions: [
+                              UtenButton(
+                                onPressed: _acknowledge,
+                                child: Text(
+                                  maintenanceText(context, '我知道了，继续保存工作'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

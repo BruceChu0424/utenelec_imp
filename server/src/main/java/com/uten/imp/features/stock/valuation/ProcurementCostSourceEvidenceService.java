@@ -56,11 +56,14 @@ public class ProcurementCostSourceEvidenceService implements InventoryApprovedCo
                     JOIN subcontract_receipt_items i ON i.id=p.receipt_item_id AND i.receipt_id=r.id
                         AND NOT i.is_deleted
                 )
-                SELECT source.*,ap.id AS ap_id
+                SELECT source.*,CASE WHEN candidate.id IS NULL THEN ap.id END AS ap_id,
+                       candidate.id AS pending_candidate_id,candidate.source_fingerprint AS pending_fingerprint
                 FROM receipt_source source
                 LEFT JOIN ar_ap_ledger ap ON ap.source_doc_type=source.receipt_type||'_RECEIPT'
                     AND ap.source_doc_id=source.receipt_id AND ap.direction='AP'
                     AND ap.status=1 AND NOT ap.is_deleted
+                LEFT JOIN finance_procurement_payable_candidates candidate ON candidate.source_type=source.receipt_type||'_RECEIPT'
+                    AND candidate.source_id=source.receipt_id AND candidate.status<>'SOURCE_REVERSED'
                 """, Map.of("id", evidenceId));
         if (rows.isEmpty()) return Optional.empty();
         if (rows.size() != 1) throw conflict("收货费用对应多笔有效应付，请先核对来源");
@@ -86,15 +89,21 @@ public class ProcurementCostSourceEvidenceService implements InventoryApprovedCo
         if (carried && (charge.signum() != 0 || row.get("funding_slice_id") == null)) {
             return Optional.empty();
         }
-        if (!carried && charge.signum() > 0 && row.get("ap_id") == null) {
+        if (!carried && charge.signum() > 0 && row.get("ap_id") == null && row.get("pending_candidate_id") == null) {
             return Optional.empty();
         }
+        if(row.get("pending_candidate_id")!=null&&(row.get("pending_fingerprint")==null
+                ||!row.get("pending_fingerprint").toString().matches("[0-9a-f]{64}")))return Optional.empty();
         BigDecimal exactCharge = FinancialExactAmount.book(charge, "收货已确认费用");
         String basis = String.join("|", "PROCUREMENT_RECEIPT_COST_V1", id.toString(),
                 String.valueOf(row.get("receipt_type")), receiptId.toString(), receiptItemId.toString(),
                 mode, warehouseId.toString(), goodsId.toString(), String.valueOf(row.get("color_id")),
                 qty.stripTrailingZeros().toPlainString(), exactCharge.toPlainString(),
-                String.valueOf(row.get("funding_slice_id")), String.valueOf(row.get("ap_id")));
+                String.valueOf(row.get("funding_slice_id")), String.valueOf(row.get("pending_candidate_id")==null?row.get("ap_id"):null));
+        // A cutover receipt was commercially approved before physical acquisition.
+        // Its later financial recognition must not reprice inventory or replace
+        // the acquisition identity with the newly created AP UUID.
+        if(row.get("pending_candidate_id")!=null)basis+="|PENDING_RECEIPT|"+row.get("pending_candidate_id")+"|"+row.get("pending_fingerprint");
         return Optional.of(new Evidence(id, 1,
                 new PoolKey(warehouseId, goodsId, (UUID) row.get("color_id")),
                 qty, carried ? qty : BigDecimal.ZERO, exactCharge, true,

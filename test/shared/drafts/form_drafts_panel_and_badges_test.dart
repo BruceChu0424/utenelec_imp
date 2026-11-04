@@ -34,6 +34,77 @@ class FixedFormDrafts extends FormDraftsNotifier {
 }
 
 void main() {
+  test('prepayment finance input stays on its existing follow-up task', () {
+    final checkpoint = FormDraft(
+      id: 'prepayment-finance-input',
+      title: '关联预付入账',
+      module: BadgeModule.finance,
+      route:
+          '/applications/application-1?draftForm=applicationPrepaymentFinance',
+      permission: 'application:prepayment:link_finance',
+      draftKind: 'business_application_prepayment_finance',
+      updatedAt: DateTime(2026, 11, 3),
+      data: const {'createdDocId': 'application-1'},
+    );
+    final server = badgeSummaryFixture(
+      entries: {BadgeEntry.applicationFinance: (1, 2)},
+    );
+    final result = includeFormDraftBadges(server, [checkpoint]);
+    expect(result.entryTodo(BadgeEntry.applicationFinance), 1);
+    expect(result.entryInProgress(BadgeEntry.applicationFinance), 2);
+    expect(result.entryTodo(BadgeEntry.financeDrafts), 0);
+  });
+
+  test(
+    'payment input checkpoints use the application finance task without double counting',
+    () {
+      final checkpoint = FormDraft(
+        id: 'payment-input',
+        title: '登记申请付款',
+        module: BadgeModule.finance,
+        route: '/applications/application-1?draftForm=applicationPayment',
+        permission: 'application:pay',
+        draftKind: 'business_application_payment',
+        updatedAt: DateTime(2026, 11, 3),
+        data: const {'createdDocId': 'application-1'},
+      );
+      final server = badgeSummaryFixture(
+        entries: {BadgeEntry.applicationFinance: (1, 0)},
+      );
+      final result = includeFormDraftBadges(server, [checkpoint]);
+      expect(result.entryTodo(BadgeEntry.applicationFinance), 1);
+      expect(result.entryTodo(BadgeEntry.financeDrafts), 0);
+      expect(result.total, const BadgeCounts(1, 0));
+    },
+  );
+
+  test(
+    'application checkpoints belong to self applications and confirmed drafts count once',
+    () {
+      FormDraft application(String id, Map<String, dynamic> data) => FormDraft(
+        id: id,
+        title: '出差申请',
+        module: BadgeModule.people,
+        route: '/applications/new?kind=TRAVEL',
+        permission: 'application:apply:travel',
+        draftKind: 'business_application',
+        updatedAt: DateTime(2026, 11, 3),
+        data: data,
+      );
+      final server = badgeSummaryFixture(
+        entries: {BadgeEntry.applicationMine: (2, 1)},
+      );
+      final result = includeFormDraftBadges(server, [
+        application('local', const {'title': '待填写'}),
+        application('confirmed', const {'createdDocId': 'server-draft'}),
+      ]);
+      expect(result.entryTodo(BadgeEntry.applicationMine), 3);
+      expect(result.entryTodo(BadgeEntry.hrTaskCenter), 0);
+      expect(result.moduleTodo(BadgeModule.people), 3);
+      expect(result.total, const BadgeCounts(3, 1));
+    },
+  );
+
   test('production card does not count its local draft entry twice', () {
     final container = ProviderContainer(
       overrides: [

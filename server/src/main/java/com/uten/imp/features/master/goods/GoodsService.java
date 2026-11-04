@@ -98,8 +98,8 @@ public class GoodsService {
     /** facet 截断阈值（高基数列如 name 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
-    /** 选择器一次允许限定的分类根数；防止客户端构造超大集合放大递归 CTE。 */
-    static final int MAX_CATEGORY_ROOT_IDS = 32;
+    /** Bounded body queries cover the full picker scope; all roots share one deduplicating expansion. */
+    static final int MAX_CATEGORY_ROOT_IDS = 4096;
 
     /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
      *  注意：code（全局唯一显示编号，但不是关系 id）不在此列，高基数值筛选意义较小，
@@ -209,12 +209,12 @@ public class GoodsService {
                         .getResultList());
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补颜色/单位名，绝不建立新关系。
         Map<Integer, String> colorNames = colorNamesFor(
-                content.stream().map(Goods::getColorLegacyId).toList());
+                content.stream().filter(g -> g.getColor() == null).map(Goods::getColorLegacyId).toList());
         Map<Integer, String> unitNames = unitNamesFor(
-                content.stream().map(Goods::getUnitLegacyId).toList());
+                content.stream().filter(g -> g.getUnit() == null).map(Goods::getUnitLegacyId).toList());
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补模具编号（列表「模具编号」列）。
         Map<Integer, Mould> mouldsByLegacy = mouldsByLegacyFor(
-                content.stream().map(Goods::getMouldLegacyId).toList());
+                content.stream().filter(g -> g.getMould() == null).map(Goods::getMouldLegacyId).toList());
         Map<UUID, BigDecimal> stockByGoods = stockQuantitiesFor(
                 content.stream().map(Goods::getId).toList());
         // 所属仓库名 (V587)：一次批量取名，不在拼行时逐行碰关联触发懒加载 (N+1)。
@@ -273,7 +273,7 @@ public class GoodsService {
             same = cb.equal(rank, targetRank);
         }
         if(stockSort) {
-            var value=stockQuantitiesFor(List.of(id)).getOrDefault(id,BigDecimal.ZERO).setScale(2,java.math.RoundingMode.HALF_UP);
+            var value=stockQuantitiesFor(List.of(id)).getOrDefault(id,BigDecimal.ZERO);
             var stock=com.uten.imp.features.master.search.MasterColumnSearch.numericValue(cb,root.get("id"),
                     com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS,"stockQty");
             boolean ascending=!"desc".equalsIgnoreCase(order);
@@ -479,10 +479,9 @@ public class GoodsService {
         List<UUID> selected = f.categoryId() == null ? null : resolveSubtreeIds(f.categoryId());
         if (roots == null || roots.isEmpty()) return selected;
 
-        Set<UUID> scopedIds = new LinkedHashSet<>();
-        for (UUID rootId : roots) {
-            if (rootId != null) scopedIds.addAll(resolveSubtreeIds(rootId));
-        }
+        List<UUID> validRoots = roots.stream().filter(java.util.Objects::nonNull).sorted().toList();
+        Set<UUID> scopedIds = validRoots.isEmpty() ? new LinkedHashSet<>()
+                : new LinkedHashSet<>(categoryRepo.findSubtreeIdsFromRoots(validRoots));
         if (selected != null) scopedIds.retainAll(selected);
         return List.copyOf(scopedIds);
     }
@@ -1573,24 +1572,24 @@ public class GoodsService {
         // 成本预算：无 goods:cost:view 的普通编辑保留实体原值，避免脱敏 null 覆盖历史成本。
         // 导入是独立特权入口，显式传 writeCosts=true 保持批量导入能力。
         if (writeCosts) {
-            g.setSourceE(req.getSourceE());
-            g.setMachiningE(req.getMachiningE());
-            g.setIncidentalE(req.getIncidentalE());
-            g.setLacquerE(req.getLacquerE());
-            g.setPlatingE(req.getPlatingE());
-            g.setCasingE(req.getCasingE());
-            g.setPolishE(req.getPolishE());
-            g.setTotal(req.getTotal());
-            g.setWorkRate(req.getWorkRate());
-            g.setWorkE(req.getWorkE());
-            g.setLostRate(req.getLostRate());
-            g.setLostE(req.getLostE());
-            g.setRentRate(req.getRentRate());
-            g.setRentE(req.getRentE());
-            g.setMakeRate(req.getMakeRate());
-            g.setMakeE(req.getMakeE());
-            g.setCTotal(req.getCTotal());
-            g.setGTotal(req.getGTotal());
+            if (req.hasCostField("sourceE")) g.setSourceE(req.getSourceE());
+            if (req.hasCostField("machiningE")) g.setMachiningE(req.getMachiningE());
+            if (req.hasCostField("incidentalE")) g.setIncidentalE(req.getIncidentalE());
+            if (req.hasCostField("lacquerE")) g.setLacquerE(req.getLacquerE());
+            if (req.hasCostField("platingE")) g.setPlatingE(req.getPlatingE());
+            if (req.hasCostField("casingE")) g.setCasingE(req.getCasingE());
+            if (req.hasCostField("polishE")) g.setPolishE(req.getPolishE());
+            if (req.hasCostField("total")) g.setTotal(req.getTotal());
+            if (req.hasCostField("workRate")) g.setWorkRate(req.getWorkRate());
+            if (req.hasCostField("workE")) g.setWorkE(req.getWorkE());
+            if (req.hasCostField("lostRate")) g.setLostRate(req.getLostRate());
+            if (req.hasCostField("lostE")) g.setLostE(req.getLostE());
+            if (req.hasCostField("rentRate")) g.setRentRate(req.getRentRate());
+            if (req.hasCostField("rentE")) g.setRentE(req.getRentE());
+            if (req.hasCostField("makeRate")) g.setMakeRate(req.getMakeRate());
+            if (req.hasCostField("makeE")) g.setMakeE(req.getMakeE());
+            if (req.hasCostField("cTotal")) g.setCTotal(req.getCTotal());
+            if (req.hasCostField("gTotal")) g.setGTotal(req.getGTotal());
         }
         GoodsCostValuePolicy.validateEntity(g);
     }

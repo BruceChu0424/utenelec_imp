@@ -1,12 +1,91 @@
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_account_picker_panel.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import '../../support/audit_screenshot_support.dart';
 
 void main() {
+  if (Platform.environment['UTEN_CAPTURE_FINANCE_PICKER'] == 'true') {
+    for (final width in [390.0, 1200.0]) {
+      testWidgets('account picker visual $width', (tester) async {
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await loadAuditScreenshotFonts(tester);
+        final capture = GlobalKey();
+        await _open(
+          tester,
+          const [
+            FinanceAccountReference(
+              id: 'cny',
+              code: 'ZH000010',
+              name: '基本户',
+              currencyName: '人民币',
+              currencyCode: 'CNY',
+              baseCurrency: true,
+              status: '使用',
+            ),
+            FinanceAccountReference(
+              id: 'usd',
+              code: 'ZH000023',
+              name: '香港公司账号',
+              currencyName: '美金',
+              currencyCode: 'USD',
+              status: '使用',
+            ),
+          ],
+          (_) {},
+          captureKey: capture,
+        );
+        await tester.tap(find.text('基本户'));
+        await tester.pumpAndSettle();
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'finance-account-picker-${width.toInt()}',
+        );
+      });
+    }
+  }
+  for (final width in [390.0, 1200.0]) {
+    testWidgets('account table shares the search inset at width $width', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      String? selected;
+      await _open(tester, const [
+        FinanceAccountReference(id: 'first', name: '第一账户', status: '使用'),
+        FinanceAccountReference(id: 'second', name: '第二账户', status: '使用'),
+      ], (value) => selected = value);
+
+      final search = tester.getRect(find.byType(UtenSearchBar));
+      final table = tester.getRect(
+        find.byType(MasterDataTableView<FinanceAccountReference>),
+      );
+      expect(table.left, search.left);
+      expect(table.right, search.right);
+      expect(table.left, greaterThan(0));
+      // 快速切换只更新当前滑窗草稿，取消不得回填任何账户。
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.text('第一账户'));
+        await tester.pump();
+        await tester.tap(find.text('第二账户'));
+        await tester.pump();
+      }
+      expect(_isSelected(tester, 'second'), isTrue);
+      expect(selected, isNull);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(selected, isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('account headers search the complete usable dictionary', (
     tester,
   ) async {
@@ -236,20 +315,28 @@ Future<void> _open(
   List<FinanceAccountReference> accounts,
   ValueChanged<String?> selected, {
   String? selectedId,
+  GlobalKey? captureKey,
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: TextButton(
-            onPressed: () async => selected(
-              await showFinanceAccountPickerPanel(
-                context: context,
-                accounts: accounts,
-                selectedId: selectedId,
+    RepaintBoundary(
+      key: captureKey,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: captureKey == null
+            ? null
+            : auditScreenshotTheme(buildLightTheme()),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async => selected(
+                await showFinanceAccountPickerPanel(
+                  context: context,
+                  accounts: accounts,
+                  selectedId: selectedId,
+                ),
               ),
+              child: const Text('打开'),
             ),
-            child: const Text('打开'),
           ),
         ),
       ),

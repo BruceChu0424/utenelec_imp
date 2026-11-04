@@ -21,6 +21,7 @@ import java.util.UUID;
 public final class AssetCategoryContracts {
 
     private AssetCategoryContracts() {}
+    public record StyleChoice(UUID id,String code,String name,String category,String status,List<StyleChoice> children) { }
 
     public record SaveRequest(
             @NotBlank @Pattern(regexp = "^(?:FIXED_ASSET|DEFERRED_EXPENSE)$") String objectType,

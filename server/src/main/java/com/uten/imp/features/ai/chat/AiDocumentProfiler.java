@@ -304,6 +304,7 @@ final class AiDocumentProfiler {
         return switch (cell.kind()) {
             case DATE -> Shape.DATE;
             case BOOLEAN -> Shape.SHORT_TEXT;
+            case ERROR -> Shape.SHORT_TEXT;
             case NUMBER -> numberShape(cell);
             case TEXT -> textShape(cell.text());
         };

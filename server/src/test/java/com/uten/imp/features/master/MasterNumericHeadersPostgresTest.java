@@ -165,7 +165,7 @@ class MasterNumericHeadersPostgresTest {
         db.update("INSERT INTO clients(id,code,name,tday,credit,credit_floor,is_deleted,is_hidden,version,code_managed) VALUES(?,'C1','客户',30,12.3456,10.1234,false,false,0,false)",customer);
         var cb=em.getCriteriaBuilder();var query=cb.createQuery(UUID.class);var root=query.from(Client.class);
         query.select(root.get("id")).where(MasterColumnSearch.predicate(cb,root.get("id"),MasterColumnSearch.Domain.CLIENT,
-                Map.of("tday",">=30","credit","12.35","creditFloor","10.12")));
+                Map.of("tday",">=30","credit","12.3456","creditFloor","10.1234")));
         assertThat(em.createQuery(query).getResultList()).containsExactly(customer);
     }
     private UUID goods(String code,UUID owner) {

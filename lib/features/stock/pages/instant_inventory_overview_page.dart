@@ -502,7 +502,7 @@ class _InstantInventoryOverviewPageState
                       ),
                     if (risk == 'UNKNOWN_WEIGHT')
                       WeightText(
-                        kg: row.weight,
+                        kg: row.weightText,
                         estimated: row.weightEstimated,
                       ),
                     TextButton.icon(

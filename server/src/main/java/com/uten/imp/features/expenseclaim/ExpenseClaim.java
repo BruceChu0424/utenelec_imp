@@ -37,11 +37,31 @@ public class ExpenseClaim extends SoftDeletableEntity {
     @Column(nullable = false)
     private String title;
 
-    @Column(name = "total_amount", nullable = false, precision = 18, scale = 2)
+    @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
 
     @Column(nullable = false)
     private String status = "DRAFT";
+
+    @Column(name = "expense_kind", nullable = false)
+    private String expenseKind = "GENERAL";
+
+    @Column(name = "approval_stage")
+    private String approvalStage = ExpenseApprovalPolicy.DEPARTMENT;
+
+    @Column(name = "approval_round", nullable = false)
+    private int approvalRound;
+
+    /** Only current-round successful participants; all historical facts stay in events. */
+    @Column(name = "approval_participants", nullable = false)
+    private String approvalParticipants = "";
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "department_approval_snapshot",columnDefinition = "jsonb")
+    private String departmentApprovalSnapshot;
+
+    @Column(name = "abandoned_at")
+    private Instant abandonedAt;
 
     private String remark;
 
@@ -80,6 +100,8 @@ public class ExpenseClaim extends SoftDeletableEntity {
 
     @Column(name = "payment_expense_style_id")
     private UUID paymentExpenseStyleId;
+    @Column(name="payment_posting_purpose",nullable=false)
+    private String paymentPostingPurpose="ORDINARY_EXPENSE";
 
     @Column(name = "finance_expense_id")
     private UUID financeExpenseId;

@@ -34,7 +34,7 @@ public record TaskClaimPolicy(int leaseMinutes, Set<String> claimPermissions, Se
     /** 已登记的策略。新增共享任务面时在此登记一行。 */
     private static final Map<String, TaskClaimPolicy> POLICIES = Map.of(
             // 池化审批人：费用报销审批——认领即"我来审"，他人见「XX 审批中」按钮禁用
-            "EXPENSE_APPROVE", new TaskClaimPolicy(30, "expense:approve", "expense:approve"),
+            "EXPENSE_APPROVE", new TaskClaimPolicy(30, com.uten.imp.application.port.ExpenseApprovalAudiencePort.APPROVAL_PERMISSIONS, com.uten.imp.application.port.ExpenseApprovalAudiencePort.APPROVAL_PERMISSIONS),
             // 跨申请选行分解订货——最高双工风险，租约缩短到 15 分。
             // 认领权限对齐申请分解动作 purchase_order:decompose；实际建单还由 create 门禁把关。
             "PURCHASE_DECOMPOSE", new TaskClaimPolicy(15, "purchase_order:decompose", "purchase_order:decompose"),
@@ -64,6 +64,7 @@ public record TaskClaimPolicy(int leaseMinutes, Set<String> claimPermissions, Se
     /** 取某类型策略；未登记抛 400（fail-closed）。 */
     public static TaskClaimPolicy of(String targetType) {
         TaskClaimPolicy p = switch (targetType) {
+            case "FINANCE_APPLICATION_REVIEW" -> new TaskClaimPolicy(30,Set.of("finance_application:review"),Set.of("expense:settings"),"finance_application:view");
             case "SALES_QUOTE_MANAGER_REVIEW" -> management("quote");
             case "SALES_ORDER_MANAGER_REVIEW" -> management("order");
             default -> POLICIES.get(targetType);

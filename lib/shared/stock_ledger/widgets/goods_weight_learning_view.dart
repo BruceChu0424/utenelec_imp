@@ -1,3 +1,6 @@
+import '../../formatters/numeric_input_evidence.dart';
+import '../../formatters/exact_decimal.dart';
+import '../../../core/formatters/exact_number_text.dart';
 import '../../paging/scoped_paged_read_view_mixin.dart';
 // 库存面板「单重学习」分段 (ADR-135 §6.3 / review/product.md §1.4)。
 //
@@ -16,7 +19,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -290,6 +292,7 @@ class _GoodsWeightLearningViewState
         goodsTitle: widget.goodsTitle,
         unitName: widget.unitName,
         currentKg: profile?.manualUnitWeightKg,
+        currentKgExact: profile?.manualUnitWeightKgText,
         currentReason: profile?.manualReason,
         learnedKg: _detail?.goodsRow?.unitWeightKg,
       ),
@@ -305,6 +308,7 @@ class _GoodsWeightLearningViewState
                 ? update.copyWith(clearManual: true)
                 : update.copyWith(
                     manualUnitWeightKg: result.kgPerUnit,
+                    manualUnitWeightKgExact: result.kgPerUnitExact,
                     manualReason: result.reason,
                   ),
           ),
@@ -732,7 +736,15 @@ class _GoodsWeightLearningViewState
         columnSearchEnabled: true,
         sortable: true,
         info: '按千克检索称重记录。',
-        value: (o) => formatWeight(o.weightKg, display: display),
+        value: (o) => formatWeight(o.weightKgText, display: display),
+        cellBuilder: (_, o) => WeightText(
+          kg: o.weightKgText,
+          display: display,
+          inputEvidence: numericInputEvidenceTooltip(
+            o.inputEvidence,
+            'WEIGHT_KG',
+          ),
+        ),
       ),
       MasterColumnDef(
         key: 'unitWeight',
@@ -741,7 +753,7 @@ class _GoodsWeightLearningViewState
         columnSearchEnabled: true,
         sortable: true,
         info: '可输入 2.312 g、>0.002 kg 或范围；不写单位时按千克/基本单位。',
-        value: (o) => formatUnitWeight(o.unitWeightKg),
+        value: (o) => formatUnitWeight(o.unitWeightKgText),
       ),
       MasterColumnDef(
         key: 'deviation',
@@ -817,7 +829,7 @@ class _GoodsWeightLearningViewState
           filterFromRows: true,
           facetSearchEnabled: true,
           value: (r) =>
-              formatUnitWeight(r.unitWeightKg, unitName: widget.unitName),
+              formatUnitWeight(r.unitWeightKgText, unitName: widget.unitName),
         ),
         MasterColumnDef(
           key: 'diff',
@@ -913,9 +925,15 @@ String? _monthDay(DateTime? value) {
 
 /// 设定单重弹窗结果 ([clear] = 取消人工单重)。
 class _ManualUnitWeight {
-  const _ManualUnitWeight({this.kgPerUnit, this.reason, this.clear = false});
+  const _ManualUnitWeight({
+    this.kgPerUnit,
+    this.kgPerUnitExact,
+    this.reason,
+    this.clear = false,
+  });
 
   final double? kgPerUnit;
+  final String? kgPerUnitExact;
   final String? reason;
   final bool clear;
 }
@@ -925,6 +943,7 @@ class _ManualUnitWeightDialog extends StatefulWidget {
     required this.goodsTitle,
     required this.unitName,
     required this.currentKg,
+    this.currentKgExact,
     required this.currentReason,
     required this.learnedKg,
   });
@@ -932,6 +951,7 @@ class _ManualUnitWeightDialog extends StatefulWidget {
   final String goodsTitle;
   final String? unitName;
   final double? currentKg;
+  final String? currentKgExact;
   final String? currentReason;
   final double? learnedKg;
 
@@ -954,7 +974,9 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
     final current = widget.currentKg;
     _unit = current != null && current >= 1 ? WeightUnit.kg : WeightUnit.g;
     _value = TextEditingController(
-      text: current == null ? '' : _plain(_unit.fromKg(current)),
+      text: current == null
+          ? ''
+          : _unit.editText(widget.currentKgExact ?? current),
     );
     _reason = TextEditingController(text: widget.currentReason ?? '');
   }
@@ -965,9 +987,6 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
     _reason.dispose();
     super.dispose();
   }
-
-  static String _plain(double v) =>
-      NumberFormat('0.########', 'en_US').format(v);
 
   void _save() {
     final value = double.tryParse(_value.text.trim());
@@ -980,8 +999,14 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
       setState(() => _error = '请写明设定原因 (至少 2 个字)');
       return;
     }
-    final kg = (_unit.toKg(value) * 1e12).roundToDouble() / 1e12;
-    Navigator.of(context).pop(_ManualUnitWeight(kgPerUnit: kg, reason: reason));
+    final kgText = _unit.toKgText(_value.text.trim())!;
+    Navigator.of(context).pop(
+      _ManualUnitWeight(
+        kgPerUnit: double.parse(kgText),
+        kgPerUnitExact: kgText,
+        reason: reason,
+      ),
+    );
   }
 
   @override
@@ -1183,10 +1208,12 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     final p = widget.profile;
     final entry = ref.read(warehouseWeightUnitsPrefsProvider).entry;
     _tare = TextEditingController(
-      text: p?.defaultTareKg == null ? '' : entry.editText(p!.defaultTareKg!),
+      text: p?.defaultTareKgText == null
+          ? ''
+          : entry.editText(p!.defaultTareKgText!),
     );
-    _tolerance = TextEditingController(text: _plain(p?.tolerancePct));
-    _pieceCv = TextEditingController(text: _plain(p?.pieceCvPct));
+    _tolerance = TextEditingController(text: _plain(p?.tolerancePctText));
+    _pieceCv = TextEditingController(text: _plain(p?.pieceCvPctText));
     _learningEnabled = p?.learningEnabled ?? true;
     _regimeMode = p?.regimeMode ?? 'AUTO';
   }
@@ -1199,8 +1226,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     super.dispose();
   }
 
-  static String _plain(double? v) =>
-      v == null ? '' : NumberFormat('0.###', 'en_US').format(v);
+  static String _plain(Object? v) => exactNumberDisplay(v) ?? '';
 
   double? _pct(TextEditingController c, String label, {required double max}) {
     final text = c.text.trim();
@@ -1216,18 +1242,24 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     final entry = ref.read(warehouseWeightUnitsPrefsProvider).entry;
     try {
       double? tareKg;
+      String? tareKgText;
       final tareText = _tare.text.trim();
       if (tareText.isNotEmpty) {
         final input = parseWithSuffix(tareText, entry);
         if (input == null) throw const FormatException('默认皮重格式不对');
-        tareKg = input.kg <= 0 ? null : (input.kg * 1e6).roundToDouble() / 1e6;
+        tareKgText = input.kgText == '0' ? null : input.kgText;
+        tareKg = double.tryParse(tareKgText ?? '');
       }
       final update = WeightProfileUpdate(
         expectedVersion: widget.profile?.version ?? 0,
         defaultTareKg: tareKg,
+        defaultTareKgExact: tareKgText,
         tolerancePct: _pct(_tolerance, '核对容差%', max: 50),
+        tolerancePctExact: financeExactDecimal(_tolerance.text),
         pieceCvPct: _pct(_pieceCv, '单件离散%', max: 50),
+        pieceCvPctExact: financeExactDecimal(_pieceCv.text),
         manualUnitWeightKg: widget.profile?.manualUnitWeightKg,
+        manualUnitWeightKgExact: widget.profile?.manualUnitWeightKgText,
         manualReason: widget.profile?.manualReason,
         learningEnabled: _learningEnabled,
         regimeMode: _regimeMode,
@@ -1254,7 +1286,14 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
               key: const ValueKey('weight-settings-tare'),
               controller: _tare,
               decoration: UtenInputDecoration(
-                InputDecoration(labelText: '默认皮重', suffixText: entry.symbol),
+                InputDecoration(
+                  labelText: '默认皮重',
+                  helperText: numericInputEvidenceTooltip(
+                    widget.profile?.inputEvidence ?? const [],
+                    'DEFAULT_TARE_KG',
+                  ),
+                  suffixText: entry.symbol,
+                ),
                 info: '称重计数时预填的箱/袋/托盘重量; 可直接写 850g、1.2kg',
               ),
             ),

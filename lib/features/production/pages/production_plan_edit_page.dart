@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
@@ -455,7 +456,9 @@ class _ProductionPlanEditPageState
 
   String _numText(double? v) => v == null
       ? ''
-      : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+      : (v == v.roundToDouble()
+            ? v.toExactString()
+            : v.toExactString(minimumFractionDigits: 2));
 
   /// 把明细行的 salesOrderNo 接入来源单号派生刷新：编辑该列即同步头表来源单号显示。
   /// 控制器 dispose 时自动移除监听，无需手动解绑。

@@ -68,6 +68,14 @@ public class StockDocItemDto {
     /** 已出库重量里含按库存均重或单重估算的部分(显示「≈」)。 */
     private boolean issuedWeightEstimated;
 
+    @JsonIgnore @Getter(lombok.AccessLevel.NONE)
+    private final InputEvidenceHolder inputEvidenceHolder = new InputEvidenceHolder();
+    private static final class InputEvidenceHolder {
+        private java.util.List<com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value> values=java.util.List.of();
+    }
+    public java.util.List<com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value> getWeightInputEvidence(){return inputEvidenceHolder.values;}
+    public void setWeightInputEvidence(java.util.List<com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value> values){inputEvidenceHolder.values=values==null?java.util.List.of():java.util.List.copyOf(values);}
+
     /** Lossless JSON companions; existing numeric fields and constructor remain compatible. */
     public String getQtyExact() { return qty == null ? null : qty.toPlainString(); }
     public String getCountQtyExact() { return countQty == null ? null : countQty.toPlainString(); }
@@ -77,4 +85,8 @@ public class StockDocItemDto {
     public String getRequestedQtyExact() { return requestedQty == null ? null : requestedQty.toPlainString(); }
     public String getReportedQtyExact() { return reportedQty == null ? null : reportedQty.toPlainString(); }
     public String getBaseQtyExact() { return baseQty == null ? null : baseQty.toPlainString(); }
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
+    public String getCountWeightExact(){return com.uten.imp.common.util.DecimalText.of(countWeight);}
+    public String getBookWeightExact(){return com.uten.imp.common.util.DecimalText.of(bookWeight);}
+    public String getIssuedWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(issuedWeightKg);}
 }

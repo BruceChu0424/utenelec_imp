@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
@@ -21,9 +22,9 @@ public class PreplanMakePublicSupplyService {
     private final EntityManager em;
     private final SecurityContextCurrentUser user;
     public record ClaimRequest(@NotNull Long version,@NotBlank String fingerprint,@NotBlank @Size(min=8,max=128) String idempotencyKey,
-            @NotNull UUID sourcePlanItemId,@NotNull UUID materialLineId,@NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty) { }
+            @NotNull UUID sourcePlanItemId,@NotNull UUID materialLineId,@NotNull @DecimalMin(value="0",inclusive=false) @DocumentQuantity BigDecimal qty) { }
     public record CancelRequest(@NotNull Long version,@NotBlank String fingerprint,@NotBlank @Size(min=8,max=128) String idempotencyKey,
-            @NotNull @DecimalMin("0.0001") @Digits(integer=14,fraction=4) BigDecimal qty,@NotBlank @Size(max=1000) String reason) { }
+            @NotNull @DecimalMin(value="0",inclusive=false) @DocumentQuantity BigDecimal qty,@NotBlank @Size(max=1000) String reason) { }
     public record Candidate(UUID sourcePlanItemId,UUID sourcePlanId,UUID sourceAnalysisId,String documentNo,
             BigDecimal availableQty,LocalDate expectedDate,boolean currentAnalysis,boolean adoptable) { }
 
@@ -128,7 +129,7 @@ public class PreplanMakePublicSupplyService {
         Map<UUID,BigDecimal> result=new HashMap<>();
         for(UUID materialId:desired.keySet().stream().sorted(Comparator.comparing(UUID::toString)).toList()) {
             BigDecimal remaining=desired.get(materialId);
-            BigDecimal quantum=baseQuanta.getOrDefault(materialId,new BigDecimal("0.0001"));
+            BigDecimal quantum=baseQuanta.getOrDefault(materialId,BigDecimal.ONE.scaleByPowerOfTen(-com.uten.imp.common.util.FinancialExactAmount.MAX_FRACTION_DIGITS));
             for(Candidate candidate:available.getOrDefault(materialId,List.of())) {
                 if(!candidate.adoptable()||remaining.signum()==0||excludedSourcePlans.contains(candidate.sourcePlanId()))continue;
                 lockSource(candidate.sourcePlanItemId());
@@ -146,9 +147,11 @@ public class PreplanMakePublicSupplyService {
     }
 
     static BigDecimal baseQuantum(BigDecimal unitRate) {
-        BigDecimal rate=unitRate.stripTrailingZeros().setScale(Math.max(0,unitRate.stripTrailingZeros().scale()));
+        if(unitRate==null||unitRate.signum()<=0)throw conflict("实际单位换算率尚未核对，不能推定公共供给采用量");
+        BigDecimal exact=com.uten.imp.common.util.FinancialExactAmount.rate(unitRate,"实际单位换算率");
+        BigDecimal rate=exact.stripTrailingZeros().setScale(Math.max(0,exact.stripTrailingZeros().scale()));
         java.math.BigInteger numerator=rate.unscaledValue(),denominator=java.math.BigInteger.TEN.pow(rate.scale());
-        return new BigDecimal(numerator.divide(numerator.gcd(denominator)),4);
+        return new BigDecimal(numerator.divide(numerator.gcd(denominator)),com.uten.imp.common.util.FinancialExactAmount.MAX_FRACTION_DIGITS);
     }
 
     UUID claimLocked(UUID analysisId,UUID materialId,UUID planItemId,BigDecimal qty,String key) {

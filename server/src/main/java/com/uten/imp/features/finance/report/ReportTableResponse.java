@@ -25,7 +25,12 @@ public record ReportTableResponse(
         List<ReportTotal> totals,
         String readScopeVersion,
         String statisticsGeneratedAt,
-        Set<String> columnSearchKeys) {
+        Set<String> columnSearchKeys,
+        Map<String,Object> documentMetadata) {
+    public ReportTableResponse(List<ReportColumn> columns,List<Map<String,Object>> rows,Map<String,List<ReportFacet>> facets,
+            int page,int size,long total,int totalPages,List<ReportTotal> totals,String readScopeVersion,String statisticsGeneratedAt,Set<String> columnSearchKeys) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,readScopeVersion,statisticsGeneratedAt,columnSearchKeys,Map.of());
+    }
     public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
             Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
             List<ReportTotal> totals,String readScopeVersion,String statisticsGeneratedAt) {
@@ -52,11 +57,15 @@ public record ReportTableResponse(
     public ReportTableResponse {
         if (columns != null) columns = columns.stream().filter(column -> !column.key().startsWith("__")).toList();
         columnSearchKeys = columnSearchKeys == null ? Set.of() : Set.copyOf(columnSearchKeys);
+        documentMetadata=documentMetadata==null?Map.of():java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(documentMetadata));
     }
 
     public ReportTableResponse withColumnSearchKeys(Set<String> keys) {
         return new ReportTableResponse(columns,rows,facets,page,size,total,totalPages,totals,
-                readScopeVersion,statisticsGeneratedAt,keys);
+                readScopeVersion,statisticsGeneratedAt,keys,documentMetadata);
+    }
+    public ReportTableResponse withDocumentMetadata(Map<String,Object> metadata) {
+        return new ReportTableResponse(columns,rows,facets,page,size,total,totalPages,totals,readScopeVersion,statisticsGeneratedAt,columnSearchKeys,metadata);
     }
 
     /**

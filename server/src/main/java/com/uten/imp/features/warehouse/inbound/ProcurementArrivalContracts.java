@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.uten.imp.common.validation.RequestLimits;
@@ -96,14 +97,14 @@ public final class ProcurementArrivalContracts {
         public record ArrivalLine(
                 @NotNull UUID goodsId,
                 @NotNull @DecimalMin(value = "0", inclusive = true)
-                @Digits(integer = 14, fraction = 4) BigDecimal qty,
+                @DocumentQuantity BigDecimal qty,
                 @NotNull UUID orderItemId,
                 UUID colorId,
                 UUID unitId,
                 BigDecimal unitRate,
                 /** 本行实称净重(千克, 4 位小数); 空或 0 = 没称; 按重量计的货品/单位由服务端换算, 这里填的丢弃。 */
                 @DecimalMin(value = "0", inclusive = true)
-                @Digits(integer = 14, fraction = 4) BigDecimal weight,
+                @Digits(integer = 40, fraction = 48) BigDecimal weight,
                 @Size(max = 64) String sourceDocNo,
                 @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent,
                 /** 先入库后质检时本行实物上架的库位(1..100 字符)；原流程忽略。 */
@@ -114,7 +115,7 @@ public final class ProcurementArrivalContracts {
                  */
                 Boolean qtyFromWeight,
                 @DecimalMin(value = "0", inclusive = true)
-                @Digits(integer = 14, fraction = 4) BigDecimal giftQty,
+                @DocumentQuantity BigDecimal giftQty,
                 @Valid GoodsProfileLearning goodsProfile) {
             public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight, BigDecimal giftQty) {
                 this(goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, giftQty, null);
@@ -209,19 +210,19 @@ public final class ProcurementArrivalContracts {
             UUID purchaserId,
             @NotNull UUID goodsId,
             @NotNull @DecimalMin(value = "0", inclusive = true)
-                @Digits(integer = 14, fraction = 4) BigDecimal qty,
+                @DocumentQuantity BigDecimal qty,
             @NotNull UUID orderItemId,
             UUID colorId,
             UUID unitId,
             BigDecimal unitRate,
             @DecimalMin(value = "0", inclusive = true)
-            @Digits(integer = 14, fraction = 4) BigDecimal weight,
+            @Digits(integer = 40, fraction = 48) BigDecimal weight,
             @Size(max = 64) String sourceDocNo,
             @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent,
             @Size(max = 100) String preStockPlace,
             Boolean qtyFromWeight,
                 @DecimalMin(value = "0", inclusive = true)
-                @Digits(integer = 14, fraction = 4) BigDecimal giftQty,
+                @DocumentQuantity BigDecimal giftQty,
             @Valid GoodsProfileLearning goodsProfile) {
             public BatchArrivalLine(String orderType, UUID warehouseId, UUID purchaserId, UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight, BigDecimal giftQty) {
                 this(orderType, warehouseId, purchaserId, goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, giftQty, null);

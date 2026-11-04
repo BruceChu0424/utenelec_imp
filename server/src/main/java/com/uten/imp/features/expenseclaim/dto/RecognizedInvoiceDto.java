@@ -21,4 +21,7 @@ public record RecognizedInvoiceDto(
         BigDecimal totalAmount,
         /** 销售方全称到提取的明细品名摘要（第一行），供报销明细「说明」预填。 */
         String itemSummary) {
+    public String getAmountExclTaxExact(){return com.uten.imp.common.util.DecimalText.of(amountExclTax);}
+    public String getTaxAmountExact(){return com.uten.imp.common.util.DecimalText.of(taxAmount);}
+    public String getTotalAmountExact(){return com.uten.imp.common.util.DecimalText.of(totalAmount);}
 }

@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 // 委外上游单据明细引入面板（编辑页"从上游引入"用）。
@@ -349,7 +350,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _docColumns(
     width: 120,
     type: 'money',
     sortable: true,
-    value: (d) => d.totalLocal?.toStringAsFixed(2),
+    value: (d) => d.totalLocal?.toExactString(minimumFractionDigits: 2),
   ),
 ];
 
@@ -363,13 +364,14 @@ _middleItemColumns() => [
     width: 90,
     numeric: true,
     cellBuilder: (context, row) =>
-        Text((row.item.price ?? 0).toStringAsFixed(2)),
+        Text((row.item.price ?? 0).toExactString(minimumFractionDigits: 2)),
   ),
   EditableGridColumn<UtenDocLinkItemRow<SubcontractDocItem>>(
     key: 'qty',
     label: '上游数量',
     width: 90,
     numeric: true,
-    cellBuilder: (context, row) => Text((row.item.qty ?? 0).toStringAsFixed(1)),
+    cellBuilder: (context, row) =>
+        Text((row.item.qty ?? 0).toExactString(minimumFractionDigits: 1)),
   ),
 ];

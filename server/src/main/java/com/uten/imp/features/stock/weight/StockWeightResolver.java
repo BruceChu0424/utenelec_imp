@@ -122,10 +122,11 @@ public final class StockWeightResolver {
 
     public static WeightResolution resolve(WeightContext ctx, StockService.MovementRequest req) {
         Weighed weighed = movementWeight(ctx, req);
-        return balance(ctx, req.qty(), req.direction() == StockService.DIR_IN, weighed.kg(), weighed.source());
+        return balance(ctx, req.qty(), req.direction() == StockService.DIR_IN, weighed.kg(), weighed.source(),weighed.sourceFact());
     }
 
-    private record Weighed(BigDecimal kg, WeightSource source) {
+    private record Weighed(BigDecimal kg, WeightSource source,boolean sourceFact) {
+        private Weighed(BigDecimal kg,WeightSource source){this(kg,source,false);}
         static final Weighed UNKNOWN = new Weighed(null, null);
     }
 
@@ -133,27 +134,35 @@ public final class StockWeightResolver {
     private static Weighed movementWeight(WeightContext ctx, StockService.MovementRequest req) {
         BigDecimal q = req.qty();
         boolean in = req.direction() == StockService.DIR_IN;
-        // 1. 精确: 货品基本单位或本行单位本身就是重量单位。
-        if (ctx.goodsMassFactor() != null) {
-            return kept(WeightMath.times(q, ctx.goodsMassFactor()), WeightSource.EXACT);
-        }
-        if (ctx.lineMassFactor() != null) {
-            return kept(WeightMath.lineUnitWeight(q, req.unitRate(), ctx.lineMassFactor()), WeightSource.EXACT);
-        }
-        // 2. 调拨入沿用对应调出的重量与来历。
-        Counterpart counterpart = ctx.counterpart();
-        if (in && req.movementType() == TYPE_TRANSFER_IN && counterpart != null && counterpart.kg() != null) {
-            return kept(counterpart.kg(), counterpart.source() == null ? WeightSource.MEASURED : counterpart.source());
-        }
-        // 3. 红冲镜像: 同一来源行上还没冲完的原流水, 按数量比例取回; 最后一次取余, 分几次冲也分毫不差。
-        Pool pool = ctx.pool();
-        if (pool != null && pool.allKnown()) {
-            BigDecimal open = in ? pool.outQty().subtract(pool.inQty()) : pool.inQty().subtract(pool.outQty());
-            BigDecimal openKg = in ? pool.outKg().subtract(pool.inKg()) : pool.inKg().subtract(pool.outKg());
-            if (open.signum() > 0 && q.compareTo(open) <= 0 && openKg.signum() >= 0) {
-                BigDecimal kg = q.compareTo(open) == 0 ? WeightMath.round4(openKg) : WeightMath.prorate(openKg, q, open);
-                return kept(kg, pool.weakest() == null ? WeightSource.MEASURED : pool.weakest());
+        // Original source facts precede current unit conversion. A later
+        // reversal/paired transfer must never recompute a frozen old kg reading.
+        Pool pool=ctx.pool();
+        if(pool!=null){
+            BigDecimal open=in?pool.outQty().subtract(pool.inQty()):pool.inQty().subtract(pool.outQty());
+            if(open.signum()>0&&q.compareTo(open)<=0){
+                if(!pool.allKnown())return new Weighed(null,null,true);
+                BigDecimal openKg=in?pool.outKg().subtract(pool.inKg()):pool.inKg().subtract(pool.outKg());
+                if(openKg.signum()<0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"原重量反向来源不守恒，请核对原流水");
+                BigDecimal kg=q.compareTo(open)==0?openKg:WeightMath.prorate(openKg,q,open);
+                return new Weighed(kg,pool.weakest()==null?WeightSource.MEASURED:pool.weakest(),true);
             }
+        }
+        Counterpart counterpart=ctx.counterpart();
+        if(in&&req.movementType()==TYPE_TRANSFER_IN&&counterpart!=null&&counterpart.kg()!=null)
+            return new Weighed(counterpart.kg(),counterpart.source()==null?WeightSource.MEASURED:counterpart.source(),true);
+        if(ctx.goodsMassFactor()!=null){
+            if(!in&&ctx.balanceQty().signum()>0&&ctx.balanceWeight()!=null&&ctx.balanceWeight().signum()>0
+                &&ctx.balanceWeight().compareTo(ctx.balanceQty().multiply(ctx.goodsMassFactor()))!=0&&q.compareTo(ctx.balanceQty())<=0){
+                return kept(q.compareTo(ctx.balanceQty())==0?ctx.balanceWeight():WeightMath.prorate(ctx.balanceWeight(),q,ctx.balanceQty()),WeightSource.SLICE);
+            }
+            BigDecimal kg=WeightMath.times(q,ctx.goodsMassFactor());
+            if(q.signum()>0&&kg.signum()==0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"质量单位换算后低于可支持的非零千克范围，请保留原数量核对单位");
+            return kept(kg,WeightSource.EXACT);
+        }
+        if(ctx.lineMassFactor()!=null){
+            BigDecimal kg=WeightMath.lineUnitWeight(q,req.unitRate(),ctx.lineMassFactor());
+            if(q.signum()>0&&kg.signum()==0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"行单位换算后低于可支持的非零千克范围，请保留原数量核对单位");
+            return kept(kg,WeightSource.EXACT);
         }
         // 4. 调用方带来的实称/切片。
         if (req.weight() != null) {
@@ -190,16 +199,39 @@ public final class StockWeightResolver {
 
     /** §2.4: 余额重量整值改写(同一条 upsert), 起算/尾差行同事务写入。 */
     private static WeightResolution balance(WeightContext ctx, BigDecimal q, boolean in,
-                                            BigDecimal w, WeightSource source) {
+                                            BigDecimal w, WeightSource source,boolean sourceFact) {
         BigDecimal qb = ctx.balanceQty();
         BigDecimal newQ = in ? qb.add(q) : qb.subtract(q);
         List<AdjustmentDraft> before = new ArrayList<>();
+        if(ctx.goodsMassFactor()!=null&&qb.signum()==0&&ctx.balanceWeight()!=null&&ctx.balanceWeight().signum()!=0)
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"数量为0但原账载重量非0，请先核对原重量差异；不能自动归零");
 
-        // 精确货品: 余额重量永远 = 数量 x 系数, 不写起算/尾差行。
-        if (ctx.goodsMassFactor() != null) {
-            BigDecimal exact = newQ.signum() > 0 ? positiveOrNull(WeightMath.times(newQ, ctx.goodsMassFactor()))
-                    : newQ.signum() == 0 ? ZERO_KG : null;
-            return new WeightResolution(w, source, before, exact, false);
+        // A proved source/reversal carries its original kg even for mass goods.
+        // The physical conversion reference remains visible in reconciliation.
+        if(ctx.goodsMassFactor()!=null&&sourceFact){
+            if(newQ.signum()<0)return new WeightResolution(w,source,before,null,false);
+            BigDecimal knownBefore=qb.signum()==0?ZERO_KG:ctx.balanceWeight();
+            BigDecimal after=knownBefore==null||w==null?null:(in?knownBefore.add(w):knownBefore.subtract(w));
+            if(newQ.signum()==0){
+                if(after!=null&&after.signum()!=0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"原重量反向与当前重量余额不守恒，请先核对实际来源");
+                after=ZERO_KG;
+            }else if(after!=null&&after.signum()<=0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"原重量来源与当前库存数量不一致，请核对实际来源");
+            return new WeightResolution(w,source,before,after,ctx.balanceEstimated());
+        }
+        // Keep a known old kg prefix, including a frozen v1 or mixed policy.
+        // Only an unknown kg prefix may be derived from its registered mass unit.
+        if(ctx.goodsMassFactor()!=null){
+            BigDecimal exact;
+            if(newQ.signum()<0)exact=null;
+            else if(qb.signum()>=0&&(qb.signum()==0||ctx.balanceWeight()!=null)){
+                BigDecimal knownBefore=qb.signum()==0?ZERO_KG:ctx.balanceWeight();
+                exact=w==null?null:(in?knownBefore.add(w):knownBefore.subtract(w));
+                if(newQ.signum()==0){
+                    if(exact!=null&&exact.signum()!=0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"本次质量出库与原重量余数不守恒，请核对来源");
+                    exact=ZERO_KG;
+                }else if(exact!=null&&exact.signum()<=0)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"原重量不足以分配本次数量，请核对来源");
+            }else exact=newQ.signum()>0?positiveOrNull(WeightMath.times(newQ,ctx.goodsMassFactor())):ZERO_KG;
+            return new WeightResolution(w,source,before,exact,false);
         }
 
         // a. 起点: 零数量就是零重量(存的不是 0 先起算归零); 负数量(老库负库存)重量未知。

@@ -2,6 +2,8 @@ package com.uten.imp.common.finance;
 
 import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
@@ -11,13 +13,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MoneyPolicyTest {
+    private AutoCloseable userChoice;
+    @BeforeEach void explicitUserInputsForTheseAllocationScenarios(){
+        // Scenario input, not a product default. Missing-choice behavior has its
+        // own tests; finite values must remain exact even with these choices.
+        var choices=new java.util.HashMap<String,BusinessPrecisionContext.Choice>();
+        for(String key:List.of("money.cumulative-share","quantity.from-base","quantity.slice"))choices.put(key,new BusinessPrecisionContext.Choice(4,"HALF_UP"));
+        choices.put("report.percentage",new BusinessPrecisionContext.Choice(2,"HALF_UP"));
+        userChoice=BusinessPrecisionContext.use(choices);
+    }
+    @AfterEach void releaseUserInputs()throws Exception{userChoice.close();assertThat(BusinessPrecisionContext.choices()).isEmpty();}
 
     @Test
-    void quantityDisplayRoundsAtTheRequestedScaleWithoutChangingTheExactQuantity() {
+    void quantityDisplayRetainsEveryDigitRegardlessOfOldRequestedDisplayScale() {
         BigDecimal exact = new BigDecimal("1.2345");
-        assertThat(MoneyPolicy.quantityDisplay(exact, 3).toPlainString()).isEqualTo("1.235");
-        assertThat(MoneyPolicy.quantityDisplay(new BigDecimal("1.2344"), 3).toPlainString()).isEqualTo("1.234");
-        assertThat(MoneyPolicy.quantityDisplay(BigDecimal.ONE, 3).toPlainString()).isEqualTo("1.000");
+        assertThat(MoneyPolicy.quantityDisplay(exact, 3).toPlainString()).isEqualTo("1.2345");
+        assertThat(MoneyPolicy.quantityDisplay(new BigDecimal("1.2344"), 3).toPlainString()).isEqualTo("1.2344");
+        assertThat(MoneyPolicy.quantityDisplay(BigDecimal.ONE, 3).toPlainString()).isEqualTo("1");
         assertThat(MoneyPolicy.quantityDisplay(null, 3)).isNull();
         assertThat(exact.toPlainString()).isEqualTo("1.2345");
     }
@@ -73,17 +85,19 @@ class MoneyPolicyTest {
     }
 
     @Test
-    void terminatingSharesStayExactAndOnlyNonTerminatingSharesRoundToTheSourcePrecision() {
+    void terminatingSharesStayExactAndNonTerminatingSharesUseTheExplicitUserPrecision() throws Exception {
         // 能整除取精确值(0.5 / 16 = 0.03125), 部分出货就是本批数量的精确乘积, 不截成 4 位。
         assertThat(MoneyPolicy.cumulativeShare(new BigDecimal("0.5"), BigDecimal.ONE, new BigDecimal("16")))
                 .isEqualByComparingTo("0.03125");
         assertThat(MoneyPolicy.cumulativeShare(new BigDecimal("1.2345"), BigDecimal.ONE, BigDecimal.TEN))
                 .isEqualByComparingTo("0.12345");
-        // 除不尽取到来源自身位数的最近值: 100 × 2/3 → 66.6667; 1.00001 × 1/3 → 0.33334(5 位)。
+        // 本次用户选择4位；来源自身小数位不能替代用户的选择。
         assertThat(MoneyPolicy.cumulativeShare(new BigDecimal("100"), new BigDecimal("2"), new BigDecimal("3")))
                 .isEqualByComparingTo("66.6667");
-        assertThat(MoneyPolicy.cumulativeShare(new BigDecimal("1.00001"), BigDecimal.ONE, new BigDecimal("3")))
-                .isEqualByComparingTo("0.33334");
+        try(var selected=BusinessPrecisionContext.use(java.util.Map.of("money.cumulative-share",new BusinessPrecisionContext.Choice(5,"HALF_UP")))){
+            assertThat(MoneyPolicy.cumulativeShare(new BigDecimal("1.00001"), BigDecimal.ONE, new BigDecimal("3")))
+                    .isEqualByComparingTo("0.33334");
+        }
         // 按来源金额自身小数位取位(123.45678 → 5 位, 这里恰好整除)。
         assertThat(MoneyPolicy.cumulativeShare(new BigDecimal("123.45678"), BigDecimal.ONE, new BigDecimal("3")))
                 .isEqualByComparingTo("41.15226");
@@ -111,35 +125,36 @@ class MoneyPolicyTest {
     }
 
     @Test
-    void fourDigitValueColumnsSliceLikeTheDatabaseGuardAndAgreeWithTheExactRuleWhenNonTerminating() {
+    void projectedSlicesUseTheSameRuleAndNeverRoundAnExactlyFiniteHalf() {
         BigDecimal total = new BigDecimal("100.0000");
         BigDecimal whole = new BigDecimal("3");
-        // 库存价值 4 位列: ROUND(来源 × 累计量 / 来源量, 4) 的差; 除不尽时与 cumulativeShare 同值。
+        // 本次明确选择4位，除不尽时与同源累计分摊一致。
         assertThat(MoneyPolicy.projectedSlice(total, whole, BigDecimal.ZERO, new BigDecimal("2")))
                 .isEqualByComparingTo(MoneyPolicy.amountSlice(total, whole, BigDecimal.ZERO, new BigDecimal("2")))
                 .isEqualByComparingTo("66.6667");
-        // 能整除但位数超过 4 位时, 4 位价值列只能取到 4 位, 两片仍守恒。
+        // 有限结果超过旧4位仍完整保留，即使本次为其它除法选了4位。
         BigDecimal first = MoneyPolicy.projectedSlice(new BigDecimal("0.0247"), new BigDecimal("2"),
                 BigDecimal.ZERO, BigDecimal.ONE);
         BigDecimal last = MoneyPolicy.projectedSlice(new BigDecimal("0.0247"), new BigDecimal("2"),
                 BigDecimal.ONE, BigDecimal.ONE);
-        assertThat(first).isEqualByComparingTo("0.0124");
+        assertThat(first).isEqualByComparingTo("0.01235");
         assertThat(first.add(last)).isEqualByComparingTo("0.0247");
     }
 
     @Test
     void quantitiesAndDiscountsBeyondTheirStoredScaleAreRejectedBeforeAnyAmountIsDerived() {
-        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("1.00005"), BigDecimal.TEN, null, BigDecimal.ONE))
+        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("1.0000000000000000000000005"), BigDecimal.TEN, null, BigDecimal.ONE))
                 .isInstanceOf(ApiException.class).hasMessageContaining("数量");
-        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("1.00005"), null, null, null))
+        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("1.0000000000000000000000005"), null, null, null))
                 .isInstanceOf(ApiException.class).hasMessageContaining("数量");
-        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("100000000000000"), null, null, null))
+        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("1E40"), null, null, null))
                 .isInstanceOf(ApiException.class).hasMessageContaining("数量");
         assertThat(MoneyPolicy.line(new BigDecimal("1.00010"), null, null, null).original()).isNull();
-        assertThatThrownBy(() -> MoneyPolicy.exactProduct(BigDecimal.ONE, BigDecimal.TEN, new BigDecimal("0.85001")))
+        assertThatThrownBy(() -> MoneyPolicy.exactProduct(BigDecimal.ONE, BigDecimal.TEN, new BigDecimal("0.8500000000000000000000001")))
                 .isInstanceOf(ApiException.class).hasMessageContaining("折扣");
         assertThat(MoneyPolicy.line(new BigDecimal("1.0001"), BigDecimal.TEN, null, BigDecimal.ONE).original())
                 .isEqualByComparingTo("10.001");
+        assertThat(MoneyPolicy.line(new BigDecimal("1.00005"),BigDecimal.TEN,null,BigDecimal.ONE).original()).isEqualByComparingTo("10.0005");
     }
 
     @Test
@@ -168,7 +183,7 @@ class MoneyPolicyTest {
 
     @Test
     void quantitiesAreSeparatedFromMoney() {
-        assertThat(MoneyPolicy.quantity(new BigDecimal("1.23455"))).isEqualByComparingTo("1.2346");
+        assertThat(MoneyPolicy.quantity(new BigDecimal("1.23455"))).isEqualByComparingTo("1.23455");
         assertThat(MoneyPolicy.quantityFromBase(BigDecimal.TEN, new BigDecimal("3"))).isEqualByComparingTo("3.3333");
         assertThat(MoneyPolicy.quantityShare(new BigDecimal("10"), new BigDecimal("4"), new BigDecimal("10")))
                 .isEqualByComparingTo("4");

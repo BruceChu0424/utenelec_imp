@@ -825,10 +825,7 @@ public class WorkshopMaterialRequisitionService {
         if (value == null || value.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, what + "必须大于 0");
         }
-        if (value.stripTrailingZeros().scale() > MoneyPolicy.QUANTITY_SCALE) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, what + "最多保留 4 位小数");
-        }
-        return MoneyPolicy.quantity(value);
+        return com.uten.imp.common.util.FinancialExactAmount.quantity(value,what);
     }
 
     private static BigDecimal positive(BigDecimal value) {

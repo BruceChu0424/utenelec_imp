@@ -106,6 +106,13 @@ class GoodsPriceAnalysisServiceTest {
         when(sources.read(any(),any(),anyInt(),any())).thenReturn(new GoodsPriceSourceReader.Data(context,List.of(),true));
         assertThatThrownBy(()->service.requireCurrentEvidence(q,token)).hasMessageContaining("依据已变化");
     }
+    @Test void nonterminatingCostQuoteUsesTheCommonExplicitNativeChoice()throws Exception {
+        var query=new Query(goods,Kind.SALES,180,null,null,null,null,null,"100",null,null,snapshotId,"0.7",null);
+        assertThatThrownBy(()->service.analysis(query)).isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("goods.quote.cost-margin-price",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))) {
+            assertThat(service.analysis(query).costSummary().suggestedPrice()).isEqualTo("233.333333333333333333333333");
+        }
+    }
     private Query sales(String qty){return new Query(goods,Kind.SALES,180,null,null,null,null,null,qty,null,null,snapshotId,"0.20",null);}
     private CheckItem item(String row,String qty,String price){return new CheckItem(row,goods,supplier,null,unit,currency,"0",qty,price,null,List.of(),"1",null);}
     @Test void positiveGiftQuantityDoesNotBecomeANormalPaidPrice(){

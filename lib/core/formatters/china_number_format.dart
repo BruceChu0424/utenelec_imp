@@ -1,8 +1,11 @@
-import 'package:intl/intl.dart';
+import 'exact_number_text.dart';
 
-/// 中国大陆企业界面统一数值格式：千分位、半角小数点。
-String formatChinaNumber(num value, {int decimalDigits = 2}) {
-  final digits = decimalDigits.clamp(0, 6);
-  final decimals = digits == 0 ? '' : '.${List.filled(digits, '0').join()}';
-  return NumberFormat('#,##0$decimals', 'zh_CN').format(value);
-}
+/// 千分位、半角小数点。[decimalDigits] is minimum zero padding, never a
+/// precision cap: every finite input digit survives display/copy/export.
+String formatChinaNumber(Object value, {int decimalDigits = 2}) =>
+    exactNumberDisplay(
+      value,
+      minimumFractionDigits: decimalDigits,
+      groupThousands: true,
+    ) ??
+    value.toString();

@@ -101,6 +101,8 @@ public class InventoryValueWorkService {
                     SELECT pg_try_advisory_xact_lock(:namespace,hashtext(CAST(:scope AS text)))
                     """,Map.of("namespace",REFRESH_CLAIM_NAMESPACE,"scope",scope),Boolean.class));
             if(!claimed)return false;
+            if(Boolean.TRUE.equals(db.queryForObject("SELECT to_regprocedure('public.fn_inventory_value_try_refresh_root(uuid)') IS NOT NULL",Map.of(),Boolean.class))
+                    &&!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_try_refresh_root(:scope)",Map.of("scope",scope),Boolean.class)))return false;
             Set<InventoryKey> observed=refreshKeys(scope);
             if(observed.isEmpty())return false;
             mutex.lockAll(observed);
@@ -125,7 +127,10 @@ public class InventoryValueWorkService {
 
     private boolean refreshPendingBusiness(UUID scope) {
         var rows=db.queryForList("""
-                SELECT source_kind,business_refresh_event_id,business_refresh_actor_id
+                SELECT source_kind,business_refresh_event_id,business_refresh_actor_id,
+                    nullif(to_jsonb(stock_value_production_cost_objects)->'business_refresh_precision_policy','null'::jsonb) business_precision_policy,
+                    to_jsonb(stock_value_production_cost_objects)->>'business_refresh_precision_version' precision_version,
+                    (to_jsonb(stock_value_production_cost_objects)->>'business_refresh_precision_root_id')::uuid precision_root
                 FROM stock_value_production_cost_objects
                 WHERE execution_segment_id=:scope AND business_refresh_pending AND state<>'APPLYING'
                 """,Map.of("scope",scope));
@@ -133,12 +138,17 @@ public class InventoryValueWorkService {
         var pending=rows.getFirst();
         UUID event=(UUID)pending.get("business_refresh_event_id"),actor=(UUID)pending.get("business_refresh_actor_id");
         if(event==null||actor==null)throw conflict("待处理成本刷新缺少原事件或操作人，不能构造替代来源");
-        if(pending.get("source_kind").toString().startsWith("SUBCONTRACT_"))subcontract.refresh(scope,event,actor);
-        else material.refresh(scope,event,actor);
+        try(var precision=InventoryValueLedger.bindBusinessRefreshPrecision(db,pending.get("business_precision_policy"),pending.get("precision_version"),
+                (UUID)pending.get("precision_root")==null?scope:(UUID)pending.get("precision_root"))){
+            if(pending.get("source_kind").toString().startsWith("SUBCONTRACT_"))subcontract.refresh(scope,event,actor);
+            else material.refresh(scope,event,actor);
+        }
         return true;
     }
 
     private boolean recalculatePendingSource(UUID scope) {
+        if(Boolean.TRUE.equals(db.queryForObject("SELECT to_regprocedure('public.fn_inventory_value_production_inputs_ready(uuid)') IS NOT NULL",Map.of(),Boolean.class))
+                &&!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_production_inputs_ready(:scope)",Map.of("scope",scope),Boolean.class)))return false;
         var rows=db.queryForList("""
                 WITH candidate AS MATERIALIZED (
                     SELECT dirty.source_event_id,object.version
@@ -165,7 +175,8 @@ public class InventoryValueWorkService {
     public boolean hasPendingWork() {
         return Boolean.TRUE.equals(db.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM stock_value_production_cost_objects WHERE business_refresh_pending)
-                    OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty WHERE observed_revision>cleared_revision)
+                    OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty dirty JOIN stock_value_production_cost_objects object USING(execution_segment_id)
+                        WHERE object.current_revision_id IS NOT NULL AND dirty.observed_revision>dirty.cleared_revision)
                     OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE status='PENDING')
                     OR EXISTS(SELECT 1 FROM stock_value_tasks WHERE status='PENDING')
                     OR EXISTS(SELECT 1 FROM stock_value_jobs WHERE status<>'APPLIED')

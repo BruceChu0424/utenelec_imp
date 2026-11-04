@@ -629,14 +629,16 @@ class UtenPageScrollbarLayoutBuilder extends StatelessWidget {
   final Widget Function(BuildContext context, double localLaneWidth) builder;
   @override
   Widget build(BuildContext context) {
+    final hidden = UtenPageScrollbarVisibilityScope.isHiddenOf(context);
     final host = _PageScrollbarScope.maybeHostOf(context);
-    if (host == null) return builder(context, 16);
+    if (host == null) return builder(context, hidden ? 0 : 16);
     return ValueListenableBuilder<int>(
       valueListenable: host._layoutRevision,
       builder: (context, _, _) => builder(
         context,
-        UtenPageScrollRoleScope.isPageOf(context) &&
-                host._layoutTokens.contains(token)
+        hidden ||
+                (UtenPageScrollRoleScope.isPageOf(context) &&
+                    host._layoutTokens.contains(token))
             ? 0
             : 16,
       ),
@@ -728,6 +730,7 @@ class _UtenPageScrollbarSourceState extends State<UtenPageScrollbarSource> {
     _layoutContextEligible =
         ModalRoute.of(context) is! PopupRoute &&
         !_insideTransientSurface &&
+        !UtenPageScrollbarVisibilityScope.isHiddenOf(context) &&
         UtenPageScrollRoleScope.isPageOf(context);
     _contextEligible =
         _contextEligible && _layoutContextEligible && (domain?.active ?? true);
@@ -815,7 +818,11 @@ class _UtenPageScrollbarSourceState extends State<UtenPageScrollbarSource> {
             builder: (context, _, _) => UtenPageScrollLaneScope(
               pageOwned: _ownsPageLane,
               child: Builder(
-                builder: (inner) => widget.builder(inner, !_ownsPageLane),
+                builder: (inner) => widget.builder(
+                  inner,
+                  !_ownsPageLane &&
+                      !UtenPageScrollbarVisibilityScope.isHiddenOf(inner),
+                ),
               ),
             ),
           ),

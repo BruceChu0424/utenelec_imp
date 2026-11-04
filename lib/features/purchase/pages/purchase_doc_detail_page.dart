@@ -2052,14 +2052,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     key: 'allowedOverReceiptPct',
                     label: '允许超收%',
                     sortable: true,
-                    exactValueOf: (it) => it.allowedOverReceiptPct?.toString(),
+                    exactValueOf: (it) => it.allowedOverReceiptPctText,
                     width: 100,
                     type: 'number',
                     info:
                         '供应商累计送货最多可到 数量×(1+允许超收%)，在这以内照常入库、立应付；超出部分才转财务审批。未设 = 不允许超收。',
                     value: (it) => it.allowedOverReceiptPct == null
                         ? '未设'
-                        : purchasePercentText(it.allowedOverReceiptPct!),
+                        : it.allowedOverReceiptPctText ?? '',
                   ),
                 MasterColumnDef(
                   key: 'giftReceivedQty',

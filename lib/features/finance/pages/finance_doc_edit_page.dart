@@ -1,4 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import '../../../core/formatters/exact_number_text.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
@@ -100,12 +102,14 @@ import '../widgets/ar_ap_picker_dialog.dart';
 import '../widgets/customer_prepayment_apply_panel.dart';
 import '../widgets/customer_prepayment_receipt_fields.dart';
 import '../widgets/finance_grid_columns.dart';
+import '../widgets/finance_style_picker.dart';
 import '../widgets/finance_entry_l10n.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../widgets/finance_receipt_totals.dart';
 import '../widgets/finance_entry_file_picker.dart';
+import '../widgets/finance_application_intake_notice.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 part 'finance_doc_batch_entry.dart';
@@ -350,6 +354,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           'balanceOriginalText': row.balanceOriginalText,
           'prepaymentAppliedOriginal': row.prepaymentAppliedOriginal,
           'styleId': row.styleId,
+          'postingPurpose': row.postingPurpose.apiValue,
           'inAccountId': row.inAccountId,
           'occurDate': row.occurDate,
           'originalAmountSnapshot': row.originalAmountSnapshot,
@@ -438,6 +443,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         row.prepaymentAppliedOriginal =
             item['prepaymentAppliedOriginal'] as String?;
         row.styleId = item['styleId'] as String?;
+        row.postingPurpose = AccountingExpensePurpose.fromApi(
+          item['postingPurpose'],
+        );
         row.inAccountId = item['inAccountId'] as String?;
         row.occurDate = item['occurDate'] as String?;
         row.originalAmountSnapshot = item['originalAmountSnapshot'] as String?;
@@ -551,6 +559,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             .loadStyleCategory(
               _cfg.type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
             );
+        if (_cfg.type == FinanceDocType.expense) {
+          await ref
+              .read(financeNameServiceProvider)
+              .loadStyleCategory(
+                AccountingExpensePurpose.manufacturingCost.apiValue,
+                force: true,
+              );
+        }
       }
       if (widget.id == null) {
         // 经办人默认当前登录人，界面上可改。
@@ -670,6 +686,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               ..balanceOriginal = it.balanceBeforeOriginal
               ..balanceOriginalText = it.balanceBeforeOriginalText
               ..styleId = it.expenseStyleId ?? it.incomeStyleId
+              ..postingPurpose = it.postingPurpose
               ..inAccountId = it.inAccountId
               ..occurDate = it.occurDate;
             row.setDepartment(it.departmentId, it.departmentName);
@@ -1292,6 +1309,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         if (r.styleId != null) {
           if (_cfg.type == FinanceDocType.expense) {
             item['expenseStyleId'] = r.styleId;
+            item['postingPurpose'] = r.postingPurpose.apiValue;
           } else {
             item['incomeStyleId'] = r.styleId;
           }
@@ -1327,7 +1345,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       return;
     }
     if (_cfg.type == FinanceDocType.payment && itemsBody.isEmpty) {
-      context.appError('暂不支持给供应商预付或退款；请先引用已入账的应付');
+      context.appError(
+        '供应商预付请从各部门申请流程建立预付申请，批准后登记实际付款；本页草稿已保留。普通应付付款请引用已入账的应付。',
+      );
       return;
     }
     final paymentAuthorityBody = _cfg.type == FinanceDocType.payment
@@ -1985,14 +2005,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                         ),
                       ),
                     if (_feeSettlementMode != _feeModeNone)
-                      _dropdown(
-                        '其它费用项目',
-                        _otherFeeStyleId,
-                        {
-                          for (final style in names.stylesFor('EXPENSE'))
-                            style.id: style.name ?? style.id,
-                        },
-                        (value) => setState(() => _otherFeeStyleId = value),
+                      FinanceStylePicker(
+                        names: names,
+                        category: 'EXPENSE',
+                        label: '其它费用项目',
+                        value: _otherFeeStyleId,
+                        onChanged: (value) =>
+                            setState(() => _otherFeeStyleId = value),
                       ),
                   ],
                 ),
@@ -2499,6 +2518,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                             controller: _scrollCtl,
                             padding: resolvedPagePadding,
                             children: [
+                              if (widget.id == null &&
+                                  (widget.docType == FinanceDocType.payment ||
+                                      widget.docType == FinanceDocType.expense))
+                                const FinanceApplicationIntakeNotice(),
                               _entryCard(
                                 key: const ValueKey('finance-entry-basics'),
                                 child: _savedFields(
@@ -2789,6 +2812,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                         _bankRecognitionButton(),
                                     ],
                                     controller: _grid,
+                                    defaultColumnOrderAnchors: {
+                                      if (_cfg.type == FinanceDocType.expense)
+                                        'postingPurpose': null,
+                                    },
                                     stickyHeaderPinned: _gridPinned,
                                     columns: financeGridColumns(
                                       _cfg.itemMode,
@@ -2944,7 +2971,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             utenAmountTotalLabel(
               financeCurrencyDisplayLabel(name: names.currency(_currencyId)),
             ),
-            total.toStringAsFixed(2),
+            total.toExactString(minimumFractionDigits: 2),
             danger: true,
           ),
         ],
@@ -2970,16 +2997,24 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             );
       final local = financeExactMultiplyTexts([original, _rate.text.trim()]);
       final actual = _accountAmount.text.trim();
-      return Tooltip(
-        message:
-            '货款原币 ${original ?? '—'}；银行实际总扣款 ${actual.isEmpty ? '未填写' : actual}；其中手续费 ${_bankFee.text.trim().isEmpty ? '0' : _bankFee.text.trim()}',
-        child: Text(
-          '货款原币 ${financeExactMoneyDisplay(original)} · ${actual.isEmpty ? '参考本币 ¥${financeExactMoneyDisplay(local)}' : '银行实扣 ${financeExactMoneyDisplay(actual)}'}',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
+      final names = ref.read(financeNameServiceProvider);
+      return UtenTotalsSummaryBar(
+        compact: true,
+        rowCount: _grid.length,
+        entries: [
+          UtenTotalEntry(
+            utenAmountTotalLabel(names.currency(_currencyId), base: '本次付款金额'),
+            financeExactMoneyDisplay(original),
+            danger: true,
           ),
-        ),
+          UtenTotalEntry(
+            actual.isEmpty
+                ? '折算金额（人民币）'
+                : '实际扣款（${names.currency(names.accountCurrencyId(_accountId))}）',
+            financeExactMoneyDisplay(actual.isEmpty ? local : actual),
+            danger: true,
+          ),
+        ],
       );
     },
   );

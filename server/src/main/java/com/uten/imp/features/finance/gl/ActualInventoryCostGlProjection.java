@@ -39,17 +39,15 @@ final class ActualInventoryCostGlProjection {
         lock(em);
         if(!enabled(em))throw new ApiException(ErrorCode.CONFLICT,"实际成本过账尚未启用，请先完成对账并启用策略");
         long blocked=pendingCount(em,period,false);
-        if(blocked>0)throw new ApiException(ErrorCode.CONFLICT,"本期间有 "+blocked+" 笔实际成本尚待核价、期间指定或历史对账（含未生成金额过账的出库明细），请回源处理");
+        if(blocked>0){
+            int reversed=ActualInventoryCostStornoProjection.postAvailable(em,period);
+            if(reversed>0)return reversed;
+            throw new ApiException(ErrorCode.CONFLICT,"本期间有 "+blocked+" 笔实际成本尚待核价、期间指定或历史对账（含未生成金额过账的出库明细），请回源处理");
+        }
         int ready=((Number)em.createNativeQuery("SELECT count(*) FROM v_inventory_cost_gl_status WHERE target_period=:p AND posting_status='READY'")
                 .setParameter("p",period).getSingleResult()).intValue();
         if(ready==0)return 0;
-        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))").setParameter("key","uten:inventory-cost:period:"+period).getSingleResult();
-        em.createNativeQuery("""
-                INSERT INTO inventory_cost_gl_periods(period,created_by)
-                VALUES(:p,NULLIF(current_setting('app.actor_id',true),'')::uuid) ON CONFLICT DO NOTHING
-                """).setParameter("p",period).executeUpdate();
-        Object status=em.createNativeQuery("SELECT status FROM inventory_cost_gl_periods WHERE period=:p FOR UPDATE").setParameter("p",period).getSingleResult();
-        if(!"OPEN".equals(status))throw new ApiException(ErrorCode.CONFLICT,"实际成本会计期间已关闭，不能回写历史凭证");
+        requireOpenPeriod(em,period);
         long missing=((Number)em.createNativeQuery("SELECT count(*) FROM (VALUES('SALES_COST'),('INVENTORY_ASSET')) role(key) WHERE system_posting_style_id(role.key) IS NULL").getSingleResult()).longValue();
         if(missing>0)throw new ApiException(ErrorCode.CONFLICT,"实际成本过账缺少销售成本或库存资产科目关系");
         em.createNativeQuery("""
@@ -85,5 +83,14 @@ final class ActualInventoryCostGlProjection {
                 """).setParameter("p",period).executeUpdate();
         if(linked!=ready)throw new ApiException(ErrorCode.CONFLICT,"实际成本来源在过账期间发生变化，请重新核对");
         return linked;
+    }
+    static void requireOpenPeriod(EntityManager em,String period){
+        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))").setParameter("key","uten:inventory-cost:period:"+period).getSingleResult();
+        em.createNativeQuery("""
+                INSERT INTO inventory_cost_gl_periods(period,created_by)
+                VALUES(:p,NULLIF(current_setting('app.actor_id',true),'')::uuid) ON CONFLICT DO NOTHING
+                """).setParameter("p",period).executeUpdate();
+        Object status=em.createNativeQuery("SELECT status FROM inventory_cost_gl_periods WHERE period=:p FOR UPDATE").setParameter("p",period).getSingleResult();
+        if(!"OPEN".equals(status))throw new ApiException(ErrorCode.CONFLICT,"实际成本会计期间已关闭，不能回写历史凭证");
     }
 }

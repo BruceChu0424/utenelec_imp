@@ -20,6 +20,7 @@ import '../../../shared/providers/master_party_lookup.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/repositories/payment_style_repository.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
 import '../../../shared/models/department_node.dart';
 import '../models/finance_doc.dart' show financeDepartmentReferenceLabel;
 
@@ -121,6 +122,7 @@ class FinanceNameService extends ChangeNotifier {
   // 可选项与历史名称分开缓存：禁用或已变成上级的类别不能再被新单据选中，
   // 但旧单据仍必须能显示当时关联类别的名称。
   final Map<String, List<FinanceStyleOption>> _stylesByCategory = {};
+  final Map<String, List<PaymentStyleNode>> _styleTreesByCategory = {};
   final Map<String, Map<String, FinanceStyleOption>> _styleNamesByCategory = {};
   final Map<String, int> _styleRequestIds = {};
   final Set<String> _requestedStyleCategories = {};
@@ -367,6 +369,28 @@ class FinanceNameService extends ChangeNotifier {
     final requestId = (_styleRequestIds[category] ?? 0) + 1;
     _styleRequestIds[category] = requestId;
     try {
+      if (category == AccountingExpensePurpose.manufacturingCost.apiValue) {
+        final data = await api.get(
+          '/finance/accounting-expense-styles',
+          query: {'postingPurpose': category},
+        );
+        if (_disposed || _styleRequestIds[category] != requestId) return;
+        final values = [
+          for (final row in data['items'] as List? ?? const [])
+            if (row is Map)
+              FinanceStyleOption(
+                id: row['id'].toString(),
+                code: row['code']?.toString(),
+                name: row['name']?.toString(),
+              ),
+        ];
+        _stylesByCategory[category] = values;
+        _styleNamesByCategory[category] = {
+          for (final value in values) value.id: value,
+        };
+        notifyListeners();
+        return;
+      }
       final tree = await _paymentStyleRepo.tree(category: category);
       final flat = <FinanceStyleOption>[];
       final names = <String, FinanceStyleOption>{};
@@ -387,6 +411,7 @@ class FinanceNameService extends ChangeNotifier {
 
       walk(tree);
       if (_styleRequestIds[category] != requestId) return;
+      _styleTreesByCategory[category] = tree;
       _stylesByCategory[category] = flat;
       _styleNamesByCategory[category] = names;
       if (!_disposed) notifyListeners();
@@ -404,8 +429,111 @@ class FinanceNameService extends ChangeNotifier {
     );
   }
 
+  /// Share the loaded category hierarchy with the existing master-data editor.
+  List<PaymentStyleNode> styleTreeFor(String category) =>
+      _styleTreesByCategory[category] ?? const [];
+
+  /// Publish the authoritative create response immediately. A tree request that
+  /// began before creation must not remove the new choice when it finishes.
+  void registerCreatedStyle(PaymentStyleDetail created) {
+    if (_disposed) return;
+    final category = created.category;
+    _requestedStyleCategories.add(category);
+    _styleRequestIds[category] = (_styleRequestIds[category] ?? 0) + 1;
+    final option = FinanceStyleOption(
+      id: created.id,
+      code: created.code,
+      name: created.name,
+    );
+    _styleNamesByCategory[category] = {
+      ...?_styleNamesByCategory[category],
+      created.id: option,
+    };
+    _stylesByCategory[category] = [
+      for (final existing in stylesFor(category))
+        if (existing.id != created.id && existing.id != created.parentId)
+          existing,
+      if (created.status == '使用' && created.childCount == 0) option,
+    ];
+    final child = PaymentStyleNode(
+      id: created.id,
+      code: created.code,
+      name: created.name,
+      category: created.category,
+      level: created.level,
+      parentId: created.parentId,
+      sortOrder: created.sortOrder,
+      path: created.path,
+      departmental: created.departmental,
+      receipt: created.receipt,
+      payment: created.payment,
+      linkedAccountLegacyId: created.linkedAccountLegacyId,
+      linkedAccountId: created.linkedAccountId,
+      initBalance: created.initBalance,
+      status: created.status,
+      legacyId: created.legacyId,
+      children: const [],
+    );
+    // The tree belongs to a completed read. Build a new path rather than mutate
+    // its nodes, which may still be retained by an open master-data editor.
+    List<PaymentStyleNode> attach(List<PaymentStyleNode> nodes) => [
+      for (final node in nodes)
+        if (node.id != created.id)
+          if (node.id == created.parentId)
+            _styleWithChildren(node, [
+              ...node.children.where((node) => node.id != created.id),
+              child,
+            ])
+          else if (node.hasChildren)
+            _styleWithChildren(node, attach(node.children))
+          else
+            node,
+    ];
+    _styleTreesByCategory[category] = [
+      ...attach(styleTreeFor(category)),
+      if (created.parentId == null) child,
+    ];
+    notifyListeners();
+  }
+
+  static PaymentStyleNode _styleWithChildren(
+    PaymentStyleNode node,
+    List<PaymentStyleNode> children,
+  ) => PaymentStyleNode(
+    id: node.id,
+    code: node.code,
+    name: node.name,
+    category: node.category,
+    level: node.level,
+    parentId: node.parentId,
+    sortOrder: node.sortOrder,
+    path: node.path,
+    departmental: node.departmental,
+    receipt: node.receipt,
+    payment: node.payment,
+    linkedAccountLegacyId: node.linkedAccountLegacyId,
+    linkedAccountId: node.linkedAccountId,
+    initBalance: node.initBalance,
+    status: node.status,
+    legacyId: node.legacyId,
+    children: children,
+  );
+
   List<FinanceStyleOption> stylesFor(String category) =>
       _stylesByCategory[category] ?? const [];
+  List<FinanceStyleOption> expenseStylesFor(AccountingExpensePurpose purpose) =>
+      stylesFor(
+        purpose == AccountingExpensePurpose.ordinaryExpense
+            ? 'EXPENSE'
+            : purpose.apiValue,
+      );
+  String expenseStyleName(String? id, AccountingExpensePurpose purpose) =>
+      styleName(
+        id,
+        purpose == AccountingExpensePurpose.ordinaryExpense
+            ? 'EXPENSE'
+            : purpose.apiValue,
+      );
   String styleName(String? id, String category) {
     if (id == null || id.isEmpty) return '—';
     final hit = _styleNamesByCategory[category]?[id];

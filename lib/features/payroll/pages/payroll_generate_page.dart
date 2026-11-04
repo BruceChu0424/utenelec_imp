@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -511,15 +512,18 @@ class _ServerBatchPreview extends StatelessWidget {
               UtenInfoRow(label: '员工人数', value: '${batch.headcount} 人'),
               UtenInfoRow(
                 label: '应发合计',
-                value: '¥ ${batch.grossIncome.toStringAsFixed(2)}',
+                value:
+                    '¥ ${batch.grossIncome.toExactString(minimumFractionDigits: 2)}',
               ),
               UtenInfoRow(
                 label: '扣除合计',
-                value: '¥ ${batch.totalDeduction.toStringAsFixed(2)}',
+                value:
+                    '¥ ${batch.totalDeduction.toExactString(minimumFractionDigits: 2)}',
               ),
               UtenInfoRow(
                 label: '实发合计',
-                value: '¥ ${batch.netIncome.toStringAsFixed(2)}',
+                value:
+                    '¥ ${batch.netIncome.toExactString(minimumFractionDigits: 2)}',
                 isImportant: true,
                 showDivider: false,
               ),
@@ -581,7 +585,7 @@ class _SlipPreviewRow extends StatelessWidget {
         label: '${slip.employeeName}(${slip.employeeCode})',
         value: null,
         valueWidget: Text(
-          '¥ ${slip.netIncome.toStringAsFixed(2)}',
+          '¥ ${slip.netIncome.toExactString(minimumFractionDigits: 2)}',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.primary,
             fontWeight: FontWeight.w600,

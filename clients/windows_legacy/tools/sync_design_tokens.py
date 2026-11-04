@@ -25,6 +25,7 @@ SOURCES = (
     "lib/core/theme/uten_typography.dart",
     "lib/shared/widgets/desktop_window_host.dart",
     "lib/features/auth/widgets/desktop_login_layout.dart",
+    "lib/core/responsive/breakpoint.dart",
 )
 PUBLIC_WINDOW_CONTROLS = "lib/components/buttons/uten_close_button.dart"
 
@@ -328,6 +329,8 @@ def build_resources(tokens: DartTokens):
             note="Table editor control height; not a table row-height contract." if target == "Cell" else None)
     add("Uten.Height.Caption", "Double", "DesktopWindowHost.controlsHeight",
         note="Native caption/control strip; separate from form control metrics.")
+    add("Uten.Breakpoint.DesktopStart", "Double", "UtenBreakpoints.desktopStart",
+        note="Entry-page rails are hidden below the shared desktop window width; scrolling stays enabled.")
     for role in SPACING_ROLES:
         tokens.declaration("UtenSpacing." + role)
     for symbol in tokens.declarations:

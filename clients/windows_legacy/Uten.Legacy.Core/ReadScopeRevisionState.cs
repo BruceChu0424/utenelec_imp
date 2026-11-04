@@ -129,7 +129,8 @@ namespace Uten.Legacy.Core
             if (path.StartsWith("/api/platform-columns/master_unit/", StringComparison.Ordinal)
                 || path.StartsWith("/platform-columns/master_unit/", StringComparison.Ordinal)) return "master_unit";
             if (SettlementPath.IsMatch(path)) return "master_settlement_method";
-            if (Regex.IsMatch(path, "^/(?:api/)?(?:expense-claims|platform-columns/expense_claim(?:_item)?)(?:/|$)", RegexOptions.CultureInvariant)) return "expense";
+            if (Regex.IsMatch(path, "^/(?:api/)?business-applications/[0-9a-fA-F-]{36}/prepayment-finance-candidates$", RegexOptions.CultureInvariant)) return "finance";
+            if (Regex.IsMatch(path, "^/(?:api/)?(?:expense-claims|business-applications|platform-columns/expense_claim(?:_item)?)(?:/|$)", RegexOptions.CultureInvariant)) return "expense";
             var report = ReportPath.Match(path);
             if (report.Success) return report.Groups[1].Value;
             var master = MasterPath.Match(path);

@@ -12,18 +12,23 @@ void main() {
       expect(positiveDocumentQuantityText('10.1256'), '10.1256');
       expect(positiveDocumentQuantityText('0.0001'), '0.0001');
       expect(positiveDocumentQuantityText('12.0000'), '12');
+      expect(positiveDocumentQuantityText('1.00005'), '1.00005');
+      expect(positiveDocumentQuantityText('1e4'), '10000');
+      expect(
+        positiveDocumentQuantityText('0.000000000000000000000001'),
+        '0.000000000000000000000001',
+      );
     },
   );
   test(
     'invalid document quantities fail without manufacturing a rounded value',
     () {
       for (final input in [
-        '1.00005',
-        '100000000000000',
+        '1.0000000000000000000000001',
+        '10000000000000000000000000000000000000000',
         '0',
         '-1',
         'NaN',
-        '1e4',
         '',
       ]) {
         expect(positiveDocumentQuantityText(input), isNull, reason: input);

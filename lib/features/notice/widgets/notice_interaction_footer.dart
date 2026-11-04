@@ -13,6 +13,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../models/notice.dart';
+import 'notice_action_busy.dart';
 
 class NoticeInteractionFooter extends StatelessWidget {
   const NoticeInteractionFooter({
@@ -86,7 +87,11 @@ class _AckRow extends StatelessWidget {
             icon: Icons.check_rounded,
             onAction: () async {
               try {
-                await onAcknowledge!();
+                await runNoticeActionWithBusy(
+                  context,
+                  title: '正在确认收到',
+                  action: () async => await onAcknowledge!(),
+                );
               } catch (error) {
                 if (context.mounted) {
                   context.appError(humanErrorMessage(error) ?? '回执发送失败，请重试');

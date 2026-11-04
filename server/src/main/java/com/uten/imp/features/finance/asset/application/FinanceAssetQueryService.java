@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -73,7 +72,7 @@ public class FinanceAssetQueryService {
                 WHERE a.is_deleted=false AND a.lifecycle_status IN ('ACTIVE','DISPOSAL_PENDING','RECOGNITION_REVERSAL_PENDING','RECOGNITION_REVERSAL_APPROVED')
                 """).getSingleResult());
         BigDecimal deferred = NativeValueConverters.toBigDecimal(em.createNativeQuery("""
-                SELECT COALESCE(SUM(a.total_amount - COALESCE(x.accumulated,0)),0)
+                SELECT COALESCE(SUM(a.total_amount - a.opening_amortized_amount - COALESCE(x.accumulated,0)),0)
                 FROM deferred_expenses a
                 LEFT JOIN LATERAL (
                     SELECT SUM(l.amount) accumulated
@@ -145,7 +144,8 @@ public class FinanceAssetQueryService {
                            ELSE COALESCE(a.submitted_by,a.created_by) END,
                        a.acquired_on,a.accepted_on,a.serial_number,a.asset_tag,a.cost_center_code,
                        NULL::date,a.source_id,a.source_line_ref,a.source_document_date,NULL::uuid,
-                       a.opening_as_of,a.opening_accumulated_amount,a.opening_remaining_months,a.opening_voucher_id
+                       a.opening_as_of,a.opening_accumulated_amount,a.opening_remaining_months,a.opening_voucher_id,
+                       (SELECT m.group_id FROM finance_asset_opening_members m WHERE m.object_type='FIXED_ASSET' AND m.object_id=a.id AND m.active)
                 FROM fixed_assets a
                 LEFT JOIN finance_asset_categories c ON c.id=a.category_id
                 LEFT JOIN departments d ON d.id=a.department_id
@@ -190,7 +190,8 @@ public class FinanceAssetQueryService {
                            ELSE COALESCE(a.submitted_by,a.created_by) END,
                        NULL::date,NULL::date,NULL::text,NULL::text,a.cost_center_code,
                        a.benefit_end_on,a.source_id,a.source_line_ref,a.source_document_date,
-                       a.responsible_employee_id,NULL::date,NULL::numeric,NULL::int,NULL::uuid
+                       a.responsible_employee_id,a.opening_as_of,a.opening_amortized_amount,a.opening_remaining_months,NULL::uuid,
+                       (SELECT m.group_id FROM finance_asset_opening_members m WHERE m.object_type='DEFERRED_EXPENSE' AND m.object_id=a.id AND m.active)
                 FROM deferred_expenses a
                 LEFT JOIN finance_asset_categories c ON c.id=a.category_id
                 LEFT JOIN departments d ON d.id=a.department_id
@@ -300,33 +301,36 @@ public class FinanceAssetQueryService {
                 number(row[25]).longValue(), actions,
                 NativeValueConverters.toLocalDate(row[27]), NativeValueConverters.toLocalDate(row[28]), NativeValueConverters.text(row[29]), NativeValueConverters.text(row[30]), NativeValueConverters.text(row[31]),
                 NativeValueConverters.toLocalDate(row[32]), NativeValueConverters.uuid(row[33]), NativeValueConverters.text(row[34]), NativeValueConverters.toLocalDate(row[35]), NativeValueConverters.uuid(row[36]),
-                !deferred&&row.length>37&&row[37]!=null?new com.uten.imp.features.finance.asset.api.AssetWorkbenchRequests.OpeningBalance(
-                    NativeValueConverters.toLocalDate(row[37]),NativeValueConverters.toBigDecimal(row[38]),number(row[39]).intValue(),NativeValueConverters.uuid(row[40])):null);
+                row.length>37&&row[37]!=null?new com.uten.imp.features.finance.asset.api.AssetWorkbenchRequests.OpeningBalance(
+                    NativeValueConverters.toLocalDate(row[37]),NativeValueConverters.toBigDecimal(row[38]),number(row[39]).intValue(),NativeValueConverters.uuid(row[40]),row.length>41?NativeValueConverters.uuid(row[41]):null):null);
     }
 
     private List<AssetWorkbenchResponses.Balance> fixedBooks(UUID assetId) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT book_type, original_value, residual_amount, accumulated_amount,
-                       net_book_value, depreciable_amount-opening_accumulated_amount, useful_months, start_period, status
+                       net_book_value, regular_monthly_amount, useful_months, start_period, status
                 FROM finance_asset_books
                 WHERE asset_id=:asset AND is_deleted=false
                 ORDER BY book_type
                 """).setParameter("asset", assetId).getResultList();
         return rows.stream().map(row -> new AssetWorkbenchResponses.Balance(
                 NativeValueConverters.text(row[0]), NativeValueConverters.toBigDecimal(row[1]), NativeValueConverters.toBigDecimal(row[2]), NativeValueConverters.toBigDecimal(row[3]), NativeValueConverters.toBigDecimal(row[4]),
-                monthly(NativeValueConverters.toBigDecimal(row[5]), number(row[6]).intValue()), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8]))).toList();
+                decimalOrNull(row[5]), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8]))).toList();
     }
 
     private List<AssetWorkbenchResponses.ScheduleLine> fixedSchedule(UUID assetId) {
         @SuppressWarnings("unchecked")
         List<Object[]> books = em.createNativeQuery("""
-                SELECT id, original_value, residual_rate, useful_months, start_period, opening_accumulated_amount, status
+                SELECT id, original_value, residual_amount, useful_months, start_period, opening_accumulated_amount, status, regular_monthly_amount
                 FROM finance_asset_books
                 WHERE asset_id=:asset AND book_type='CORPORATE' AND is_deleted=false
                 """).setParameter("asset", assetId).getResultList();
         if (books.isEmpty()) return List.of();
         Object[] book = books.getFirst();
+        BigDecimal opening=NativeValueConverters.toBigDecimal(book[5]);
+        BigDecimal depreciable=NativeValueConverters.toBigDecimal(book[1]).subtract(NativeValueConverters.toBigDecimal(book[2]));
+        if("FULLY_DEPRECIATED".equals(NativeValueConverters.text(book[6]))&&opening.compareTo(depreciable)==0)return List.of();
         Map<String, Object[]> posted = new LinkedHashMap<>();
         @SuppressWarnings("unchecked")
         List<Object[]> logs = em.createNativeQuery("""
@@ -337,8 +341,8 @@ public class FinanceAssetQueryService {
                   AND l.status='ACTIVE' AND l.is_deleted=false
                 """).setParameter("asset", assetId).setParameter("book", NativeValueConverters.uuid(book[0])).getResultList();
         for (Object[] log : logs) posted.put(NativeValueConverters.text(log[1]), log);
-        var schedule = StraightLineScheduleCalculator.calculateOpening(
-                NativeValueConverters.toBigDecimal(book[1]), NativeValueConverters.toBigDecimal(book[2]), number(book[3]).intValue(), AssetPeriod.parse(NativeValueConverters.text(book[4])),NativeValueConverters.toBigDecimal(book[5]));
+        var schedule = StraightLineScheduleCalculator.calculateFrozen(
+                NativeValueConverters.toBigDecimal(book[1]), NativeValueConverters.toBigDecimal(book[2]), number(book[3]).intValue(), AssetPeriod.parse(NativeValueConverters.text(book[4])),NativeValueConverters.toBigDecimal(book[5]),decimalOrNull(book[7]));
         List<AssetWorkbenchResponses.ScheduleLine> result = new ArrayList<>(schedule.lines().size());
         for (var line : schedule.lines()) {
             Object[] log = posted.get(line.period());
@@ -509,7 +513,7 @@ public class FinanceAssetQueryService {
 
     private static String balanceExpression(String alias, boolean deferred) {
         String closed = deferred ? "('COMPLETED','TERMINATED','REVERSED')" : "('DISPOSED','REVERSED')";
-        String amount = deferred?alias+".total_amount":alias+".original_value - "+alias+".opening_accumulated_amount";
+        String amount = deferred?alias+".total_amount - "+alias+".opening_amortized_amount":alias+".original_value - "+alias+".opening_accumulated_amount";
         String table = deferred ? "da_amortization_log" : "fa_depreciation_log";
         String owner = deferred ? "deferred_id" : "asset_id";
         return "CASE WHEN " + alias + ".lifecycle_status IN " + closed + " THEN 0 ELSE " + amount
@@ -541,7 +545,7 @@ public class FinanceAssetQueryService {
 
     private static BigDecimal monthly(BigDecimal amount, Integer months) {
         if (amount == null || months == null || months == 0) return null;
-        return amount.divide(BigDecimal.valueOf(months), 2, RoundingMode.HALF_UP);
+        return StraightLineScheduleCalculator.regularAmount(amount,months);
     }
 
     private static Object[] row(Object value) {

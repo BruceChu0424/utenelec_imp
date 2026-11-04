@@ -1,6 +1,11 @@
 package com.uten.imp.features.warehouse.materialbin.close;
 
 import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import com.uten.imp.common.finance.BusinessPrecisionRequiredException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import java.util.Map;
 import com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialAllocationCalculator.Basis;
 import com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialAllocationCalculator.Share;
 import org.junit.jupiter.api.Test;
@@ -21,6 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 理论最大的一行 (并列取成本范围 id 最小) 承担尾差, 合计恒等于实际用量, 任何一行都不为负。
  */
 class WorkshopMaterialAllocationCalculatorTest {
+    private AutoCloseable policy;
+    @BeforeEach void selectCurrentPolicy(){policy=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(24,"DOWN")));}
+    @AfterEach void restorePolicy() throws Exception {policy.close();}
+
 
     private static final UUID A = UUID.fromString("00000000-0000-4000-8000-00000000000a");
     private static final UUID B = UUID.fromString("00000000-0000-4000-8000-00000000000b");
@@ -38,9 +47,9 @@ class WorkshopMaterialAllocationCalculatorTest {
         assertFalse(a.tail());
         assertEquals(0, a.allocatedQty().compareTo(MoneyPolicy.quantityShare(new BigDecimal("10.0001"),
                 new BigDecimal("30"), new BigDecimal("100"))));
-        assertEquals(0, new BigDecimal("3.0000").compareTo(a.allocatedQty()));
+        assertEquals(0, new BigDecimal("3.00003").compareTo(a.allocatedQty()));
         assertTrue(b.tail());
-        assertEquals(0, new BigDecimal("7.0001").compareTo(b.allocatedQty()));
+        assertEquals(0, new BigDecimal("7.00007").compareTo(b.allocatedQty()));
         assertEquals(0, new BigDecimal("10.0001").compareTo(a.allocatedQty().add(b.allocatedQty())));
     }
 
@@ -51,8 +60,8 @@ class WorkshopMaterialAllocationCalculatorTest {
         assertEquals(List.of(A, B, C), shares.stream().map(Share::costScopeSegmentId).toList(), "按成本范围 id 排序");
         assertTrue(shares.get(0).tail(), "理论并列时成本范围 id 最小的一行承担尾差");
         assertEquals(1, shares.stream().filter(Share::tail).count());
-        assertEquals(0, new BigDecimal("3.3334").compareTo(shares.get(0).allocatedQty()));
-        assertEquals(0, new BigDecimal("3.3333").compareTo(shares.get(1).allocatedQty()));
+        assertEquals(0, new BigDecimal("3.333333333333333333333334").compareTo(shares.get(0).allocatedQty()));
+        assertEquals(0, new BigDecimal("3.333333333333333333333333").compareTo(shares.get(1).allocatedQty()));
         assertEquals(0, new BigDecimal("10").compareTo(total(shares)));
     }
 
@@ -100,11 +109,24 @@ class WorkshopMaterialAllocationCalculatorTest {
             assertEquals(0, consumed.compareTo(total(shares)), "合计恒等于实际用量");
             assertEquals(1, shares.stream().filter(Share::tail).count(), "恰好一行承担尾差");
             assertTrue(shares.stream().allMatch(share -> share.allocatedQty().signum() >= 0));
-            assertTrue(shares.stream().allMatch(share -> share.allocatedQty().scale() <= 4),
-                    "数量按 4 位存");
+            assertTrue(shares.stream().allMatch(share -> share.allocatedQty().scale() <= 24),
+                    "数量按明确选择且保留有限值，最多24位存");
             Share tail = shares.stream().filter(Share::tail).findFirst().orElseThrow();
             assertTrue(shares.stream().allMatch(share -> share.basisQty().compareTo(tail.basisQty()) <= 0),
                     "尾差给理论最大的那一行");
+        }
+    }
+
+    @Test void noChoiceRepeatingSplitRequiresCurrentUserDecision() throws Exception {
+        try(var ignored=BusinessPrecisionContext.use(Map.of())){
+            assertThrows(BusinessPrecisionRequiredException.class,()->WorkshopMaterialAllocationCalculator.allocate(BigDecimal.ONE,List.of(new Basis(A,BigDecimal.ONE),new Basis(B,BigDecimal.ONE),new Basis(C,BigDecimal.ONE))));
+        }
+    }
+    @Test void chosenRoundingOverBudgetFailsInsteadOfSubtractingHiddenTicks() throws Exception {
+        List<Basis> bases=new ArrayList<>();
+        for(int i=1;i<=7;i++)bases.add(new Basis(new UUID(0,i),BigDecimal.ONE));
+        try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(4,"HALF_UP")))){
+            assertTrue(Boolean.TRUE.equals(assertThrows(BusinessPrecisionRequiredException.class,()->WorkshopMaterialAllocationCalculator.allocate(new BigDecimal("0.0004"),bases)).details().get("selectionRejected")));
         }
     }
 

@@ -26,6 +26,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SupplierOpenItemOffsetService {
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativeAccounts;
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -33,6 +34,7 @@ public class SupplierOpenItemOffsetService {
     private final GlPostingService glPosting;
     private final SupplierClosedPeriodGuard closedPeriodGuard;
     private final SupplierPayableHoldGuard payableHoldGuard;
+    private final FinanceSupplierSettlementDependencies settlementDependencies;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void apply(
@@ -113,10 +115,13 @@ public class SupplierOpenItemOffsetService {
                 targets.stream().map(Target::payableId).toList(),
                 "供应商贷项抵销",
                 allowedIqcCaseId);
+        glPosting.lockAutoProjectionPeriod(effectiveDate);
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
         List<UUID> ids = java.util.stream.Stream.concat(
                         java.util.stream.Stream.of(sourceLedgerId),
                         targets.stream().map(Target::payableId))
                 .distinct().sorted().toList();
+        if(nativeAccounts!=null)nativeAccounts.lockDebtSources(ids);
         Map<UUID, OpenItem> locked = lock(ids);
         LegacyOpeningOffsetScope history=LegacyOpeningOffsetScope.load(em,ids,"AP",effectiveDate);
         OpenItem source = require(locked, sourceLedgerId);
@@ -210,6 +215,9 @@ public class SupplierOpenItemOffsetService {
                     .setParameter("actor", currentUser.requireId())
                     .executeUpdate();
 
+            settlementDependencies.offsetApplied(allocationId);
+            if(nativeAccounts!=null)nativeAccounts.supplierOffsetApplied(allocationId);
+
             sourceOriginalRemaining = sourceAfterOriginal;
             sourceLocalRemaining = sourceAfterLocal;
             locked.put(source.id(), source.withBalances(sourceAfterOriginal, sourceAfterLocal));
@@ -253,13 +261,17 @@ public class SupplierOpenItemOffsetService {
                 FROM supplier_open_item_offsets
                 WHERE offset_batch_id = :batchId AND status = 'APPLIED'
                 ORDER BY line_sequence DESC
-                FOR UPDATE
+                FOR NO KEY UPDATE
                 """).setParameter("batchId",offsetBatchId).getResultList();
         if (rows.isEmpty()) return;
         List<UUID> ledgerIds = rows.stream()
                 .flatMap(row -> java.util.stream.Stream.of((UUID) row[1], (UUID) row[2]))
                 .distinct().sorted().toList();
+        glPosting.lockAutoProjectionPeriod(BusinessTime.today());
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
+        if(nativeAccounts!=null)nativeAccounts.lockDebtSources(ledgerIds);
         Map<UUID, OpenItem> locked = lock(ledgerIds);
+        settlementDependencies.requireOffsetReversible(offsetBatchId);
         LegacyOpeningOffsetScope history=LegacyOpeningOffsetScope.load(em,ledgerIds,"AP",BusinessTime.today());
         LocalDate effectiveDate=com.uten.imp.common.util.NativeValueConverters.toLocalDate(rows.getFirst()[10]);
         if(effectiveDate==null)throw conflict("抵销批次缺少生效日期，不能撤回");
@@ -319,6 +331,7 @@ public class SupplierOpenItemOffsetService {
                     .setParameter("reason", bounded(reason, 2000, "反转原因"))
                     .setParameter("id", allocationId)
                     .executeUpdate();
+            if(nativeAccounts!=null)nativeAccounts.supplierOffsetReversed(allocationId,reason);
             locked.put(sourceId, source.withBalances(sourceAfterOriginal, sourceAfterLocal));
             locked.put(targetId, target.withBalances(targetAfterOriginal, targetAfterLocal));
         }

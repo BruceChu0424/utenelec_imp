@@ -3,6 +3,9 @@ package com.uten.imp.audit;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.DepartmentSearchSql;
+import com.uten.imp.common.util.EmployeeCandidateFilter;
+import com.uten.imp.common.util.KeywordSearch;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Component;
@@ -170,43 +173,6 @@ public class AuditActorDirectory {
     }
 
     /**
-     * 按员工姓名模糊匹配用户 ID（审计关键词搜索"操作人姓名"用）。
-     * 匹配不到返回空集，调用方退回账号/路径等字段检索。
-     */
-    public Set<UUID> findUserIdsByNameKeyword(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return Set.of();
-        }
-        String escaped = keyword.trim().toLowerCase()
-                .replace("!", "!!")
-                .replace("%", "!%")
-                .replace("_", "!_");
-        var query = entityManager.createNativeQuery("""
-                SELECT matched.id
-                FROM (
-                    SELECT u.id
-                    FROM users u
-                    JOIN employees e ON e.id = u.employee_id
-                    WHERE LOWER(e.full_name) LIKE :kw ESCAPE '!'
-                    UNION
-                    SELECT visitor.id
-                    FROM visitor_accounts visitor
-                    WHERE LOWER(visitor.name) LIKE :kw ESCAPE '!'
-                       OR LOWER(visitor.visitor_no) LIKE :kw ESCAPE '!'
-                ) matched
-                """);
-        query.setParameter("kw", "%" + escaped + "%");
-        Set<UUID> result = new LinkedHashSet<>();
-        for (Object row : query.getResultList()) {
-            UUID id = toUuid(row);
-            if (id != null) {
-                result.add(id);
-            }
-        }
-        return result;
-    }
-
-    /**
      * UUID-authoritative people directory for the audit-center first step.
      * Deleted/disabled historical users remain selectable; system jobs never
      * appear because they have no row in {@code users}.
@@ -215,26 +181,17 @@ public class AuditActorDirectory {
             String keyword,
             int page,
             int size) {
+        return findActors(keyword, page, size, null, false, null, false);
+    }
+
+    public PageResponse<AuditActorOption> findActors(String keyword, int page, int size,
+            UUID departmentId, boolean includeSubtree, String actorType, boolean unassignedOnly) {
         var pageable = Pageables.of(page, size);
-        String pattern = actorKeywordPattern(keyword);
-        String filter = pattern == null ? "" : """
-                WHERE LOWER(COALESCE(directory.name, '')) LIKE :keyword ESCAPE '!'
-                   OR LOWER(COALESCE(directory.account, '')) LIKE :keyword ESCAPE '!'
-                   OR LOWER(COALESCE(directory.employee_code, '')) LIKE :keyword ESCAPE '!'
-                   OR LOWER(COALESCE(directory.department_name, '')) LIKE :keyword ESCAPE '!'
-                   OR LOWER(COALESCE(directory.position_name, '')) LIKE :keyword ESCAPE '!'
-                """;
-        var dataQuery = entityManager.createNativeQuery("""
-                SELECT directory.actor_id,
-                       directory.actor_type,
-                       directory.account,
-                       directory.name,
-                       directory.department_name,
-                       directory.position_name,
-                       directory.department_id,
-                       directory.account_status,
-                       directory.employment_status
-                FROM (
+        boolean searched = !KeywordSearch.terms(keyword).isEmpty();
+        String path = searched ? DepartmentSearchSql.name("d.name") : "d.name";
+        // One directory expression for both count and rows. Historical/deleted
+        // staff and visitors remain visible; HR candidate eligibility does not apply here.
+        String directory = """
                     SELECT u.id AS actor_id,
                            'staff' AS actor_type,
                            u.login_account AS account,
@@ -244,11 +201,13 @@ public class AuditActorDirectory {
                            p.name AS position_name,
                            e.department_id AS department_id,
                            CASE WHEN u.is_deleted THEN 'deleted' ELSE u.status END AS account_status,
-                           e.status AS employment_status
+                           e.status AS employment_status,
+                           %s AS department_path
                     FROM users u
                     LEFT JOIN employees e ON e.id = u.employee_id
                     LEFT JOIN departments d ON d.id = e.department_id
                     LEFT JOIN positions p ON p.id = e.position_id
+                    %s
                     UNION ALL
                     SELECT visitor.id,
                            'visitor',
@@ -259,47 +218,49 @@ public class AuditActorDirectory {
                            '访客',
                            NULL::uuid,
                            visitor.status,
-                           NULL::text
+                           NULL::text,
+                           '外部访客'::text
                     FROM visitor_accounts visitor
-                ) directory
-                """ + filter + """
-                ORDER BY COALESCE(directory.name, directory.account),
-                         directory.actor_id
-                """);
-        var countQuery = entityManager.createNativeQuery("""
-                SELECT count(*)
-                FROM (
-                    SELECT u.id AS actor_id,
-                           'staff' AS actor_type,
-                           u.login_account AS account,
-                           e.full_name AS name,
-                           e.code AS employee_code,
-                           d.name AS department_name,
-                           p.name AS position_name
-                    FROM users u
-                    LEFT JOIN employees e ON e.id = u.employee_id
-                    LEFT JOIN departments d ON d.id = e.department_id
-                    LEFT JOIN positions p ON p.id = e.position_id
-                    UNION ALL
-                    SELECT visitor.id,
-                           'visitor',
-                           visitor.visitor_no,
-                           visitor.name,
-                           NULL,
-                           '外部访客',
-                           '访客'
-                    FROM visitor_accounts visitor
-                ) directory
-                """ + filter);
-        if (pattern != null) {
-            dataQuery.setParameter("keyword", pattern);
-            countQuery.setParameter("keyword", pattern);
+                """.formatted(path, DepartmentSearchSql.joins(searched, "e.department_id"));
+        var parameters = new java.util.LinkedHashMap<String,Object>();
+        StringBuilder filter = new StringBuilder(" WHERE 1=1\n");
+        if (searched) {
+            filter.append(" AND ").append(KeywordSearch.nativeCondition(keyword, "actorSearch",
+                    "directory.name", "directory.account", "directory.employee_code",
+                    "directory.department_path", "directory.position_name"));
+            KeywordSearch.bindNative(parameters, keyword, "actorSearch");
         }
+        var department = EmployeeCandidateFilter.of(departmentId, includeSubtree, List.of(),
+                "directory.actor_id", "directory.department_id");
+        filter.append(department.sql());
+        parameters.putAll(department.parameters());
+        if (actorType != null && !actorType.isBlank()) {
+            String type = actorType.strip().toLowerCase(java.util.Locale.ROOT);
+            if (!Set.of("staff", "visitor").contains(type)) {
+                throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                        "审计人员类型须为staff或visitor");
+            }
+            filter.append(" AND directory.actor_type=:actorType\n");
+            parameters.put("actorType", type);
+        }
+        if (unassignedOnly) filter.append(" AND directory.actor_type='staff' AND directory.department_id IS NULL\n");
+        String prefix = DepartmentSearchSql.prefix(searched);
+        var dataQuery = entityManager.createNativeQuery(prefix + """
+                SELECT directory.actor_id, directory.actor_type, directory.account, directory.name,
+                       directory.department_name, directory.position_name, directory.department_id,
+                       directory.account_status, directory.employment_status
+                FROM (
+                """ + directory + ") directory\n" + filter + "\nORDER BY "
+                + KeywordSearch.nativeRank(keyword, "actorSearch", "directory.name", "directory.employee_code", "directory.account")
+                + ", COALESCE(directory.name, directory.account), directory.actor_id");
+        parameters.forEach(dataQuery::setParameter);
+        KeywordSearch.nativeRankParameters(keyword, "actorSearch").forEach(dataQuery::setParameter);
         dataQuery.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(pageable.getPageNumber() + 1L, pageable.getPageSize()));
         dataQuery.setMaxResults(pageable.getPageSize());
 
+        List<?> rawRows = dataQuery.getResultList();
         List<AuditActorOption> items = new ArrayList<>();
-        for (Object raw : dataQuery.getResultList()) {
+        for (Object raw : rawRows) {
             Object[] row = (Object[]) raw;
             UUID actorId = toUuid(row[0]);
             if (actorId == null) {
@@ -342,27 +303,12 @@ public class AuditActorDirectory {
                     item.department(), item.position(), lastActivity.get(item.actorId()), item.departmentId(),
                     item.accountStatus(), item.employmentStatus()));
         }
-        long total = ((Number) countQuery.getSingleResult()).longValue();
-        int totalPages = total == 0
-                ? 0
-                : (int) ((total + pageable.getPageSize() - 1) / pageable.getPageSize());
-        return new PageResponse<>(
-                List.copyOf(items),
-                pageable.getPageNumber() + 1,
-                pageable.getPageSize(),
-                total,
-                totalPages);
-    }
-
-    private static String actorKeywordPattern(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return null;
-        }
-        String escaped = keyword.trim().toLowerCase()
-                .replace("!", "!!")
-                .replace("%", "!%")
-                .replace("_", "!_");
-        return "%" + escaped + "%";
+        var result = org.springframework.data.support.PageableExecutionUtils.getPage(rawRows, pageable, () -> {
+            var countQuery = entityManager.createNativeQuery(prefix + "SELECT count(*) FROM (" + directory + ") directory\n" + filter);
+            parameters.forEach(countQuery::setParameter);
+            return ((Number) countQuery.getSingleResult()).longValue();
+        });
+        return new PageResponse<>(List.copyOf(items), result);
     }
 
     private static String actorDisplay(String account, String name) {

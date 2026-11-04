@@ -70,4 +70,10 @@ public record StockLedgerRow(
         String operatorName,
         BigDecimal amountLocal,
         boolean costMasked) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightKgSignedExact")
+    public String getWeightKgSignedExact(){return com.uten.imp.common.util.DecimalText.of(weightKgSigned);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("balanceWeightKgAfterExact")
+    public String getBalanceWeightKgAfterExact(){return com.uten.imp.common.util.DecimalText.of(balanceWeightKgAfter);}
 }

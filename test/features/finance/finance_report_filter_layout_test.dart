@@ -9,9 +9,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_table_action_scope.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -21,8 +26,20 @@ import 'package:uten_imp/features/finance/pages/finance_reconciliation_page.dart
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_statement_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
+import 'package:uten_imp/features/report/shared/report_filter_prefs.dart';
+import 'package:uten_imp/features/purchase/config/purchase_report_config.dart';
+import 'package:uten_imp/features/purchase/pages/purchase_report_table_page.dart';
+import 'package:uten_imp/features/sales/pages/sales_report_page.dart';
+import 'package:uten_imp/features/sales/config/sales_report_config.dart';
+import 'package:uten_imp/features/subcontract/pages/subcontract_report_table_page.dart';
+import 'package:uten_imp/features/subcontract/config/subcontract_report_config.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_report_table_page.dart';
+import 'package:uten_imp/features/warehouse/config/warehouse_report_config.dart';
+import 'package:uten_imp/features/production/pages/production_report_page.dart';
+import 'package:uten_imp/features/production/config/production_report_config.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/audit_screenshot_support.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -32,13 +49,15 @@ void main() {
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
     await (FontLoader(
       'NotoSansSC',
-    )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
+    )..addFont(rootBundle.load('assets/fonts/NotoSansSCFull.ttf'))).load();
   });
   final pages = <String, Widget Function()>{
     'detail': () => const FinanceReportTablePage(cardId: 'detail'),
     'summary': () => const FinanceReportTablePage(cardId: 'summary'),
     'account-report': () => const FinanceAccountFlowPage(),
     'statement': () => const FinanceStatementPage(),
+    'purchase-report': () =>
+        const PurchaseReportTablePage(kind: PurchaseReportKind.detail),
     'ar-ap-ledger': () => const FinanceArApPage(),
     'account-ledger': () => const FinanceReconciliationPage(),
   };
@@ -60,6 +79,7 @@ void main() {
             scale: variant.scale,
             dark: variant.dark,
             capture: capture,
+            viewport: variant.size,
           );
           expect(
             tester.takeException(),
@@ -71,7 +91,9 @@ void main() {
           expect(
             tester.getSize(search).width,
             lessThanOrEqualTo(
-              variant.size.width < 600 ? variant.size.width : 180.1,
+              page.key == 'purchase-report' || variant.size.width < 600
+                  ? variant.size.width
+                  : 180.1,
             ),
           );
           expect(
@@ -83,6 +105,16 @@ void main() {
             ),
             findsOneWidget,
           );
+          for (final element
+              in find.byType(UtenDateRangeSelectionButton).evaluate()) {
+            expect(
+              find.ancestor(
+                of: find.byWidget(element.widget),
+                matching: find.byType(UtenTableActionScope),
+              ),
+              findsOneWidget,
+            );
+          }
           if (const bool.fromEnvironment('UI_CAPTURE')) {
             await _capture(
               tester,
@@ -102,8 +134,49 @@ void main() {
     );
   }
 
+  for (final report in <String, Widget Function()>{
+    'finance': () => const FinanceReportTablePage(cardId: 'summary'),
+    'purchase': () =>
+        const PurchaseReportTablePage(kind: PurchaseReportKind.detail),
+    'sales': () => const SalesReportPage(kind: SalesReportKind.detail),
+    'subcontract': () =>
+        const SubcontractReportTablePage(kind: SubcontractReportKind.detail),
+    'warehouse': () =>
+        const WarehouseReportTablePage(kind: WarehouseReportKind.detail),
+    'production': () =>
+        const ProductionReportPage(kind: ProductionReportKind.detail),
+  }.entries) {
+    testWidgets('${report.key}首次无元数据失败后可在原工具栏改日期恢复', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _FilterApi(failFirstReport: true);
+      await _pump(tester, report.value(), api: api);
+      expect(api.requests, hasLength(1));
+      final date = find.byType(UtenDateRangeSelectionButton);
+      expect(date, findsOneWidget);
+      expect(
+        find.ancestor(of: date, matching: find.byType(UtenTableActionScope)),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(date);
+      await tester.tap(
+        find.descendant(of: date, matching: find.byType(UtenButton)).first,
+      );
+      await tester.pumpAndSettle();
+      Navigator.of(
+        tester.element(find.byType(UtenDateRangePickerDialog)),
+      ).pop((start: DateTime(2026, 10), end: DateTime(2026, 10, 2)));
+      await tester.pumpAndSettle();
+      expect(api.requests, hasLength(2));
+      expect(api.requests.last.$2['dateFrom'], '2026-10-01');
+      expect(api.requests.last.$2['dateTo'], '2026-10-02');
+      expect(find.text('XD202611030001'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
-    'report preset and search update same request and preserve fixed direction',
+    'report calendar and search update same request and preserve fixed direction',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1920, 945));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -115,19 +188,32 @@ void main() {
       );
       final initial = api.requests.last;
       expect(initial.$2['direction'], 'AR');
+      final requestsBefore = api.requests.length;
       await tester.tap(find.byType(FinanceDateRangeFilter));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('上月'));
-      await tester.pumpAndSettle();
       final today = ChinaDateTime.today();
-      expect(
-        api.requests.last.$2['dateFrom'],
-        ChinaDateTime.formatDate(DateTime.utc(today.year, today.month - 1)),
+      final start = DateTime.utc(today.year, today.month - 1);
+      final end = DateTime.utc(today.year, today.month, 0);
+      await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<int>(start.year)));
+      await tester.pumpAndSettle();
+      final month = find.byKey(ValueKey('uten-calendar-month-${start.month}'));
+      await tester.ensureVisible(month);
+      await tester.tap(month.hitTestable());
+      await tester.pumpAndSettle();
+      final calendar = find.byType(UtenDateRangePickerDialog);
+      await tester.tap(find.descendant(of: calendar, matching: find.text('1')));
+      await tester.tap(
+        find.descendant(of: calendar, matching: find.text('${end.day}')),
       );
-      expect(
-        api.requests.last.$2['dateTo'],
-        ChinaDateTime.formatDate(DateTime.utc(today.year, today.month, 0)),
+      expect(api.requests.length, requestsBefore);
+      await tester.tap(
+        find.descendant(of: calendar, matching: find.text('确定')),
       );
+      await tester.pumpAndSettle();
+      expect(api.requests.last.$2['dateFrom'], ChinaDateTime.formatDate(start));
+      expect(api.requests.last.$2['dateTo'], ChinaDateTime.formatDate(end));
       expect(api.requests.last.$2['direction'], 'AR');
       expect(api.requests.last.$2['page'], 1);
       await tester.enterText(
@@ -140,10 +226,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
       expect(api.requests.last.$2['keyword'], '客户 01');
-      expect(
-        api.requests.last.$2['dateFrom'],
-        ChinaDateTime.formatDate(DateTime.utc(today.year, today.month - 1)),
-      );
+      expect(api.requests.last.$2['dateFrom'], ChinaDateTime.formatDate(start));
       expect(tester.takeException(), isNull);
     },
   );
@@ -156,7 +239,12 @@ Future<void> _pump(
   bool dark = false,
   _FilterApi? api,
   GlobalKey? capture,
+  Size viewport = const Size(1920, 945),
 }) async {
+  await tester.binding.setSurfaceSize(viewport);
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = viewport;
+  addTearDown(tester.view.reset);
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
@@ -164,14 +252,29 @@ Future<void> _pump(
       overrides: [
         apiClientProvider.overrideWithValue(api ?? _FilterApi()),
         sharedPreferencesProvider.overrideWithValue(preferences),
-        currentPermissionsProvider.overrideWithValue(const {}),
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.financeReportView,
+          Perm.financeReportExport,
+          Perm.financeViewAll,
+          Perm.purchaseReportExport,
+        }),
+        if (page is FinanceStatementPage)
+          financeStatementReportPrefsProvider.overrideWith(_StatementPrefs.new),
         isSuperAdminProvider.overrideWithValue(false),
       ],
       child: RepaintBoundary(
         key: capture,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: dark ? buildDarkTheme() : buildLightTheme(),
+          theme: const bool.fromEnvironment('UI_CAPTURE')
+              ? auditScreenshotTheme(
+                  (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+                    platform: TargetPlatform.windows,
+                  ),
+                )
+              : dark
+              ? buildDarkTheme()
+              : buildLightTheme(),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('zh'),
@@ -205,7 +308,8 @@ Future<void> _capture(WidgetTester tester, GlobalKey key, String name) async {
 }
 
 class _FilterApi extends ApiClient {
-  _FilterApi() : super(Dio());
+  _FilterApi({this.failFirstReport = false}) : super(Dio());
+  final bool failFirstReport;
   final requests = <(String, Map<String, dynamic>)>[];
 
   @override
@@ -213,19 +317,25 @@ class _FilterApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.startsWith('/finance/reports/')) {
+    if (path.contains('/reports/')) {
       requests.add((path, Map.of(query ?? {})));
+      if (failFirstReport && requests.length == 1) {
+        throw NetworkTimeoutException();
+      }
     }
     return {
       'columns': [
         {'key': 'billNo', 'label': '单据号', 'type': 'text'},
         {'key': 'amount', 'label': '金额', 'type': 'money'},
       ],
-      'rows': <Object>[],
+      'rows': [
+        {'billNo': 'XD202611030001', 'amount': '12345.67'},
+        {'billNo': 'SK202611030002', 'amount': '2345.67'},
+      ],
       'items': <Object>[],
       'facets': <String, dynamic>{},
       'page': 1,
-      'total': 0,
+      'total': 2,
       'totalPages': 1,
     };
   }
@@ -234,9 +344,28 @@ class _FilterApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const [];
+  }) async => path.endsWith('/lookup')
+      ? [
+          {
+            'id': '00000000-0000-0000-0000-000000000123',
+            'name': '安信照明有限公司',
+            'code': 'KH000123',
+          },
+        ]
+      : const [];
 
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async =>
       const {};
+}
+
+class _StatementPrefs extends FinanceStatementReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs(
+    docType: 'AR',
+    extra: {'partyId': '00000000-0000-0000-0000-000000000123'},
+  );
+
+  @override
+  void update(ReportFilterPrefs value) => state = value;
 }

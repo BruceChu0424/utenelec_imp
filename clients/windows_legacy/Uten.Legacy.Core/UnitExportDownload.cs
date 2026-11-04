@@ -105,7 +105,7 @@ namespace Uten.Legacy.Core
                                     {
                                         if (status >= 200 && status < 300) throw new ApiException("EXPORT_DOWNLOAD_INCOMPLETE", "导出没有返回完整文件。", status);
                                         var failure = ErrorFrom(await ReadDownloadErrorAsync(response, token).ConfigureAwait(false), false);
-                                        if (failure.Code != "VALIDATION_FAILED" && IsDefinitiveRejection(failure)) RejectCurrent(scope, credentials);
+                                        if (failure.Code != "VALIDATION_FAILED" && IsDefinitiveRejection(failure)) RejectCurrent(scope, credentials, failure);
                                         throw failure;
                                     }
                                     string media = response.Content?.Headers.ContentType?.MediaType;

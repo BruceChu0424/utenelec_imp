@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../paging/scoped_paged_read_view_mixin.dart';
 // 库存面板「库存余额」分段: 该货品各仓库 (x 颜色) 的余额。
 //
@@ -380,12 +381,12 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         info: '按千克检索库存重量；未知重量不会按 0 处理。',
         sortable: true,
         value: (row) => formatWeightValue(
-          row.weight,
+          row.weightText,
           display: display,
           estimated: row.weightEstimated,
         ),
         cellBuilder: (_, row) => WeightText(
-          kg: row.weight,
+          kg: row.weightText,
           estimated: row.weightEstimated,
           display: display,
         ),
@@ -456,6 +457,6 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
 }
 
 String? _formatQty(num? value) => value
-    ?.toStringAsFixed(4)
+    ?.toExactString(minimumFractionDigits: 4)
     .replaceFirst(RegExp(r'0+$'), '')
     .replaceFirst(RegExp(r'\.$'), '');

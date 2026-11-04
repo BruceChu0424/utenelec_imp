@@ -16,13 +16,31 @@ final class ProcurementReturnCostGlProjection {
             WHERE legacy_id IS NULL AND status=1 AND NOT is_deleted AND to_char(bill_date,'YYYY-MM')=:p
             UNION ALL SELECT id,bill_date,bill_no,total_local,'SUBCONTRACT_RETURN'::text FROM subcontract_returns
             WHERE legacy_id IS NULL AND status=1 AND NOT is_deleted AND to_char(bill_date,'YYYY-MM')=:p
+            UNION ALL SELECT credit.id,credit.effective_date,'IQCC-'||credit.id::text,credit.amount_local,
+                   rejection.receipt_type||'_IQC_CREDIT' FROM procurement_iqc_credit_documents credit
+            JOIN procurement_iqc_rejection_cases rejection ON rejection.id=credit.case_id
+            WHERE to_char(credit.effective_date,'YYYY-MM')=:p AND EXISTS(SELECT 1 FROM procurement_iqc_credit_slices slice
+               WHERE slice.credit_document_id=credit.id AND fn_procurement_consideration_active('CREDIT',slice.id))
         ), items AS (
             SELECT item.id,item.return_id document_id,'PURCHASE_RETURN'::text family,
                    CASE WHEN item.quantity_semantics='CHARGED_PLUS_GIFT_V1'
-                        THEN item.charged_base_qty+item.gift_base_qty ELSE ROUND(item.qty*item.unit_rate,4) END base_qty
-            FROM purchase_return_items item WHERE NOT item.is_deleted
-            UNION ALL SELECT item.id,item.return_id,'SUBCONTRACT_RETURN',ROUND(item.qty*item.unit_rate,4)
-            FROM subcontract_return_items item WHERE NOT item.is_deleted
+                        THEN item.charged_base_qty+item.gift_base_qty ELSE physical.qty END base_qty
+            FROM purchase_return_items item
+            LEFT JOIN LATERAL (
+                SELECT SUM(-movement.direction*movement.qty) qty FROM stock_movements movement
+                WHERE movement.source_doc_type='PURCHASE_RETURN' AND movement.source_doc_id=item.return_id
+                  AND movement.source_item_id=item.id AND movement.movement_type=2
+            ) physical ON TRUE WHERE NOT item.is_deleted
+            UNION ALL SELECT item.id,item.return_id,'SUBCONTRACT_RETURN',physical.qty
+            FROM subcontract_return_items item
+            LEFT JOIN LATERAL (
+                SELECT SUM(-movement.direction*movement.qty) qty FROM stock_movements movement
+                WHERE movement.source_doc_type='SUBCONTRACT_RETURN' AND movement.source_doc_id=item.return_id
+                  AND movement.source_item_id=item.id AND movement.movement_type=18
+            ) physical ON TRUE WHERE NOT item.is_deleted
+            UNION ALL SELECT slice.id,slice.credit_document_id,rejection.receipt_type||'_IQC_CREDIT',slice.base_qty
+            FROM procurement_iqc_credit_slices slice JOIN procurement_iqc_rejection_cases rejection ON rejection.id=slice.case_id
+            WHERE fn_procurement_consideration_active('CREDIT',slice.id)
         ), facts AS (
             SELECT document.*,
                    COALESCE(ap.amount,0) commercial_credit,
@@ -32,7 +50,7 @@ final class ProcurementReturnCostGlProjection {
             FROM documents document
             LEFT JOIN LATERAL (
                 SELECT SUM(-ledger.amount_original_local) amount,COUNT(*) rows
-                FROM ar_ap_ledger ledger WHERE ledger.source_doc_type=document.family
+                FROM v_finance_procurement_receipt_payable_basis ledger WHERE ledger.source_doc_type=document.family
                   AND ledger.source_doc_id=document.id AND ledger.direction='AP'
                   AND ledger.status=1 AND NOT ledger.is_deleted
             ) ap ON TRUE
@@ -43,18 +61,25 @@ final class ProcurementReturnCostGlProjection {
                 FROM items item
                 LEFT JOIN LATERAL (
                     SELECT COALESCE(SUM(value.amount),0) value,
-                           SUM(created.qty_base) quantity,
+                           SUM(created.qty_base-COALESCE(reversed.qty,0)) quantity,
                            COUNT(*)>0 AND BOOL_AND(node.pending_parents=0 AND node.source_final
                                AND NOT EXISTS(SELECT 1 FROM stock_value_tasks task
                                    JOIN stock_value_edges edge ON edge.id=task.edge_id
                                    WHERE edge.child_node_id=node.id AND task.status='PENDING')) complete
                     FROM stock_value_nodes node JOIN stock_value_events created ON created.id=node.creation_event_id
                     LEFT JOIN LATERAL (
+                        SELECT SUM(restored.qty_base) qty FROM stock_value_events restored
+                        WHERE restored.operation='RETURN_ISSUE' AND restored.source_node_id=node.id
+                          AND restored.source_doc_type=document.family AND restored.source_doc_id=document.id
+                          AND restored.source_item_id=item.id
+                    ) reversed ON TRUE
+                    LEFT JOIN LATERAL (
                         SELECT SUM(posting.amount_delta_local) amount FROM stock_value_postings posting
                         WHERE posting.owner_kind='EXTERNAL' AND posting.owner_id=item.id AND posting.node_id=node.id
                     ) value ON TRUE
                     WHERE node.owner_kind='EXTERNAL' AND node.owner_id=item.id
-                      AND created.operation='ISSUE' AND created.source_doc_type=document.family
+                      AND((item.family IN('PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT') AND created.operation='POSITION_MOVE' AND created.source_doc_type='PROCUREMENT_CREDIT')
+                        OR(item.family IN('PURCHASE_RETURN','SUBCONTRACT_RETURN') AND created.operation='ISSUE' AND created.source_doc_type=document.family))
                       AND created.source_doc_id=document.id AND created.source_item_id=item.id
                 ) actual ON TRUE
                 WHERE item.document_id=document.id AND item.family=document.family
@@ -81,7 +106,9 @@ final class ProcurementReturnCostGlProjection {
                   AND NOT EXISTS(SELECT 1 FROM purchase_returns document WHERE document.id=voucher.source_doc_id
                         AND document.legacy_id IS NULL AND to_char(document.bill_date,'YYYY-MM')=voucher.period
                       UNION ALL SELECT 1 FROM subcontract_returns document WHERE document.id=voucher.source_doc_id
-                        AND document.legacy_id IS NULL AND to_char(document.bill_date,'YYYY-MM')=voucher.period)
+                        AND document.legacy_id IS NULL AND to_char(document.bill_date,'YYYY-MM')=voucher.period
+                      UNION ALL SELECT 1 FROM procurement_iqc_credit_documents document WHERE document.id=voucher.source_doc_id
+                        AND to_char(document.effective_date,'YYYY-MM')=voucher.period)
                 """).setParameter("p",period).getSingleResult()).longValue();
         if(orphaned>0)throw new ApiException(ErrorCode.CONFLICT,"退货价差凭证缺少可证明的原单身份，禁止重生成删除");
     }

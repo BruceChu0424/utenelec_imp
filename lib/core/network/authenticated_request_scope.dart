@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../security/secure_storage.dart';
 import 'api_exception.dart';
+import 'business_precision.dart';
 
 /// Credential-free identity. Refresh generations and token bytes are not identity.
 class AuthenticatedRequestIdentity {
@@ -53,6 +54,10 @@ class AuthenticatedRequestScope {
   final SecureStorage? _storage;
   final bool Function() _isCurrent;
   bool _invalidated = false;
+  late final BusinessPrecisionTransport _precision = BusinessPrecisionTransport(
+    readOnly: true,
+    isCurrent: () => isCurrent,
+  );
   static final Object _zoneKey = Object();
   static const _requestKey = '_utenAuthenticatedRequestScope';
 
@@ -157,7 +162,12 @@ class AuthenticatedRequestScope {
 
   Future<T> run<T>(Future<T> Function() action) async {
     await verify();
-    return runZoned(action, zoneValues: {_zoneKey: this});
+    return runZoned(
+      () => BusinessPrecisionTransport.current == null
+          ? _precision.run(action)
+          : action(),
+      zoneValues: {_zoneKey: this},
+    );
   }
 
   static ApiException changed() => ApiException(

@@ -30,7 +30,7 @@ import java.util.UUID;
  *       {@link #subcontractStatement}。按 委外商+货品+颜色+原数量单位 保留完整物理组：期初=累计发料−累计损耗−累计进仓；
  *       本月入库=委外发料（材料单号/日期/数量合计）；允许损耗=入库×损耗率(默认 3%，可传 5%)；
  *       本月出货=委外进仓（入库单号/日期/数量合计）；结存=期初+入库−损耗−出货；
- *       加工金额按进仓原币别分别出表，用本币别计价数量及同币别单位截至期末的最近已知价；合法零价保留。
+ *       加工金额按进仓原币别分别出表，逐行汇总原始成交金额；混合成交单价不伪装成一个最近价，合法零价保留。
  *       各币别行的整组库存是重复上下文，不累计。发料没有权威材料价币种，材料价/金额保持未知。</li>
  *   <li><b>供应商对账单</b>（附件 2）：{@link #supplierStatement}。采购收货行 + 采购退货行(负数)，
  *       列：送货日期/物料编码/物料名称/单位/数量/含税单价/含税金额/备注(单号)。</li>
@@ -52,6 +52,101 @@ public class FinanceStatementService {
 
     private final EntityManager em;
     private final com.uten.imp.features.finance.FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private FinanceStatementDocumentService documentProfiles;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private FinanceSubcontractLossPolicyService lossPolicies;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private FinanceSubcontractQuantityEvidenceService quantityEvidence;
+
+    @Transactional(readOnly=true)
+    public ReportTableResponse subcontractStatement(String keyword,LocalDate from,LocalDate to,BigDecimal lossRate,
+            UUID partyId,UUID currencyId,int page,int size,FinanceReportColumnOptions options) {
+        requireTemplateContext(false,partyId,currencyId,from,to,options);
+        BigDecimal rate=verifiedLossRate(lossRate);
+        var rules=lossPolicies==null?List.<Map<String,Object>>of():lossPolicies.rulesFor(partyId,from,to);
+        String ruleJson=lossPolicies==null?"[]":lossPolicies.rulesJson(rules);
+        var quantity=quantityEvidence==null?null:quantityEvidence.relevant(new com.uten.imp.application.port.FinanceSubcontractQuantityEvidenceReadPort.Scope(partyId,from,to));
+        String quantityJson=quantity==null?"[]":quantityEvidence.statementJson(quantity);
+        var columns=new ArrayList<>(FinanceStatementTemplate.columns("subcontract"));
+        columns.addAll(List.of(ReportColumn.text("__unitId",""),ReportColumn.text("__currencyId",""),
+                ReportColumn.text("__currencyCode",""),ReportColumn.text("__receiptItemId",""),ReportColumn.text("__issueItemId",""),
+                ReportColumn.text("__partyName",""),ReportColumn.text("__partyCode",""),ReportColumn.bool("__pending",""),
+                ReportColumn.number("__lossRatePercent",""),ReportColumn.text("__lossPolicyId",""),
+                ReportColumn.text("__basis",""),ReportColumn.text("__goodsId",""),ReportColumn.text("__colorId",""),new ReportColumn("__lineOrdinal","","int",1),
+                ReportColumn.money("__processAmountForTotal",""),ReportColumn.money("__materialAmountForTotal",""),
+                ReportColumn.text("__notApplicable",""),ReportColumn.number("__billingQty",""),ReportColumn.text("__billingUnitId",""),ReportColumn.text("__quantityRole",""),ReportColumn.number("__confirmedEndingQty",""),ReportColumn.number("__tailDifferenceQty","")));
+        var filters=new LinkedHashMap<>(options.filters());
+        String requested=filters.remove("currencyCode");
+        if(requested!=null&&!requested.equals(currencyId.toString()))throw invalid("币别筛选与对账单币别不一致");
+        boolean searching=!KeywordSearch.terms(keyword).isEmpty();
+        String source=FinanceSubcontractTemplateSql.sql();
+        if(searching)source="SELECT source.* FROM ("+source+") source WHERE "+TaskKeywordSearch.conditionParameter("kw",
+                "source.\"__partyName\"","source.\"__partyCode\"","source.\"goodsCode\"","source.\"goodsName\"","source.\"color\"","source.\"issueBillNo\"","source.\"receiptBillNo\"");
+        var result=FinanceProjectedReportTable.query(em,columns,source,q->{
+                    q.setParameter("from",from);q.setParameter("to",to);q.setParameter("partyId",partyId);
+                    q.setParameter("currencyId",currencyId);q.setParameter("lossRate",rate);
+                    q.setParameter("lossRules",ruleJson);q.setParameter("quantityEvidence",quantityJson);
+                    if(searching)q.setParameter("kw",KeywordSearch.phrase(keyword));},
+                "report.\"goodsCode\",report.\"__goodsId\",report.\"__colorId\" NULLS FIRST,report.\"__unitId\" NULLS FIRST,report.\"__quantityRole\",report.\"__lineOrdinal\"",
+                filters,java.util.Set.of(),page,size,null,null,false,List.of(
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec("__processAmountForTotal","金额（元）合计","money","__currencyCode","__currencyId",true),
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec("__materialAmountForTotal","减扣材料款金额合计","money","__currencyCode","__currencyId",true)));
+        var totals=result.totals().stream().map(total->new com.uten.imp.common.report.ReportTotal(total.key().equals("__processAmountForTotal")?"processAmount":"materialAmount",total.label(),total.type(),total.groupKey(),total.groups(),total.unitLabel())).toList();
+        result=new ReportTableResponse(result.columns(),result.rows(),result.facets(),result.page(),result.size(),result.total(),result.totalPages(),totals,result.readScopeVersion(),result.statisticsGeneratedAt(),result.columnSearchKeys(),result.documentMetadata());
+        result=document("subcontractStatement","SUPPLIER",partyId,currencyId,from,to,result);
+        var ruleMetadata=new LinkedHashMap<>(result.documentMetadata());ruleMetadata.put("subcontractLossPolicies",rules);
+        ruleMetadata.put("subcontractLossFallbackRatePercent",rate.multiply(new BigDecimal("100")).toPlainString());
+        ruleMetadata.put("subcontractLossBasis","逐原发料日期采用该供应商、实际商品/颜色/单位已审核的有效损耗率；无专用规则采用"+(lossRate==null?"原稿3%":("本次明确核对比例"+rate.multiply(new BigDecimal("100")).toPlainString()+"%"))+"，不随加工币别改变");
+        if(quantity!=null){ruleMetadata.put("subcontractQuantityEvidence",quantity.evidence());ruleMetadata.put("subcontractQuantityFingerprint",quantity.fingerprint());}
+        ruleMetadata.put("subcontractQuantityBasis","原表材料数量可采用已审双方结算当量或实际凭据；原成品计价数量/单位、原单价和原额独立保留，只计一次，不按材料当量回乘。尾料实盘作差异核对，不回写原BOM估算、仓库或成本。库存不适用与未知/真实0区分。");
+        return result.withDocumentMetadata(ruleMetadata);
+    }
+
+    @Transactional(readOnly=true)
+    public ReportTableResponse supplierStatement(String keyword,LocalDate from,LocalDate to,UUID partyId,UUID currencyId,
+            int page,int size,FinanceReportColumnOptions options) {
+        requireTemplateContext(false,partyId,currencyId,from,to,options);
+        return document("supplierStatement","SUPPLIER",partyId,currencyId,from,to,FinanceStatementTemplate.present("supplier",supplierStatementRead(keyword,from,to,partyId,currencyId,page,size,
+                FinanceStatementTemplate.currency(options,currencyId))));
+    }
+
+    @Transactional(readOnly=true)
+    public ReportTableResponse clientStatement(String keyword,LocalDate from,LocalDate to,UUID partyId,UUID currencyId,
+            int page,int size,FinanceReportColumnOptions options) {
+        requireTemplateContext(true,partyId,currencyId,from,to,options);
+        return document("clientStatement","CUSTOMER",partyId,currencyId,from,to,FinanceStatementTemplate.present("client",clientStatementRead(keyword,from,to,partyId,currencyId,page,size,
+                FinanceStatementTemplate.currency(options,currencyId))));
+    }
+
+    private ReportTableResponse document(String template,String role,UUID party,UUID currency,LocalDate from,LocalDate to,ReportTableResponse source){
+        if(documentProfiles==null)return source;
+        var meta=new LinkedHashMap<>(documentProfiles.metadata(new FinanceStatementDocumentContracts.Context(template,role,party,currency,from,to),FinanceStatementTemplate.periodAmount(template,source.totals(),source.total())));
+        meta.put("paperTotals",FinanceStatementTemplate.paperTotals(source.totals()));
+        meta.putAll(com.uten.imp.features.finance.report.FinanceStatementPaperLayout.metadata(template,meta));
+        return source.withDocumentMetadata(meta);
+    }
+
+    private void requireTemplateContext(boolean client,UUID partyId,UUID currencyId,LocalDate from,LocalDate to,FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+        FinanceStatementTemplate.requireContext(partyId,currencyId);
+        if(from==null||to==null||from.isAfter(to))throw invalid("请选择完整且先后正确的对账期间");
+        if(options.sort()!=null&&!options.sort().isBlank())throw invalid("原表对账单保留原业务顺序");
+        String party=client?"clients":"suppliers";
+        Number found=(Number)em.createNativeQuery("SELECT CASE WHEN EXISTS(SELECT 1 FROM "+party+" WHERE id=:partyId) AND EXISTS(SELECT 1 FROM currencies WHERE id=:currencyId) THEN 1 ELSE 0 END")
+                .setParameter("partyId",partyId).setParameter("currencyId",currencyId).getSingleResult();
+        if(found.intValue()!=1)throw invalid("往来单位或币别不存在，请重新选择");
+    }
+    private static Map<String,Object> contextParameters(UUID partyId,UUID currencyId) {
+        var values=new LinkedHashMap<String,Object>();values.put("partyId",partyId);values.put("currencyId",currencyId);return values;
+    }
+    private static BigDecimal verifiedLossRate(BigDecimal lossRate) {
+        var value=lossRate==null?new BigDecimal("0.03"):lossRate;
+        if(value.signum()<0||value.compareTo(BigDecimal.ONE)>0)throw invalid("损耗率应在0至1之间");return value;
+    }
+    private static com.uten.imp.common.web.ApiException invalid(String message) {
+        return new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,message);
+    }
 
     // ======================== 附件 1 · 委外加工对账单（=采购外放加工对账单） ========================
 
@@ -110,7 +205,7 @@ public class FinanceStatementService {
                     SELECT d.supplier_id,d.currency_id,i.goods_id,i.color_id,
                            """+com.uten.imp.common.report.ReportQuantityUnits.transactionUnit("i")+"""
                            AS unit_id,
-                           i.qty,i.price,i.bill_date,i.bill_no,i.id
+                           i.qty,i.price,i.amount_original,i.bill_date,i.bill_no,i.id
                     FROM subcontract_receipt_items i JOIN subcontract_receipts d ON d.id=i.receipt_id
                     JOIN goods ON goods.id=i.goods_id
                     WHERE d.status=1 AND d.is_deleted=false AND i.is_deleted=false AND i.bill_date<=:to
@@ -132,7 +227,14 @@ public class FinanceStatementService {
                 ), prices AS (
                     SELECT i.supplier_id,i.goods_id,i.color_id,i.unit_id,i.currency_id,
                            CASE WHEN i.unit_id IS NOT NULL THEN SUM(CASE WHEN i.bill_date BETWEEN :from AND :to THEN i.qty ELSE 0 END) END AS process_qty,
-                           CASE WHEN i.unit_id IS NOT NULL THEN (ARRAY_AGG(i.price ORDER BY i.bill_date DESC,i.id DESC) FILTER(WHERE i.price IS NOT NULL))[1] END AS process_price
+                           CASE WHEN i.unit_id IS NOT NULL
+                                  AND NOT bool_or(i.price IS NULL) FILTER(WHERE i.bill_date BETWEEN :from AND :to)
+                                  AND COUNT(DISTINCT i.price) FILTER(WHERE i.bill_date BETWEEN :from AND :to)=1
+                                THEN MIN(i.price) FILTER(WHERE i.bill_date BETWEEN :from AND :to) END AS process_price,
+                           CASE WHEN i.unit_id IS NULL THEN NULL
+                                WHEN COUNT(*) FILTER(WHERE i.bill_date BETWEEN :from AND :to)=0 THEN 0
+                                WHEN NOT bool_or(i.amount_original IS NULL) FILTER(WHERE i.bill_date BETWEEN :from AND :to)
+                                THEN SUM(CASE WHEN i.bill_date BETWEEN :from AND :to THEN i.amount_original ELSE 0 END) END AS process_amount
                     FROM receipt_rows i GROUP BY i.supplier_id,i.goods_id,i.color_id,i.unit_id,i.currency_id
                 ), merged AS (
                     SELECT COALESCE(iss.supplier_id,rcv.supplier_id) AS supplier_id,
@@ -141,7 +243,7 @@ public class FinanceStatementService {
                            CASE WHEN COALESCE(iss.unit_id,rcv.unit_id) IS NOT NULL THEN COALESCE(iss.prior_qty,0)-COALESCE(iss.prior_waste,0)-COALESCE(rcv.prior_qty,0) END AS prev_stock,
                            iss.m_nos AS iss_nos,iss.m_date AS iss_date,
                            CASE WHEN COALESCE(iss.unit_id,rcv.unit_id) IS NOT NULL THEN COALESCE(iss.m_qty,0) END AS iss_qty,
-                           CASE WHEN COALESCE(iss.unit_id,rcv.unit_id) IS NOT NULL THEN ROUND(COALESCE(iss.m_qty,0)*:lossRate,2) END AS loss_allowed,
+                           CASE WHEN COALESCE(iss.unit_id,rcv.unit_id) IS NOT NULL THEN COALESCE(iss.m_qty,0)*:lossRate END AS loss_allowed,
                            rcv.m_nos AS rcv_nos,rcv.m_date AS rcv_date,
                            CASE WHEN COALESCE(iss.unit_id,rcv.unit_id) IS NOT NULL THEN COALESCE(rcv.m_qty,0) END AS rcv_qty
                     FROM iss FULL OUTER JOIN rcv ON rcv.supplier_id=iss.supplier_id AND rcv.goods_id=iss.goods_id
@@ -152,7 +254,7 @@ public class FinanceStatementService {
                        m.loss_allowed AS "lossAllowed",COALESCE(m.rcv_nos,'') AS "receiptBillNo",m.rcv_date AS "receiptDate",m.rcv_qty AS "receiptQty",
                        (m.prev_stock+m.iss_qty-m.loss_allowed-m.rcv_qty) AS "balance",
                        CASE WHEN price.currency_id IS NOT NULL THEN price.process_price END AS "processPrice",
-                       CASE WHEN price.currency_id IS NOT NULL THEN ROUND(price.process_qty*price.process_price,2) END AS "processAmount",
+                       CASE WHEN price.currency_id IS NOT NULL THEN price.process_amount END AS "processAmount",
                        NULL::numeric AS "materialPrice",NULL::numeric AS "materialAmount",unit.name AS "unit",
                        """+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")+"""
                        AS "currencyCode",price.process_qty AS "processQty",m.unit_id,price.currency_id,
@@ -166,7 +268,7 @@ public class FinanceStatementService {
                 WHERE m.unit_id IS NULL OR m.prev_stock<>0 OR m.iss_qty<>0 OR m.rcv_qty<>0
                 """;
         return runPaged(cols, core, "t.\"supplierName\", t.\"goodsCode\", t.\"__supplierId\", t.\"__goodsId\", t.\"__colorId\" NULLS FIRST,t.unit_id NULLS FIRST,t.currency_id NULLS FIRST", keyword, from, to, page, size,
-                Map.of("lossRate", lossRate == null ? new BigDecimal("0.03") : lossRate),false,options,java.util.Set.of("materialPrice","materialAmount"),
+                Map.of("lossRate", verifiedLossRate(lossRate)),false,options,java.util.Set.of("materialPrice","materialAmount"),
                 "t.\"goodsName\"", "t.\"goodsCode\"", "t.\"color\"", "t.\"issueBillNo\"", "t.\"receiptBillNo\"");
     }
 
@@ -178,54 +280,24 @@ public class FinanceStatementService {
     }
     @Transactional(readOnly = true)
     public ReportTableResponse supplierStatement(String keyword,LocalDate from,LocalDate to,int page,int size,FinanceReportColumnOptions options) {
+        return supplierStatementRead(keyword,from,to,null,null,page,size,options);
+    }
+    private ReportTableResponse supplierStatementRead(String keyword,LocalDate from,LocalDate to,UUID partyId,UUID currencyId,int page,int size,FinanceReportColumnOptions options) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.date("billDate", "送货日期"),
                 ReportColumn.text("goodsCode", "物料编码", 120),
                 ReportColumn.text("goodsName", "物料名称", 220),
                 ReportColumn.text("unit", "单位", 70),
-                ReportColumn.number("qty", "数量").withUnitKey("unit"),
+                ReportColumn.number("qty", "数量").withUnitKey("unit").totaled("合计数量","unit","__unitId"),
                 ReportColumn.money("price", "含税单价").withUnitKey("currencyCode"),
-                ReportColumn.money("amount", "含税金额").withUnitKey("currencyCode"),
+                ReportColumn.money("amount", "含税金额").withUnitKey("currencyCode").totaled("合计含税金额","currencyCode","__currencyId"),
                 ReportColumn.text("remark", "备注", 170),ReportColumn.text("currencyCode","币别",90),
                 ReportColumn.text("__currencyId",""),ReportColumn.text("__unitId",""),
                 ReportColumn.text("__partyName",""),ReportColumn.text("__partyCode",""),ReportColumn.text("__partyId",""),
-                ReportColumn.text("__sourceType",""),ReportColumn.text("__sourceId",""));
-        String core = """
-                SELECT * FROM (
-                    SELECT i.bill_date AS bill_date, g.code AS goods_code, g.name AS goods_name,
-                           COALESCE(u.name,'') AS unit_name, i.qty AS qty, i.price AS price,
-                           i.amount_original AS amount, d.bill_no AS remark,
-                           """+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")+"""
-                           AS currency_code,d.currency_id,i.unit_id,
-                           s.name AS party_name, s.code AS party_code, d.supplier_id AS party_id,
-                           'PURCHASE_RECEIPT'::text AS source_type, i.id AS source_id
-                    FROM purchase_receipt_items i
-                    JOIN purchase_receipts d ON d.id = i.receipt_id
-                    LEFT JOIN goods g ON g.id = i.goods_id
-                    LEFT JOIN units u ON u.id = i.unit_id
-                    LEFT JOIN suppliers s ON s.id = d.supplier_id
-                    LEFT JOIN currencies currency ON currency.id=d.currency_id
-                    WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                      AND i.bill_date BETWEEN :from AND :to
-                    UNION ALL
-                    SELECT i.bill_date, g.code, g.name,
-                           COALESCE(u.name,''), -i.qty, i.price,
-                           -i.amount_original, d.bill_no || '(退货)',
-                           """+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")+"""
-                           ,d.currency_id,i.unit_id,
-                           s.name, s.code, d.supplier_id, 'PURCHASE_RETURN'::text, i.id
-                    FROM purchase_return_items i
-                    JOIN purchase_returns d ON d.id = i.return_id
-                    LEFT JOIN goods g ON g.id = i.goods_id
-                    LEFT JOIN units u ON u.id = i.unit_id
-                    LEFT JOIN suppliers s ON s.id = d.supplier_id
-                    LEFT JOIN currencies currency ON currency.id=d.currency_id
-                    WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                      AND i.bill_date BETWEEN :from AND :to
-                ) t
-                """;
-        return runPaged(cols, core, "t.bill_date, t.goods_code, t.source_type, t.source_id", keyword, from, to, page, size, Map.of(),false,options,
+                ReportColumn.text("__sourceType",""),ReportColumn.text("__sourceId",""),ReportColumn.bool("__pending",""),ReportColumn.text("__basis",""),new ReportColumn("__eventOrder","","int",1));
+        String core = FinanceNativeStatementSql.sql(false);
+        return runPaged(cols, core, "t.bill_date, t.goods_code, t.source_type, t.source_id, t.event_order", keyword, from, to, page, size, contextParameters(partyId,currencyId),false,options,
                 "t.goods_name", "t.goods_code", "t.unit_name", "t.remark");
     }
 
@@ -271,7 +343,7 @@ public class FinanceStatementService {
                            COUNT(*) FILTER(WHERE in_weight IS NULL OR out_weight IS NULL) AS unknown_count
                     FROM flows WHERE bill_date<:from GROUP BY goods_id,color_id,supplier_id
                 ), period AS (
-                    SELECT f.*,ROUND(f.in_weight*0.005,3) AS loss FROM flows f
+                    SELECT f.*,(f.in_weight*0.005) AS loss FROM flows f
                     WHERE f.bill_date BETWEEN :from AND :to
                       AND (f.in_weight IS NULL OR f.out_weight IS NULL OR f.in_weight<>0 OR f.out_weight<>0 OR f.out_qty<>0)
                 )
@@ -279,7 +351,7 @@ public class FinanceStatementService {
                        p.in_weight AS "inWeight",p.out_weight AS "outWeight",p.loss AS "loss",
                        CASE WHEN COALESCE(pv.unknown_count,0)
                            + COUNT(*) FILTER(WHERE p.in_weight IS NULL OR p.out_weight IS NULL) OVER material_timeline>0 THEN NULL
-                           ELSE ROUND(COALESCE(pv.prev_balance,0)+SUM(p.in_weight-p.out_weight-p.loss) OVER material_timeline,3) END AS "balance",
+                           ELSE (COALESCE(pv.prev_balance,0)+SUM(p.in_weight-p.out_weight-p.loss) OVER material_timeline) END AS "balance",
                        p.out_qty AS "outQty",p.price AS "price",NULL::numeric AS "processAmount",p.bill_no AS "billNo",unit.name AS "unit",
                        s.name AS party_name,s.code AS party_code,p.source_type,p.source_id,p.unit_id
                 FROM period p LEFT JOIN prev pv ON pv.goods_id=p.goods_id AND pv.color_id IS NOT DISTINCT FROM p.color_id AND pv.supplier_id=p.supplier_id
@@ -298,6 +370,9 @@ public class FinanceStatementService {
     }
     @Transactional(readOnly = true)
     public ReportTableResponse clientStatement(String keyword,LocalDate from,LocalDate to,int page,int size,FinanceReportColumnOptions options) {
+        return clientStatementRead(keyword,from,to,null,null,page,size,options);
+    }
+    private ReportTableResponse clientStatementRead(String keyword,LocalDate from,LocalDate to,UUID partyId,UUID currencyId,int page,int size,FinanceReportColumnOptions options) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.date("billDate", "开单日期"),
@@ -305,50 +380,15 @@ public class FinanceStatementService {
                 ReportColumn.text("goodsName", "货品名称", 220),
                 ReportColumn.text("color", "颜色", 110),
                 ReportColumn.text("unit", "单位", 70),
-                ReportColumn.number("qty", "数量").withUnitKey("unit"),
+                ReportColumn.number("qty", "数量").withUnitKey("unit").totaled("合计数量","unit","__unitId"),
                 ReportColumn.money("price", "含税单价").withUnitKey("currencyCode"),
-                ReportColumn.money("amount", "含税金额").withUnitKey("currencyCode"),
+                ReportColumn.money("amount", "含税金额").withUnitKey("currencyCode").totaled("合计含税金额","currencyCode","__currencyId"),
                 ReportColumn.text("remark", "备注", 170),ReportColumn.text("currencyCode","币别",90),
                 ReportColumn.text("__currencyId",""),ReportColumn.text("__unitId",""),
-                ReportColumn.text("__partyName",""),ReportColumn.text("__partyCode",""),
-                ReportColumn.text("__sourceType",""),ReportColumn.text("__sourceId",""));
-        String core = """
-                SELECT * FROM (
-                    SELECT i.bill_date AS bill_date, cl.name AS client_name, g.name AS goods_name,
-                           COALESCE(c.name,'') AS color_name, COALESCE(u.name,'') AS unit_name,
-                           i.qty AS qty, i.price AS price, i.amount_original AS amount,
-                           d.bill_no AS remark,
-                           """+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")+"""
-                           AS currency_code,d.currency_id,i.unit_id,cl.name AS party_name, cl.code AS party_code,
-                           'SALES_SHIPMENT'::text AS source_type, i.id AS source_id
-                    FROM sales_shipment_items i
-                    JOIN sales_shipments d ON d.id = i.shipment_id
-                    LEFT JOIN goods g ON g.id = i.goods_id
-                    LEFT JOIN colors c ON c.id = i.color_id
-                    LEFT JOIN units u ON u.id = i.unit_id
-                    LEFT JOIN clients cl ON cl.id = d.client_id
-                    LEFT JOIN currencies currency ON currency.id=d.currency_id
-                    WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                      AND i.bill_date BETWEEN :from AND :to
-                    UNION ALL
-                    SELECT i.bill_date, cl.name, g.name,
-                           COALESCE(c.name,''), COALESCE(u.name,''),
-                           -i.qty, i.price, -i.amount_original,
-                           d.bill_no || '(退货)',
-                           """+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")+"""
-                           ,d.currency_id,i.unit_id,cl.name,cl.code,'SALES_RETURN'::text,i.id
-                    FROM sales_return_items i
-                    JOIN sales_returns d ON d.id = i.return_id
-                    LEFT JOIN goods g ON g.id = i.goods_id
-                    LEFT JOIN colors c ON c.id = i.color_id
-                    LEFT JOIN units u ON u.id = i.unit_id
-                    LEFT JOIN clients cl ON cl.id = d.client_id
-                    LEFT JOIN currencies currency ON currency.id=d.currency_id
-                    WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                      AND i.bill_date BETWEEN :from AND :to
-                ) t
-                """;
-        return runPaged(cols, core, "t.bill_date, t.goods_name, t.source_type, t.source_id", keyword, from, to, page, size, Map.of(),false,options,
+                ReportColumn.text("__partyName",""),ReportColumn.text("__partyCode",""),ReportColumn.text("__partyId",""),
+                ReportColumn.text("__sourceType",""),ReportColumn.text("__sourceId",""),ReportColumn.bool("__pending",""),ReportColumn.text("__basis",""),new ReportColumn("__eventOrder","","int",1));
+        String core = FinanceNativeStatementSql.sql(true);
+        return runPaged(cols, core, "t.bill_date, t.goods_name, t.source_type, t.source_id, t.event_order", keyword, from, to, page, size, contextParameters(partyId,currencyId),false,options,
                 "t.goods_name", "t.color_name", "t.unit_name", "t.remark");
     }
 
@@ -375,7 +415,8 @@ public class FinanceStatementService {
         String projected="SELECT t.*,ROW_NUMBER() OVER (ORDER BY "+rank+orderBy+") AS \"__headerOrdinal\" FROM ("+coreSql+") t "+where;
         return FinanceProjectedReportTable.query(em,cols,FinanceProjectedReportTable.aliasProjection(projected,cols,"statement_source","__headerOrdinal"),
                 query->bindRaw(query,keyword,from,to,extraParams),"report.\"__headerOrdinal\"",options.filters(),java.util.Set.of(),
-                page,size,options.sort(),options.order(),chronological,List.of(),nonQueryableKeys);
+                page,size,options.sort(),options.order(),chronological,FinanceProjectedReportTable.totalSpecs(cols,cols).stream()
+                    .map(spec->new com.uten.imp.common.report.ReportTotalsCalculator.Spec(spec.key(),spec.label(),spec.type(),spec.groupKey(),spec.groupIdentityKey(),true)).toList(),nonQueryableKeys);
     }
 
     private static void bindRaw(Query q, String keyword, LocalDate from, LocalDate to, Map<String, Object> extra) {

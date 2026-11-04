@@ -310,6 +310,126 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  for (final existingDraft in [false, true]) {
+    testWidgets(
+      'retirement preserves a return to saved input after an older CAS has started existing=$existingDraft',
+      (tester) async {
+        final storage = MemoryDraftStorage();
+        final env = await pumpEditor(tester, storage);
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+        final intended = existingDraft ? 'last intended saved input' : '';
+        if (existingDraft) {
+          editor.text.text = intended;
+          await editor.saveFormDraftNow();
+        }
+        final writing = Completer<void>();
+        storage.writeGate = writing.future;
+        editor.text.text = 'intermediate input with pending CAS';
+        await tester.pump();
+        editor.text.text = intended;
+        env.container.read(_testScope.notifier).state = null;
+        await tester.pump();
+        writing.complete();
+        await tester.pumpAndSettle();
+        final snapshots = storage.records.values.map(
+          (raw) =>
+              ((jsonDecode(raw) as Map<String, dynamic>)['data']
+                  as Map?)?['text'],
+        );
+        expect(snapshots, contains(intended));
+        expect(
+          snapshots,
+          isNot(contains('intermediate input with pending CAS')),
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'pending initial draft storage blocks real input and cannot overwrite the original on logout',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      var env = await pumpEditor(tester, storage);
+      var editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.text.text = 'original durable source';
+      await editor.saveFormDraftNow();
+      final original = env.container.read(formDraftsProvider).single;
+      final retained = Map<String, String>.of(storage.records);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+      final opening = Completer<void>();
+      storage.readGate = opening.future;
+      env = await pumpEditor(
+        tester,
+        storage,
+        initial: original.resumeLocation,
+        settle: false,
+      );
+      await tester.pump();
+      editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      expect(find.text('正在准备草稿保护…'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('input')), warnIfMissed: false);
+      await tester.pump();
+      expect(
+        tester
+            .widget<EditableText>(find.byType(EditableText))
+            .focusNode
+            .hasFocus,
+        isFalse,
+      );
+      expect(editor.text.text, isEmpty);
+      env.container.read(_testScope.notifier).state = null;
+      await tester.pump();
+      opening.complete();
+      await tester.pumpAndSettle();
+      expect(storage.records, retained);
+      expect(editor.formDraftIdentityIsCurrent, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+  for (final existingDraft in [false, true]) {
+    testWidgets(
+      'session retirement retains final burst input with existing draft=$existingDraft',
+      (tester) async {
+        final storage = MemoryDraftStorage();
+        final env = await pumpEditor(tester, storage);
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+        if (existingDraft) {
+          editor.text.text = 'previous checkpoint';
+          await editor.saveFormDraftNow();
+        }
+        final writer = Completer<void>();
+        storage.writeGate = writer.future;
+        editor.text.text = 'first input in burst';
+        editor.text.text = 'last input before authoritative logout';
+        env.container.read(_testScope.notifier).state = null;
+        await tester.pump();
+        expect(editor.formDraftIdentityIsCurrent, isFalse);
+        writer.complete();
+        await tester.pumpAndSettle();
+        final saved = storage.records.values
+            .map((raw) => jsonDecode(raw) as Map)
+            .toList();
+        expect(
+          saved.any(
+            (draft) =>
+                (draft['data'] as Map?)?['text'] ==
+                'last input before authoritative logout',
+          ),
+          isTrue,
+        );
+        expect(env.container.read(formDraftsProvider), isEmpty);
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+  }
   testWidgets(
     'reload safety covers initializing, autosaved input and active submission',
     (tester) async {

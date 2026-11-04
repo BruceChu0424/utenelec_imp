@@ -14,7 +14,14 @@ public record BusinessDocumentReadScopeInterceptor(ReadScopeVersionAuthority aut
         String path=SecurityRequestPath.withinApplication(request);
         boolean fieldRead=path.matches("^/api/platform-columns/expense_claim(?:_item)?/(?:definitions|values/[0-9a-fA-F-]{36}/history)$") && "GET".equals(request.getMethod())
                 || path.matches("^/api/platform-columns/expense_claim(?:_item)?/values:batch$") && "POST".equals(request.getMethod());
-        if (fieldRead || "GET".equals(request.getMethod()) && path.matches(
+        // Administrative applications share the employee/department approval
+        // authorization domain; each service retains its own object ACL.
+        boolean applicationRead="GET".equals(request.getMethod())&&path.matches(
+                "^/api/business-applications/(?:mine|pending|history|counts|prepayment-posting|[0-9a-fA-F-]{36}(?:/prepayment-finance-candidates)?)$");
+        if(applicationRead&&path.endsWith("/prepayment-finance-candidates")){
+            ReadScopePublication.capture(request,authority,users,"finance");return true;
+        }
+        if (fieldRead || applicationRead || "GET".equals(request.getMethod()) && path.matches(
                 "^/api/expense-claims(?:/(?:browse|mine|pending|payable|history|facets|summary|[0-9a-fA-F-]{36}(?:/history(?:/rows)?)?))?$")) {
             ReadScopePublication.capture(request,authority,users,"expense");
         }

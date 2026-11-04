@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,13 @@ namespace Uten.Legacy.Desktop
         private long displayedGeneration = -1;
         private readonly NativeWindowFrame nativeFrame = new NativeWindowFrame();
         private readonly HashSet<Window> pendingEditors = new HashSet<Window>();
+        internal Task CloseSessionTask { get; private set; } = Task.CompletedTask;
+        private CancellationTokenSource sessionWatch;
+        private long watchedGeneration = -1;
+        private bool showingKick;
+        private readonly DispatcherTimer activityPulse = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        private long lastHumanInput;
+        private bool sendingActivity;
 
         public MainWindow(SessionCoordinator session, ClientConfiguration configuration, bool rendering = false)
         {
@@ -45,8 +53,11 @@ namespace Uten.Legacy.Desktop
             EndpointBox.ItemsSource = configuration.Endpoints;
             EndpointBox.SelectedValue = configuration.SelectedEndpointId;
             session.SessionChanged += OnSessionChanged;
+            session.SessionEnded += OnSessionEnded;
             session.ReadScopeChanged += OnReadScopeChanged;
             revocationRetry.Tick += async (sender, args) => await DrainRevocationsAsync();
+            activityPulse.Tick += async (sender, args) => await PulseHumanActivityAsync();
+            if (!rendering) InputManager.Current.PreProcessInput += OnPreProcessInput;
             SizeChanged += OnWindowSizeChanged;
             SourceInitialized += (sender, args) => UpdateWindowFrame();
             if (!rendering) FitLoginBounds();
@@ -63,17 +74,17 @@ namespace Uten.Legacy.Desktop
             if (rendering) return;
             AccountBox.Focus();
             ShowStartupUpdateOutcome();
-            long restoreGeneration = session.Generation;
+            long startupGeneration = session.Generation;
             try
             {
-                var restore = session.RestoreAsync(lifetime.Token, waitForPendingRevocations: false);
-                restoreGeneration = session.Generation;
-                await restore;
-                if (session.Generation == restoreGeneration) ApplySession();
+                var startup = session.StartApplicationAsync(lifetime.Token, waitForPendingRevocations: false);
+                startupGeneration = session.Generation;
+                await startup;
+                if (session.Generation == startupGeneration) ApplySession();
             }
             catch (OperationCanceledException) { }
-            catch (ApiException error) { if (!busy && session.Generation == restoreGeneration) ShowLoginStatus(error.UserMessage, true); }
-            catch (Exception) { if (!busy && session.Generation == restoreGeneration) ShowLoginStatus("会话暂时无法恢复，请手动登录。", true); }
+            catch (ApiException error) { if (!busy && session.Generation == startupGeneration) ShowLoginStatus(error.UserMessage, true); }
+            catch (Exception) { if (!busy && session.Generation == startupGeneration) ShowLoginStatus("本机会话清理未完成，请联系管理员核对。", true); }
             finally
             {
                 if (!closing)
@@ -121,6 +132,18 @@ namespace Uten.Legacy.Desktop
             Dispatcher.BeginInvoke(new Action(() => { if (!closing) ApplySession(); }));
         }
 
+        private void OnSessionEnded(object sender, SessionEndedEventArgs e)
+        {
+            if (closing || rendering || e.Reason.Code != "SESSION_REPLACED") return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (closing || session.IsAuthenticated || session.Generation != e.RetiredGeneration || showingKick) return;
+                ApplySession(); showingKick = true;
+                try { new SessionKickWindow(this, e.Reason.UserMessage).ShowDialog(); }
+                finally { showingKick = false; }
+            }));
+        }
+
         private void OnReadScopeChanged(object sender, EventArgs e)
         {
             if (closing) return;
@@ -134,6 +157,7 @@ namespace Uten.Legacy.Desktop
 
         private void ApplySession()
         {
+            SyncSessionWatch();
             var user = session.CurrentUser;
             bool authenticated = session.IsAuthenticated && user != null;
             bool mustChange = authenticated && user.MustChangePassword;
@@ -186,6 +210,96 @@ namespace Uten.Legacy.Desktop
                 || (WorkspaceContent.Content is UnitsWorkspaceView && !user.HasPermission("unit:view")))
             {
                 SetWorkspace(new DashboardView(session, OpenGoods), force: true);
+            }
+        }
+
+        private void SyncSessionWatch()
+        {
+            if (rendering || closing || !session.IsAuthenticated)
+            {
+                sessionWatch?.Cancel(); sessionWatch?.Dispose(); sessionWatch = null;
+                activityPulse.Stop(); lastHumanInput = 0;
+                return;
+            }
+            if (sessionWatch != null && watchedGeneration == session.Generation) return;
+            sessionWatch?.Cancel(); sessionWatch?.Dispose();
+            sessionWatch = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            watchedGeneration = session.Generation;
+            lastHumanInput = 0;
+            activityPulse.Start();
+            _ = WatchSessionLoopAsync(watchedGeneration, sessionWatch.Token);
+        }
+
+        private void OnPreProcessInput(object sender, PreProcessInputEventArgs args)
+        {
+            RecordHumanInput(args.StagingItem.Input);
+        }
+
+        private void RecordHumanInput(InputEventArgs input)
+        {
+            if (closing || rendering || !session.IsAuthenticated) return;
+            bool mouseInput = input is MouseButtonEventArgs || input is MouseWheelEventArgs
+                || input is MouseEventArgs && (input.RoutedEvent == Mouse.MouseMoveEvent || input.RoutedEvent == Mouse.PreviewMouseMoveEvent);
+            if (!(input is KeyEventArgs || input is TextCompositionEventArgs || mouseInput
+                || input is TouchEventArgs || input is StylusEventArgs)) return;
+            var source = input.OriginalSource as DependencyObject ?? input.Source as DependencyObject;
+            if (source == null)
+            {
+                if (input is MouseEventArgs) source = Mouse.DirectlyOver as DependencyObject;
+                else if (input is TouchEventArgs touch) source = touch.TouchDevice.DirectlyOver as DependencyObject;
+                else if (input is StylusEventArgs stylus) source = stylus.StylusDevice?.DirectlyOver as DependencyObject;
+                else source = Keyboard.FocusedElement as DependencyObject;
+            }
+            var owner = source == null ? null : Window.GetWindow(source);
+            while (owner != null && owner != this) owner = owner.Owner;
+            if (owner == this) lastHumanInput = Stopwatch.GetTimestamp();
+        }
+
+        private async Task PulseHumanActivityAsync()
+        {
+            if (closing || rendering || sendingActivity || !session.IsAuthenticated || lastHumanInput == 0
+                || Stopwatch.GetTimestamp() - lastHumanInput > Stopwatch.Frequency * 30L) return;
+            sendingActivity = true;
+            try { await session.ProbeSessionAsync(lifetime.Token, automatic: false); }
+            catch (OperationCanceledException) { }
+            catch (ApiException) { /* Authoritative rejection uses SessionEnded; network uncertainty never logs out. */ }
+            catch (Exception error) { DiagnosticsLog.Record("session.activity_failed", error.GetType().Name); }
+            finally { sendingActivity = false; }
+        }
+
+        private async Task WatchSessionLoopAsync(long owner, CancellationToken cancellation)
+        {
+            // Let the successful login finish applying before an immediate watch result.
+            await Task.Yield();
+            var fallbackUntil = DateTime.MinValue;
+            while (!closing && !cancellation.IsCancellationRequested && session.IsAuthenticated && session.Generation == owner)
+            {
+                bool fallback = DateTime.UtcNow < fallbackUntil;
+                int delay = fallback ? 3000 : 250;
+                try
+                {
+                    if (fallback) await session.ProbeSessionAsync(cancellation);
+                    else await session.WatchSessionAsync(cancellation);
+                }
+                catch (OperationCanceledException) { return; }
+                catch (ApiException error)
+                {
+                    if (error.StatusCode == 404) fallbackUntil = DateTime.UtcNow.AddSeconds(60);
+                    delay = 3000;
+                }
+                catch (Exception error) { DiagnosticsLog.Record("session.watch_failed", error.GetType().Name); delay = 3000; }
+                if (closing || cancellation.IsCancellationRequested || session.Generation != owner) return;
+                try { await Task.Delay(delay, cancellation); }
+                catch (OperationCanceledException) { return; }
+            }
+        }
+
+        private sealed class SessionKickWindow : UtenDialogWindow
+        {
+            internal SessionKickWindow(Window owner, string message) : base(owner, "当前设备已下线", 440)
+            {
+                Body.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+                ActionButton("确定", Close, primary: true).IsDefault = true;
             }
         }
 
@@ -388,8 +502,27 @@ namespace Uten.Legacy.Desktop
             if (closing) return;
             if (!CanLeaveWorkspace()) { e.Cancel = true; return; }
             closing = true; revocationRetry.Stop(); lifetime.Cancel();
+            activityPulse.Stop();
+            if (!rendering) InputManager.Current.PreProcessInput -= OnPreProcessInput;
+            sessionWatch?.Cancel(); sessionWatch?.Dispose(); sessionWatch = null;
             session.SessionChanged -= OnSessionChanged; session.ReadScopeChanged -= OnReadScopeChanged;
-            DisposeWorkspace(); lifetime.Dispose();
+            session.SessionEnded -= OnSessionEnded;
+            DisposeWorkspace();
+            if (!rendering) CloseSessionTask = RevokeSessionOnCloseAsync();
+            lifetime.Dispose();
+        }
+        private async Task RevokeSessionOnCloseAsync()
+        {
+            // Logout durably retires the local record before its first network await.
+            // The process gives the issuer a short, bounded opportunity to acknowledge it;
+            // offline/timeout leaves the encrypted revocation queued for the next launch.
+            using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+            {
+                try { await session.LogoutAsync(deadline.Token).ConfigureAwait(false); }
+                catch (ApiException error) { DiagnosticsLog.Record("session.close_pending", error.Code); }
+                catch (OperationCanceledException) { DiagnosticsLog.Record("session.close_pending", "cancelled"); }
+                catch (Exception error) { DiagnosticsLog.Record("session.close_pending", error.GetType().Name); }
+            }
         }
     }
 }

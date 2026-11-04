@@ -1,30 +1,21 @@
-// UtenHistoryTimeFilter - 「历史记录」分段的标准时间门控行。
-//
-// 2026-09-03 起全平台「历史记录/历史单据」范式：分类分段末尾的历史段被选中后，
-// 内容区顶部渲染本组件——
-//
-// - 两个矩形分段：「时间段」（点开居中的紧凑日期范围弹窗，选中后显示起止日期，
-//   可反复点按调整范围）与「全部」（不限时间全量加载）；
-// - 默认近一个月（2026-11-03 用户口径；2026-10-04 曾改为默认「全部」，更早为
-//   默认不选）：页面进入历史段时以 [UtenHistoryTimeValue.lastMonth()]
-//   作为初始值，历史数据较多的页面不再一进来就全量加载；none 保留为值形态
-//   （[UtenHistoryTimeValue.isNone] 的不发请求护栏仍在），但不是页面默认；
-// - 单选互斥：选「时间段」即取消「全部」，选「全部」即清空时间段；
-// - 样式与 UtenFilterToolbar 的圆角矩形分段同构（UtenSegmentRow、选中
-//   secondaryContainer 填充、未选 surface + outline 描边）。
-//
-// 值对象 [UtenHistoryTimeValue] 不含「取消选择回 none」的入口：胶囊一旦
-// 选中只能互相切换——避免误触把已加载的历史列表清回占位态。
+// Shared history date controls live in their existing table/category toolbar.
+// Compact labels and immediate accessible date tooltips use the shared date
+// presentation; normal toolbar height, recent-month defaults and all/range
+// semantics remain unchanged. Cancelling never publishes a different range.
 
 import 'package:flutter/material.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import '../../core/utils/date_range_defaults.dart';
+import '../../core/utils/date_range_display.dart';
+import '../../core/responsive/compact_presentation.dart';
 import 'uten_app_bar_action_scope.dart';
 import 'uten_segment_row.dart';
+import 'uten_table_action_scope.dart';
 
 import '../feedback/uten_date_range_picker.dart';
-import '../../../core/theme/uten_tokens.dart';
-import '../../../core/utils/china_datetime.dart';
+import '../feedback/uten_date_range_tooltip.dart';
+import '../../core/theme/uten_tokens.dart';
+import '../../core/utils/china_datetime.dart';
 
 enum _HistoryTimeAction { range, all }
 
@@ -87,7 +78,7 @@ class UtenHistoryTimeFilter extends StatelessWidget {
   /// 日期范围选择器标题。
   final String helpText;
 
-  /// 时间段胶囊未选时的文字（选中后显示起止日期）。
+  /// 时间段胶囊未选时的文字（选中后显示折合时间，悬停显示起止日期）。
   final String rangeLabel;
 
   /// 「全部」胶囊文字。
@@ -118,51 +109,72 @@ class UtenHistoryTimeFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final range = value.range;
+    final languageCode = Localizations.localeOf(context).languageCode;
     final rangeText = range == null
         ? rangeLabel
-        : '${ChinaDateTime.formatDate(range.start)} ~ '
-              '${ChinaDateTime.formatDate(range.end)}';
-    return UtenSegmentRow<_HistoryTimeAction>(
-      showSelectedIcon: false,
-      // Empty callback selection means re-tapping a selected action; the value
-      // still never goes back to none, and an existing range opens for editing.
-      emptySelectionAllowed: true,
-      segments: [
-        ButtonSegment(
-          value: _HistoryTimeAction.range,
-          icon: const Icon(Icons.date_range_outlined, size: 16),
-          label: Text(rangeText),
-        ),
-        ButtonSegment(
-          value: _HistoryTimeAction.all,
-          icon: const Icon(Icons.all_inclusive_rounded, size: 16),
-          label: Text(allLabel),
-        ),
-      ],
-      selected: {
-        if (range != null) _HistoryTimeAction.range,
-        if (value.all) _HistoryTimeAction.all,
-      },
-      onSelectionChanged: enabled
-          ? (values) {
-              final action = values.isEmpty
-                  ? (value.all
-                        ? _HistoryTimeAction.all
-                        : _HistoryTimeAction.range)
-                  : values.single;
-              if (action == _HistoryTimeAction.range) {
-                UtenAppBarActionScope.wrapBefore(
-                  context,
-                  () => _pickRange(context),
-                )?.call();
-              } else if (!value.all) {
-                UtenAppBarActionScope.wrapBefore(
-                  context,
-                  () => onChanged(const UtenHistoryTimeValue.all()),
-                )?.call();
+        : compactDateRangeLabel(
+            from: range.start,
+            to: range.end,
+            languageCode: languageCode,
+          );
+    Widget withRangeTooltip(Widget child) => range == null
+        ? child
+        : UtenDateRangeTooltip(
+            message: dateRangeTooltip(
+              from: range.start,
+              to: range.end,
+              languageCode: languageCode,
+            ),
+            child: child,
+          );
+    return UtenTableActionScope(
+      child: UtenSegmentRow<_HistoryTimeAction>(
+        minCellHeight: UtenCompactPresentation.of(context)
+            ? UtenControlMetrics.compactHeight
+            : UtenTableToolbar.controlHeight,
+        showSelectedIcon: false,
+        showCompactIcon: false,
+        compactLabel: value.all ? allLabel : rangeText,
+        compactWrapper: value.all ? null : withRangeTooltip,
+        segmentWrapper: (segment, child) =>
+            segment.value == _HistoryTimeAction.range
+            ? withRangeTooltip(child)
+            : child,
+        // Empty callback selection means re-tapping a selected action; the value
+        // still never goes back to none, and an existing range opens for editing.
+        emptySelectionAllowed: true,
+        segments: [
+          ButtonSegment(
+            value: _HistoryTimeAction.range,
+            label: Text(rangeText),
+          ),
+          ButtonSegment(value: _HistoryTimeAction.all, label: Text(allLabel)),
+        ],
+        selected: {
+          if (range != null) _HistoryTimeAction.range,
+          if (value.all) _HistoryTimeAction.all,
+        },
+        onSelectionChanged: enabled
+            ? (values) {
+                final action = values.isEmpty
+                    ? (value.all
+                          ? _HistoryTimeAction.all
+                          : _HistoryTimeAction.range)
+                    : values.single;
+                if (action == _HistoryTimeAction.range) {
+                  UtenAppBarActionScope.wrapBefore(
+                    context,
+                    () => _pickRange(context),
+                  )?.call();
+                } else if (!value.all) {
+                  UtenAppBarActionScope.wrapBefore(
+                    context,
+                    () => onChanged(const UtenHistoryTimeValue.all()),
+                  )?.call();
+                }
               }
-            }
-          : null,
+            : null,
+      ),
     );
   }
 }
@@ -171,12 +183,14 @@ class UtenHistoryTimeFilter extends StatelessWidget {
 class UtenHistoryTimePlaceholder extends StatelessWidget {
   const UtenHistoryTimePlaceholder({
     super.key,
-    this.message = '历史数据可能较多，请先在上方选择时间段或「全部」',
+    this.message = '请选择日期范围或「全部」以加载历史记录',
+    this.controls,
     this.description = '选择后加载对应范围的历史记录',
   });
 
   final String message;
   final String description;
+  final Widget? controls;
 
   @override
   Widget build(BuildContext context) {
@@ -191,6 +205,10 @@ class UtenHistoryTimePlaceholder extends StatelessWidget {
             color: theme.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(height: UtenSpacing.s12),
+          if (controls != null) ...[
+            controls!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [

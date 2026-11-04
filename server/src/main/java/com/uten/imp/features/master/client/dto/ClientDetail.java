@@ -14,6 +14,9 @@ import java.util.UUID;
  */
 @Getter
 public class ClientDetail {
+    public String getCreditExact() { return com.uten.imp.common.util.DecimalText.of(credit); }
+    public String getInitTotalExact() { return com.uten.imp.common.util.DecimalText.of(initTotal); }
+    public String getCreditFloorExact() { return com.uten.imp.common.util.DecimalText.of(creditFloor); }
     // ===== 列表核心 =====
     private UUID id;
     private String code;

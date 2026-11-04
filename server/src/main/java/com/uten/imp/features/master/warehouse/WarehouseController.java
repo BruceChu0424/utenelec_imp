@@ -149,6 +149,17 @@ public class WarehouseController {
         return keeperService.candidates(keyword);
     }
 
+    @GetMapping("/keeper-candidates/page")
+    @PreAuthorize("hasAuthority('warehouse:edit')")
+    public PageResponse<WarehouseKeeper> keeperCandidatesPage(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "false") boolean includeSubtree) {
+        return keeperService.candidatesPage(keyword, page, size, departmentId, includeSubtree);
+    }
+
     /**
      * 当前账号的仓库数据范围(ADR-149)：角色、能否选「全部仓库」、可切换的仓(先主仓后子仓)、
      * 本人登记负责的仓、默认仓。只回仓库主档字段与本人信息, 登录即可读; 各任务列表由服务端

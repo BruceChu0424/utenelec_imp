@@ -11,8 +11,8 @@ public final class ProcurementReadRoutes {
             "^/api/(purchase|subcontract)/orders/[0-9a-fA-F-]{36}/print-data$");
     private static final Pattern WORKBENCH_EXPORT = Pattern.compile(
             "^/api/operations/workbench/(purchase|subcontract)/export$");
-    private static final Set<String> AUTHORIZATION_PATHS = Set.of(
-            "/api/purchase/orders/print-authorization", "/api/subcontract/orders/print-authorization");
+    private static final Pattern PRINT_AUTHORIZATION = Pattern.compile(
+            "^/api/(purchase|subcontract)/orders/print-authorization$");
     private ProcurementReadRoutes() { }
     public static String printDataScope(String path) {
         var match = PRINT_DATA.matcher(path);
@@ -28,5 +28,5 @@ public final class ProcurementReadRoutes {
     public static String workbenchDomainScope(String domain) {
         return domain != null && domain.startsWith("workbench_") ? OWNER_SCOPES.get(domain.substring(10)) : null;
     }
-    public static boolean printAuthorization(String path) { return AUTHORIZATION_PATHS.contains(path); }
+    public static boolean printAuthorization(String path) { return path != null && PRINT_AUTHORIZATION.matcher(path).matches(); }
 }

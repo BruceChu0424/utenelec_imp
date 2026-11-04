@@ -18,11 +18,80 @@ using Uten.Legacy.Desktop.Controls;
 using Uten.Legacy.Desktop.Features.Units;
 using Uten.Legacy.Desktop.Features.Goods;
 using Uten.Legacy.Core.Tests;
+using Uten.Legacy.Desktop.Views;
 
 namespace Uten.Legacy.Tests
 {
     internal static class UiContractChecks
     {
+        internal static void RunEntryPageScrollbars()
+        {
+            if (Application.Current == null)
+            {
+                var application = new App(); application.InitializeComponent();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            }
+            var configuration = new ClientConfiguration(new[] {
+                new ServerEndpoint("first", "第一测试服务器", "https://first.company.test/api") }, "first");
+            EntryPageScrollbars(configuration);
+        }
+
+        private static void EntryPageScrollbars(ClientConfiguration configuration)
+        {
+            using (var session = new SessionCoordinator(configuration, new NoNetworkHandler(), new MemoryStore()))
+            using (var dashboard = new DashboardView(session, () => { }))
+            {
+                var canvas = new Grid { Width = 1280, HorizontalAlignment = HorizontalAlignment.Left };
+                canvas.ColumnDefinitions.Add(new ColumnDefinition()); canvas.ColumnDefinitions.Add(new ColumnDefinition());
+                canvas.Children.Add(dashboard);
+                var editor = new ScrollViewer { Content = new Border { Height = 5000 }, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+                Grid.SetColumn(editor, 1); canvas.Children.Add(editor);
+                var window = new Window { Content = canvas, Width = 1440, Height = 600, WindowStyle = WindowStyle.None,
+                    Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                try
+                {
+                    window.Show(); Pump(window);
+                    var scroll = FindVisual<ScrollViewer>(dashboard, item => UtenEntryPageScrollBehavior.GetEnabled(item));
+                    if (scroll == null) throw new InvalidOperationException("The actual native dashboard must use the shared entry-page scroll behavior.");
+                    var body = (StackPanel)scroll.Content;
+                    var input = new TextBox { Text = "保留输入", Height = 44 }; body.Children.Add(input);
+                    for (int index = 0; index < 400; index++) body.Children.Add(new Border { Height = 32 });
+                    window.UpdateLayout(); Pump(window);
+                    foreach (double width in new[] { 390d, 599d, 600d, 839d, 840d, 1024d, 1279d, 1280d, 1366d })
+                    {
+                        canvas.Width = width; window.UpdateLayout(); Pump(window);
+                        bool narrow = width < (double)Application.Current.FindResource("Uten.Breakpoint.DesktopStart");
+                        if (scroll.VerticalScrollBarVisibility != (narrow ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Auto))
+                            throw new InvalidOperationException("Dashboard rail must follow the shared full-window breakpoint at width " + width + ".");
+                        if (scroll.ScrollableHeight <= 1000 || scroll.PanningMode != PanningMode.VerticalOnly)
+                            throw new InvalidOperationException("Hiding the dashboard rail must retain complete content and touch panning.");
+                        scroll.ScrollToTop(); Pump(window);
+                        scroll.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice,
+                            Environment.TickCount, -120) { RoutedEvent = UIElement.MouseWheelEvent });
+                        Pump(window);
+                        if (scroll.VerticalOffset <= 0) throw new InvalidOperationException("The dashboard must still scroll by mouse wheel without its rail.");
+                        if (editor.VerticalScrollBarVisibility != ScrollBarVisibility.Auto || editor.ScrollableHeight <= 0)
+                            throw new InvalidOperationException("Document viewers must keep their own vertical rail and scrolling.");
+                    }
+                    scroll.ScrollToVerticalOffset(700); Pump(window);
+                    for (int iteration = 0; iteration < 60; iteration++)
+                    { canvas.Width = iteration % 2 == 0 ? 600 : 1366; window.UpdateLayout(); Pump(window); }
+                    if (Math.Abs(scroll.VerticalOffset - 700) > 1 || input.Text != "保留输入")
+                        throw new InvalidOperationException("Repeated width changes must preserve dashboard position and input.");
+                    // Unload/reload and disable restore the prior viewer settings without
+                    // leaving a host subscription that can change an editor later.
+                    canvas.Children.Remove(dashboard); Pump(window); canvas.Children.Add(dashboard); Pump(window);
+                    canvas.Width = 600; window.UpdateLayout(); Pump(window);
+                    if (scroll.VerticalScrollBarVisibility != ScrollBarVisibility.Hidden)
+                        throw new InvalidOperationException("Reloaded dashboard must reattach its window-width subscription.");
+                    UtenEntryPageScrollBehavior.SetEnabled(scroll, false);
+                    if (scroll.VerticalScrollBarVisibility != ScrollBarVisibility.Auto || scroll.PanningMode != PanningMode.None)
+                        throw new InvalidOperationException("Disabling entry-page policy must restore the viewer's original settings.");
+                }
+                finally { window.Content = null; window.Close(); }
+            }
+        }
+
         internal static int RunSearchReadCoalescing()
         {
             if (Application.Current == null)
@@ -281,6 +350,7 @@ namespace Uten.Legacy.Tests
             UnitDraftAndMutationUi(configuration);
             OwnerCloseWaitsForDraft(configuration);
             GoodsCurrencyUi(configuration);
+            EntryPageScrollbars(configuration);
         }
 
         private static void GoodsCurrencyUi(ClientConfiguration configuration)

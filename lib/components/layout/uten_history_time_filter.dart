@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import '../../core/utils/date_range_defaults.dart';
 import '../../core/utils/date_range_display.dart';
+import '../../core/responsive/compact_presentation.dart';
 import 'uten_app_bar_action_scope.dart';
 import 'uten_segment_row.dart';
 import 'uten_table_action_scope.dart';
@@ -128,7 +129,9 @@ class UtenHistoryTimeFilter extends StatelessWidget {
           );
     return UtenTableActionScope(
       child: UtenSegmentRow<_HistoryTimeAction>(
-        minCellHeight: UtenTableToolbar.controlHeight,
+        minCellHeight: UtenCompactPresentation.of(context)
+            ? UtenControlMetrics.compactHeight
+            : UtenTableToolbar.controlHeight,
         showSelectedIcon: false,
         showCompactIcon: false,
         compactLabel: value.all ? allLabel : rangeText,

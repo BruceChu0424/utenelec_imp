@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SuggestionDetailPage @29 (page-class)<br>_Content @55 (supporting-class)<br>_ReplyComposer @249 (supporting-class)<br>_ReplyComposerState @258 (state-class)<br>_ReplyCard @368 (supporting-class) |
-| 真实路由绑定 | /suggestion/:id；router @852；builder ['SuggestionDetailPage']；redirect None |
+| 真实路由绑定 | /suggestion/:id；router @867；builder ['SuggestionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | suggestion:reply @139；定义 lib/shared/auth/permissions.dart:567<br>suggestion:submit @169；定义 lib/shared/auth/permissions.dart:566 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SuggestionListPage @43 (page-class)<br>_SuggestionListPageState @50 (state-class) |
-| 真实路由绑定 | /suggestion；router @842；builder ['SuggestionListPage']；redirect None |
+| 真实路由绑定 | /suggestion；router @857；builder ['SuggestionListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | suggestion:submit @87；定义 lib/shared/auth/permissions.dart:566<br>suggestion:submit @149；定义 lib/shared/auth/permissions.dart:566<br>suggestion:submit @201；定义 lib/shared/auth/permissions.dart:566<br>suggestion:submit @238；定义 lib/shared/auth/permissions.dart:566 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SuggestionNewPage @24 (page-class)<br>_SuggestionNewPageState @31 (state-class) |
-| 真实路由绑定 | /suggestion/new；router @847；builder ['SuggestionNewPage']；redirect None |
+| 真实路由绑定 | /suggestion/new；router @862；builder ['SuggestionNewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

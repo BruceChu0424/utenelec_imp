@@ -19,6 +19,13 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--entry-scrollbar-contracts")
+                {
+                    RunUi(UiContractChecks.RunEntryPageScrollbars);
+                    Console.WriteLine("PASS native dashboard entry scrollbar widths/wheel/touch policy/editor isolation/60 resize/unload contracts; process="
+                        + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--search-input-contracts")
                 {
                     int search = RunUi(DebouncedSearchInputChecks.Run);

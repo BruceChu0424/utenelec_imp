@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | DepartmentPage @39 (page-class)<br>_DepartmentPageState @46 (state-class) |
-| 真实路由绑定 | /department；router @911；builder ['DepartmentPage']；redirect None |
+| 真实路由绑定 | /department；router @926；builder ['DepartmentPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:view @136；定义 lib/shared/auth/permissions.dart:12<br>employee:view @171；定义 lib/shared/auth/permissions.dart:12<br>employee:view @262；定义 lib/shared/auth/permissions.dart:12<br>department:create @291；定义 lib/shared/auth/permissions.dart:785<br>department:delete @331；定义 lib/shared/auth/permissions.dart:786<br>department:edit @390；定义 lib/shared/auth/permissions.dart:16<br>department:move @391；定义 lib/shared/auth/permissions.dart:787<br>department:manager_assign @392；定义 lib/shared/auth/permissions.dart:788<br>department:edit @414；定义 lib/shared/auth/permissions.dart:16<br>department:move @415；定义 lib/shared/auth/permissions.dart:787<br>department:manager_assign @416；定义 lib/shared/auth/permissions.dart:788<br>department:edit @580；定义 lib/shared/auth/permissions.dart:16<br>department:create @581；定义 lib/shared/auth/permissions.dart:785<br>department:delete @582；定义 lib/shared/auth/permissions.dart:786<br>department:move @583；定义 lib/shared/auth/permissions.dart:787<br>department:manager_assign @584；定义 lib/shared/auth/permissions.dart:788<br>employee:view @586；定义 lib/shared/auth/permissions.dart:12<br>employee:create @588；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @589；定义 lib/shared/auth/permissions.dart:134 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyDepartmentPage @48 (page-class)<br>_MyDepartmentPageState @55 (state-class)<br>_MyDepartmentDetail @312 (supporting-class)<br>_ManagerPermissionPanel @571 (supporting-class)<br>_ContactCard @623 (supporting-class)<br>_ContactLine @733 (supporting-class) |
-| 真实路由绑定 | /profile/me/department；router @2403；builder ['MyDepartmentPage']；redirect None |
+| 真实路由绑定 | /profile/me/department；router @2418；builder ['MyDepartmentPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

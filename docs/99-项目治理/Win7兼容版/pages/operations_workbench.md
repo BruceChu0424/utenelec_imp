@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _WorkbenchSeg @80 (supporting-class)<br>OperationsWorkbenchPage @95 (page-class)<br>_OperationsWorkbenchPageState @124 (state-class)<br>_SelectionPrimaryAction @1522 (supporting-class)<br>_DesktopTaskTable @1555 (supporting-class) |
-| 真实路由绑定 | /operations/workbench/warehouse；router @1086；builder ['OperationsWorkbenchPage']；redirect None<br>/operations/workbench/purchase；router @1093；builder ['OperationsWorkbenchPage']；redirect None |
+| 真实路由绑定 | /operations/workbench/warehouse；router @1101；builder ['OperationsWorkbenchPage']；redirect None<br>/operations/workbench/purchase；router @1108；builder ['OperationsWorkbenchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | purchase_order:submit_finance @1132；定义 lib/shared/auth/permissions.dart:151<br>subcontract_order:submit_finance @1133；定义 lib/shared/auth/permissions.dart:396<br>purchase_report:export @1895；定义 lib/shared/auth/permissions.dart:576 |
 | 接口常量 | 未静态确认；不能当作不存在 |

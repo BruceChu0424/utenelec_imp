@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApplicationDetailPage @27 (page-class)<br>_StatusCard @143 (supporting-class)<br>_StepRow @202 (supporting-class) |
-| 真实路由绑定 | /visitor/apply/:id；router @564；builder ['VisitorApplicationDetailPage']；redirect None |
+| 真实路由绑定 | /visitor/apply/:id；router @578；builder ['VisitorApplicationDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApplyPage @34 (page-class)<br>_VisitorApplyPageState @41 (state-class) |
-| 真实路由绑定 | /visitor/apply；router @559；builder ['VisitorApplyPage']；redirect None |
+| 真实路由绑定 | /visitor/apply；router @573；builder ['VisitorApplyPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorHomePage @40 (page-class)<br>_VisitorHomePageState @47 (state-class) |
-| 真实路由绑定 | /visitor/home；router @549；builder ['VisitorHomePage']；redirect None |
+| 真实路由绑定 | /visitor/home；router @563；builder ['VisitorHomePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorLoginPage @31 (page-class)<br>_VisitorLoginPageState @40 (state-class) |
-| 真实路由绑定 | /visitor/login；router @542；builder ['VisitorLoginPage']；redirect None |
+| 真实路由绑定 | /visitor/login；router @556；builder ['VisitorLoginPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorSettingsPage @35 (page-class) |
-| 真实路由绑定 | /visitor/settings；router @554；builder ['VisitorSettingsPage']；redirect None |
+| 真实路由绑定 | /visitor/settings；router @568；builder ['VisitorSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

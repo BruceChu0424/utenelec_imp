@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "generator": "clients/windows_legacy/tools/sync_design_tokens.py",
-  "generatorSha256": "15142f57f9f01dbab91b366613fa80bdc26e751ffd93cf7858f095cd98e7bb66",
+  "generatorSha256": "d25fd5beea0cbd6aa574ba88cd624852ed7a80e15a80bd489cfebee377aabf22",
   "resource": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
-  "resourceSha256": "813e70284414fcc6a2b000029ce82284f8f9efa78890dcc7e391aeb0987b1b65",
+  "resourceSha256": "86b5134a615ec85968c3ec766af44e0ed192cb32a965e00c51f3b1350e5b1bf7",
   "scope": "Default Flutter light theme before platform branding or display zoom; WPF device-independent units.",
   "sourceHashFormat": "SHA-256 of exact owning source bytes",
   "sources": [
@@ -25,11 +25,15 @@
     },
     {
       "path": "lib/shared/widgets/desktop_window_host.dart",
-      "sha256": "cc438487dcaecd0004eb2be14d0ad7f4516b43849ff488f8fe92487afbfac58b"
+      "sha256": "5bfd25b7d7231ddc01dba684fcd1551d0e9851ef5df6c20b47cb28d256a6fa44"
     },
     {
       "path": "lib/features/auth/widgets/desktop_login_layout.dart",
       "sha256": "6540871a02e4ecad8372b75c5208677fd64066104e3a5e37a585ec43fe94a267"
+    },
+    {
+      "path": "lib/core/responsive/breakpoint.dart",
+      "sha256": "e1cf3da0fdd8cc40ad12f48940d2617eee61173f9132783e649278e5a91c66fe"
     },
     {
       "path": "lib/components/buttons/uten_close_button.dart",
@@ -417,11 +421,26 @@
         {
           "symbol": "DesktopWindowHost.controlsHeight",
           "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 12,
+          "line": 13,
           "expression": "36.0"
         }
       ],
       "note": "Native caption/control strip; separate from form control metrics."
+    },
+    {
+      "key": "Uten.Breakpoint.DesktopStart",
+      "type": "Double",
+      "value": "1280",
+      "sourceRole": "UtenBreakpoints.desktopStart",
+      "resolution": [
+        {
+          "symbol": "UtenBreakpoints.desktopStart",
+          "source": "lib/core/responsive/breakpoint.dart",
+          "line": 33,
+          "expression": "1280"
+        }
+      ],
+      "note": "Entry-page rails are hidden below the shared desktop window width; scrolling stays enabled."
     },
     {
       "key": "Uten.Space.S2",
@@ -1553,7 +1572,7 @@
         {
           "symbol": "Caption.layout.padding",
           "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 202,
+          "line": 213,
           "expression": "const EdgeInsets.symmetric(horizontal: 8)"
         }
       ],

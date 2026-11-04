@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform/desktop_window.dart';
+import '../../core/platform/desktop_window_modal.dart';
 import '../../components/buttons/uten_close_button.dart';
 
 /// Keep native controls outside display zoom and keep the routed subtree in
@@ -51,32 +52,42 @@ class _DesktopWindowHostState extends ConsumerState<DesktopWindowHost> {
   Widget build(BuildContext context) {
     if (!_controller.enabled) return widget.child;
     final login = widget.mode == DesktopWindowMode.login;
+    final modalRegistry = ref.watch(desktopWindowModalRegistryProvider);
     return ColoredBox(
       color: Theme.of(context).scaffoldBackgroundColor,
       // Header surfaces extend above the route Navigator into this window-sized
       // overlay. Native controls expose stable semantics without tooltips.
       child: Overlay.wrap(
-        child: _DesktopWindowHeaderScope(
-          enabled: !login,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                top: login && widget.overlayControls
-                    ? 0
-                    : DesktopWindowHost.controlsHeight,
-                child: widget.child,
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: DesktopWindowHost.controlsHeight,
-                child: _DesktopWindowControls(
-                  controller: _controller,
-                  canMaximize: !login,
+        child: DesktopWindowModalBarrierHost(
+          registry: modalRegistry,
+          height: DesktopWindowHost.controlsHeight,
+          contentCoversStrip: login && widget.overlayControls,
+          child: _DesktopWindowHeaderScope(
+            enabled: !login,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  top: login && widget.overlayControls
+                      ? 0
+                      : DesktopWindowHost.controlsHeight,
+                  child: widget.child,
                 ),
-              ),
-            ],
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: DesktopWindowHost.controlsHeight,
+                  child: DesktopWindowModalControlTint(
+                    registry: modalRegistry,
+                    enabled: login && widget.overlayControls,
+                    child: _DesktopWindowControls(
+                      controller: _controller,
+                      canMaximize: !login,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

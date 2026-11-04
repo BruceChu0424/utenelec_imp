@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | BusinessApplicationDetailPage @66 (page-class)<br>_BusinessApplicationDetailPageState @74 (state-class)<br>_PaymentRecordPicker @975 (supporting-class)<br>_PaymentRecordPickerState @989 (state-class) |
-| 真实路由绑定 | /applications/:id；router @721；builder ['BusinessApplicationDetailPage']；redirect None |
+| 真实路由绑定 | /applications/:id；router @736；builder ['BusinessApplicationDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | application:apply @520；定义 lib/shared/auth/permissions.dart:64<br>Perm.applicationKindApplyPermissions @522；定义 lib/shared/auth/permissions.dart:70<br>application:approve:department @525；定义 lib/shared/auth/permissions.dart:77<br>application:approve:finance_initial @526；定义 lib/shared/auth/permissions.dart:78<br>application:approve:finance_review @527；定义 lib/shared/auth/permissions.dart:80<br>application:approve:executive @528；定义 lib/shared/auth/permissions.dart:84<br>application:approve:vice_executive @529；定义 lib/shared/auth/permissions.dart:82<br>application:approve:procurement @530；定义 lib/shared/auth/permissions.dart:85<br>application:receive @531；定义 lib/shared/auth/permissions.dart:87<br>application:pay @532；定义 lib/shared/auth/permissions.dart:88<br>application:receive @546；定义 lib/shared/auth/permissions.dart:87<br>application:pay @550；定义 lib/shared/auth/permissions.dart:88<br>application:pay @554；定义 lib/shared/auth/permissions.dart:88<br>application:prepayment:link_finance @558；定义 lib/shared/auth/permissions.dart:89<br>application:pay @561；定义 lib/shared/auth/permissions.dart:88<br>application:prepayment:link_finance @562；定义 lib/shared/auth/permissions.dart:89<br>finance_payment:view @1253；定义 lib/shared/auth/permissions.dart:487<br>finance_expense:view @1254；定义 lib/shared/auth/permissions.dart:489<br>finance_payment:view @1420；定义 lib/shared/auth/permissions.dart:487<br>finance_expense:view @1439；定义 lib/shared/auth/permissions.dart:489 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | BusinessApplicationEditPage @35 (page-class)<br>_BusinessApplicationEditPageState @44 (state-class) |
-| 真实路由绑定 | /applications/new；router @688；builder ['BusinessApplicationEditPage']；redirect None<br>/applications/:id/edit；router @713；builder ['BusinessApplicationEditPage']；redirect None |
+| 真实路由绑定 | /applications/new；router @703；builder ['BusinessApplicationEditPage']；redirect None<br>/applications/:id/edit；router @728；builder ['BusinessApplicationEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | application:apply @100；定义 lib/shared/auth/permissions.dart:64<br>application:apply @439；定义 lib/shared/auth/permissions.dart:64<br>Perm.applicationKindApplyPermissions @442；定义 lib/shared/auth/permissions.dart:70 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | BusinessApplicationListPage @62 (page-class)<br>BusinessApplicationApprovalListPage @75 (page-class)<br>_ApplicationsPage @109 (page-class)<br>_ApplicationsPageState @127 (state-class) |
-| 真实路由绑定 | /applications/mine；router @696；builder ['BusinessApplicationListPage']；redirect None<br>/applications/approval；router @703；builder ['BusinessApplicationApprovalListPage']；redirect None |
+| 真实路由绑定 | /applications/mine；router @711；builder ['BusinessApplicationListPage']；redirect None<br>/applications/approval；router @718；builder ['BusinessApplicationApprovalListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | Perm.applicationApprovalPermissions @229；定义 lib/shared/auth/permissions.dart:91<br>application:pay @235；定义 lib/shared/auth/permissions.dart:88<br>application:prepayment:link_finance @236；定义 lib/shared/auth/permissions.dart:89<br>application:apply @261；定义 lib/features/applications/pages/business_application_list_page.dart:261 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyApplicationsPage @16 (page-class) |
-| 真实路由绑定 | /applications；router @683；builder ['MyApplicationsPage']；redirect None |
+| 真实路由绑定 | /applications；router @698；builder ['MyApplicationsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -27,8 +27,8 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _DecompositionSeg @102 (supporting-class)<br>_RetainedRefreshBatch @120 (supporting-class)<br>SubcontractDecompositionPage @125 (page-class)<br>_SubcontractDecompositionPageState @173 (state-class)<br>SubcontractPendingRow @2957 (supporting-class)<br>SubcontractApplicationRow @2963 (supporting-class)<br>SubcontractPendingDrawRow @2972 (supporting-class)<br>_DrawStatusCell @2983 (supporting-class)<br>_ProgressStatusCell @3034 (supporting-class) |
-| 真实路由绑定 | /operations/workbench/subcontract；router @1112；builder ['SubcontractDecompositionPage']；redirect None |
-| 重定向/别名候选 | {"routeId":"router:2045","routerLine":2045,"path":"/subcontract/applications","targetConstants":["operationsSubcontractWorkbench"],"redirectExpression":"(_, _) => RouteName.operationsSubcontractWorkbench","status":"possible alias; 需人工核实"} |
+| 真实路由绑定 | /operations/workbench/subcontract；router @1127；builder ['SubcontractDecompositionPage']；redirect None |
+| 重定向/别名候选 | {"routeId":"router:2060","routerLine":2060,"path":"/subcontract/applications","targetConstants":["operationsSubcontractWorkbench"],"redirectExpression":"(_, _) => RouteName.operationsSubcontractWorkbench","status":"possible alias; 需人工核实"} |
 | 权限 | subcontract_application:view @1536；定义 lib/shared/auth/permissions.dart:392<br>subcontract_order:view @1537；定义 lib/shared/auth/permissions.dart:393<br>subcontract_order:create @1538；定义 lib/shared/auth/permissions.dart:730<br>subcontract_order:decompose @1539；定义 lib/shared/auth/permissions.dart:733<br>subcontract_order:submit_finance @1645；定义 lib/shared/auth/permissions.dart:396<br>subcontract_report:export @2277；定义 lib/shared/auth/permissions.dart:423 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/operations_workbench/repositories/operations_workbench_repository.dart；接口：/operations/workbench/{department.apiValue}、/operations/workbench/{department.apiValue}/overview、ApiEndpoints.subcontractApplicationItemForwardBom<br>lib/features/subcontract/repositories/subcontract_draw_repository.dart；接口：/subcontract/draw-tasks<br>lib/features/subcontract/repositories/subcontract_kit_repository.dart；接口：ApiEndpoints.subcontractApplicationItemKit |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractDrawRequestPage @42 (page-class)<br>_SubcontractDrawRequestPageState @59 (state-class) |
-| 真实路由绑定 | /operations/workbench/subcontract/draw-request；router @1124；builder ['SubcontractDrawRequestPage']；redirect None |
+| 真实路由绑定 | /operations/workbench/subcontract/draw-request；router @1139；builder ['SubcontractDrawRequestPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractHubPage @47 (page-class)<br>_Entry @278 (supporting-class)<br>_EntryTile @300 (supporting-class) |
-| 真实路由绑定 | /subcontract；router @2023；builder ['SubcontractHubPage']；redirect None<br>/subcontract/report；router @2028；builder ['SubcontractHubPage']；redirect None |
+| 真实路由绑定 | /subcontract；router @2038；builder ['SubcontractHubPage']；redirect None<br>/subcontract/report；router @2043；builder ['SubcontractHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractReportTablePage @60 (page-class)<br>_SubcontractReportTablePageState @69 (state-class) |
-| 真实路由绑定 | /subcontract/report/:kind；router @2061；builder ['SubcontractReportTablePage']；redirect None |
+| 真实路由绑定 | /subcontract/report/:kind；router @2076；builder ['SubcontractReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | subcontract_report:export @534；定义 lib/shared/auth/permissions.dart:423<br>subcontract_report:export @543；定义 lib/shared/auth/permissions.dart:423 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -153,7 +153,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractShortDeliveryPage @62 (page-class)<br>_SubcontractShortDeliveryPageState @88 (state-class)<br>_CaseDetailDialog @970 (supporting-class) |
-| 真实路由绑定 | /subcontract/short-deliveries；router @2034；builder ['SubcontractShortDeliveryPage']；redirect None |
+| 真实路由绑定 | /subcontract/short-deliveries；router @2049；builder ['SubcontractShortDeliveryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

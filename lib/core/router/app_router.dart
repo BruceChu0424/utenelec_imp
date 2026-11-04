@@ -13,6 +13,8 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+
+import '../platform/desktop_window_modal.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -431,6 +433,17 @@ final businessWindowRouterProvider = Provider.autoDispose
     );
 
 GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
+  final modalRegistry = window == null
+      ? ref.watch(desktopWindowModalRegistryProvider)
+      : null;
+  final rootModalObserver = modalRegistry == null
+      ? null
+      : DesktopWindowModalObserver(modalRegistry, layer: 1);
+  final shellModalObserver = modalRegistry == null
+      ? null
+      : DesktopWindowModalObserver(modalRegistry);
+  if (rootModalObserver != null) ref.onDispose(rootModalObserver.dispose);
+  if (shellModalObserver != null) ref.onDispose(shellModalObserver.dispose);
   final windowRootSafety = window == null ? null : UpdateSafetyNavigation();
   final windowShellSafety = window == null ? null : UpdateSafetyNavigation();
   if (windowRootSafety != null) ref.onDispose(windowRootSafety.dispose);
@@ -438,6 +451,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
   final router = GoRouter(
     navigatorKey: window?.navigatorKey ?? appNavigatorKey,
     observers: [
+      ?rootModalObserver,
       if (window == null) ref.watch(clientUpdateNavigationProvider),
       if (window == null) ref.watch(rootUpdateSafetyNavigationProvider),
       ?windowRootSafety,
@@ -570,6 +584,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
       ),
       ShellRoute(
         observers: [
+          ?shellModalObserver,
           windowShellSafety ?? ref.watch(shellUpdateSafetyNavigationProvider),
         ],
         // ⚠️ SelectionArea 已下线：Flutter 框架 bug（web 端 SelectableRegion 在

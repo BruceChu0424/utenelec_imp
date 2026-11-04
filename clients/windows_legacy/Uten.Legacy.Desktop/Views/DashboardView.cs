@@ -39,6 +39,7 @@ namespace Uten.Legacy.Desktop.Views
             body.Children.Add(new TextBlock { Text = "待办任务", Style = (Style)FindResource("Uten.SectionTitle"), Margin = new Thickness(0, Space("S24"), 0, Space("S12")) });
             body.Children.Add(todos);
             var scroll = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            UtenEntryPageScrollBehavior.SetEnabled(scroll, true);
             Grid.SetRow(scroll, 1); grid.Children.Add(scroll); Content = grid;
             Loaded += (s, e) => Load();
         }

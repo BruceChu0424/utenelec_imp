@@ -477,7 +477,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WorkshopMaterialReportsPage @57 (page-class)<br>_WorkshopMaterialReportsPageState @77 (state-class)<br>_CloseStatusCard @1417 (supporting-class)<br>_ReopenReasonDialog @1659 (supporting-class)<br>_ReopenReasonDialogState @1666 (state-class)<br>_WasteTrendReadout @1760 (supporting-class)<br>_WasteTrendChart @1801 (supporting-class)<br>_WasteTrendChartState @1808 (state-class)<br>WasteTrendPainter @1863 (supporting-class) |
-| 真实路由绑定 | /reports/workshop-material；router @1884；builder ['WorkshopMaterialReportsPage']；redirect None |
+| 真实路由绑定 | /reports/workshop-material；router @1899；builder ['WorkshopMaterialReportsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

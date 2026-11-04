@@ -39,6 +39,15 @@ class DesignTokenTests(unittest.TestCase):
                 self.assertEqual(entry["sourceRole"], "UtenColors.currency" + role + suffix)
                 self.assertEqual(entry["type"], "SolidColorBrush")
 
+    def test_entry_page_desktop_width_follows_responsive_owner(self):
+        texts = self.texts()
+        source = "lib/core/responsive/breakpoint.dart"
+        texts[source] = texts[source].replace("desktopStart = 1280;", "desktopStart = 1360;")
+        entry = self.values(texts)["Uten.Breakpoint.DesktopStart"]
+        self.assertEqual("1360", entry["value"])
+        self.assertEqual("UtenBreakpoints.desktopStart", entry["sourceRole"])
+        self.assertEqual(source, entry["resolution"][0]["source"])
+
     def test_private_caption_owner_is_supported_without_public_file(self):
         texts = self.texts()
         texts.pop(sync.PUBLIC_WINDOW_CONTROLS, None)

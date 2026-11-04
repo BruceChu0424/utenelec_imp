@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseApprovalDetailPage @61 (page-class)<br>_ExpenseApprovalDetailPageState @70 (state-class)<br>_ExpensePaymentDialog @594 (supporting-class)<br>_ExpensePaymentDialogState @602 (state-class)<br>_Hero @810 (supporting-class) |
-| 真实路由绑定 | /expense/approval/:id；router @786；builder ['ExpenseApprovalDetailPage']；redirect None |
+| 真实路由绑定 | /expense/approval/:id；router @801；builder ['ExpenseApprovalDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseFinanceApprovalPage @53 (page-class)<br>ExpenseApprovalListPage @67 (page-class)<br>_ExpenseApprovalListPageState @85 (state-class) |
-| 真实路由绑定 | /expense/approval；router @777；builder ['ExpenseFinanceApprovalPage']；redirect None |
+| 真实路由绑定 | /expense/approval；router @792；builder ['ExpenseFinanceApprovalPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:view @249；定义 lib/shared/auth/permissions.dart:56<br>expense:pay @253；定义 lib/shared/auth/permissions.dart:109<br>attachment:view @541；定义 lib/shared/auth/permissions.dart:141<br>attachment:download @542；定义 lib/shared/auth/permissions.dart:800 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseClaimEditPage @61 (page-class)<br>_ExpenseClaimEditPageState @79 (state-class) |
-| 真实路由绑定 | /expense/new；router @748；builder ['ExpenseClaimEditPage']；redirect None<br>/expense/:id/edit；router @769；builder ['ExpenseClaimEditPage']；redirect None |
+| 真实路由绑定 | /expense/new；router @763；builder ['ExpenseClaimEditPage']；redirect None<br>/expense/:id/edit；router @784；builder ['ExpenseClaimEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @728；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseDetailPage @57 (page-class)<br>_ExpenseDetailPageState @71 (state-class)<br>_HeroCard @681 (supporting-class) |
-| 真实路由绑定 | /expense/:id；router @792；builder ['ExpenseDetailPage']；redirect None |
+| 真实路由绑定 | /expense/:id；router @807；builder ['ExpenseDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @172；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseListPage @54 (page-class)<br>_ExpenseListPageState @61 (state-class) |
-| 真实路由绑定 | /expense；router @743；builder ['ExpenseListPage']；redirect None |
+| 真实路由绑定 | /expense；router @758；builder ['ExpenseListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @80；定义 lib/shared/auth/permissions.dart:55<br>expense:apply @141；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseSettingsPage @22 (page-class)<br>_ExpenseSettingsPageState @30 (state-class) |
-| 真实路由绑定 | /expense/settings；router @764；builder ['ExpenseSettingsPage']；redirect None |
+| 真实路由绑定 | /expense/settings；router @779；builder ['ExpenseSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:settings @100；定义 lib/shared/auth/permissions.dart:110 |
 | 接口常量 | 未静态确认；不能当作不存在 |

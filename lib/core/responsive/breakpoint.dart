@@ -28,6 +28,9 @@ abstract final class UtenBreakpoints {
 
   /// medium → expanded 的分界
   static const double expandedStart = 840;
+
+  /// Wide desktop chrome; expanded layouts below this still include tablets.
+  static const double desktopStart = 1280;
 }
 
 extension UtenBreakpointValue on UtenBreakpoint {

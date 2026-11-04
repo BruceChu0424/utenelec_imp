@@ -22,6 +22,7 @@ import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -151,6 +152,7 @@ Future<GoRouter> _pump(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final router = GoRouter(
     initialLocation: route,
@@ -223,6 +225,19 @@ UtenFilterToolbar<String> _kindToolbar(WidgetTester tester) =>
       ),
     );
 
+/// 申请/报销表格定位：草稿分段经 [FormDraftCategoryTable] 包裹后泛型变为
+/// FormDraftCategoryRow 行类型，两种形态都算「该列表的表格」。
+Finder applicationTables() => find.byWidgetPredicate(
+  (w) =>
+      w is MasterDataTableView<BusinessApplication> ||
+      w is MasterDataTableView<FormDraftCategoryRow<BusinessApplication>>,
+);
+Finder expenseTables() => find.byWidgetPredicate(
+  (w) =>
+      w is MasterDataTableView<ExpenseClaim> ||
+      w is MasterDataTableView<FormDraftCategoryRow<ExpenseClaim>>,
+);
+
 void main() {
   testWidgets('hub keeps application records only, expense card removed', (
     tester,
@@ -239,10 +254,7 @@ void main() {
   ) async {
     final api = _Api();
     await _pump(tester, api, '/applications/mine');
-    expect(
-      find.byType(MasterDataTableView<BusinessApplication>),
-      findsOneWidget,
-    );
+    expect(applicationTables(), findsOneWidget);
     final mineReads = api.queries
         .where((q) => q.path == '/business-applications/mine')
         .length;
@@ -259,8 +271,8 @@ void main() {
     kinds.onSelectionChanged!('EXPENSE');
     await tester.pumpAndSettle();
 
-    expect(find.byType(MasterDataTableView<ExpenseClaim>), findsOneWidget);
-    expect(find.byType(MasterDataTableView<BusinessApplication>), findsNothing);
+    expect(expenseTables(), findsOneWidget);
+    expect(applicationTables(), findsNothing);
     // 申请状态栏让位给报销自己的分段。
     expect(
       find.byWidgetPredicate(
@@ -282,11 +294,8 @@ void main() {
     // 切回申请分类：申请表格与状态栏恢复，分页从第 1 页重新读取。
     _kindToolbar(tester).onSelectionChanged!('ALL');
     await tester.pumpAndSettle();
-    expect(
-      find.byType(MasterDataTableView<BusinessApplication>),
-      findsOneWidget,
-    );
-    expect(find.byType(MasterDataTableView<ExpenseClaim>), findsNothing);
+    expect(applicationTables(), findsOneWidget);
+    expect(expenseTables(), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -295,7 +304,7 @@ void main() {
   ) async {
     final api = _Api();
     await _pump(tester, api, '/applications/mine?kind=EXPENSE');
-    expect(find.byType(MasterDataTableView<ExpenseClaim>), findsOneWidget);
+    expect(expenseTables(), findsOneWidget);
     // 与其它 kind 深链一致：分类栏不显示，业务申请接口零请求。
     expect(
       find.byWidgetPredicate(

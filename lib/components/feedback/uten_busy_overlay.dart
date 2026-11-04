@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../buttons/uten_button.dart';
 import 'uten_overlay_lifecycle.dart';
 
 class UtenBusyOverlay extends StatefulWidget {
@@ -22,6 +23,8 @@ class UtenBusyOverlay extends StatefulWidget {
     this.description,
     this.semanticsKey,
     this.showDoNotLeaveHint = true,
+    this.onCancel,
+    this.cancelLabel = '取消',
   });
 
   /// 进度卡片的语义 key（宿主测试锁定用，如物料分析的
@@ -37,6 +40,8 @@ class UtenBusyOverlay extends StatefulWidget {
   /// Optional waiting guidance. Hiding the copy keeps the same blocking mask,
   /// task lifetime and accessibility progress announcement.
   final bool showDoNotLeaveHint;
+  final VoidCallback? onCancel;
+  final String cancelLabel;
 
   /// Read/compute preparation shared by menu, header and dialog actions.
   /// End it before asking for input or showing the result dialog.
@@ -202,6 +207,8 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
             description: widget.description,
             semanticsKey: widget.semanticsKey,
             showDoNotLeaveHint: widget.showDoNotLeaveHint,
+            onCancel: widget.onCancel,
+            cancelLabel: widget.cancelLabel,
           ),
         ),
       ],
@@ -228,6 +235,8 @@ class UtenBusyOverlayCard extends StatelessWidget {
     this.description,
     this.semanticsKey,
     this.showDoNotLeaveHint = true,
+    this.onCancel,
+    this.cancelLabel = '取消',
   });
 
   final Key? semanticsKey;
@@ -237,6 +246,8 @@ class UtenBusyOverlayCard extends StatelessWidget {
   /// 是否附带通用等待说明。主档操作或首屏加载可只保留动作标题，
   /// 其余场景保持默认提示；这只控制文案，不改变阻止重复操作的蒙版。
   final bool showDoNotLeaveHint;
+  final VoidCallback? onCancel;
+  final String cancelLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -290,35 +301,49 @@ class UtenBusyOverlayCard extends StatelessWidget {
             ?description,
             if (showDoNotLeaveHint) '请勿重复提交或关闭页面',
           ].map((line) => '$line。').join(),
-          child: ExcludeSemantics(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Material(
-                color: theme.colorScheme.surface,
-                elevation: 12,
-                borderRadius: UtenRadius.lgAll,
-                child: Padding(
-                  padding: EdgeInsets.all(
-                    compact ? UtenSpacing.s16 : UtenSpacing.s24,
-                  ),
-                  child: compact
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            progress,
-                            const SizedBox(height: UtenSpacing.s12),
-                            text,
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            progress,
-                            const SizedBox(width: UtenSpacing.s16),
-                            Expanded(child: text),
-                          ],
-                        ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Material(
+              color: theme.colorScheme.surface,
+              elevation: 12,
+              borderRadius: UtenRadius.lgAll,
+              child: Padding(
+                padding: EdgeInsets.all(
+                  compact ? UtenSpacing.s16 : UtenSpacing.s24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ExcludeSemantics(
+                      child: compact
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                progress,
+                                const SizedBox(height: UtenSpacing.s12),
+                                text,
+                              ],
+                            )
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                progress,
+                                const SizedBox(width: UtenSpacing.s16),
+                                Expanded(child: text),
+                              ],
+                            ),
+                    ),
+                    if (onCancel != null) ...[
+                      const SizedBox(height: UtenSpacing.s16),
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        onPressed: onCancel,
+                        child: Text(cancelLabel),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

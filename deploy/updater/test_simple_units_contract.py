@@ -157,21 +157,24 @@ class UpdaterUnitTest(unittest.TestCase):
 
 class ManualUpdateWorkerUnitTest(unittest.TestCase):
     unit = read(UNITS / "uten-imp-update-job.service")
-    delegation_caps = {
+    worker_caps = {
         "CAP_CHOWN", "CAP_DAC_READ_SEARCH", "CAP_KILL", "CAP_SETGID", "CAP_SETUID",
+        "CAP_SYS_PTRACE",
     }
 
-    def test_explicit_root_keeps_only_the_bounded_delegation_capabilities_across_exec(self):
+    def test_explicit_root_keeps_only_the_bounded_worker_capabilities_across_exec(self):
         # UID 0 is insufficient with NoNewPrivileges: an explicit-root worker
         # lost CAP_SETUID and runuser failed before even querying PostgreSQL.
+        # Protected post-update cleanup also needs CAP_SYS_PTRACE to inspect
+        # /proc/<pid>/fd across account boundaries rather than skip that check.
         # Empty, reset, inverted or additional capability directives must fail.
         self.assertEqual(["root"], directives(self.unit, "User"))
         self.assertEqual(["root"], directives(self.unit, "Group"))
         for name in ("CapabilityBoundingSet", "AmbientCapabilities"):
             values = directives(self.unit, name)
             self.assertEqual(1, len(values), name)
-            self.assertEqual(self.delegation_caps, set(values[0].split()), name)
-            self.assertEqual(len(self.delegation_caps), len(values[0].split()), name)
+            self.assertEqual(self.worker_caps, set(values[0].split()), name)
+            self.assertEqual(len(self.worker_caps), len(values[0].split()), name)
         self.assertEqual(
             ["/usr/bin/python3 -I /usr/local/lib/uten-imp/host_operations.py worker"],
             directives(self.unit, "ExecStart"),

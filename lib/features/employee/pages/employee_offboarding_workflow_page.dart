@@ -222,41 +222,15 @@ class _EmployeeOffboardingWorkflowPageState
     }
   }
 
-  Future<List<UtenEmployeePickerItem>> _successorCandidates(
-    String? keyword,
-  ) async {
-    final repository = ref.read(dataHandoverRepositoryProvider);
-    final rows = <DataHandoverCandidate>[];
-    var page = 1;
-    var totalPages = 1;
-    do {
-      final result = await repository.candidates(
+  Future<UtenEmployeePickerPage> _successorCandidates(
+    UtenEmployeePickerQuery query,
+  ) => ref
+      .read(dataHandoverRepositoryProvider)
+      .pickerPage(
+        query,
         role: DataHandoverCandidateRole.target,
-        page: page,
-        query: keyword,
+        excludeEmployeeIds: {widget.employeeId},
       );
-      rows.addAll(result.items);
-      if (result.page != page) {
-        throw const FormatException('人员候选分页响应与请求不一致');
-      }
-      totalPages = result.totalPages;
-      page++;
-    } while (page <= totalPages);
-    return {for (final employee in rows) employee.employeeId: employee}.values
-        .where((employee) => employee.employeeId != widget.employeeId)
-        .map(
-          (employee) => UtenEmployeePickerItem(
-            id: employee.employeeId,
-            name: employee.name,
-            employeeCode: employee.code,
-            departmentId: employee.departmentId,
-            departmentName: employee.departmentName,
-            accountStatus: employee.accountStatus,
-            employmentStatus: employee.employmentStatus,
-          ),
-        )
-        .toList(growable: false);
-  }
 
   Future<void> _changeSuccessor(UtenEmployeePickerItem? successor) async {
     setState(() => _successor = successor);
@@ -616,21 +590,18 @@ class _EmployeeOffboardingWorkflowPageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            noData
-                ? '当前没有需要移交的责任数据，可不选择默认接手人。'
-                : '选择一名在册员工默认承接尚未交接的责任；已有分模块接手关系保留，历史操作人保持不变。',
-          ),
-          const SizedBox(height: UtenSpacing.s12),
           UtenEmployeePicker(
             key: ValueKey('offboarding-successor-${_successor?.id ?? 'none'}'),
             label: '默认接手人',
+            info: noData
+                ? '当前没有需要移交的责任数据，可不选择默认接手人。'
+                : '选择一名在册员工默认承接尚未交接的责任；已有分模块接手关系保留，历史操作人保持不变。',
             hint: noData ? '无数据，可不选择' : '请选择在册接手人',
             sheetTitle: '选择离职数据默认接手人',
             required: _preview?.requiresTarget == true,
             initial: _successor,
             allowClear: noData,
-            loader: _successorCandidates,
+            pagedLoader: _successorCandidates,
             validator: (value) =>
                 _preview?.requiresTarget == true && value == null
                 ? '仍有责任数据，请选择一名在册默认接手人'

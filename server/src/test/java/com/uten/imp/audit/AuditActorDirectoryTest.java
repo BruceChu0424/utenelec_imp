@@ -18,8 +18,32 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 class AuditActorDirectoryTest {
+
+    @Test
+    void historicalUnassignedShapeKeepsItsIdentityAndUsesAnExplicitStaffOnlyFilter() {
+        EntityManager entityManager = mock(EntityManager.class);
+        Query data = mock(Query.class), count = mock(Query.class), activity = mock(Query.class);
+        routeDirectoryQueries(entityManager, data, count, activity);
+        UUID id = UUID.randomUUID();
+        when(data.getResultList()).thenReturn(java.util.Collections.<Object>singletonList(
+                new Object[]{id, "staff", "legacy-account", "历史账号", null, null, null, "deleted", "resigned"}));
+        when(count.getSingleResult()).thenReturn(1L);
+        when(activity.getResultList()).thenReturn(List.of());
+        AuditActorDirectory directory = new AuditActorDirectory();
+        ReflectionTestUtils.setField(directory, "entityManager", entityManager);
+        var result = directory.findActors("legacy", 1, 20, null, false, "staff", true);
+        assertEquals(id, result.getItems().getFirst().actorId());
+        assertNull(result.getItems().getFirst().departmentId());
+        assertEquals("deleted", result.getItems().getFirst().accountStatus());
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(entityManager, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        assertEquals(1, result.getTotal());
+        verify(count, never()).getSingleResult();
+        assertTrue(sql.getAllValues().getFirst().contains("directory.actor_type='staff' AND directory.department_id IS NULL"));
+    }
 
     @Test
     void peopleDirectoryPagesStaffAndVisitorsWithoutSensitiveVisitorColumns() {
@@ -27,7 +51,7 @@ class AuditActorDirectoryTest {
         Query data = mock(Query.class);
         Query count = mock(Query.class);
         Query activity = mock(Query.class);
-        when(entityManager.createNativeQuery(anyString())).thenReturn(data, count, activity);
+        routeDirectoryQueries(entityManager, data, count, activity);
         UUID staffId = UUID.randomUUID();
         UUID visitorId = UUID.randomUUID();
         UUID departmentId = UUID.randomUUID();
@@ -66,7 +90,9 @@ class AuditActorDirectoryTest {
                 result.getItems().get(0).lastActivityAt());
         assertNull(result.getItems().get(1).lastActivityAt());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(entityManager, org.mockito.Mockito.times(3)).createNativeQuery(sql.capture());
+        verify(entityManager, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        assertEquals(2, result.getTotal());
+        verify(count, never()).getSingleResult();
         String combined = String.join(" ", sql.getAllValues()).toLowerCase();
         assertTrue(combined.contains("visitor_accounts"));
         assertTrue(combined.contains("e.code as employee_code")
@@ -129,5 +155,72 @@ class AuditActorDirectoryTest {
         AuditLogRow row = AuditLogRow.of(historical, new AuditEventInterpreter(), null);
         assertEquals("历史人员", row.getActorType());
         assertEquals("shared-account(档案不可用)", row.getActorDisplay());
+    }
+
+    @Test void emptyFirstPageNeedsNeitherCountNorActivity() {
+        var fixture = new DirectoryFixture(List.of());
+        var result = fixture.directory.findActors("不存在", 1, 20);
+        assertEquals(0, result.getTotal()); assertEquals(0, result.getTotalPages());
+        verify(fixture.entityManager, org.mockito.Mockito.times(1)).createNativeQuery(anyString());
+        verify(fixture.count, never()).getSingleResult(); verify(fixture.activity, never()).getResultList();
+    }
+
+    @Test void partialPagesInferTotalFromRawRowsEvenWhenAMalformedIdentityIsNotDisplayed() {
+        var fixture = new DirectoryFixture(List.of(actorRow(UUID.randomUUID()), actorRow(null)));
+        var result = fixture.directory.findActors(null, 1, 20);
+        assertEquals(1, result.getItems().size()); assertEquals(2, result.getTotal());
+        verify(fixture.entityManager, org.mockito.Mockito.times(2)).createNativeQuery(anyString());
+        verify(fixture.count, never()).getSingleResult();
+    }
+
+    @Test void nonemptyTailPageInfersOffsetPlusRawRowCount() {
+        var fixture = new DirectoryFixture(java.util.Collections.singletonList(actorRow(UUID.randomUUID())));
+        var result = fixture.directory.findActors(null, 3, 2);
+        assertEquals(5, result.getTotal()); assertEquals(3, result.getTotalPages());
+        verify(fixture.count, never()).getSingleResult();
+        verify(fixture.activity).getResultList();
+    }
+
+    @Test void emptyDeepPageStillReadsTheExactCount() {
+        var fixture = new DirectoryFixture(List.of());
+        when(fixture.count.getSingleResult()).thenReturn(3L);
+        var result = fixture.directory.findActors(null, 3, 2);
+        assertEquals(3, result.getTotal()); assertEquals(2, result.getTotalPages());
+        verify(fixture.count).getSingleResult(); verify(fixture.activity, never()).getResultList();
+        verify(fixture.entityManager, org.mockito.Mockito.times(2)).createNativeQuery(anyString());
+    }
+
+    @Test void fullPageKeepsExactCountAndBatchedActivity() {
+        var fixture = new DirectoryFixture(List.of(actorRow(UUID.randomUUID()), actorRow(UUID.randomUUID())));
+        when(fixture.count.getSingleResult()).thenReturn(7L);
+        var result = fixture.directory.findActors(null, 1, 2);
+        assertEquals(7, result.getTotal()); assertEquals(4, result.getTotalPages());
+        verify(fixture.count).getSingleResult(); verify(fixture.activity).getResultList();
+        verify(fixture.entityManager, org.mockito.Mockito.times(3)).createNativeQuery(anyString());
+    }
+
+    private static Object[] actorRow(UUID id) {
+        return new Object[]{id,"staff","actor-account","历史人员",null,null,null,"deleted","resigned"};
+    }
+
+    private static void routeDirectoryQueries(EntityManager em, Query data, Query count, Query activity) {
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            String sql=call.getArgument(0);
+            if(sql.contains("FROM audit_log"))return activity;
+            return sql.contains("SELECT count(*) FROM (")?count:data;
+        });
+    }
+
+    private static final class DirectoryFixture {
+        final EntityManager entityManager=mock(EntityManager.class);
+        final Query data=mock(Query.class),count=mock(Query.class),activity=mock(Query.class);
+        final AuditActorDirectory directory=new AuditActorDirectory();
+        DirectoryFixture(List<?> rows) {
+            routeDirectoryQueries(entityManager,data,count,activity);
+            List<Object> rawRows=new java.util.ArrayList<>(rows);
+            when(data.getResultList()).thenReturn(rawRows);
+            when(activity.getResultList()).thenReturn(List.of());
+            ReflectionTestUtils.setField(directory,"entityManager",entityManager);
+        }
     }
 }

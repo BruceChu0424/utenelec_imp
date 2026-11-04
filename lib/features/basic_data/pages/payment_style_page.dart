@@ -7,6 +7,7 @@ import '../../../shared/hierarchy/category_sibling_names.dart';
 // 大屏采用目录树 + 属性检查器，编辑模式复用共享表格批量维护；手机保留分类抽屉。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_record_history_panel.dart';
 import '../widgets/master_status_confirmation.dart';
@@ -1064,11 +1065,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   Widget _buildWorkspace() {
     final all = _workspaceRows;
     final keyword = _workspaceKeyword.trim().toLowerCase();
+    final query = KeywordSearchQuery(keyword);
     final rows = all.where((row) {
       if (keyword.isNotEmpty &&
-          !'${row.node.code} ${row.node.name} ${row.path}'
-              .toLowerCase()
-              .contains(keyword)) {
+          !query.matches([row.node.code, row.node.name, row.path])) {
         return false;
       }
       for (final entry in _workspaceFilters.entries) {
@@ -1082,9 +1082,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
         if (column == null || entry.value == null) continue;
         final value = column.value(row);
         if (searching) {
-          if (!(value ?? '').toLowerCase().contains(
-            entry.value!.toLowerCase(),
-          )) {
+          if (!matchesKeywordSearch([value], entry.value!)) {
             return false;
           }
           continue;

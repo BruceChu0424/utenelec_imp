@@ -731,6 +731,8 @@ class AuthInterceptor extends Interceptor {
     return path.endsWith('/admin/impersonation/enter') ||
         path.endsWith('/admin/impersonation/start') ||
         path.endsWith('/admin/impersonation/targets') ||
+        path.endsWith('/admin/impersonation/targets/page') ||
+        path.endsWith('/admin/impersonation/targets/departments') ||
         path.endsWith('/auth/step-up');
   }
 

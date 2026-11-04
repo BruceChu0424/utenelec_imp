@@ -4,6 +4,9 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.DepartmentSearchSql;
+import com.uten.imp.common.util.EmployeeCandidateFilter;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.notice.dto.NoticeAudienceEmployeeDto;
 import com.uten.imp.features.notice.dto.NoticeAudiencePreviewDto;
 import lombok.RequiredArgsConstructor;
@@ -34,8 +37,53 @@ public class NoticeAudienceService {
     /** notice:publish 专用人员目录，不要求额外 employee:view，且不暴露敏感档案字段。 */
     @Transactional(readOnly = true)
     public List<NoticeAudienceEmployeeDto> searchEmployees(String search) {
+        var candidates = audienceRows(audienceSearch(search, null, false, false), MAX_SEARCH_RESULTS + 1, 0);
+        if (candidates.size() > MAX_SEARCH_RESULTS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "候选人员超过5000人，请输入姓名或工号缩小范围");
+        }
+        return candidates;
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<NoticeAudienceEmployeeDto> searchEmployeesPage(String search, int page, int size,
+            UUID departmentId, boolean includeSubtree) {
+        int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, size));
+        var read = audienceSearch(search, departmentId, includeSubtree, true);
+        long total = jdbc.sql(read.prefix() + "SELECT count(*) " + read.fromWhere())
+                .params(read.parameters()).query(Long.class).single();
+        return new PageResponse<>(audienceRows(read, safeSize, ((long) safePage - 1) * safeSize),
+                safePage, safeSize, total, total == 0 ? 0 : Math.toIntExact((total + safeSize - 1) / safeSize));
+    }
+
+    private record AudienceSearch(String prefix, String fromWhere, String rank, java.util.Map<String,Object> parameters) { }
+
+    private AudienceSearch audienceSearch(String search, UUID departmentId, boolean subtree, boolean organizationSearch) {
         String keyword = KeywordSearch.phrase(search);
-        List<NoticeAudienceEmployeeDto> candidates = jdbc.sql("""
+        boolean paths = organizationSearch && !KeywordSearch.terms(keyword).isEmpty();
+        var fields = organizationSearch
+                ? new String[]{"e.full_name", "e.code", paths ? DepartmentSearchSql.name("d.name") : "d.name"}
+                : new String[]{"e.full_name", "e.code"};
+        var scope = EmployeeCandidateFilter.of(departmentId, subtree, List.of(), "e.id", "e.department_id");
+        var parameters = new java.util.LinkedHashMap<String,Object>(scope.parameters());
+        parameters.put("keyword", keyword);
+        String fromWhere = """
+                FROM employees e
+                JOIN users u ON u.employee_id = e.id
+                LEFT JOIN departments d ON d.id = e.department_id
+                """ + DepartmentSearchSql.joins(paths, "e.department_id") + """
+                WHERE e.is_deleted = false
+                  AND e.status <> 'resigned'
+                  AND u.is_deleted = false
+                  AND u.status = 'active'
+                  AND
+                """ + TaskKeywordSearch.conditionParameter("keyword", fields) + scope.sql();
+        return new AudienceSearch(DepartmentSearchSql.prefix(paths), fromWhere,
+                TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"e.full_name"}, new String[]{}, fields), parameters);
+    }
+
+    private List<NoticeAudienceEmployeeDto> audienceRows(AudienceSearch read, int limit, long offset) {
+        return jdbc.sql(read.prefix() + """
                         SELECT e.id,
                                e.full_name,
                                e.code,
@@ -43,21 +91,13 @@ public class NoticeAudienceService {
                                d.name AS department_name,
                                u.status AS account_status,
                                e.status AS employment_status
-                        FROM employees e
-                        JOIN users u ON u.employee_id = e.id
-                        LEFT JOIN departments d ON d.id = e.department_id
-                        WHERE e.is_deleted = false
-                          AND e.status <> 'resigned'
-                          AND u.is_deleted = false
-                          AND u.status = 'active'
-                          AND %s
+                        %s
                         ORDER BY %s, e.full_name, e.code, e.id
-                        LIMIT :limit
-                        """.formatted(TaskKeywordSearch.conditionParameter("keyword", "e.full_name", "e.code"),
-                        TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"e.full_name"},
-                                new String[]{}, new String[]{"e.full_name", "e.code"})))
-                .param("keyword", keyword)
-                .param("limit", MAX_SEARCH_RESULTS + 1)
+                        LIMIT :limit OFFSET :offset
+                        """.formatted(read.fromWhere(), read.rank()))
+                .params(read.parameters())
+                .param("limit", limit)
+                .param("offset", offset)
                 .query((rs, rowNum) -> new NoticeAudienceEmployeeDto(
                         rs.getObject("id", UUID.class).toString(),
                         rs.getString("full_name"),
@@ -66,11 +106,6 @@ public class NoticeAudienceService {
                         rs.getString("department_name"),
                         rs.getString("account_status"), rs.getString("employment_status")))
                 .list();
-        if (candidates.size() > MAX_SEARCH_RESULTS) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "候选人员超过5000人，请输入姓名或工号缩小范围");
-        }
-        return candidates;
     }
 
     @Transactional(readOnly = true)

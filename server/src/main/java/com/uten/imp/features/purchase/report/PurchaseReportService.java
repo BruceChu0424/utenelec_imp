@@ -471,7 +471,7 @@ public class PurchaseReportService {
                 LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
-        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "o.bill_no", "billNo");
         ReportQueryKit.addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
@@ -567,7 +567,7 @@ public class PurchaseReportService {
                 LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
-        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "o.bill_no", "billNo");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         ReportQueryKit.addApprovedByDefault(w, status);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
@@ -677,7 +677,7 @@ public class PurchaseReportService {
                 LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
-        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "o.bill_no", "billNo");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         ReportQueryKit.addApprovedByDefault(w, status);
@@ -778,7 +778,7 @@ public class PurchaseReportService {
                 LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
-        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "o.bill_no", "billNo");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         ReportQueryKit.addApprovedByDefault(w, status);

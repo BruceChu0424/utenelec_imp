@@ -90,20 +90,17 @@ List<MasterFieldDef> buildSupplierFields(
           selectedId: ctx.initialValue,
           presentation: UtenEmployeePickerPresentation.businessReference,
           scopeBuilder: owner?.ownDialog,
+          cancelDepartmentTreeReadOnClose: true,
           departmentTreeLoader: () => owner == null
               ? repository.departments(purpose)
               : owner.run(() => repository.departments(purpose)),
-          loader: (keyword) async {
-            Future<List<EmployeeReference>> read() =>
-                repository.listPickerCandidates(
-                  purpose: purpose,
-                  search: keyword,
-                  statuses: const {'active', 'probation', 'onLeave'},
-                );
-            final rows = owner == null ? await read() : await owner.run(read);
-            return rows
-                .map((row) => row.toPickerItem())
-                .toList(growable: false);
+          pagedLoader: (query) async {
+            Future<UtenEmployeePickerPage> read() => repository.listPickerPage(
+              query,
+              purpose: purpose,
+              statuses: const {'active', 'probation', 'onLeave'},
+            );
+            return owner == null ? await read() : await owner.run(read);
           },
         );
         return owner == null || owner.isCurrent ? result?.firstOrNull : null;

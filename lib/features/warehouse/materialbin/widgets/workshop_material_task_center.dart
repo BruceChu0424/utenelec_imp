@@ -12,6 +12,7 @@ import '../../../../core/router/route_access_policy.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../shared/badges/badge_registry.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/search/keyword_search.dart';
 import '../../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../../shared/warehouse/warehouse_task_badges.dart';
@@ -256,14 +257,14 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
   @override
   Widget build(BuildContext context) {
     final keyword = widget.keyword.trim().toLowerCase();
+    final query = KeywordSearchQuery(keyword);
     final rows = [
       for (final row in _rows ?? const <_BinStatusRow>[])
-        if (keyword.isEmpty ||
-            [
-              row.setting.workshopName,
-              row.setting.binWarehouseName ?? '',
-              if (row.period != null) wmPeriodLabel(row.period!),
-            ].join(' ').toLowerCase().contains(keyword))
+        if (query.matches([
+          row.setting.workshopName,
+          row.setting.binWarehouseName ?? '',
+          if (row.period != null) wmPeriodLabel(row.period!),
+        ]))
           row,
     ];
     return UtenCollapsingHeaderScrollView(

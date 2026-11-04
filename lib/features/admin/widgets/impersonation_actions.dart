@@ -70,29 +70,45 @@ Future<ImpersonationTarget?> showImpersonationTargetPicker(
     context,
     title: l10n.impersonationTargetPickerTitle,
     emptyMessage: l10n.impersonationNoTargets,
-    loader: (keyword) async {
-      final rows = await ref
+    cancelDepartmentTreeReadOnClose: true,
+    departmentTreeLoader: () =>
+        ref.read(impersonationRepositoryProvider).targetDepartments(),
+    pagedLoader: (query) async {
+      final result = await ref
           .read(impersonationRepositoryProvider)
-          .searchTargets(keyword);
-      for (final row in rows) {
+          .targetsPage(
+            query.keyword,
+            page: query.page,
+            departmentId: query.departmentId,
+            includeSubtree: query.includeDepartmentSubtree,
+          );
+      if (result.page != query.page) {
+        throw const FormatException('模拟目标候选分页已变化，请重新搜索');
+      }
+      for (final row in result.items) {
         targets[row.employeeId] = row;
       }
-      return [
-        for (final row in rows)
-          UtenEmployeePickerItem(
-            id: row.employeeId,
-            name: row.name,
-            employeeCode: row.employeeCode,
-            departmentId: row.departmentId,
-            departmentName: row.departmentName,
-            accountStatus: row.accountStatus,
-            employmentStatus: row.employmentStatus,
-            subtitle: [
-              if (row.positionName?.isNotEmpty == true) row.positionName!,
-              if (recentIds.contains(row.employeeId)) l10n.impersonationRecent,
-            ].join(' · '),
-          ),
-      ];
+      return UtenEmployeePickerPage(
+        items: [
+          for (final row in result.items)
+            UtenEmployeePickerItem(
+              id: row.employeeId,
+              name: row.name,
+              employeeCode: row.employeeCode,
+              departmentId: row.departmentId,
+              departmentName: row.departmentName,
+              accountStatus: row.accountStatus,
+              employmentStatus: row.employmentStatus,
+              subtitle: [
+                if (row.positionName?.isNotEmpty == true) row.positionName!,
+                if (recentIds.contains(row.employeeId))
+                  l10n.impersonationRecent,
+              ].join(' · '),
+            ),
+        ],
+        page: result.page,
+        totalPages: result.totalPages,
+      );
     },
   );
   return picked == null ? null : targets[picked.id];

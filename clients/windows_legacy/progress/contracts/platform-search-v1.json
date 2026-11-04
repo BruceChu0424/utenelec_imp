@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "contractId": "platform-search-v1",
+  "scope": "Existing search and read-only candidate selection, including implemented WPF goods/unit inputs; no native business migration is implied",
+  "rules": {
+    "matching": "Distinct case-insensitive whitespace terms; AND between terms and OR across the fields authorized for that workflow; percent/underscore/backslash remain literal; no AI, pinyin or synonym inference",
+    "ordering": "Preserve each workflow's authoritative relevance/business priority and stable identity tie-breakers before pagination",
+    "identity": "Employee, user principal, historical audit actor and visitor identities keep their owning contracts; never infer identities from names or codes",
+    "pagination": "Initial and search reads publish a bounded page; explicit continuation keeps selected identities independently; empty nonterminal or inconsistent pages are errors rather than successful empty results",
+    "retirement": "Raw input and identity/server/read-scope changes retire obsolete reads; incomplete IME text does not dispatch; only genuinely pending identical searches are coalesced; completed same-query Enter may refresh",
+    "businessAuthority": "Permissions, price/cost masks, purpose/status/department eligibility, source facts, drafts, unknown writes and server decisions are unchanged",
+    "history": "Only current authoritative organization nodes expand a subtree; unmatched historical department IDs retain exact membership without reopening a deleted hierarchy",
+    "nativeScopeComposition": "Search input changes must compose with the main-line ReadScopeRevisionState, including business-applications and employee department approvals; native business write surfaces remain unported unless separately accepted"
+  },
+  "samples": [
+    {"fields": ["张明", "UT001", "营销中心 / 销售部"], "query": "张 销售", "matches": true},
+    {"fields": ["张明", "UT001", "生产部"], "query": "张 销售", "matches": false},
+    {"fields": ["Panel AB", "GK001"], "query": "panel gk001 panel", "matches": true},
+    {"fields": ["样例%_\\"], "query": "%_\\", "matches": true},
+    {"fields": ["普通样例"], "query": "%_\\", "matches": false}
+  ],
+  "owningSources": [
+    "lib/shared/search/keyword_search.dart",
+    "server/src/main/java/com/uten/imp/common/util/KeywordSearch.java",
+    "website/lib/text-search.ts",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DebouncedSearchInput.cs",
+    "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs"
+  ],
+  "verificationSources": [
+    "test/components/inputs/uten_employee_picker_paging_test.dart",
+    "website/tests/product-search.test.ts",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DebouncedSearchInputChecks.cs",
+    "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs"
+  ],
+  "evidence": [
+    "clients/windows_legacy/progress/evidence/platform-search-20261103.json",
+    "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json"
+  ],
+  "interpretation": "Samples describe the shared contract. Native inputs forward text to the authoritative server rather than implementing a second matcher. This contract is not proof of completed native ERP workflows or Win7 target-PC acceptance."
+}

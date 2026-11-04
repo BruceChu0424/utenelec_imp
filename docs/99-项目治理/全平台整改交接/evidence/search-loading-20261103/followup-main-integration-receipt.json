@@ -1,0 +1,426 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS; local main integrated, canonical checks passed, stopped",
+  "performed": true,
+  "atUtc": "2026-11-04T10:46:04.898055+00:00",
+  "sourceRoot": "D:\\Projects\\uten_imp_worktrees\\platform-search-integration-20261104",
+  "targetRoot": "D:\\Projects\\uten_imp",
+  "baseCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+  "copiedPaths": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "sha256": "9cd230353916ce88d490b2372ddc423fb6b40c927533de9e647aaa885bb12a13"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "sha256": "0d418a1867ce2d21d8dec786e55535ba3bb080b2b9d647b1c463db409f6ef16e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DebouncedSearchInput.cs",
+      "sha256": "8029b4d570f0c6e35b889c9b9edfc2f11a4440e1fc60f10bc3b3d4c9433ad823"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "c4117c23bc6f0db2fb9d91e613c36f91b4ab8ffd6778f8d802a45702375b8f92"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "ff5188974bce4f1069544a6b7275afe6d3e7c58acbec896931632cf699c9d7f1"
+    },
+    {
+      "path": "integration_test/platform_search_followup_test.dart",
+      "sha256": "6efdd18279b4154ffdb96ea55247c13f5ae21c2e31b3dd4869bd6de00cf0c9ae"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_multi_picker.dart",
+      "sha256": "8ae98483d36bfcc35c9280d3fda96920fc65076a27e5efdacb1e90a1314cfd94"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_picker.dart",
+      "sha256": "e4945f56a502de5604b9c0bd6586c644faebe6949d2f523e2f9933db0f4d6a31"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_selection_panel.dart",
+      "sha256": "4992c271b5fa41528f9141bcb20992a7a1c6d9a0b2a2cc6aedce553382dfdde4"
+    },
+    {
+      "path": "lib/features/admin/widgets/impersonation_actions.dart",
+      "sha256": "a15e2b17f147014f76b8946d4116a17a2bfe3a4960c0381f88a309990b017b26"
+    },
+    {
+      "path": "lib/features/basic_data/pages/mould_category_page.dart",
+      "sha256": "af29c8992c7bcb6fceb9fe29d9b22b59a4d31549261af8b2c1a5c2354718a313"
+    },
+    {
+      "path": "lib/features/basic_data/repositories/goods_repository.dart",
+      "sha256": "68887c5521cf1daf578225e0709a54eeb38b21d6cb08e625d50a97df3d38e7e7"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/supplier_master_edit.dart",
+      "sha256": "2fa1750339d3758df14c80e09a3af98a7c51a66668a17af3a18f0d1accbb565b"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+      "sha256": "2223869006a3601c6f40b40192fe6d301386c08508b12885be7cf11d411de3bc"
+    },
+    {
+      "path": "lib/features/company_files/widgets/company_file_access_editor.dart",
+      "sha256": "561c30a4cf618eeaf249798e34213cf8ba6fe3920d40f87d7084af002d581386"
+    },
+    {
+      "path": "lib/features/department/widgets/department_edit_dialog.dart",
+      "sha256": "f48d15fde545ba11a38a3e9f0f0ead147ead99118c3b254372bf8671b01ed54b"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "sha256": "daa27c66c1e9b603cfbb5534aa4254d3030572366d2c921fcaff0880f767e305"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "sha256": "5def8373eaee51b75487e9fb333461d3bb88f29ad0d761b702a6b57ec3eec26f"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_aggregate_table.dart",
+      "sha256": "f66e928a6a2dae8201b9b5b9a23ed057445fe97f1efad4ebc4ded642ab0af79a"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_material_table.dart",
+      "sha256": "d5822a9938a2594ea8fea3be8158c2bfe7a613958b48a4ec02de5720975a1314"
+    },
+    {
+      "path": "lib/features/production/pages/production_daily_report_edit_page.dart",
+      "sha256": "6219f59e5805b7141fe6217fda75b655cef1572e2610c9052131400e8809baf3"
+    },
+    {
+      "path": "lib/features/production/widgets/material_priority_replenishment_dialog.dart",
+      "sha256": "9cbd9542d95932cb9fb35c5621f6826cff2ee78a8ddff6e3bec5a0d7e3cd634c"
+    },
+    {
+      "path": "lib/features/production/widgets/production_execution_segments_card.dart",
+      "sha256": "e7e2ebfc34108c0db11cf498d71df40774b1e5a320b35916197d7cf8b8a4168d"
+    },
+    {
+      "path": "lib/shared/widgets/business_employee_picker.dart",
+      "sha256": "1c9f9f960ab58265744917360d3ebf7a145a0df72eb64187036bab06d4f03056"
+    },
+    {
+      "path": "lib/shared/widgets/sales_order_picker.dart",
+      "sha256": "8c4eb8f8446207999f2c52a0ef3ee3a2dc4a2dbb67ddea971c4ecb7c2f66e662"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/audit/AuditActorDirectory.java",
+      "sha256": "7615a52d477682d02c3be9b820901d7f16bc1dcfb8897e7cc2e37f48b97201a1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/client/ClientAccessService.java",
+      "sha256": "705167a0ee707699b121d0a2fb4769ca42d6a87a03ebf228e079c20088e1f798"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsService.java",
+      "sha256": "69de669bc88ae11fe8d230cf7b312a77356f7577c15e118b101dfa181283905b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/responsibility/DataHandoverCandidateService.java",
+      "sha256": "a24b1f85c9cfa6c843b0b6c77e8b227734c398d2c9422f8cbaa20e37d9ddf59e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/audit/AuditActorDirectoryTest.java",
+      "sha256": "bddc9995a3fb03ec19f0236112c52a2e2061f786dafc65dfb3d5fee7912ea74e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SearchReadSavingsPostgresTest.java",
+      "sha256": "ea7234b40a6c2d23501203af8b1979a723001ce7496ba5a3f5a3f5257b2394ee"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/GoodsListMasterNameResolutionTest.java",
+      "sha256": "72027595674f3230180c06bb8938e96c1ab6608274f225d35b4b4c88c3efeacf"
+    },
+    {
+      "path": "server/src/test/java/com/uten/searchtest/FinancialQueueSearchPostgresTest.java",
+      "sha256": "73481cd452b45f9318402dc6ca4703b792c92c5e994942953dd8e853a074c406"
+    },
+    {
+      "path": "test/components/inputs/uten_employee_organization_read_test.dart",
+      "sha256": "342f47f5b905826aaa369edfc11d59562b4d5c7d86af6f3b3a4dc4edd5adafc2"
+    },
+    {
+      "path": "test/features/basic_data/pages/product_category_detail_return_test.dart",
+      "sha256": "a54eedcaa299c9c6b47d09c325ff686e4cf1e909853fc25d950aabb5c3d3a779"
+    },
+    {
+      "path": "test/features/basic_data/pages/product_category_page_column_permissions_test.dart",
+      "sha256": "5043b611c4d618079bbb71c34d0a68292b7d936f5bf5a2e9d294869d3ee34158"
+    },
+    {
+      "path": "test/features/basic_data/pages/product_category_page_name_en_test.dart",
+      "sha256": "1bcfc98e5fe1c15c1b81557f3839e96a1a7fff6a8dc17eb7667d0c4c97dd24df"
+    },
+    {
+      "path": "test/features/basic_data/repositories/goods_repository_search_scope_test.dart",
+      "sha256": "1f7318c9b1d5f4ade03d8ccdfca38448bb99509a542e5a76edc6b1ef2df190fb"
+    },
+    {
+      "path": "test/features/basic_data/widgets/uten_goods_picker_columns_test.dart",
+      "sha256": "55fea5d5d959ef8e8aae2c1c178fb668edee7ebbb15b36df86f6608984bfc5aa"
+    },
+    {
+      "path": "test/features/basic_data/widgets/uten_goods_picker_test.dart",
+      "sha256": "02580801a98d0b103601d1bc3493af5e36871d649a69822f0e954343a497e618"
+    },
+    {
+      "path": "test/shared/widgets/business_employee_picker_test.dart",
+      "sha256": "78e2ae7bf8fa29890efe6d98009a81c9ac2f3e054001909ed54c40e65a03910f"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/2026-11-03-全平台搜索与数据加载优化方案及进度.md",
+      "sha256": "8fc945515ea3c9ec8b86af851c64ebef24e390728f22f9cccc616fde7fb10d19"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/backend-query-elision-followup-review.json",
+      "sha256": "d36df4906382f41b6317d697130c5bd37aeb3e352a5768576cced607e65601ec"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/followup-source-manifest.json",
+      "sha256": "3a51ade75133deda0d9729f515d485663ab21990cabcf163099df1316c329489"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/search-followup-20261104.json",
+      "sha256": "0e534e38d60e6fe08ba8f74bae9c9c4da3e28ac686b60bf6d3119721b248d794"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/platform-search-followup-20261104.json",
+      "sha256": "78b0c77abfd5380761a32959454567d215500f3e8caea37c87e95a5ef738ed4e"
+    }
+  ],
+  "changedCodeFiles": 41,
+  "currentSearchCodeFilesVerified": 211,
+  "sourceManifestRawSha256": "81179526b8376a1a6e6df1aca15cc68b4b284b2cb6e6beee66e4ef28155454d0",
+  "preconditions": "All 46 path preimages/absence, HEAD, staged state and pre-existing lock SHA checked before first write.",
+  "preservedLockSha256": "330f106b921c1305c49de298e786f13bdfc2e2777e33513dbaa62ec7a46239e4",
+  "staged": false,
+  "committed": false,
+  "pushed": false,
+  "deployed": false,
+  "formalPackages": false,
+  "completedAtUtc": "2026-11-04T10:50:15.190865+00:00",
+  "canonicalChecks": {
+    "source": "main-local source, no worktree metadata copied back",
+    "platformSearchInventory": "PASS",
+    "businessInventory": "PASS",
+    "progressTracker": "PASS",
+    "platformCounts": {
+      "flutter": 192,
+      "server": 318,
+      "website": 27,
+      "wpf": 17
+    },
+    "preservedWorkPackages": 368,
+    "preservedSemanticFields": [
+      "id",
+      "title",
+      "group",
+      "groupLabel",
+      "phase",
+      "status",
+      "impactArea",
+      "owner",
+      "nativeTargets",
+      "dependencies",
+      "definitionOfDone"
+    ],
+    "priorEvidenceAndNotesPreserved": true,
+    "historyPrefixSha256": "94964ac0617a04922fe27ff913229437ebfe1014ea8c66b749fadcfea6b5913f",
+    "newSameStatusHistoryEvents": 3,
+    "canonicalLog": "D:\\Projects\\uten_imp_worktrees\\platform-search-integration-20261104\\build\\search-validation\\followup-main-canonical.log",
+    "canonicalLogSha256": "33c08ae11ae95826907e6d282743013efbf749304e262780f7c090eee2c52057",
+    "launcherCorrection": "Python sys.executable child launch received WinError 5 before any generator executed; the installed PowerShell python entry ran all owning tools successfully.",
+    "notesPreservation": "The set --note tool replaces notes. Final preimage audit detected this; original complete notes were restored as exact prefixes, S09 notes appended, then render/check passed. All prior history remains unchanged."
+  },
+  "finalCopiedPathHashes": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "sha256": "9cd230353916ce88d490b2372ddc423fb6b40c927533de9e647aaa885bb12a13"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "sha256": "0d418a1867ce2d21d8dec786e55535ba3bb080b2b9d647b1c463db409f6ef16e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DebouncedSearchInput.cs",
+      "sha256": "8029b4d570f0c6e35b889c9b9edfc2f11a4440e1fc60f10bc3b3d4c9433ad823"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "c4117c23bc6f0db2fb9d91e613c36f91b4ab8ffd6778f8d802a45702375b8f92"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "ff5188974bce4f1069544a6b7275afe6d3e7c58acbec896931632cf699c9d7f1"
+    },
+    {
+      "path": "integration_test/platform_search_followup_test.dart",
+      "sha256": "6efdd18279b4154ffdb96ea55247c13f5ae21c2e31b3dd4869bd6de00cf0c9ae"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_multi_picker.dart",
+      "sha256": "8ae98483d36bfcc35c9280d3fda96920fc65076a27e5efdacb1e90a1314cfd94"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_picker.dart",
+      "sha256": "e4945f56a502de5604b9c0bd6586c644faebe6949d2f523e2f9933db0f4d6a31"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_selection_panel.dart",
+      "sha256": "4992c271b5fa41528f9141bcb20992a7a1c6d9a0b2a2cc6aedce553382dfdde4"
+    },
+    {
+      "path": "lib/features/admin/widgets/impersonation_actions.dart",
+      "sha256": "a15e2b17f147014f76b8946d4116a17a2bfe3a4960c0381f88a309990b017b26"
+    },
+    {
+      "path": "lib/features/basic_data/pages/mould_category_page.dart",
+      "sha256": "af29c8992c7bcb6fceb9fe29d9b22b59a4d31549261af8b2c1a5c2354718a313"
+    },
+    {
+      "path": "lib/features/basic_data/repositories/goods_repository.dart",
+      "sha256": "68887c5521cf1daf578225e0709a54eeb38b21d6cb08e625d50a97df3d38e7e7"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/supplier_master_edit.dart",
+      "sha256": "2fa1750339d3758df14c80e09a3af98a7c51a66668a17af3a18f0d1accbb565b"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+      "sha256": "2223869006a3601c6f40b40192fe6d301386c08508b12885be7cf11d411de3bc"
+    },
+    {
+      "path": "lib/features/company_files/widgets/company_file_access_editor.dart",
+      "sha256": "561c30a4cf618eeaf249798e34213cf8ba6fe3920d40f87d7084af002d581386"
+    },
+    {
+      "path": "lib/features/department/widgets/department_edit_dialog.dart",
+      "sha256": "f48d15fde545ba11a38a3e9f0f0ead147ead99118c3b254372bf8671b01ed54b"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "sha256": "daa27c66c1e9b603cfbb5534aa4254d3030572366d2c921fcaff0880f767e305"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "sha256": "5def8373eaee51b75487e9fb333461d3bb88f29ad0d761b702a6b57ec3eec26f"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_aggregate_table.dart",
+      "sha256": "f66e928a6a2dae8201b9b5b9a23ed057445fe97f1efad4ebc4ded642ab0af79a"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_material_table.dart",
+      "sha256": "d5822a9938a2594ea8fea3be8158c2bfe7a613958b48a4ec02de5720975a1314"
+    },
+    {
+      "path": "lib/features/production/pages/production_daily_report_edit_page.dart",
+      "sha256": "6219f59e5805b7141fe6217fda75b655cef1572e2610c9052131400e8809baf3"
+    },
+    {
+      "path": "lib/features/production/widgets/material_priority_replenishment_dialog.dart",
+      "sha256": "9cbd9542d95932cb9fb35c5621f6826cff2ee78a8ddff6e3bec5a0d7e3cd634c"
+    },
+    {
+      "path": "lib/features/production/widgets/production_execution_segments_card.dart",
+      "sha256": "e7e2ebfc34108c0db11cf498d71df40774b1e5a320b35916197d7cf8b8a4168d"
+    },
+    {
+      "path": "lib/shared/widgets/business_employee_picker.dart",
+      "sha256": "1c9f9f960ab58265744917360d3ebf7a145a0df72eb64187036bab06d4f03056"
+    },
+    {
+      "path": "lib/shared/widgets/sales_order_picker.dart",
+      "sha256": "8c4eb8f8446207999f2c52a0ef3ee3a2dc4a2dbb67ddea971c4ecb7c2f66e662"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/audit/AuditActorDirectory.java",
+      "sha256": "7615a52d477682d02c3be9b820901d7f16bc1dcfb8897e7cc2e37f48b97201a1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/client/ClientAccessService.java",
+      "sha256": "705167a0ee707699b121d0a2fb4769ca42d6a87a03ebf228e079c20088e1f798"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsService.java",
+      "sha256": "69de669bc88ae11fe8d230cf7b312a77356f7577c15e118b101dfa181283905b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/responsibility/DataHandoverCandidateService.java",
+      "sha256": "a24b1f85c9cfa6c843b0b6c77e8b227734c398d2c9422f8cbaa20e37d9ddf59e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/audit/AuditActorDirectoryTest.java",
+      "sha256": "bddc9995a3fb03ec19f0236112c52a2e2061f786dafc65dfb3d5fee7912ea74e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SearchReadSavingsPostgresTest.java",
+      "sha256": "ea7234b40a6c2d23501203af8b1979a723001ce7496ba5a3f5a3f5257b2394ee"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/GoodsListMasterNameResolutionTest.java",
+      "sha256": "72027595674f3230180c06bb8938e96c1ab6608274f225d35b4b4c88c3efeacf"
+    },
+    {
+      "path": "server/src/test/java/com/uten/searchtest/FinancialQueueSearchPostgresTest.java",
+      "sha256": "73481cd452b45f9318402dc6ca4703b792c92c5e994942953dd8e853a074c406"
+    },
+    {
+      "path": "test/components/inputs/uten_employee_organization_read_test.dart",
+      "sha256": "342f47f5b905826aaa369edfc11d59562b4d5c7d86af6f3b3a4dc4edd5adafc2"
+    },
+    {
+      "path": "test/features/basic_data/pages/product_category_detail_return_test.dart",
+      "sha256": "a54eedcaa299c9c6b47d09c325ff686e4cf1e909853fc25d950aabb5c3d3a779"
+    },
+    {
+      "path": "test/features/basic_data/pages/product_category_page_column_permissions_test.dart",
+      "sha256": "5043b611c4d618079bbb71c34d0a68292b7d936f5bf5a2e9d294869d3ee34158"
+    },
+    {
+      "path": "test/features/basic_data/pages/product_category_page_name_en_test.dart",
+      "sha256": "1bcfc98e5fe1c15c1b81557f3839e96a1a7fff6a8dc17eb7667d0c4c97dd24df"
+    },
+    {
+      "path": "test/features/basic_data/repositories/goods_repository_search_scope_test.dart",
+      "sha256": "1f7318c9b1d5f4ade03d8ccdfca38448bb99509a542e5a76edc6b1ef2df190fb"
+    },
+    {
+      "path": "test/features/basic_data/widgets/uten_goods_picker_columns_test.dart",
+      "sha256": "55fea5d5d959ef8e8aae2c1c178fb668edee7ebbb15b36df86f6608984bfc5aa"
+    },
+    {
+      "path": "test/features/basic_data/widgets/uten_goods_picker_test.dart",
+      "sha256": "02580801a98d0b103601d1bc3493af5e36871d649a69822f0e954343a497e618"
+    },
+    {
+      "path": "test/shared/widgets/business_employee_picker_test.dart",
+      "sha256": "78e2ae7bf8fa29890efe6d98009a81c9ac2f3e054001909ed54c40e65a03910f"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/2026-11-03-全平台搜索与数据加载优化方案及进度.md",
+      "sha256": "8fc945515ea3c9ec8b86af851c64ebef24e390728f22f9cccc616fde7fb10d19"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/backend-query-elision-followup-review.json",
+      "sha256": "d36df4906382f41b6317d697130c5bd37aeb3e352a5768576cced607e65601ec"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/followup-source-manifest.json",
+      "sha256": "3a51ade75133deda0d9729f515d485663ab21990cabcf163099df1316c329489"
+    },
+    {
+      "path": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/search-followup-20261104.json",
+      "sha256": "bf079aedcddba3b0fb420cb42de8ca42684117664207d49d87f358405bcf11e0"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/platform-search-followup-20261104.json",
+      "sha256": "78b0c77abfd5380761a32959454567d215500f3e8caea37c87e95a5ef738ed4e"
+    }
+  ],
+  "currentCodeFingerprintRecheck": "All 211 code files raw-byte equal to validated worktree after canonical regeneration."
+}

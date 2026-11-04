@@ -49,6 +49,16 @@ public class CompanyFileController {
         return service.principals(type, search, page, size);
     }
 
+    @GetMapping("/principals/page")
+    @PreAuthorize("hasAuthority('company_file:view')")
+    public com.uten.imp.common.web.PageResponse<Principal> principalsPage(
+            @RequestParam(defaultValue = "USER") String type, @RequestParam(defaultValue = "") String search,
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "100") int size,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "false") boolean includeSubtree) {
+        return service.principalsPage(type, search, page, size, departmentId, includeSubtree);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('company_file:view')")
     public Entry detail(@PathVariable UUID id) {

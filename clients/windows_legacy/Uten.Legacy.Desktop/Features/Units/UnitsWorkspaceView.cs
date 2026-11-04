@@ -49,7 +49,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly PersistentRowSelection<UnitRecord> selection = new PersistentRowSelection<UnitRecord>(row => row.Id);
         private readonly Dictionary<string, ComboBox> filterBoxes = new Dictionary<string, ComboBox>();
         private readonly Dictionary<string, UnitFilter> filters = new Dictionary<string, UnitFilter>(StringComparer.Ordinal);
-        private readonly DispatcherTimer searchDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        private readonly DebouncedSearchInput searchDelay;
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private CancellationTokenSource pageRead;
         private UnitEditorWindow editor;
@@ -116,18 +116,8 @@ namespace Uten.Legacy.Desktop.Features.Units
                 if (ItemsControl.ContainerFromElement(rows, args.OriginalSource as DependencyObject) is DataGridRow
                     && rows.SelectedItems.Count == 1 && !loading) await OpenDetailAsync();
             };
-            search.TextChanged += (sender, args) =>
-            {
-                if (!IsLoaded || disposed || changingFilters) return;
-                InvalidatePage();
-                searchDelay.Stop(); searchDelay.Start();
-            };
-            search.KeyDown += async (sender, args) =>
-            {
-                if (args.Key != System.Windows.Input.Key.Enter) return;
-                args.Handled = true; searchDelay.Stop(); await LoadPageAsync(1);
-            };
-            searchDelay.Tick += async (sender, args) => { searchDelay.Stop(); await LoadPageAsync(1); };
+            searchDelay = new DebouncedSearchInput(search, InvalidatePage, () => LoadPageAsync(1),
+                () => IsLoaded && !disposed && !changingFilters && inlineWorkspace == null);
             UpdateActions();
         }
         private double Space(string role) { return (double)FindResource("Uten.Space." + role); }
@@ -255,7 +245,33 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             sequence++; pageRead?.Cancel(); ClearSelection(true); loading = true; UpdateActions();
         }
-        private async Task LoadPageAsync(int target)
+        // Confirmed writes/recovery keep their original mandatory fresh-read
+        // semantics. Retire transport/sequence without clearing failed selections.
+        private Task ReloadPageAfterOperationAsync()
+        {
+            searchDelay.Stop();
+            sequence++; pageRead?.Cancel();
+            return LoadPageAsync(page);
+        }
+
+        private object FilterIdentity(string field)
+        {
+            UnitFilter filter;
+            return filters.TryGetValue(field, out filter) ? Tuple.Create(filter.IsNull, filter.Value) : null;
+        }
+
+        private Task LoadPageAsync(int target)
+        {
+            if (disposed || !session.IsAuthenticated || inlineWorkspace != null) return Task.CompletedTask;
+            long owner = session.Generation, revision = session.ReadScopeRevision, expectedRead = sequence + 1;
+            var key = Tuple.Create(target, (search.Text ?? "").Trim(), FilterIdentity("code"), FilterIdentity("name"),
+                FilterIdentity("status"), FilterIdentity("dimension"), Tuple.Create(owner, revision));
+            return searchDelay.RunReadAsync(key,
+                () => !disposed && sequence == expectedRead && session.Generation == owner && session.ReadScopeRevision == revision,
+                () => LoadPageCoreAsync(target));
+        }
+
+        private async Task LoadPageCoreAsync(int target)
         {
             if (disposed || !session.IsAuthenticated || inlineWorkspace != null) return;
             pageRead?.Cancel(); pageRead?.Dispose(); pageRead = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -420,7 +436,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 {
                     ClearSelection(true);
                     foreach (var row in selected) if (window.FailedIds.Contains(row.Id)) selection.Remember(row);
-                    await LoadPageAsync(page); await LoadFacetsAsync();
+                    await ReloadPageAfterOperationAsync(); await LoadFacetsAsync();
                 }
             }
             catch (ArgumentException error) { if (!disposed) status.Text = error.Message; }
@@ -440,7 +456,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     : new UnitOperationHistoryWindow(Window.GetWindow(this), session);
                 ClearSelection(true);
                 window.ShowDialog();
-                if (window.BusinessChanged && !disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); }
+                if (window.BusinessChanged && !disposed) { await ReloadPageAfterOperationAsync(); await LoadFacetsAsync(); }
             }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
             catch (Exception) { if (!disposed) status.Text = "暂时无法打开单位历史，请刷新后重试。"; }
@@ -458,7 +474,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 var window = new UnitDetailWindow(Window.GetWindow(this), session, detail);
                 ClearSelection(true);
                 window.ShowDialog();
-                if (window.BusinessChanged && !disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); }
+                if (window.BusinessChanged && !disposed) { await ReloadPageAfterOperationAsync(); await LoadFacetsAsync(); }
             }
             catch (OperationCanceledException) { }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
@@ -501,7 +517,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 window.ShowDialog();
                 if (disposed) return;
                 if (window.AppliedSnapshot?.IsCurrent(session) == true) { columnSnapshot = window.AppliedSnapshot; ApplyColumns(); }
-                if (window.BusinessChanged || window.HasCatalogChanges) { await LoadPageAsync(page); await LoadFacetsAsync(); }
+                if (window.BusinessChanged || window.HasCatalogChanges) { await ReloadPageAfterOperationAsync(); await LoadFacetsAsync(); }
             }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
             catch (Exception) { if (!disposed) status.Text = "表头设置未能完成，请保留本机草稿并刷新核对。"; }
@@ -515,7 +531,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             {
                 var window = new UnitPlatformValuesWindow(Window.GetWindow(this), session, columnSnapshot, record.Id, key.Substring(9));
                 window.ShowDialog();
-                if (window.BusinessChanged && !disposed) await LoadPageAsync(page);
+                if (window.BusinessChanged && !disposed) await ReloadPageAfterOperationAsync();
             }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
             catch (Exception) { if (!disposed) status.Text = "自设字段未能保存，请保留原输入并核对当前字段版本。"; }
@@ -569,7 +585,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 if (Object.ReferenceEquals(inlineWorkspace, workspace))
                 { inlineWorkspace = null; tableSurface.Child = rows; }
                 workspace.Dispose();
-                if (!disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); UpdateActions(); }
+                if (!disposed) { await ReloadPageAfterOperationAsync(); await LoadFacetsAsync(); UpdateActions(); }
             };
             tableSurface.Child = workspace; UpdateActions();
         }
@@ -594,7 +610,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 editor.ShowDialog();
                 bool changed = editor.BusinessChanged;
                 editor = null;
-                if (changed && !disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); }
+                if (changed && !disposed) { await ReloadPageAfterOperationAsync(); await LoadFacetsAsync(); }
             }
             catch (OperationCanceledException) { }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
@@ -630,7 +646,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                         restoredEditor = new UnitPlatformDefinitionWindow(Window.GetWindow(this), session, source, restored);
                     else restoredEditor = new UnitPlatformValuesWindow(Window.GetWindow(this), session, source, restored.ResourceId, null, restored);
                     restoredEditor.ShowDialog();
-                    if (restoredEditor.BusinessChanged && !disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); }
+                    if (restoredEditor.BusinessChanged && !disposed) { await ReloadPageAfterOperationAsync(); await LoadFacetsAsync(); }
                     return;
                 }
                 UnitReadSnapshot<UnitRecord> baseline = null;
@@ -639,7 +655,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 editor = new UnitEditorWindow(Window.GetWindow(this), session, service, baseline, restored.Action, restored);
                 editor.ShowDialog();
                 bool changed = editor.BusinessChanged; editor = null;
-                if (changed && !disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); }
+                if (changed && !disposed) { await ReloadPageAfterOperationAsync(); await LoadFacetsAsync(); }
             }
             catch (OperationCanceledException) { }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }

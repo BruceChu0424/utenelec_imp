@@ -10,14 +10,11 @@ import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.auth.CredentialIssuancePolicy;
 import com.uten.imp.features.auth.PermissionResolver;
-import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
-import com.uten.imp.features.org.employee.EmployeeSensitive;
-import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TemporaryPasswordGenerator;
@@ -30,7 +27,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.OffsetDateTime;
@@ -61,8 +57,6 @@ class AccountSupportBoundaryTest {
     private UserAccountRepository users;
     @Mock
     private EmployeeRepository employees;
-    @Mock
-    private EmployeeSensitiveRepository sensitive;
     @Mock
     private RefreshTokenRepository refreshTokens;
     @Mock
@@ -101,31 +95,6 @@ class AccountSupportBoundaryTest {
                             invocation.getArgument(1);
                     return ((java.util.Collection<?>) params.getValue("held")).contains(code);
                 });
-    }
-
-    @Test
-    void accountSummaryExposesAuthoritativeEmployeeStatus() {
-        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
-        UUID employeeId = UUID.randomUUID();
-        UserAccount account = new UserAccount();
-        account.setEmployeeId(employeeId);
-        account.setStatus("disabled");
-        Employee employee = new Employee();
-        employee.setId(employeeId);
-        employee.setStatus("resigned");
-        employee.setCode("EMP-RESIGNED");
-        employee.setFullName("离职员工");
-        when(users.findByEmployeeId(employeeId)).thenReturn(Optional.of(account));
-        when(employees.findById(employeeId)).thenReturn(Optional.of(employee));
-        when(support.canSupportTarget(account)).thenReturn(true);
-
-        UserSummary summary = service(support).getByEmployeeId(employeeId);
-
-        assertEquals("disabled", summary.getStatus());
-        assertEquals("resigned", summary.getEmployeeStatus());
-        assertFalse(summary.isCurrentEmployee());
-        assertEquals(Boolean.TRUE, summary.getAccountSupportAllowed());
-        assertEquals(employeeId, summary.getEmployeeId());
     }
 
     @Test
@@ -652,20 +621,10 @@ class AccountSupportBoundaryTest {
     }
 
     @Test
-    void provisionCandidatesReturnMinimalRowsWithCredentialFlags() {
+    void provisionCandidatesReturnMinimalRowsWithCredentialFlags() throws Exception {
         AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
-        Employee zhang = new Employee();
-        zhang.setCode("UT0001");
-        zhang.setFullName("张三");
-        zhang.setStatus("probation");
-        UUID zhangId = zhang.getId();
-        EmployeeSensitive zhangSensitive = new EmployeeSensitive();
-        zhangSensitive.setEmployeeId(zhangId);
-        zhangSensitive.setPhoneEnc("enc-phone");
-        zhangSensitive.setIdCardEnc("enc-id");
-        when(employees.findProvisionCandidates(eq(""), any(Pageable.class)))
-                .thenReturn(List.of(zhang));
-        when(sensitive.findAllByEmployeeIdIn(any())).thenReturn(List.of(zhangSensitive));
+        UUID zhangId = UUID.randomUUID();
+        provisionProjection(zhangId, "张三", "UT0001", "probation", "enc-phone");
 
         List<ProvisionCandidateDto> rows = service(support).provisionCandidates(null);
 
@@ -678,16 +637,10 @@ class AccountSupportBoundaryTest {
     }
 
     @Test
-    void provisionCandidatesFlagMissingPhoneOrIdCardWithoutDecrypting() {
+    void provisionCandidatesFlagMissingPhoneOrIdCardWithoutDecrypting() throws Exception {
         AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
-        Employee li = new Employee();
-        li.setCode("UT0002");
-        li.setFullName("李四");
-        li.setStatus("onLeave");
         // 无敏感记录：hasPhone 为 false，前端据此置灰(证件号码有问题不拦开号，V807)
-        when(employees.findProvisionCandidates(eq("李"), any(Pageable.class)))
-                .thenReturn(List.of(li));
-        when(sensitive.findAllByEmployeeIdIn(any())).thenReturn(List.of());
+        provisionProjection(UUID.randomUUID(), "李四", "UT0002", "onLeave", null);
 
         List<ProvisionCandidateDto> rows = service(support).provisionCandidates("李");
 
@@ -695,6 +648,29 @@ class AccountSupportBoundaryTest {
         assertFalse(rows.get(0).hasPhone());
         assertEquals("notProvisioned", rows.get(0).accountStatus());
         assertEquals("onLeave", rows.get(0).employmentStatus());
+    }
+
+    private void provisionProjection(UUID id, String name, String code, String status, String phone) throws Exception {
+        var row = mock(java.sql.ResultSet.class);
+        when(row.getObject(org.mockito.ArgumentMatchers.anyString(),eq(UUID.class)))
+                .thenAnswer(call -> switch(call.<String>getArgument(0)) {
+                    case "id" -> id;
+                    case "department_id" -> null;
+                    default -> throw new AssertionError("Unexpected identity projection field");
+                });
+        when(row.getString(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(call -> switch(call.<String>getArgument(0)) {
+                    case "full_name" -> name;
+                    case "code" -> code;
+                    case "status" -> status;
+                    case "phone_enc" -> phone;
+                    case "department_name" -> null;
+                    default -> throw new AssertionError("Unexpected sensitive projection field");
+                });
+        when(jdbc.query(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.<java.util.Map<String,Object>>any(),
+                org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ProvisionCandidateDto>>any()))
+                .thenAnswer(call -> List.of(call.<org.springframework.jdbc.core.RowMapper<ProvisionCandidateDto>>getArgument(2).mapRow(row, 0)));
     }
 
     private AuthUser superActor() {
@@ -724,7 +700,6 @@ class AccountSupportBoundaryTest {
         return new UserAccountAdminService(
                 users,
                 employees,
-                sensitive,
                 refreshTokens,
                 encoder,
                 passwords,
@@ -737,7 +712,9 @@ class AccountSupportBoundaryTest {
                 settings,
                 accountNotice,
                 mock(AccountLifecycleCoordinator.class),
-                mock(com.uten.imp.security.CurrentStaffWriteGuard.class));
+                mock(com.uten.imp.security.CurrentStaffWriteGuard.class),
+                mock(AdminUserSummaryQuery.class),
+                new ProvisionCandidateQuery(jdbc));
     }
 
     private AdminAccountLifecycleLock.LockedTarget lock(

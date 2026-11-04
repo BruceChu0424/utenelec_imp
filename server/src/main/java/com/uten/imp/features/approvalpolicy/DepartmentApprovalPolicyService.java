@@ -4,6 +4,9 @@ import com.uten.imp.application.port.ApprovalCandidateDirectoryPort;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -34,17 +37,47 @@ public class DepartmentApprovalPolicyService {
 
     @Transactional(readOnly=true)
     public List<Candidate> candidates(UUID department,String search) {
+        return candidateRows(candidateRead(department, search), 100, 0);
+    }
+
+    @Transactional(readOnly=true)
+    public PageResponse<Candidate> candidatePage(UUID department, String search, int page, int size) {
+        var read = candidateRead(department, search);
+        var pageable = Pageables.of(page, size);
+        if (read.idsEmpty()) return new PageResponse<>(List.of(), pageable.getPageNumber() + 1, pageable.getPageSize(), 0, 0);
+        Long count = jdbc.queryForObject("SELECT count(*) " + read.fromWhere(), read.parameters(), Long.class);
+        long total = count == null ? 0 : count;
+        return new PageResponse<>(candidateRows(read, pageable.getPageSize(), pageable.getOffset()),
+                pageable.getPageNumber() + 1, pageable.getPageSize(), total,
+                total == 0 ? 0 : Math.toIntExact((total + pageable.getPageSize() - 1) / pageable.getPageSize()));
+    }
+
+    private record CandidateRead(boolean idsEmpty, String fromWhere, String rank, Map<String,Object> parameters) { }
+
+    private CandidateRead candidateRead(UUID department, String search) {
         requireManager();var target=department(department);
         Set<UUID> ids=new LinkedHashSet<>();
         for(String permission:List.of("expense:approve:department","application:approve:department"))
             candidates.candidates(permission,Set.of("attachment:view","attachment:download")).forEach(candidate->ids.add(candidate.employeeId()));
-        ids.remove(target.managerId());if(ids.isEmpty())return List.of();
+        ids.remove(target.managerId());ids.remove(null);
         String keyword=search==null?"":search.trim();if(keyword.length()>200)throw new ApiException(ErrorCode.VALIDATION_FAILED,"搜索内容过长");
-        return jdbc.query("""
-            SELECT e.id,e.full_name,e.code,e.department_id,d.name FROM employees e LEFT JOIN departments d ON d.id=e.department_id
-            WHERE e.id IN(:ids) AND NOT e.is_deleted AND (e.full_name ILIKE :search OR e.code ILIKE :search OR d.name ILIKE :search)
-            ORDER BY e.full_name,e.code,e.id LIMIT 100
-            """,Map.of("ids",ids,"search","%"+keyword+"%"),(r,n)->new Candidate(r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getObject(4,UUID.class),r.getString(5)));
+        var parameters = new LinkedHashMap<>(KeywordSearch.nativeRankParameters(keyword, "policyCandidate"));
+        parameters.put("eligibleIds", ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",")));
+        String condition = KeywordSearch.terms(keyword).isEmpty() ? "TRUE"
+                : KeywordSearch.nativeCondition(keyword, "policyCandidate", "e.full_name", "e.code", "d.name");
+        String fromWhere = " FROM employees e LEFT JOIN departments d ON d.id=e.department_id"
+                + " WHERE e.id = ANY(CAST(string_to_array(:eligibleIds, ',') AS uuid[])) AND NOT e.is_deleted AND (" + condition + ")";
+        return new CandidateRead(ids.isEmpty(), fromWhere,
+                KeywordSearch.nativeRank(keyword, "policyCandidate", "e.full_name", "e.code"), parameters);
+    }
+
+    private List<Candidate> candidateRows(CandidateRead read, int limit, long offset) {
+        if (read.idsEmpty()) return List.of();
+        var parameters = new LinkedHashMap<>(read.parameters());
+        parameters.put("candidateLimit", limit); parameters.put("candidateOffset", offset);
+        return jdbc.query("SELECT e.id,e.full_name,e.code,e.department_id,d.name" + read.fromWhere()
+                + " ORDER BY " + read.rank() + ",e.full_name,e.code,e.id LIMIT :candidateLimit OFFSET :candidateOffset",
+                parameters, (r,n)->new Candidate(r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getObject(4,UUID.class),r.getString(5)));
     }
 
     @Transactional

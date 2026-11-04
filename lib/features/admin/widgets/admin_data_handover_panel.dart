@@ -88,45 +88,15 @@ class _AdminDataHandoverPanelState
     super.dispose();
   }
 
-  Future<List<UtenEmployeePickerItem>> _sourceCandidates(
-    String? keyword,
-  ) async {
-    final repository = ref.read(dataHandoverRepositoryProvider);
-    final rows = <DataHandoverCandidate>[];
-    var page = 1;
-    var total = 1;
-    do {
-      final result = await repository.candidates(
+  Future<UtenEmployeePickerPage> _sourceCandidates(
+    UtenEmployeePickerQuery query,
+  ) => ref
+      .read(dataHandoverRepositoryProvider)
+      .pickerPage(
+        query,
         role: DataHandoverCandidateRole.source,
-        page: page,
-        size: 100,
-        query: keyword,
+        excludeEmployeeIds: {widget.targetEmployeeId},
       );
-      if (result.total > 5000) {
-        throw ApiException('VALIDATION_FAILED', '候选人员超过5000人，请输入姓名或工号缩小范围');
-      }
-      if (result.items.isEmpty && rows.length < result.total) {
-        throw ApiException('CONFLICT', '候选人员已变化，请重新搜索');
-      }
-      rows.addAll(result.items);
-      total = result.total;
-      page++;
-    } while (rows.length < total);
-    return rows
-        .where((employee) => employee.employeeId != widget.targetEmployeeId)
-        .map(
-          (employee) => UtenEmployeePickerItem(
-            id: employee.employeeId,
-            name: employee.name,
-            employeeCode: employee.code,
-            departmentId: employee.departmentId,
-            departmentName: employee.departmentName,
-            accountStatus: employee.accountStatus,
-            employmentStatus: employee.employmentStatus,
-          ),
-        )
-        .toList(growable: false);
-  }
 
   Future<void> _previewHandover() async {
     final source = _source;
@@ -422,7 +392,7 @@ class _AdminDataHandoverPanelState
         sheetTitle: '选择交出数据的员工',
         initial: _source,
         required: true,
-        loader: _sourceCandidates,
+        pagedLoader: _sourceCandidates,
         onChanged: (value) => setState(() {
           _source = value;
           _invalidatePreview();

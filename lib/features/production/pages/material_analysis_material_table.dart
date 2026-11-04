@@ -5185,37 +5185,26 @@ abstract class _MaterialAnalysisMaterialTableState
     final picked = await showUtenEmployeePickerPanel(
       context,
       presentation: UtenEmployeePickerPresentation.businessReference,
+      cancelDepartmentTreeReadOnClose: true,
       departmentTreeLoader: () => ref
           .read(employeeReferenceRepositoryProvider)
           .departments(EmployeeReferencePurpose.productionMaterialOwner),
       title: '选择生产负责人',
       selectedId: current.id,
       departmentName: workshop.name,
-      loader: (keyword) async {
-        final result = await ref
+      pagedLoader: (query) async {
+        final keyword = query.keyword;
+        return await ref
             .read(employeeReferenceRepositoryProvider)
-            .listPickerCandidates(
+            .listPickerPage(
+              query,
               purpose: EmployeeReferencePurpose.productionMaterialOwner,
               size: 30,
-              search: keyword,
               departmentId: (keyword?.trim().isEmpty ?? true)
                   ? workshop.id
                   : null,
               includeSubtree: true,
             );
-        return [
-          for (final employee in result)
-            UtenEmployeePickerItem(
-              id: employee.id,
-              name: employee.fullName,
-              employeeCode: employee.code,
-              accountStatus: employee.accountStatus,
-              employmentStatus: employee.status,
-              departmentId: employee.departmentId,
-              departmentName: employee.departmentName,
-              positionName: employee.positionName,
-            ),
-        ];
       },
     );
     if (picked == null ||

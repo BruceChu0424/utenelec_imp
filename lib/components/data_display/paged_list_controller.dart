@@ -227,6 +227,9 @@ class PagedListController<T> extends ChangeNotifier {
         !_disposed &&
         _requests.isCurrent(generation) &&
         (isCurrent?.call() ?? true);
+    Future<PagedResult<T>> read() => PagedReadIntent.scopedRead(current, fetch);
+    Future<PagedResult<T>> readPage(int target) =>
+        PagedReadIntent.scopedRead(windowCurrent, () => fetchPage!(target));
     final background = silent && this.page != null;
     final retained = _retainedPages.isEmpty ? [page] : List.of(_retainedPages);
     if (!background) {
@@ -248,7 +251,7 @@ class PagedListController<T> extends ChangeNotifier {
         for (final target in retained) {
           if (!current()) return;
           if (lastPage != null && target > lastPage) break;
-          final result = await fetchPage(target);
+          final result = await readPage(target);
           if (!current()) return;
           lastPage = result.totalPages;
           if (result.totalPages == 0) {
@@ -277,7 +280,7 @@ class PagedListController<T> extends ChangeNotifier {
         if (results.isEmpty) {
           if (!current()) return;
           final target = lastPage != null && lastPage > 0 ? lastPage : 1;
-          final result = await fetchPage(target);
+          final result = await readPage(target);
           if (!current()) return;
           results[result.page] = result;
           window[result.page] = result.items;
@@ -289,7 +292,7 @@ class PagedListController<T> extends ChangeNotifier {
       } else if (preserveWindow) {
         final transaction = refreshReadWindow<T>(
           plan,
-          fetch: (target) => _cache.read(target, () => fetchPage!(target)),
+          fetch: (target) => _cache.read(target, () => readPage(target)),
           isCurrent: windowCurrent,
           retry: _cache.clear,
         );
@@ -301,8 +304,8 @@ class PagedListController<T> extends ChangeNotifier {
       } else {
         final previous = previousRefresh == null ? null : await previousRefresh;
         r = cacheEnabled && !background
-            ? await _cache.read(page, fetch)
-            : await fetch();
+            ? await _cache.read(page, read)
+            : await read();
         if (previous != null) {
           window.addAll(previous.rows);
           window[r.page] = r.items;
@@ -331,7 +334,7 @@ class PagedListController<T> extends ChangeNotifier {
                         visiblePage,
                         prepend: prepend,
                       ),
-                      fetch: fetchPage,
+                      fetch: readPage,
                       isCurrent: () =>
                           windowCurrent() &&
                           identical(_cacheOwnerCheck, isCurrent) &&
@@ -372,7 +375,7 @@ class PagedListController<T> extends ChangeNotifier {
         unawaited(
           _cache.prefetchAdjacent(
             r,
-            fetch: fetchPage,
+            fetch: readPage,
             isCurrent: () =>
                 !_disposed &&
                 identical(_cacheOwnerCheck, isCurrent) &&

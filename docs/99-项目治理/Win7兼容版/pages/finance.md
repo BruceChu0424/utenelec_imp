@@ -166,7 +166,7 @@
 
 ## W7-BIZ-066 · lib/features/finance/pages/finance_hub_page.dart
 
-模块 `finance`；409 行；SHA256 `dda290558e0c6a05da1c58a6168c87d1ac5577f1383c2dab480c119cd146d026`。
+模块 `finance`；409 行；SHA256 `26d69ae165a6e14465dae329868870d14a67c89fdc242c6624d3237e88b23f7c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -256,7 +256,7 @@
 
 ## W7-BIZ-071 · lib/features/finance/pages/finance_reconciliation_page.dart
 
-模块 `finance`；498 行；SHA256 `fb1d532e8a633182d028af2f662a354058ccfc069d32971551da2233ede95dbe`。
+模块 `finance`；498 行；SHA256 `5082e9157cd727343bba9b131ce190e0c528931e3df7494939b5b18848ca338e`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -346,7 +346,7 @@
 
 ## W7-BIZ-076 · lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart
 
-模块 `finance`；1532 行；SHA256 `b388b23102fbeac1dec9a27f319dc3403139c08942cf7cb8f1a9b6a7c34a2bb6`。
+模块 `finance`；1532 行；SHA256 `2c476d89d48ad14c7f54a9c55412e1bd7c3c5b619fbbac37245827fb42e0dbe2`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

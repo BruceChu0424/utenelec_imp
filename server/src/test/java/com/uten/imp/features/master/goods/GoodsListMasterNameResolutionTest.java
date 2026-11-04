@@ -30,6 +30,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class GoodsListMasterNameResolutionTest {
 
@@ -164,7 +166,55 @@ class GoodsListMasterNameResolutionTest {
         assertNull(item.getMouldCode());
     }
 
-    private void returnPage(Goods goods) {
+    @Test void resolvedUuidReferencesDoNotReadUnusedLegacyNames() {
+        Goods goods=canonical(101,202,303,"现代蓝","现代件","MODERN-M");
+        returnPage(goods);
+        var item=service.list(emptyFilter(),1,20,null,null).getItems().getFirst();
+        assertEquals("现代蓝",item.getColorName());assertEquals("现代件",item.getUnitName());
+        assertEquals("MODERN-M",item.getMouldCode());
+        verifyNoInteractions(colorRepo,unitRepo,mouldRepo);
+    }
+
+    @Test void mixedPagesReadOnlyTheLegacyIdsWhoseUuidRelationshipIsMissing() {
+        Goods resolved=canonical(101,202,303,"现代蓝","现代件","MODERN-M");
+        Goods historical=new Goods();historical.setColorLegacyId(102);historical.setUnitLegacyId(203);historical.setMouldLegacyId(304);
+        Color oldColor=new Color();oldColor.setLegacyId(102);oldColor.setName("历史白");
+        Unit oldUnit=new Unit();oldUnit.setLegacyId(203);oldUnit.setName("历史箱");
+        Mould oldMould=new Mould();oldMould.setLegacyId(304);oldMould.setCode("LEGACY-M");
+        when(colorRepo.findByLegacyIdInAndDeletedFalse(Set.of(102))).thenReturn(List.of(oldColor));
+        when(unitRepo.findByLegacyIdInAndDeletedFalse(Set.of(203))).thenReturn(List.of(oldUnit));
+        when(mouldRepo.findByLegacyIdInAndDeletedFalse(Set.of(304))).thenReturn(List.of(oldMould));
+        returnPage(resolved,historical);
+        var items=service.list(emptyFilter(),1,20,null,null).getItems();
+        assertEquals(List.of("现代蓝","历史白"),items.stream().map(item->item.getColorName()).toList());
+        assertEquals(List.of("现代件","历史箱"),items.stream().map(item->item.getUnitName()).toList());
+        assertEquals(List.of("MODERN-M","LEGACY-M"),items.stream().map(item->item.getMouldCode()).toList());
+        verify(colorRepo).findByLegacyIdInAndDeletedFalse(Set.of(102));
+        verify(unitRepo).findByLegacyIdInAndDeletedFalse(Set.of(203));
+        verify(mouldRepo).findByLegacyIdInAndDeletedFalse(Set.of(304));
+    }
+
+    @Test void deletedOrNamelessCanonicalReferencesNeverResurrectFromLegacyShadows() {
+        Goods deleted=canonical(101,202,303,"已删颜色","已删单位","DELETED-M");
+        deleted.getColor().setDeleted(true);deleted.getUnit().setDeleted(true);deleted.getMould().setDeleted(true);
+        Goods nameless=canonical(102,203,304,null,null,null);nameless.getMould().setName("真实空编号模具");
+        returnPage(deleted,nameless);
+        var items=service.list(emptyFilter(),1,20,null,null).getItems();
+        for(var item:items){assertNull(item.getColorName());assertNull(item.getUnitName());assertNull(item.getMouldCode());}
+        assertEquals("真实空编号模具",items.get(1).getMouldName());
+        assertEquals(nameless.getColor().getId(),items.get(1).getColorId());
+        verifyNoInteractions(colorRepo,unitRepo,mouldRepo);
+    }
+
+    private Goods canonical(int colorLegacy,int unitLegacy,int mouldLegacy,String colorName,String unitName,String mouldCode) {
+        Goods goods=new Goods();goods.setColorLegacyId(colorLegacy);goods.setUnitLegacyId(unitLegacy);goods.setMouldLegacyId(mouldLegacy);
+        Color color=new Color();color.setLegacyId(colorLegacy);color.setName(colorName);goods.setColor(color);
+        Unit unit=new Unit();unit.setLegacyId(unitLegacy);unit.setName(unitName);goods.setUnit(unit);
+        Mould mould=new Mould();mould.setLegacyId(mouldLegacy);mould.setCode(mouldCode);goods.setMould(mould);
+        return goods;
+    }
+
+    private void returnPage(Goods... goods) {
         when(goodsRepo.findAll(
                 org.mockito.ArgumentMatchers.<Specification<Goods>>any(),
                 any(Pageable.class)))

@@ -20,7 +20,8 @@ import '../../shared/models/department_node.dart';
 class UtenEmployeeMultiPicker extends StatefulWidget {
   const UtenEmployeeMultiPicker({
     super.key,
-    required this.loader,
+    this.loader,
+    this.pagedLoader,
     required this.onChanged,
     this.initialSelection = const [],
     this.enabled = true,
@@ -30,6 +31,7 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
     this.searchHint = '搜索部门 / 姓名 / 工号',
     this.showDepartmentFilter = true,
     this.departmentTreeLoader,
+    this.cancelDepartmentTreeReadOnClose = false,
     this.presentation = UtenEmployeePickerPresentation.standard,
     this.candidateScopeKey,
     this.emptyMessage = '未找到匹配的人员',
@@ -40,9 +42,10 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
     this.required = false,
     this.info,
     this.panelScopeBuilder,
-  });
+  }) : assert(loader != null || pagedLoader != null);
 
-  final UtenEmployeePickerLoader loader;
+  final UtenEmployeePickerLoader? loader;
+  final UtenEmployeePickerPagedLoader? pagedLoader;
   final ValueChanged<List<UtenEmployeePickerItem>> onChanged;
   final List<UtenEmployeePickerItem> initialSelection;
   final bool enabled;
@@ -52,6 +55,10 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
   final String searchHint;
   final bool showDepartmentFilter;
   final Future<List<DepartmentNode>> Function()? departmentTreeLoader;
+
+  /// Opt in only for a new read owned by this panel. Shared futures/providers
+  /// keep their existing owner and must not be cancelled by one consumer.
+  final bool cancelDepartmentTreeReadOnClose;
   final UtenEmployeePickerPresentation presentation;
 
   /// Stable identity for candidates whose business scope can change.
@@ -163,7 +170,9 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
     final result = await showUtenEmployeeSelectionPanel(
       context,
       loader: widget.loader,
+      pagedLoader: widget.pagedLoader,
       departmentTreeLoader: widget.departmentTreeLoader,
+      cancelDepartmentTreeReadOnClose: widget.cancelDepartmentTreeReadOnClose,
       presentation: widget.presentation,
       multiple: true,
       initialSelection: _selection,

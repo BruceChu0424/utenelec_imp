@@ -32,6 +32,126 @@ final _livePermissions = StateProvider<Set<String>>((ref) => {});
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets(
+    'same-query Enter rechecks completed master results but does not duplicate an active read',
+    (tester) async {
+      final repository = _FakeClientRepository()..delayedQuery = '远洋';
+      await _pumpPicker(
+        tester,
+        size: const Size(1200, 900),
+        clientRepository: repository,
+      );
+      await _openPicker(tester);
+      await tester.enterText(_searchEditable(), '远洋');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      expect(repository.searchQueries, ['远洋']);
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(repository.searchQueries, ['远洋']);
+      repository.delayedSearch.complete(
+        _page(const [_FakeClientRepository.overseasClient], page: 1, size: 100),
+      );
+      await tester.pumpAndSettle();
+      repository.delayedQuery = null;
+      repository.searchItemsOverride = const [
+        ClientListItem(
+          id: 'refreshed-overseas',
+          name: '远洋新客户',
+          categoryId: 'southeast-asia',
+          status: '使用',
+        ),
+      ];
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repository.searchQueries, ['远洋', '远洋']);
+      expect(
+        tester
+            .widget<MasterDataTableView<ClientListItem>>(
+              find.byType(MasterDataTableView<ClientListItem>),
+            )
+            .items
+            .single
+            .id,
+        'refreshed-overseas',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'fresh search rows are usable before complete category location returns',
+    (tester) async {
+      final context = Completer<MasterSearchContext>();
+      final repository = _FakeClientRepository()..heldContext = context;
+      await _pumpPicker(
+        tester,
+        size: const Size(1200, 900),
+        clientRepository: repository,
+      );
+      await _openPicker(tester);
+      await tester.enterText(_searchEditable(), '远洋');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      await tester.pump();
+      final table = tester.widget<MasterDataTableView<ClientListItem>>(
+        find.byType(MasterDataTableView<ClientListItem>),
+      );
+      expect(table.items.single.id, _FakeClientRepository.overseasClient.id);
+      expect(table.isLoading, false);
+      expect(context.isCompleted, false);
+      context.complete(
+        const MasterSearchContext(
+          readScopeVersion: 'fixture-v1',
+          categoryIds: ['southeast-asia'],
+          totalMatches: 1,
+          page: 1,
+          totalPages: 1,
+          totalCategories: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'fresh rows retire if delayed category location rejects their read scope',
+    (tester) async {
+      final context = Completer<MasterSearchContext>();
+      final repository = _FakeClientRepository()..heldContext = context;
+      await _pumpPicker(
+        tester,
+        size: const Size(1200, 900),
+        clientRepository: repository,
+      );
+      await _openPicker(tester);
+      await tester.enterText(_searchEditable(), '远洋');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(MasterDataTableView<ClientListItem>), findsOneWidget);
+      context.complete(
+        const MasterSearchContext(
+          readScopeVersion: 'different-scope',
+          categoryIds: ['southeast-asia'],
+          totalMatches: 1,
+          page: 1,
+          totalPages: 1,
+          totalCategories: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(MasterDataTableView<ClientListItem>), findsNothing);
+      expect(find.text('账号、权限或服务器已变化，请关闭后重新选择'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final pending in [false, true]) {
     testWidgets(
       'master picker ${pending ? 'pending search' : 'accepted selection'} cannot revive after reader ABA',
@@ -924,6 +1044,8 @@ class _FakeClientRepository implements ClientRepository {
   final List<ClientListItem>? categoryItems;
   List<String?>? contextCategoryIdsOverride;
   final contextScopeVersions = <int, String?>{};
+  List<ClientListItem>? searchItemsOverride;
+  Completer<MasterSearchContext>? heldContext;
   String? delayedQuery;
   final delayedSearch = Completer<PagedResult<ClientListItem>>();
   final listCategoryIds = <String>[];
@@ -1001,6 +1123,14 @@ class _FakeClientRepository implements ClientRepository {
     searchQueries.add(keyword);
     searchPages.add(page);
     if (keyword == delayedQuery) return delayedSearch.future;
+    if (searchItemsOverride != null) {
+      return _page(
+        searchItemsOverride!,
+        page: page,
+        size: size,
+        readScopeVersion: scopeVersion,
+      );
+    }
     if (keyword == '大范围') {
       return PagedResult(
         readScopeVersion: scopeVersion,
@@ -1063,6 +1193,7 @@ class _FakeClientRepository implements ClientRepository {
     bool selectableOnly = false,
   }) async {
     contextPages.add(page);
+    if (heldContext != null) return heldContext!.future;
     excludeLegacyFlags.add(excludeLegacyFinanceStub);
     selectableOnlyFlags.add(selectableOnly);
     if (keyword == '大范围') {

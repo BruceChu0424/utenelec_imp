@@ -4,7 +4,7 @@
 
 ## W7-BIZ-001 · lib/features/admin/pages/admin_ai_settings_page.dart
 
-模块 `admin`；867 行；SHA256 `837310b1d73e6e56ac10b951c1e1c7c676ef10ce740c1601993ce5dea3e60422`。
+模块 `admin`；867 行；SHA256 `0ed93de0be0d5dfa9596efa1725da7e420bacfdc349311e1bbfacfdfce5b603c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -22,7 +22,7 @@
 
 ## W7-BIZ-002 · lib/features/admin/pages/admin_ai_usage_page.dart
 
-模块 `admin`；937 行；SHA256 `3f7c00e21acc9430b085bbb0c1f79ea8d4ece121e7fb5b8f3350e501206eb063`。
+模块 `admin`；937 行；SHA256 `7386d703db992b56c8403de04b87732e9fb865dc3bbda437b213924dc595d3c7`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -58,7 +58,7 @@
 
 ## W7-BIZ-004 · lib/features/admin/pages/admin_ai_usage_records_page.dart
 
-模块 `admin`；1471 行；SHA256 `684ee19a08104015e13d59eed0574cf3935a19d241b8d001926946a3d443e380`。
+模块 `admin`；1471 行；SHA256 `0aeedcdb3aed881294a1dcf41a76eadffc4caa01be856d95ebecb5a276c9d2d8`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -94,7 +94,7 @@
 
 ## W7-BIZ-006 · lib/features/admin/pages/admin_audit_session_detail_page.dart
 
-模块 `admin`；278 行；SHA256 `bed5d35cfbcadd5db7b8bdd1b5a22dbce1a38c0b10f7f52b0fe59fa36edf32f9`。
+模块 `admin`；278 行；SHA256 `30bd4f3c487d56d4903e29c342607e404fa7180ed3ca1254afb78fdbf823f780`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -112,21 +112,21 @@
 
 ## W7-BIZ-007 · lib/features/admin/pages/admin_permissions_page.dart
 
-模块 `admin`；1038 行；SHA256 `f1a20fa336944e5338cae73d3a5ab3de687746d770c0a7c16fb791be1c7448df`。
+模块 `admin`；1112 行；SHA256 `01ad16ea38af82f18217bc7e4932ca4f798f5178ec23a24b3777832d00ebd447`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | AdminPermissionsPage @48 (page-class)<br>_AdminPermissionsPageState @63 (state-class)<br>_EmployeePermTab @265 (supporting-class)<br>_EmployeePermTabState @288 (state-class)<br>AccountStatusBadge @1017 (supporting-class) |
+| 页面/状态类 | AdminPermissionsPage @50 (page-class)<br>_AdminPermissionsPageState @65 (state-class)<br>_EmployeePermTab @274 (supporting-class)<br>_EmployeePermTabState @298 (state-class)<br>AccountStatusBadge @1091 (supporting-class) |
 | 真实路由绑定 | /admin/permissions；router @2455；builder ['AdminPermissionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | authorization:manage @130；定义 lib/shared/auth/permissions.dart:22 |
+| 权限 | authorization:manage @133；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
-| 仓库调用 | lib/features/admin/repositories/admin_repository.dart；接口：/admin/data-scope-catalog、/admin/data-scope-owners?scope={scope}、/admin/departments/{id}/permissions、/admin/departments/{id}/permissions/grant-all、/admin/permission-baseline、/admin/permission-catalog、/admin/users、/admin/users/by-employee/{employeeId}、/admin/users/provision-candidates、/admin/users/{id}/data-scopes/batch、/admin/users/{id}/data-scopes?scope={scope}、/admin/users/{id}/disable、/admin/users/{id}/effective-permissions、/admin/users/{id}/enable、/admin/users/{id}/lock、/admin/users/{id}/permission-overrides、/admin/users/{id}/permission-overrides/grant-all、/admin/users/{id}/remote-access、/admin/users/{id}/reset-password、/admin/users/{id}/super-admin、/admin/users/{id}/unlock、/org/departments/tree |
-| 动作处理 | remove @89 [action-like-invocation] 提示 ['remove']；_leaveGuards.remove(segment);<br>confirmLeaveDrafts @315 [action-like-invocation] 提示 ['confirm']；return panel == null ? true : panel.confirmLeaveDrafts();<br>addPostFrameCallback @317 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());<br>_confirmDiscardPermissionChanges @503 [method-declaration-candidate] 提示 ['confirm']；Future<bool> _confirmDiscardPermissionChanges() async {<br>confirmLeaveDrafts @505 [action-like-invocation] 提示 ['confirm']；return panel == null ? true : await panel.confirmLeaveDrafts();<br>_confirmDiscardPermissionChanges @513 [action-like-invocation] 提示 ['confirm']；if (!await _confirmDiscardPermissionChanges()) return;<br>_confirmDiscardPermissionChanges @522 [action-like-invocation] 提示 ['confirm']；if (!await _confirmDiscardPermissionChanges()) return;<br>addPostFrameCallback @547 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_confirmDiscardPermissionChanges @573 [action-like-invocation] 提示 ['confirm']；if (_batchBusy \|\| !await _confirmDiscardPermissionChanges() \|\| !mounted) {<br>remove @591 [action-like-invocation] 提示 ['remove']；? _batchUsers.remove(user.id)<br>remove @605 [action-like-invocation] 提示 ['remove']；_batchUsers.remove(user.id);<br>remove @704 [action-like-invocation] 提示 ['remove']；: () => setState(() => _batchUsers.remove(user.id)),<br>copyWith @731 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @941 [action-like-invocation] 提示 ['copy']；style: Theme.of(context).textTheme.bodyMedium?.copyWith(<br>copyWith @955 [action-like-invocation] 提示 ['copy']；?.copyWith( |
+| 仓库调用 | lib/features/admin/repositories/admin_repository.dart；接口：/admin/data-scope-catalog、/admin/data-scope-owners?scope={scope}、/admin/departments/{id}/permissions、/admin/departments/{id}/permissions/grant-all、/admin/permission-baseline、/admin/permission-catalog、/admin/users、/admin/users/by-employee/{employeeId}、/admin/users/{id}/data-scopes/batch、/admin/users/{id}/data-scopes?scope={scope}、/admin/users/{id}/disable、/admin/users/{id}/effective-permissions、/admin/users/{id}/enable、/admin/users/{id}/lock、/admin/users/{id}/permission-overrides、/admin/users/{id}/permission-overrides/grant-all、/admin/users/{id}/remote-access、/admin/users/{id}/reset-password、/admin/users/{id}/super-admin、/admin/users/{id}/unlock、/org/departments/tree |
+| 动作处理 | remove @92 [action-like-invocation] 提示 ['remove']；_leaveGuards.remove(segment);<br>confirmLeaveDrafts @330 [action-like-invocation] 提示 ['confirm']；return panel == null ? true : panel.confirmLeaveDrafts();<br>addPostFrameCallback @332 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());<br>_confirmDiscardPermissionChanges @577 [method-declaration-candidate] 提示 ['confirm']；Future<bool> _confirmDiscardPermissionChanges() async {<br>confirmLeaveDrafts @579 [action-like-invocation] 提示 ['confirm']；return panel == null ? true : await panel.confirmLeaveDrafts();<br>_confirmDiscardPermissionChanges @587 [action-like-invocation] 提示 ['confirm']；if (!await _confirmDiscardPermissionChanges()) return;<br>_confirmDiscardPermissionChanges @596 [action-like-invocation] 提示 ['confirm']；if (!await _confirmDiscardPermissionChanges()) return;<br>addPostFrameCallback @621 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_confirmDiscardPermissionChanges @647 [action-like-invocation] 提示 ['confirm']；if (_batchBusy \|\| !await _confirmDiscardPermissionChanges() \|\| !mounted) {<br>remove @665 [action-like-invocation] 提示 ['remove']；? _batchUsers.remove(user.id)<br>remove @679 [action-like-invocation] 提示 ['remove']；_batchUsers.remove(user.id);<br>remove @778 [action-like-invocation] 提示 ['remove']；: () => setState(() => _batchUsers.remove(user.id)),<br>copyWith @805 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @1015 [action-like-invocation] 提示 ['copy']；style: Theme.of(context).textTheme.bodyMedium?.copyWith(<br>copyWith @1029 [action-like-invocation] 提示 ['copy']；?.copyWith( |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/admin/AdminPermissionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/AdminUserController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/DataScopeCatalogController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionConfigurationTransferController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionTemplateController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/department/DepartmentController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/shared/history/record_history_action.dart` (sharedComponents)；`lib/shared/history/record_history_area.dart` (sharedComponents)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/features/admin/widgets/admin_permission_templates.dart` (featureWidgets)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/inputs/uten_search_bar.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_load_more_boundary.dart` (sharedComponents)；`lib/components/layout/uten_segmented_filter.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/components/layout/uten_segment_row.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/providers/sensitive_read_boundary_provider.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/formatters/employee_display.dart` (sharedComponents)；`lib/features/admin/models/admin_models.dart` (models)；`lib/features/admin/repositories/admin_repository.dart` (repositories)；`lib/features/admin/widgets/admin_baseline_perm_view.dart` (featureWidgets)；`lib/features/admin/widgets/admin_department_perm_view.dart` (featureWidgets)；`lib/features/admin/widgets/admin_permission_transfer_actions.dart` (featureWidgets)；`lib/features/admin/widgets/admin_permission_workspace.dart` (featureWidgets)；`lib/features/admin/widgets/admin_user_detail_panel.dart` (featureWidgets)；`lib/features/admin/widgets/permission_batch_dialog.dart` (featureWidgets)。
+直接源依赖：`lib/shared/history/record_history_action.dart` (sharedComponents)；`lib/shared/paging/paged_read_intent.dart` (sharedComponents)；`lib/shared/history/record_history_area.dart` (sharedComponents)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/features/admin/widgets/admin_permission_templates.dart` (featureWidgets)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/inputs/uten_search_bar.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_load_more_boundary.dart` (sharedComponents)；`lib/components/layout/uten_segmented_filter.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/components/layout/uten_segment_row.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/providers/sensitive_read_boundary_provider.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/formatters/employee_display.dart` (sharedComponents)；`lib/features/admin/models/admin_models.dart` (models)；`lib/features/admin/repositories/admin_repository.dart` (repositories)；`lib/features/admin/widgets/admin_baseline_perm_view.dart` (featureWidgets)；`lib/features/admin/widgets/admin_department_perm_view.dart` (featureWidgets)；`lib/features/admin/widgets/admin_permission_transfer_actions.dart` (featureWidgets)；`lib/features/admin/widgets/admin_permission_workspace.dart` (featureWidgets)；`lib/features/admin/widgets/admin_user_detail_panel.dart` (featureWidgets)；`lib/features/admin/widgets/permission_batch_dialog.dart` (featureWidgets)。
 
 ## W7-BIZ-008 · lib/features/admin/pages/admin_platform_settings_page.dart
 
@@ -184,7 +184,7 @@
 
 ## W7-BIZ-012 · lib/features/admin/pages/server_operations_page.dart
 
-模块 `admin`；580 行；SHA256 `a4a8dd88dc641604b7b3bfc91be33c96f9b46401987eae45e1353676e3a9c550`。
+模块 `admin`；580 行；SHA256 `a93997f9ff6ce28be37b209c19fb12e52105f945c1ebe307c73ccbc849025a06`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -220,7 +220,7 @@
 
 ## W7-BIZ-014 · lib/features/admin/pages/server_storage_page.dart
 
-模块 `admin`；702 行；SHA256 `cc323451c9abe712c09925e780e25fe9d721e889968dcd0bc5c35b947eca35ec`。
+模块 `admin`；702 行；SHA256 `627c75d16323599b2ceef4d487981392415460f21128d9d8f2d86fc225ee6b8c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

@@ -7,6 +7,7 @@ import { tr } from '@/lib/content';
 import { deleteProduct } from '@/app/admin/actions';
 import { DeleteButton } from '@/components/admin/DeleteButton';
 import { PRODUCT_CLASSIFICATION_STATUSES, PRODUCT_FUNCTION_TYPES } from '@/lib/product-taxonomy';
+import { orderSearchPage, productSearchPage } from '@/lib/product-search';
 
 const PAGE_SIZE = 40;
 
@@ -42,26 +43,20 @@ export default async function ProductsAdmin({
     ...(seriesId ? { seriesId } : {}),
     ...(functionType ? { functionType } : {}),
     ...(review ? { classificationStatus: review } : {}),
-    ...(q ? {
-      OR: [
-        { slug: { contains: q } },
-        { model: { contains: q } },
-        { category: { contains: q } },
-        { i18n: { contains: q } },
-        { variants: { some: { sku: { contains: q } } } },
-      ],
-    } : {}),
   };
+  const searchScope = { query: q, internal: true, seriesIds: seriesId ? [seriesId] : undefined, functionType, review };
+  let searched = q ? await productSearchPage(prisma, searchScope, Math.min(100_000, (requestedPage - 1) * PAGE_SIZE), PAGE_SIZE) : null;
   const [total, seriesOptions] = await Promise.all([
-    prisma.product.count({ where }),
+    searched ? Promise.resolve(searched.total) : prisma.product.count({ where }),
     prisma.series.findMany({ orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }], select: { id: true, code: true, i18n: true } }),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
-  const products = await prisma.product.findMany({
-    where,
+  if (searched && (page !== requestedPage || (page - 1) * PAGE_SIZE > 100_000)) searched = await productSearchPage(prisma, searchScope, (page - 1) * PAGE_SIZE, PAGE_SIZE);
+  const records = await prisma.product.findMany({
+    where: searched ? { AND: [where, { id: { in: searched.ids } }] } : where,
     orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
-    skip: (page - 1) * PAGE_SIZE,
+    skip: searched ? 0 : (page - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
     include: {
       series: true,
@@ -74,6 +69,7 @@ export default async function ProductsAdmin({
       },
     },
   });
+  const products = searched ? orderSearchPage(records, searched.ids) : records;
 
   const hrefForPage = (target: number) => {
     const query = new URLSearchParams();

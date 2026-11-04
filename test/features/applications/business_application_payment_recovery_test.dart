@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -61,6 +62,8 @@ class _Applications extends Fake implements BusinessApplicationRepository {
   ApiException? rejectOnce;
   final actions = <String>[];
   final financeCandidateReads = <String>[];
+  final financeKeywords = <String?>[];
+  int candidateRevision = 0;
   final versions = <int>[];
   Map<String, dynamic>? sent;
   @override
@@ -161,11 +164,14 @@ class _Applications extends Fake implements BusinessApplicationRepository {
     String? keyword,
   }) async {
     financeCandidateReads.add(id);
+    financeKeywords.add(keyword);
     return {
       'items': [
         {
           'id': 'finance-doc',
-          'billNo': 'FK20261103000002',
+          'billNo': keyword?.isNotEmpty == true
+              ? 'FK-$keyword-$candidateRevision'
+              : 'FK20261103000002',
           'billDate': recordedDate,
           'amountLocalText': '1200.50',
           'status': 1,
@@ -273,6 +279,50 @@ Widget _app(
 }
 
 void main() {
+  testWidgets(
+    'prepayment finance search uses shared explicit submission and refreshes a completed same query without writing',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final repository = _Applications()
+        ..kind = 'PREPAYMENT'
+        ..committed = true
+        ..recordedDate = '2026-11-03'
+        ..loseResponses = false;
+      await tester.pumpWidget(
+        _app(
+          repository,
+          MemoryFormDraftStorage(),
+          prefs,
+          '/applications/prepayment-1',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('关联预付账务'));
+      await tester.pumpAndSettle();
+      final search = find.descendant(
+        of: find.byKey(const Key('application-finance-candidate-search')),
+        matching: find.byType(TextField),
+      );
+      expect(find.byType(UtenSearchBar), findsWidgets);
+      await tester.enterText(search, 'FK');
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(repository.financeKeywords, ['']);
+      await tester.showKeyboard(search);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repository.financeKeywords, ['', 'FK']);
+      expect(find.textContaining('FK-FK-0'), findsOneWidget);
+      repository.candidateRevision = 1;
+      await tester.showKeyboard(search);
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repository.financeKeywords, ['', 'FK', 'FK']);
+      expect(find.textContaining('FK-FK-1'), findsOneWidget);
+      expect(repository.writes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'a definite first rejection releases only its send marker and preserves the editable payment inputs',
     (tester) async {
@@ -392,7 +442,11 @@ void main() {
           'manual-prepayment-link',
         );
       }
-      expect(find.text('1200.50 元'), findsOneWidget, reason: 'dedicated exact candidate money must be visible, not a dash');
+      expect(
+        find.text('1200.50 元'),
+        findsOneWidget,
+        reason: 'dedicated exact candidate money must be visible, not a dash',
+      );
       await tester.tap(find.text('确认关联预付账务'));
       await tester.pumpAndSettle();
       expect(repository.actions, ['pay', 'link-finance']);

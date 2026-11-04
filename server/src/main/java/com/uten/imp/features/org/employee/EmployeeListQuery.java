@@ -2,6 +2,7 @@ package com.uten.imp.features.org.employee;
 
 import com.uten.imp.features.org.employee.dto.EmployeeListItem;
 import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.DepartmentSearchSql;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -82,6 +83,8 @@ public class EmployeeListQuery {
         int safePage = Math.max(1, page);
         int size = Math.min(Math.max(1, requestedSize), 100);
         boolean hasSearch = !KeywordSearch.terms(search).isEmpty();
+        String prefix = DepartmentSearchSql.prefix(hasSearch);
+        String from = FROM + DepartmentSearchSql.joins(hasSearch,"e.department_id");
         List<Object> parameters = new ArrayList<>();
         var headerValues=new java.util.LinkedHashMap<String,String>(columns==null?java.util.Map.of():columns);
         if(sort!=null&&HEADER_COLUMNS.textFields().containsKey(sort)) {
@@ -94,7 +97,7 @@ public class EmployeeListQuery {
 
         // count 与主查询共用同一份 FROM：搜索条件引用了 d/p 的列，count 少了 JOIN 会炸。
         Long totalValue = jdbc.queryForObject(
-                "SELECT COUNT(*) " + FROM + where,
+                prefix + "SELECT COUNT(*) " + from + where,
                 Long.class,
                 parameters.toArray());
         long total = totalValue == null ? 0 : totalValue;
@@ -116,7 +119,7 @@ public class EmployeeListQuery {
                 + ", " + ordering.replaceFirst("(?s)^\\s*ORDER BY\\s*", "");
         pageParameters.add(size);
         pageParameters.add((safePage - 1) * size);
-        String select = COLUMNS + matchedPlates + FROM;
+        String select = prefix + COLUMNS + matchedPlates + from;
         List<EmployeeListItem> items = jdbc.query(
                 // 文本块 ORDER_BY 开头的换行会被 Java 吃掉，where 结尾是 "false"，
                 // 必须在此显式补换行，否则拼成 "falseORDER BY" 触发 PG 语法错误。
@@ -169,7 +172,8 @@ public class EmployeeListQuery {
         StringBuilder sql = new StringBuilder(" WHERE e.is_deleted = false");
         for (String term : KeywordSearch.terms(search)) {
             sql.append(" AND (LOWER(e.code) LIKE ? ESCAPE '\\' OR LOWER(e.full_name) LIKE ? ESCAPE '\\'")
-                    .append(" OR LOWER(d.name) LIKE ? ESCAPE '\\' OR LOWER(p.name) LIKE ? ESCAPE '\\'")
+                    .append(" OR LOWER(").append(DepartmentSearchSql.name("d.name"))
+                    .append(") LIKE ? ESCAPE '\\' OR LOWER(p.name) LIKE ? ESCAPE '\\'")
                     .append(" OR LOWER(CAST(e.hire_date AS TEXT)) LIKE ? ESCAPE '\\'")
                     .append(" OR EXISTS (SELECT 1 FROM employee_vehicles v")
                     .append(" WHERE v.employee_id=e.id AND LOWER(v.plate_norm) LIKE ? ESCAPE '\\'))");

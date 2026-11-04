@@ -6,6 +6,7 @@ import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
@@ -63,9 +64,11 @@ class AuditQueryServiceTest {
         AuditActorDirectory directory = mock(AuditActorDirectory.class);
         when(directory.resolve(any(), any()))
                 .thenReturn(AuditActorDirectory.Resolution.empty());
-        when(directory.findUserIdsByNameKeyword(any()))
-                .thenReturn(java.util.Set.of());
         return directory;
+    }
+
+    private static CriteriaQuery<?> criteriaQuery() {
+        return mock(CriteriaQuery.class, Answers.RETURNS_DEEP_STUBS);
     }
 
     @Test
@@ -182,7 +185,7 @@ class AuditQueryServiceTest {
         Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteriaBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-        specificationCaptor.getValue().toPredicate(root, null, criteriaBuilder);
+        specificationCaptor.getValue().toPredicate(root, criteriaQuery(), criteriaBuilder);
         verify(criteriaBuilder).lessThanOrEqualTo(root.get("id"), 61L);
     }
 
@@ -221,7 +224,7 @@ class AuditQueryServiceTest {
         when(((JpaExpression<?>) requestIdPath).cast(String.class))
                 .thenReturn(requestIdText);
 
-        service.specification(filters).toPredicate(root, null, criteriaBuilder);
+        service.specification(filters).toPredicate(root, criteriaQuery(), criteriaBuilder);
 
         verify(root, atLeastOnce()).get("action");
         verify(root, atLeastOnce()).get("actorAccount");
@@ -241,6 +244,21 @@ class AuditQueryServiceTest {
                 any(Expression.class));
         verify(root, never()).get("userAgent");
         verify(root, never()).get("ip");
+    }
+
+    @Test
+    void dedicatedActionAndAccountFiltersTreatWildcardCharactersAsLiteralInput() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        var filters = new AuditSearchCriteria("USER_%", " A_%\\ ", null, null, null, null,
+                null, null, null, null, null, null, null, null, null);
+        Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+        service.specification(filters).toPredicate(root, criteriaQuery(), cb);
+        var action = cb.lower(root.<String>get("action"));
+        var account = cb.lower(root.<String>get("actorAccount"));
+        verify(cb).like(action, "user\\_\\%%", '\\');
+        verify(cb).like(account, "%a\\_\\%\\\\%", '\\');
     }
 
     @Test
@@ -266,7 +284,7 @@ class AuditQueryServiceTest {
                     null, null, null, null, null, null,
                     null, targetType, null, null, null, null,
                     null, null, null);
-            service.specification(filters).toPredicate(root, null, criteriaBuilder);
+            service.specification(filters).toPredicate(root, criteriaQuery(), criteriaBuilder);
 
             verify(normalizedTarget).in(List.of(targetType, routeGroup));
         });
@@ -307,7 +325,7 @@ class AuditQueryServiceTest {
             when(criteriaBuilder.lower(storedAction)).thenReturn(action);
 
             service.specification(criteriaWith(null, null, operationKind, null))
-                    .toPredicate(root, null, criteriaBuilder);
+                    .toPredicate(root, criteriaQuery(), criteriaBuilder);
 
             if ("write".equals(operationKind)) {
                 verify(action).in(List.of("insert", "update", "delete"));
@@ -330,7 +348,7 @@ class AuditQueryServiceTest {
                     CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
             service.specification(criteriaWith(null, null, operationKind, null))
-                    .toPredicate(root, null, criteriaBuilder);
+                    .toPredicate(root, criteriaQuery(), criteriaBuilder);
 
             // ADR-105: 软删除在写入时就记为 delete, 查询不再从 JSON 快照里补认。
             verify(root, never()).get("before");
@@ -347,7 +365,7 @@ class AuditQueryServiceTest {
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
         service.specification(criteriaWith("system", null, null, null))
-                .toPredicate(root, null, criteriaBuilder);
+                .toPredicate(root, criteriaQuery(), criteriaBuilder);
 
         verify(root, atLeastOnce()).get("actorId");
         verify(root, atLeastOnce()).get("eventSource");
@@ -367,7 +385,7 @@ class AuditQueryServiceTest {
         when(criteriaBuilder.lower(storedAction)).thenReturn(action);
         when(action.in(List.of("http_get"))).thenReturn(httpGet);
 
-        service.operationSpecification("read").toPredicate(root, null, criteriaBuilder);
+        service.operationSpecification("read").toPredicate(root, criteriaQuery(), criteriaBuilder);
 
         verify(criteriaBuilder).equal(action, "http_get");
         verify(criteriaBuilder).like(action, "view!_%", '!');
@@ -437,7 +455,7 @@ class AuditQueryServiceTest {
         Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder criteriaBuilder = mock(
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
-        specificationCaptor.getValue().toPredicate(root, null, criteriaBuilder);
+        specificationCaptor.getValue().toPredicate(root, criteriaQuery(), criteriaBuilder);
         Path<Long> exportId = root.get("id");
         verify(criteriaBuilder, never()).lessThanOrEqualTo(exportId, 73L);
     }
@@ -449,7 +467,7 @@ class AuditQueryServiceTest {
         Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
-        service.outcomeSpecification("success").toPredicate(root, null, cb);
+        service.outcomeSpecification("success").toPredicate(root, criteriaQuery(), cb);
 
         verify(cb).function(
                 eq("split_part"),
@@ -642,8 +660,8 @@ class AuditQueryServiceTest {
         when(criteria.equal(storedRisk, "medium")).thenReturn(medium);
         when(storedRisk.in(List.of("critical", "high", "medium"))).thenReturn(risky);
 
-        assertSame(medium, service.riskSpecification("medium").toPredicate(root, null, criteria));
-        assertSame(risky, service.riskSpecification("risky").toPredicate(root, null, criteria));
+        assertSame(medium, service.riskSpecification("medium").toPredicate(root, criteriaQuery(), criteria));
+        assertSame(risky, service.riskSpecification("risky").toPredicate(root, criteriaQuery(), criteria));
         verify(root, never()).get("action");
         verify(root, never()).get("before");
         verify(root, never()).get("after");
@@ -660,7 +678,7 @@ class AuditQueryServiceTest {
         when(root.get("eventCategory")).thenReturn(storedCategory);
         when(criteria.equal(storedCategory, "security")).thenReturn(security);
 
-        assertSame(security, service.categorySpecification("security").toPredicate(root, null, criteria));
+        assertSame(security, service.categorySpecification("security").toPredicate(root, criteriaQuery(), criteria));
         verify(root, never()).get("action");
     }
 
@@ -747,7 +765,7 @@ class AuditQueryServiceTest {
         CriteriaBuilder cb=mock(CriteriaBuilder.class,Answers.RETURNS_DEEP_STUBS);
         var criteria=new AuditSearchCriteria(null,null,null,null,null,null,null,"employees",canonical.toString(),
                 null,null,null,null,null,null,SELECTED_ACTOR,false);
-        service.specification(criteria).toPredicate(root,null,cb);
+        service.specification(criteria).toPredicate(root,criteriaQuery(),cb);
         verify(cb.lower(root.<String>get("targetId"))).in(List.of(canonical.toString(),alias.toString()));
         verify(cb).equal(root.get("actorId"),SELECTED_ACTOR);
         verify(identities).employeeIdentityMembers(canonical);
@@ -760,7 +778,7 @@ class AuditQueryServiceTest {
         Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
-        service.specification(criteria(null)).toPredicate(root, null, cb);
+        service.specification(criteria(null)).toPredicate(root, criteriaQuery(), cb);
 
         verify(cb).equal(root.get("actorId"), SELECTED_ACTOR);
         verify(cb).notEqual(any(Expression.class), eq("database"));
@@ -781,7 +799,7 @@ class AuditQueryServiceTest {
         Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
-        service.specification(anonymous).toPredicate(root, null, cb);
+        service.specification(anonymous).toPredicate(root, criteriaQuery(), cb);
 
         verify(root, atLeastOnce()).get("eventSource");
         verify(root, atLeastOnce()).get("eventCategory");
@@ -856,7 +874,7 @@ class AuditQueryServiceTest {
         Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
-        service.operationSpecification("write").toPredicate(root, null, cb);
+        service.operationSpecification("write").toPredicate(root, criteriaQuery(), cb);
 
             verify(root, atLeastOnce()).get("httpMethod");
         verify(root).get("eventCategory");
@@ -871,7 +889,7 @@ class AuditQueryServiceTest {
         Root<AuditLog> root = mock(Answers.RETURNS_DEEP_STUBS);
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
-        service.operationSpecification("write").toPredicate(root, null, cb);
+        service.operationSpecification("write").toPredicate(root, criteriaQuery(), cb);
 
         verify(root).get("eventCategory");
         verify(cb, atLeastOnce()).not(any(Predicate.class));

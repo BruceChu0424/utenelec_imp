@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 1,
+  "task": "platform-search-20261103",
+  "workspaceRoot": "D:/Projects/uten_imp_worktrees/platform-search-20261103",
+  "enumeration": "rg every production UtenEmployeePicker/MultiPicker/SelectionPanel/show-panel call; component implementation forwarders excluded; BusinessEmployeePicker wrapper consumers enumerated separately.",
+  "sourceOnly": true,
+  "sites": [
+    {
+      "path": "lib/features/admin/widgets/provision_account_dialog.dart",
+      "line": 147,
+      "component": "UtenEmployeeSelectionPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/shared/widgets/business_employee_picker.dart",
+      "line": 220,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/admin/widgets/admin_data_scope_section.dart",
+      "line": 759,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "local_authorized_configuration_directory",
+      "basis": "Filters the already-held scope-specific owner configuration items; searching issues no new personnel directory fetch and retains historical-only grant semantics."
+    },
+    {
+      "path": "lib/features/admin/widgets/admin_data_handover_panel.dart",
+      "line": 389,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/admin/widgets/impersonation_actions.dart",
+      "line": 69,
+      "component": "showUtenEmployeePickerPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/admin/widgets/audit_query_scope.dart",
+      "line": 809,
+      "component": "UtenEmployeeSelectionPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/shared/widgets/sales_order_picker.dart",
+      "line": 248,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/department/widgets/department_edit_dialog.dart",
+      "line": 397,
+      "component": "UtenEmployeePicker",
+      "mode": "paged_production_binding",
+      "basis": "DepartmentPage supplies managerPagedLoader. Optional managerLoader is retained only as the small supplied-list interface exercised by dialog fixtures."
+    },
+    {
+      "path": "lib/features/company_files/widgets/company_file_access_editor.dart",
+      "line": 83,
+      "component": "showUtenEmployeeSelectionPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 750,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/client_access_panel.dart",
+      "line": 387,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/client_access_panel.dart",
+      "line": 407,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/client_access_batch_dialog.dart",
+      "line": 134,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/client_access_batch_dialog.dart",
+      "line": 146,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "line": 1060,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/supplier_master_edit.dart",
+      "line": 87,
+      "component": "showUtenEmployeeSelectionPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/notice/pages/notice_publish_page.dart",
+      "line": 625,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/notice/pages/notice_publish_page.dart",
+      "line": 851,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/production/widgets/material_priority_replenishment_dialog.dart",
+      "line": 609,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/production/widgets/production_execution_segments_card.dart",
+      "line": 497,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 1952,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "line": 931,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/employee/pages/employee_offboarding_workflow_page.dart",
+      "line": 593,
+      "component": "UtenEmployeePicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/basic_data/pages/mould_category_page.dart",
+      "line": 699,
+      "component": "showUtenEmployeePickerPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/visitor/pages/visitor_apply_page.dart",
+      "line": 332,
+      "component": "UtenEmployeePicker",
+      "mode": "privacy_bounded_list",
+      "basis": "Original public host lookup requires at least two characters, returns at most five public receivers and exposes no department tree."
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_material_table.dart",
+      "line": 5185,
+      "component": "showUtenEmployeePickerPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_aggregate_table.dart",
+      "line": 1726,
+      "component": "showUtenEmployeePickerPanel",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    },
+    {
+      "path": "lib/features/production/pages/production_daily_report_edit_page.dart",
+      "line": 3818,
+      "component": "UtenEmployeeMultiPicker",
+      "mode": "paged",
+      "basis": "Explicit page-returning loader; the shared panel owns continuation, query retirement and independent selection."
+    }
+  ],
+  "businessReferenceWrapperCallers": [
+    {
+      "path": "lib/features/warehouse/materialbin/pages/workshop_material_issue_page.dart",
+      "line": 1141,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "line": 2266,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "line": 1524,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart",
+      "line": 1138,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart",
+      "line": 1672,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/production/pages/production_plan_edit_page.dart",
+      "line": 628,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "line": 3085,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "line": 4739,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "line": 1506,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "line": 2132,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    },
+    {
+      "path": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+      "line": 1748,
+      "mode": "shared_paged_business_reference",
+      "authority": "Original explicit EmployeeReferencePurpose; shared widget delegates to EmployeeReferenceRepository.listPickerPage."
+    }
+  ],
+  "controlledListExceptions": [
+    "visitor_apply_page.dart: privacy-bound public host top-5, minimum two characters, no organization directory",
+    "admin_data_scope_section.dart: local already-held authorized owner configuration metadata; no new search-time directory request"
+  ],
+  "removedCandidateMethodsRemainingReferences": 0,
+  "legacyServerHttpCompatibility": "The baseline Dart client used the old list-returning HTTP contracts. Server list routes retain original authorization and explicit legacy bounds for mixed client versions; current modified Dart directory search callers use the new page routes. This is not a retained new-client auto-drain loop.",
+  "identityDifferences": [
+    "Company file USER principal IDs remain user IDs, not employee IDs.",
+    "Audit actor IDs retain staff/visitor/historical-account semantics.",
+    "Impersonation management directory and tree use admin credentials, with current UI ownership/epoch fencing."
+  ],
+  "nonGoals": [
+    "No task-center hot/cold/history implementation",
+    "No production deployment, formal package or target-PC support claim"
+  ]
+}

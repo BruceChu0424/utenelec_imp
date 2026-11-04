@@ -20,6 +20,26 @@ void main() {
     unregister = null;
   });
 
+  test(
+    'read-only POST search does not request or replay write reauthentication',
+    () async {
+      var prompts = 0;
+      unregister = StepUpCoordinator.instance.register(() async {
+        prompts++;
+        return 'must-not-be-used';
+      });
+      final adapter = _Adapter((_) => _json(403, {'code': 'REAUTH_REQUIRED'}));
+      final dio = _dio(adapter);
+      await expectLater(
+        dio.post<dynamic>('/master/clients/search', data: {'keyword': '张'}),
+        throwsA(isA<DioException>()),
+      );
+      expect(prompts, 0);
+      expect(adapter.sent, hasLength(1));
+      expect(adapter.sent.single.headers[StepUpInterceptor.header], isNull);
+    },
+  );
+
   test('403 REAUTH_REQUIRED: 弹框换到凭证后带请求头原样重发一次', () async {
     var prompts = 0;
     unregister = StepUpCoordinator.instance.register(() async {

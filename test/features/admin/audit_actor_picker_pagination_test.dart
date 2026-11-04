@@ -8,7 +8,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
-import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/repositories/audit_log_repository.dart';
@@ -28,40 +28,43 @@ final _permissions = StateProvider<Set<String>>((_) => {'audit:view'});
 final _repository = StateProvider<AuditLogRepository?>((_) => null);
 
 void main() {
-  testWidgets('one directory load uses one repository for every page', (
-    tester,
-  ) async {
-    final pending = Completer<AuditActorPage>();
-    final original = _ActorRepository(pending: pending);
-    final replacement = _ActorRepository();
-    final container = await _pump(tester, original, settle: false);
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(original.calls.map((call) => call.$1), [1, 2]);
-    container.read(_repository.notifier).state = replacement;
-    pending.complete(_ActorRepository.page(2));
-    await tester.pumpAndSettle();
-    expect(original.calls.map((call) => call.$1), [1, 2, 3]);
-    expect(replacement.calls, isEmpty);
-    expect(find.text('人员3'), findsOneWidget);
-  });
+  testWidgets(
+    'audit first page is bounded and one pinned source serves explicit continuation',
+    (tester) async {
+      final pending = Completer<AuditActorPage>();
+      final original = _ActorRepository(pending: pending);
+      final replacement = _ActorRepository();
+      final container = await _pump(tester, original);
+      expect(original.calls.map((call) => call.page), [1]);
+      _table(tester).onLoadMore!();
+      await tester.pump();
+      expect(original.calls.map((call) => call.page), [1, 2]);
+      container.read(_repository.notifier).state = replacement;
+      pending.complete(_ActorRepository.response(2));
+      await tester.pumpAndSettle();
+      expect(_table(tester).items, hasLength(200));
+      _table(tester).onLoadMore!();
+      await tester.pumpAndSettle();
+      expect(original.calls.map((call) => call.page), [1, 2, 3]);
+      expect(replacement.calls, isEmpty);
+      expect(_table(tester).items, hasLength(300));
+    },
+  );
 
   for (final boundary in ['server', 'identity', 'permissions']) {
     testWidgets(
-      'audit $boundary change invalidates pending pages without mixing repositories',
+      'audit $boundary change rejects an old continuation without mixing identities',
       (tester) async {
         final pending = Completer<AuditActorPage>();
         final original = _ActorRepository(pending: pending);
-        final replacement = _ActorRepository();
         AuditActorOption? selected;
         final container = await _pump(
           tester,
           original,
-          settle: false,
           onSelected: (value) => selected = value,
         );
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(original.calls.map((call) => call.$1), [1, 2]);
-        container.read(_repository.notifier).state = replacement;
+        _table(tester).onLoadMore!();
+        await tester.pump();
         switch (boundary) {
           case 'server':
             container.read(_server.notifier).state = 'https://audit-b.test';
@@ -74,10 +77,9 @@ void main() {
             container.read(_permissions.notifier).state = {};
         }
         await tester.pump();
-        pending.complete(_ActorRepository.page(2));
+        pending.complete(_ActorRepository.response(2));
         await tester.pumpAndSettle();
-        expect(original.calls.map((call) => call.$1), [1, 2]);
-        expect(replacement.calls, isEmpty);
+        expect(original.calls.map((call) => call.page), [1, 2]);
         expect(find.byType(AuditActorPicker), findsNothing);
         expect(selected, isNull);
         expect(tester.takeException(), isNull);
@@ -86,58 +88,105 @@ void main() {
   }
 
   testWidgets(
-    'actor picker loads every page, groups departments and confirms identity',
+    'department filtering happens before audit paging and historical account identity is retained',
     (tester) async {
       final repository = _ActorRepository();
       AuditActorOption? selected;
-      await _pump(tester, repository, onSelected: (actor) => selected = actor);
-      expect(find.byType(UtenSplitView), findsOneWidget);
-      expect(repository.calls.map((call) => call.$1), [1, 2, 3]);
-      final departments = find.byKey(
-        const Key('uten-employee-picker-departments'),
-      );
-      if (!tester.any(departments)) {
-        await tester.tap(find.byIcon(Icons.account_tree_rounded));
-        await tester.pumpAndSettle();
-      }
-      expect(find.byTooltip('展开测试公司'), findsOneWidget);
+      await _pump(tester, repository, onSelected: (value) => selected = value);
+      final departments = await _departmentsVisible(tester);
       await tester.tap(find.byTooltip('展开测试公司'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(of: departments, matching: find.text('财务部')),
       );
       await tester.pumpAndSettle();
+      expect(repository.calls.last.department, 'finance');
+      expect(repository.calls.last.page, 1);
       expect(
-        find.byKey(const ValueKey('employee-picker-item-actor-1')),
-        findsNothing,
+        _table(tester).items.every((item) => item.departmentId == 'finance'),
+        true,
       );
-      expect(
-        find.byKey(const ValueKey('employee-picker-item-actor-2')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('employee-picker-item-actor-3')),
-        findsOneWidget,
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('employee-picker-item-actor-2')),
-      );
+      _table(tester).onLoadMore!();
       await tester.pumpAndSettle();
-      expect(selected, isNull);
+      expect(_table(tester).items, hasLength(104));
+      expect(_table(tester).items.last.id, 'historical-user-103');
+      await tester.tap(
+        find.byKey(const ValueKey('employee-picker-item-historical-user-0')),
+      );
+      await tester.pump();
       await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
-      expect(selected?.actorId, 'actor-2');
-      expect(tester.takeException(), isNull);
+      expect(selected?.actorId, 'historical-user-0');
+      expect(selected?.accountStatus, 'deleted');
+      expect(selected?.employmentStatus, 'resigned');
     },
   );
 
-  testWidgets('actor search discards an older pending directory page', (
+  testWidgets(
+    'visitors stay reachable from the first page and retain visitor actor identity',
+    (tester) async {
+      final repository = _ActorRepository();
+      AuditActorOption? selected;
+      await _pump(tester, repository, onSelected: (value) => selected = value);
+      final departments = await _departmentsVisible(tester);
+      await tester.tap(
+        find.descendant(of: departments, matching: find.text('外部访客')),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.calls.last.actorType, 'visitor');
+      expect(repository.calls.last.department, isNull);
+      _table(tester).onLoadMore!();
+      await tester.pumpAndSettle();
+      expect(_table(tester).items, hasLength(104));
+      expect(_table(tester).items.last.id, 'visitor-103');
+      await tester.tap(
+        find.byKey(const ValueKey('employee-picker-item-visitor-0')),
+      );
+      await tester.pump();
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
+      await tester.pumpAndSettle();
+      expect(selected?.actorId, 'visitor-0');
+      expect(selected?.actorType, 'visitor');
+    },
+  );
+
+  testWidgets(
+    'unassigned historical accounts filter on the server and every page remains reachable',
+    (tester) async {
+      final repository = _ActorRepository();
+      await _pump(tester, repository);
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(UtenSearchBar),
+          matching: find.byType(TextField),
+        ),
+        '未分配',
+      );
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      final departments = await _departmentsVisible(tester);
+      await tester.tap(
+        find.descendant(of: departments, matching: find.text('未提供部门')),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.calls.last.unassigned, true);
+      expect(repository.calls.last.actorType, 'staff');
+      expect(repository.calls.last.department, isNull);
+      _table(tester).onLoadMore!();
+      await tester.pumpAndSettle();
+      expect(_table(tester).items, hasLength(104));
+      expect(_table(tester).items.last.id, 'unassigned-user-103');
+    },
+  );
+
+  testWidgets('new audit search rejects an older pending continuation', (
     tester,
   ) async {
     final pending = Completer<AuditActorPage>();
     final repository = _ActorRepository(pending: pending);
-    await _pump(tester, repository, settle: false);
-    await tester.pump(const Duration(milliseconds: 300));
+    await _pump(tester, repository);
+    _table(tester).onLoadMore!();
+    await tester.pump();
     final search = find.descendant(
       of: find.byType(UtenSearchBar),
       matching: find.byType(TextField),
@@ -145,16 +194,27 @@ void main() {
     await tester.enterText(search, 'new');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    expect(find.text('new人员1'), findsOneWidget);
-    pending.complete(_ActorRepository.page(2));
+    expect(_table(tester).items.single.id, 'new-audit-user');
+    pending.complete(_ActorRepository.response(2));
     await tester.pumpAndSettle();
-    expect(find.text('new人员1'), findsOneWidget);
-    expect(find.text('人员1'), findsNothing);
-    expect(find.text('人员2'), findsNothing);
-    expect(find.byType(UtenEmployeeSelectionPanel), findsOneWidget);
+    expect(_table(tester).items.single.id, 'new-audit-user');
     expect(tester.takeException(), isNull);
   });
 }
+
+Future<Finder> _departmentsVisible(WidgetTester tester) async {
+  final tree = find.byKey(const Key('uten-employee-picker-departments'));
+  if (!tester.any(tree)) {
+    await tester.tap(find.byIcon(Icons.account_tree_rounded));
+    await tester.pumpAndSettle();
+  }
+  return tree;
+}
+
+MasterDataTableView<UtenEmployeePickerItem> _table(WidgetTester tester) =>
+    tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
+      find.byKey(const Key('uten-employee-picker-candidates')),
+    );
 
 Future<ProviderContainer> _pump(
   WidgetTester tester,
@@ -251,33 +311,111 @@ Future<ProviderContainer> _pump(
 class _ActorRepository extends Fake implements AuditLogRepository {
   _ActorRepository({this.pending});
   final Completer<AuditActorPage>? pending;
-  final calls = <(int, String?)>[];
-
-  static AuditActorPage page(int page, [String? keyword]) => AuditActorPage(
-    items: [
+  final calls =
+      <
+        ({
+          int page,
+          String? keyword,
+          String? department,
+          String? actorType,
+          bool unassigned,
+        })
+      >[];
+  static List<AuditActorOption> get all => [
+    for (var i = 0; i < 104; i++)
       AuditActorOption(
-        actorId: '${keyword?.isNotEmpty == true ? keyword : 'actor'}-$page',
-        name: '${keyword?.isNotEmpty == true ? keyword : ''}人员$page',
-        departmentId: page == 1 ? 'sales' : 'finance',
-        department: page == 1 ? '销售部' : '财务部',
+        actorId: 'account-user-$i',
+        actorType: 'staff',
+        name: '人员$i',
+        departmentId: 'sales',
+        department: '销售部',
       ),
-    ],
-    page: page,
-    size: 1,
-    total: keyword?.isNotEmpty == true ? 1 : 3,
-    totalPages: keyword?.isNotEmpty == true ? 1 : 3,
-  );
+    for (var i = 0; i < 104; i++)
+      AuditActorOption(
+        actorId: 'historical-user-$i',
+        actorType: 'staff',
+        name: '历史人员$i',
+        departmentId: 'finance',
+        department: '财务部',
+        accountStatus: 'deleted',
+        employmentStatus: 'resigned',
+      ),
+    for (var i = 0; i < 104; i++)
+      AuditActorOption(
+        actorId: 'unassigned-user-$i',
+        actorType: 'staff',
+        name: '未分配人员$i',
+        accountStatus: 'deleted',
+      ),
+    for (var i = 0; i < 104; i++)
+      AuditActorOption(
+        actorId: 'visitor-$i',
+        actorType: 'visitor',
+        name: '访客$i',
+        department: '外部访客',
+      ),
+  ];
+  static AuditActorPage response(
+    int page, {
+    String? keyword,
+    String? departmentId,
+    String? actorType,
+    bool unassignedOnly = false,
+  }) {
+    final rows = keyword == 'new'
+        ? const [AuditActorOption(actorId: 'new-audit-user', name: 'new人员')]
+        : all
+              .where(
+                (actor) =>
+                    (keyword?.isNotEmpty != true ||
+                        actor.primaryLabel.contains(keyword!)) &&
+                    (departmentId == null ||
+                        actor.departmentId == departmentId) &&
+                    (actorType == null || actor.actorType == actorType) &&
+                    (!unassignedOnly ||
+                        actor.actorType == 'staff' &&
+                            actor.departmentId == null),
+              )
+              .toList();
+    return AuditActorPage(
+      items: rows.skip((page - 1) * 100).take(100).toList(),
+      page: page,
+      size: 100,
+      total: rows.length,
+      totalPages: (rows.length / 100).ceil(),
+    );
+  }
 
   @override
   Future<AuditActorPage> actors({
     int page = 1,
     int size = 20,
     String? keyword,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? actorType,
+    bool unassignedOnly = false,
   }) async {
-    calls.add((page, keyword));
-    if (page == 2 && (keyword?.isEmpty ?? true) && pending != null) {
+    calls.add((
+      page: page,
+      keyword: keyword,
+      department: departmentId,
+      actorType: actorType,
+      unassigned: unassignedOnly,
+    ));
+    if (page == 2 &&
+        (keyword?.isEmpty ?? true) &&
+        departmentId == null &&
+        actorType == null &&
+        pending != null) {
       return pending!.future;
     }
-    return _ActorRepository.page(page, keyword);
+    return response(
+      page,
+      keyword: keyword,
+      departmentId: departmentId,
+      actorType: actorType,
+      unassignedOnly: unassignedOnly,
+    );
   }
 }

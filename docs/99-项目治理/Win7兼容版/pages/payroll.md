@@ -4,7 +4,7 @@
 
 ## W7-BIZ-088 · lib/features/payroll/pages/payroll_generate_page.dart
 
-模块 `payroll`；594 行；SHA256 `85a21df1e42932ba9d918cf5aa0b59e7690c8b0cdef1c727300445ae56b26610`。
+模块 `payroll`；594 行；SHA256 `7c2d620e9a9315ccab90494fac7e9e985eac014e9bc6c547978e62cf2a4db5a2`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

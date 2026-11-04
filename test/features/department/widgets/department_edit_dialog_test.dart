@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/features/department/widgets/department_edit_dialog.dart';
@@ -167,7 +168,19 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('本部门暂无可选负责人'), findsOneWidget);
-    expect(find.text('负责人只能从本部门直属在册员工中选择。请先添加或调入员工，再设置负责人。'), findsOneWidget);
+    const emptyHint = '负责人只能从本部门直属在册员工中选择。请先添加或调入员工，再设置负责人。';
+    expect(find.textContaining(emptyHint), findsNothing);
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains(emptyHint) ?? false),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining(emptyHint), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     expect(find.text('未找到匹配的人员'), findsNothing);
   });
 

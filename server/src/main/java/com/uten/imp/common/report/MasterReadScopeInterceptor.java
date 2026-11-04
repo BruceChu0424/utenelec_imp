@@ -29,7 +29,8 @@ public class MasterReadScopeInterceptor implements HandlerInterceptor {
         var matcher=java.util.regex.Pattern.compile("^/api/master/(clients|suppliers|goods|accounts|currencies|colors|units|moulds|warehouses)(?:/(lookup|dict|facets|facet-values|summary|locate|search-category-ids|search|search-context|[0-9a-fA-F-]{36}))?$").matcher(path);
         if(!matcher.matches())return true;
         boolean search="POST".equals(request.getMethod()) && ("search".equals(matcher.group(2)) || "search-context".equals(matcher.group(2)));
-        if("GET".equals(request.getMethod()) || search)
+        if("GET".equals(request.getMethod()) || search
+                || com.uten.imp.common.web.GoodsSearchReadRoutes.matches(request.getMethod(),path))
             ReadScopePublication.capture(request,authority,users,DOMAINS.get(matcher.group(1)));
         return true;
     }

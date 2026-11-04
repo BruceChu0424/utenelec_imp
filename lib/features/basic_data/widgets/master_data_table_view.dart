@@ -50,6 +50,7 @@ import '../../../components/data_display/master_data_table_rows_controller.dart'
 import '../../../components/layout/uten_prepend_scroll_anchor.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_overlay_lifecycle.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_motion.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -9239,6 +9240,7 @@ class _FilterCellState extends State<_FilterCell> {
   int? _fetchingRevision;
   List<MasterFacetBucket> _remoteBuckets = const [];
   bool _remoteLoading = false;
+  bool _remoteManualLoading = false;
   bool _remoteHasMore = false;
   bool _remoteFailed = false;
   int _remotePage = 0;
@@ -9274,6 +9276,7 @@ class _FilterCellState extends State<_FilterCell> {
     _overlayLifecycle?.dispose();
     _overlayLifecycle = null;
     _searchRevision++;
+    _remoteManualLoading = false;
     _searchDebounce?.cancel();
     _overlay?.remove();
     _overlay = null;
@@ -9349,15 +9352,28 @@ class _FilterCellState extends State<_FilterCell> {
     _searchRemote(value.text);
   }
 
-  Future<void> _fetchRemote(int revision, int page) async {
+  Future<void> _fetchRemote(
+    int revision,
+    int page, {
+    bool manual = false,
+  }) async {
     if (!(widget.isCurrent?.call() ?? true)) return;
     if (_fetchingRevision == revision) return;
     _fetchingRevision = revision;
     _remoteLoading = true;
+    _remoteManualLoading = manual;
     _remoteFailed = false;
     _overlay?.markNeedsBuild();
     try {
-      final result = await widget.loadFacetPage!(_remoteQuery, page);
+      final query = _remoteQuery;
+      final result = await PagedReadIntent.scopedRead(
+        () =>
+            mounted &&
+            _overlay != null &&
+            revision == _searchRevision &&
+            (widget.isCurrent?.call() ?? true),
+        () => widget.loadFacetPage!(query, page),
+      );
       if (!mounted ||
           _overlay == null ||
           revision != _searchRevision ||
@@ -9374,6 +9390,7 @@ class _FilterCellState extends State<_FilterCell> {
       _remoteHasMore = result.hasMore;
       _remotePage = page;
       _remoteLoading = false;
+      _remoteManualLoading = false;
       _overlay?.markNeedsBuild();
     } catch (_) {
       if (!mounted ||
@@ -9384,6 +9401,7 @@ class _FilterCellState extends State<_FilterCell> {
       }
       _fetchingRevision = null;
       _remoteLoading = false;
+      _remoteManualLoading = false;
       _remoteFailed = true;
       _overlay?.markNeedsBuild();
     }
@@ -9709,6 +9727,11 @@ class _FilterCellState extends State<_FilterCell> {
                   )
                 : null,
             entries: <Widget>[
+              if (_remoteManualLoading)
+                const UtenBusyOverlay(
+                  title: '正在加载搜索候选',
+                  showDoNotLeaveHint: false,
+                ),
               // 2026-09-25 用户口径：「取消排序」放最上面（重置类
               // 选项先见），升降序跟后；值筛选段「所有」仍居首。
               if (widget.sortable) ...[
@@ -9775,14 +9798,20 @@ class _FilterCellState extends State<_FilterCell> {
                   ),
                 if (_remoteFailed)
                   TextButton(
-                    onPressed: () =>
-                        _fetchRemote(_searchRevision, _remotePage + 1),
+                    onPressed: () => _fetchRemote(
+                      _searchRevision,
+                      _remotePage + 1,
+                      manual: true,
+                    ),
                     child: Text(basicDataL10n(ctx).tableFacetLoadFailed),
                   ),
                 if (_remoteHasMore && !_remoteLoading && !_remoteFailed)
                   TextButton(
-                    onPressed: () =>
-                        _fetchRemote(_searchRevision, _remotePage + 1),
+                    onPressed: () => _fetchRemote(
+                      _searchRevision,
+                      _remotePage + 1,
+                      manual: true,
+                    ),
                     child: Text(basicDataL10n(ctx).tableFacetLoadMore),
                   ),
                 if (buckets.isEmpty &&

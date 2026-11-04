@@ -136,6 +136,24 @@ class BusinessEmployeeReferenceHttpPostgresTest {
         assertTrue(tree.isArray());assertFalse(tree.isEmpty());assertTree(tree);
         read("/api/org/departments/tree",Map.of(),403);read("/api/org/departments/employee-picker-tree",Map.of(),403);
     }
+
+    @Test void existingMinimalOrganizationRolesDoNotOpenHrOrUnrelatedPersonDirectories() throws Exception {
+        for(String permission:List.of("client:assign","employee:handover","employee:offboard")) {
+            UUID actorId=createOperator("-minimal-tree-"+permission.replace(':','-'),permission);
+            fixture.loginAs(actorId);
+            AuthUser actor=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            assertFalse(actor.getPermissions().contains("employee:view"));
+            assertFalse(actor.getPermissions().contains("department:view"));
+            JsonNode tree=read("/api/org/departments/employee-picker-tree",Map.of(),200);
+            assertTrue(tree.isArray());assertFalse(tree.isEmpty());assertTree(tree);
+            read("/api/org/departments/tree",Map.of(),403);
+            read("/api/org/employees",Map.of(),403);
+            read(API,query(ARRIVAL),403);
+        }
+        AuthUser visitor=AuthUser.visitor(UUID.randomUUID(),"minimal-tree-visitor","V-MIN-TREE",Set.of("visitor:apply"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(visitor,null,visitor.getAuthorities()));
+        read("/api/org/departments/employee-picker-tree",Map.of(),403);
+    }
     void assertTree(JsonNode nodes) {for(JsonNode row:nodes){assertEquals(Set.of("id","code","name","level","parentId","children"),fields(row));assertTree(row.path("children"));}}
 
     @Test void pagingVisibleKeywordAndDepartmentSubtreeUseExactSharedFilters() throws Exception {
@@ -151,6 +169,24 @@ class BusinessEmployeeReferenceHttpPostgresTest {
         q.put("accountStatus","disabled");q.put("page","1");assertEquals(b.toString(),read(API,q,200).path("items").get(0).path("id").asText());
         q.remove("accountStatus");q.put("statuses","resigned");assertEquals(1,read(API,q,200).path("total").asInt());
         assertEquals(2,read(API,Map.of("purpose",ARRIVAL,"search","Position "+tag),200).path("total").asInt());
+    }
+
+    @Test void pagedPersonSearchFindsAncestorPathsWhileKeepingPurposeAndSelectedSubtree() throws Exception {
+        UUID ancestor=department(world.departmentId(),"path-root"),leaf=department(ancestor,"path-leaf");
+        String rootName="祖先_%\\"+tag;
+        db.update("UPDATE departments SET name=? WHERE id=?",rootName,ancestor);
+        UUID target=person(leaf,null,"path-target","active",null);
+        person(world.departmentId(),null,"outside-path","active",null);
+        Map<String,String> filters=new HashMap<>(Map.of("purpose",ARRIVAL,"search",rootName+" Person","size","1"));
+        JsonNode result=read(API,filters,200);
+        assertEquals(1,result.path("total").asInt());
+        assertEquals(target.toString(),result.path("items").get(0).path("id").asText());
+        assertEquals(FIELDS,fields(result.path("items").get(0)));
+        filters.put("departmentId",world.departmentId().toString());
+        filters.put("includeSubtree","false");
+        assertEquals(0,read(API,filters,200).path("total").asInt());
+        filters.put("departmentId",ancestor.toString());filters.put("includeSubtree","true");
+        assertEquals(1,read(API,filters,200).path("total").asInt());
     }
 
     @Test void referencedEmployeeAccountStateDoesNotChangePhysicalPersonLegalityAndEchoIsBounded() throws Exception {

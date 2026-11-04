@@ -16,8 +16,8 @@ const safeRequestRetryDisabledKey = 'utenSafeRetryDisabled';
 
 typedef RetryDelay = Future<void> Function(Duration duration);
 
-/// Retries safe reads for GET/HEAD/OPTIONS and the explicit, read-only platform
-/// values batch endpoint. The POST allowlist is deliberately exact: another
+/// Retries safe reads for GET/HEAD/OPTIONS and explicitly reviewed search and
+/// platform values reads. The POST allowlist is deliberately exact: another
 /// POST in the same feature can create/delete a definition or record usage.
 ///
 /// Business writes are never replayed here, even if they carry an idempotency
@@ -131,7 +131,9 @@ bool shouldRetrySafeRequest(
   }
 
   final method = options.method.toUpperCase();
-  final readOnlyBatch = method == 'POST' && isPlatformValuesRead(options.path);
+  final readOnlyBatch =
+      method == 'POST' &&
+      (isPlatformValuesRead(options.path) || isSearchReadPost(options.path));
   if (method != 'GET' &&
       method != 'HEAD' &&
       method != 'OPTIONS' &&

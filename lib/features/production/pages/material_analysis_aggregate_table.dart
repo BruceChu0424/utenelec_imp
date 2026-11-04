@@ -1726,36 +1726,25 @@ final class _MaterialAggregateTableController {
     final picked = await showUtenEmployeePickerPanel(
       owner.context,
       presentation: UtenEmployeePickerPresentation.businessReference,
+      cancelDepartmentTreeReadOnClose: true,
       departmentTreeLoader: () => owner.ref
           .read(employeeReferenceRepositoryProvider)
           .departments(EmployeeReferencePurpose.productionMaterialOwner),
       title: '选择生产负责人',
       departmentName: workshop.name,
-      loader: (keyword) async {
-        final result = await owner.ref
+      pagedLoader: (query) async {
+        final keyword = query.keyword;
+        return await owner.ref
             .read(employeeReferenceRepositoryProvider)
-            .listPickerCandidates(
+            .listPickerPage(
+              query,
               purpose: EmployeeReferencePurpose.productionMaterialOwner,
               size: 30,
-              search: keyword,
               departmentId: keyword?.trim().isEmpty != false
                   ? workshop.id
                   : null,
               includeSubtree: true,
             );
-        return [
-          for (final employee in result)
-            UtenEmployeePickerItem(
-              id: employee.id,
-              name: employee.fullName,
-              employeeCode: employee.code,
-              accountStatus: employee.accountStatus,
-              employmentStatus: employee.status,
-              departmentId: employee.departmentId,
-              departmentName: employee.departmentName,
-              positionName: employee.positionName,
-            ),
-        ];
       },
     );
     if (!owner.mounted || picked == null || revision != _revision) return;

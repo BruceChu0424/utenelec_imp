@@ -22,7 +22,7 @@
 
 ## W7-BIZ-119 · lib/features/profile/pages/profile_edit_page.dart
 
-模块 `profile`；641 行；SHA256 `7cbebe650708b44ce4747a5c3c4b84adc7b7d13510672e3c80f7b24f4936f0bb`。
+模块 `profile`；641 行；SHA256 `a0675de721eae5a8aaeb29782f080d091b12bd91dea0c4a75c1c77fe74dd4384`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

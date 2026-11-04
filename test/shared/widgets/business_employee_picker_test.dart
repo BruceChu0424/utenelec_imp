@@ -12,6 +12,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/employee_reference.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -31,6 +32,52 @@ final _permissions = StateProvider<Set<String>>(
 final _server = StateProvider<String>((_) => 'https://api.example.test');
 
 void main() {
+  testWidgets(
+    'exact ID label resolution does not also search the candidate directory',
+    (tester) async {
+      final api = _ReferenceApi()
+        ..pendingLabels = Completer<List<Map<String, dynamic>>>();
+      await _pump(
+        tester,
+        api,
+        BusinessEmployeePicker(
+          purpose: _purpose,
+          selectedId: 'e1',
+          label: '收货人',
+          initial: const UtenEmployeePickerItem(id: 'e1', name: '原单姓名'),
+          onChanged: (_) {},
+        ),
+      );
+      expect(api.labelQueries, hasLength(1));
+      expect(
+        api.queries,
+        isEmpty,
+        reason:
+            'Only the authoritative ID lookup is needed to enhance the recorded label.',
+      );
+      api.pendingLabels!.complete([_row(1)]);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('测试人员1'), findsOneWidget);
+      expect(find.text('原单姓名'), findsNothing);
+      expect(api.queries, isEmpty);
+      await tester.tap(find.byType(InputDecorator).first);
+      await tester.pumpAndSettle();
+      expect(api.queries, hasLength(1));
+      final search = find.descendant(
+        of: find.byKey(const Key('uten-employee-picker-search')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, '后页职位');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(api.queries, hasLength(2));
+      expect(api.queries.last['search'], '后页职位');
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-e101')),
+        findsOneWidget,
+      );
+    },
+  );
   testWidgets(
     'read-only business view resolves an ID without candidates tree edit or HR',
     (tester) async {
@@ -106,18 +153,24 @@ void main() {
     },
   );
   test(
-    'reference pages retain exact purpose and filters and load the final page',
+    'reference pages retain purpose and filters with explicit complete continuation',
     () async {
       final api = _ReferenceApi();
-      final rows = await DioEmployeeReferenceRepository(api)
-          .listPickerCandidates(
+      final repository = DioEmployeeReferenceRepository(api);
+      Future<UtenEmployeePickerPage> read(int page) =>
+          repository.listPickerPage(
+            UtenEmployeePickerQuery(page: page),
             purpose: _purpose,
             statuses: {'active', 'probation'},
             departmentId: 'warehouse-dept',
             includeSubtree: true,
           );
-      expect(rows, hasLength(101));
-      expect(rows.last.positionName, '后页职位');
+      final first = await read(1);
+      expect(api.queries.map((q) => q['page']), [1]);
+      expect(first.items, hasLength(100));
+      final last = await read(2);
+      expect([...first.items, ...last.items], hasLength(101));
+      expect(last.items.last.positionName, '后页职位');
       expect(api.queries.map((q) => q['page']), [1, 2]);
       for (final query in api.queries) {
         expect(query['purpose'], _purpose.apiValue);
@@ -169,13 +222,19 @@ void main() {
         );
       final repository = DioEmployeeReferenceRepository(api);
       await expectLater(
-        repository.listPickerCandidates(purpose: _purpose),
+        repository.listPickerPage(
+          const UtenEmployeePickerQuery(),
+          purpose: _purpose,
+        ),
         throwsA(isA<ApiException>().having((e) => e.httpStatus, 'status', 403)),
       );
       api.listError = null;
       api.badPage = true;
       await expectLater(
-        repository.listPickerCandidates(purpose: _purpose),
+        repository.listPickerPage(
+          const UtenEmployeePickerQuery(),
+          purpose: _purpose,
+        ),
         throwsA(
           isA<ApiException>().having(
             (e) => e.code,
@@ -221,7 +280,14 @@ void main() {
       expect(find.textContaining('测试人员1'), findsOneWidget);
       await tester.tap(find.byType(InputDecorator).first);
       await tester.pumpAndSettle();
-      final table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
+      var table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
+        find.byKey(const Key('uten-employee-picker-candidates')),
+      );
+      expect(table.items, hasLength(100));
+      expect(api.queries.map((query) => query['page']), [1]);
+      table.onLoadMore!();
+      await tester.pumpAndSettle();
+      table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
         find.byKey(const Key('uten-employee-picker-candidates')),
       );
       expect(table.items, hasLength(101));
@@ -354,7 +420,13 @@ void main() {
         ),
       );
       await tester.tap(find.byType(InputDecorator).first);
-      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(
+            find.byKey(const Key('uten-employee-picker-candidates')),
+          )
+          .onLoadMore!();
+      await tester.pump();
       for (var attempt = 0; attempt < 30 && api.queries.length < 2; attempt++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
@@ -433,6 +505,7 @@ Future<ProviderContainer> _pump(
       if (permissions != null) _permissions.overrideWith((_) => permissions),
       apiClientProvider.overrideWithValue(api),
       sessionProvider.overrideWith(_Session.new),
+      sessionSnapshotProvider.overrideWith(_Snapshot.new),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_identity)),
       currentPermissionsProvider.overrideWith((ref) => ref.watch(_permissions)),
       isSuperAdminProvider.overrideWithValue(false),
@@ -566,4 +639,9 @@ class _Session extends SessionNotifier {
       employeeId: 'e1',
     ),
   );
+}
+
+class _Snapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
 }

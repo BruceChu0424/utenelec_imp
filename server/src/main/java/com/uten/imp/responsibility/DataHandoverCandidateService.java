@@ -3,6 +3,8 @@ package com.uten.imp.responsibility;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.DepartmentSearchSql;
+import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.responsibility.dto.DataHandoverCandidate;
@@ -30,6 +32,12 @@ public class DataHandoverCandidateService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public DataHandoverCandidatePage search(
             String role, String query, int requestedPage, int requestedSize) {
+        return search(role, query, requestedPage, requestedSize, null, false, List.of());
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public DataHandoverCandidatePage search(String role, String query, int requestedPage, int requestedSize,
+            UUID departmentId, boolean includeSubtree, List<UUID> excludeEmployeeIds) {
         String normalizedRole = role == null ? "" : role.trim().toLowerCase(Locale.ROOT);
         if (!List.of("source", "target").contains(normalizedRole)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "交接方向不正确，应为 source(交出方) 或 target(接手方)");
@@ -42,11 +50,17 @@ public class DataHandoverCandidateService {
         int size = Math.max(1, Math.min(100, requestedSize));
         boolean target = "target".equals(normalizedRole);
         EmployeeHandoverAuthorization.CandidateScope scope = authorization.candidateScope();
+        boolean searched = !KeywordSearch.terms(keyword).isEmpty();
+        String prefix = DepartmentSearchSql.prefix(searched);
+        String departmentName = searched ? DepartmentSearchSql.name("department.name") : "department.name";
+        var narrowing = EmployeeCandidateFilter.of(departmentId, includeSubtree, excludeEmployeeIds,
+                "employee.id", "employee.department_id");
 
         String where = """
                 FROM employees employee
                 LEFT JOIN departments department ON department.id=employee.department_id
                 LEFT JOIN users account ON account.employee_id=employee.id AND account.is_deleted=false
+                """ + DepartmentSearchSql.joins(searched, "employee.department_id") + """
                 WHERE employee.is_deleted=false
                   AND NOT EXISTS (
                       SELECT 1 FROM users protected_account
@@ -68,23 +82,25 @@ public class DataHandoverCandidateService {
                         AND manager_root.level IN ('管理中心','一级部门','二级班组','三级科室')
                         AND department.path LIKE manager_root.path || '%'))
                   AND
-                """ + TaskKeywordSearch.conditionParameter("keyword", "employee.full_name", "employee.code");
-        var countQuery = em.createNativeQuery("SELECT count(*) " + where);
+                """ + TaskKeywordSearch.conditionParameter("keyword", "employee.full_name", "employee.code", departmentName)
+                + narrowing.sql();
+        var countQuery = narrowing.bind(em.createNativeQuery(prefix + "SELECT count(*) " + where));
         bind(countQuery, target, scope, keyword);
         long total = ((Number) countQuery.getSingleResult()).longValue();
+        if (total == 0) return new DataHandoverCandidatePage(List.of(), page, size, 0);
 
-        var dataQuery = em.createNativeQuery("""
+        var dataQuery = narrowing.bind(em.createNativeQuery(prefix + """
                 SELECT employee.id, employee.code, employee.full_name,
                        employee.department_id, department.name, employee.status,
                        COALESCE(account.status, 'notProvisioned') AS account_status
                 """ + where + " ORDER BY "
                 + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"employee.full_name"},
-                        new String[]{}, new String[]{"employee.full_name", "employee.code"}) + """
+                        new String[]{}, new String[]{"employee.full_name", "employee.code", departmentName}) + """
                 , CASE employee.status
                     WHEN 'active' THEN 0 WHEN 'probation' THEN 1
                     WHEN 'onLeave' THEN 2 ELSE 3 END,
                     employee.full_name, employee.code, employee.id
-                """);
+                """));
         bind(dataQuery, target, scope, keyword);
         dataQuery.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(page, size));
         dataQuery.setMaxResults(size);

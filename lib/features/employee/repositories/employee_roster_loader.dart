@@ -1,6 +1,7 @@
 import '../../../core/network/api_exception.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../models/employee_api_models.dart';
 import 'employee_repository.dart';
 
@@ -25,15 +26,18 @@ Future<void> loadEmployeeRoster({
       idOf: (row) => row.id,
       onBatch: onBatch,
       requireStableTotal: requireStableTotal,
-      loadPage: (page, size) => repository.list(
-        page: page,
-        size: size,
-        search: search,
-        statuses: statuses,
-        departmentId: departmentId,
-        includeSubtree: includeSubtree,
-        sort: sort,
-        order: order,
+      loadPage: (page, size) => PagedReadIntent.scopedRead(
+        isCurrent,
+        () => repository.list(
+          page: page,
+          size: size,
+          search: search,
+          statuses: statuses,
+          departmentId: departmentId,
+          includeSubtree: includeSubtree,
+          sort: sort,
+          order: order,
+        ),
       ),
     );
   } on UiWorkCancelled {

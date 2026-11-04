@@ -1,4 +1,6 @@
 import '../../../shared/history/record_history_action.dart';
+import 'dart:async';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/history/record_history_area.dart';
 // AdminPermissionsPage - 账号支持与权限管理。
 //
@@ -65,6 +67,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   int _segment = 0;
   bool _templatesVisited = false;
   String _employeeSearch = '';
+  final _employeeListKey = GlobalKey<_EmployeePermTabState>();
   final _pendingPermissionChanges = <int, bool>{};
 
   /// 各分区的离开守卫（三选一：保存并离开/不保存/继续编辑），返回 true 才放行。
@@ -170,11 +173,16 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
             )),
             hint: '搜索姓名 / 工号 / 登录账号',
             initialValue: _employeeSearch,
+            isQueryPending: (value) =>
+                _employeeListKey.currentState?._isQueryPending(value) ?? false,
+            onInputChanged: (value) =>
+                _employeeListKey.currentState?._retireSearch(value.trim()),
             onChanged: (value) {
               final query = value.trim();
               if (query != _employeeSearch) {
                 setState(() => _employeeSearch = query);
               }
+              _employeeListKey.currentState?._applySearch(query);
             },
           ),
         ),
@@ -189,6 +197,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
           index: segment,
           children: [
             _EmployeePermTab(
+              key: _employeeListKey,
               canManageAuthorization: canManageAuthorization,
               initialEmployeeId: widget.initialEmployeeId,
               search: _employeeSearch,
@@ -264,6 +273,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
 /// 按员工：账号列表（搜索/状态筛选/加载更多）+ 详情面板（主从布局）。
 class _EmployeePermTab extends ConsumerStatefulWidget {
   const _EmployeePermTab({
+    super.key,
     required this.canManageAuthorization,
     required this.search,
     required this.leadingHeader,
@@ -298,6 +308,11 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
   bool _automaticLoadFailed = false;
   String? _error;
   int _requestEpoch = 0;
+  int? _activeQueryEpoch;
+  String? _activeQuery;
+
+  bool _isQueryPending(String value) =>
+      _activeQueryEpoch == _requestEpoch && _activeQuery == value.trim();
 
   AdminUserSummary? _selected;
   bool _multiSelection = false;
@@ -319,17 +334,24 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
 
   @override
   void dispose() {
+    ++_requestEpoch;
     widget.onLeaveGuardChanged?.call(null);
     super.dispose();
   }
 
-  @override
-  void didUpdateWidget(covariant _EmployeePermTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.search != widget.search) {
-      _search = widget.search;
-      _reload();
-    }
+  void _retireSearch(String query) {
+    if (query == _search && !_loading) return;
+    ++_requestEpoch;
+    setState(() {
+      _loading = true;
+      _loadingMore = false;
+      _error = null;
+    });
+  }
+
+  void _applySearch(String query) {
+    _search = query;
+    _reload(refreshSelection: false);
   }
 
   Future<void> _initialize() async {
@@ -360,7 +382,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     }
   }
 
-  Future<void> _reload() async {
+  Future<void> _reload({bool refreshSelection = true}) async {
     final requestEpoch = ++_requestEpoch;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     setState(() {
@@ -370,13 +392,21 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       _error = null;
     });
     _page = 1;
+    _activeQueryEpoch = requestEpoch;
+    _activeQuery = _search;
     try {
-      final r = await ref
-          .read(adminRepositoryProvider)
-          .listUsers(
-            search: _search.isEmpty ? null : _search,
-            status: _statusFilter,
-          );
+      final r = await PagedReadIntent.scopedRead(
+        () =>
+            mounted &&
+            requestEpoch == _requestEpoch &&
+            ref.read(sensitiveReadBoundaryProvider) == boundary,
+        () => ref
+            .read(adminRepositoryProvider)
+            .listUsers(
+              search: _search.isEmpty ? null : _search,
+              status: _statusFilter,
+            ),
+      );
       if (!mounted ||
           requestEpoch != _requestEpoch ||
           ref.read(sensitiveReadBoundaryProvider) != boundary) {
@@ -404,23 +434,8 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       if (_selected == null) widget.onPermissionDirtyChanged(false);
       // 选中账号可能在别的页/筛选外：补查其最新档案放后台，不阻塞列表落地
       // （此前串行等这趟往返，刷新耗时直接翻倍）。
-      if (selected != null && refreshed == null) {
-        final targetPage = await ref
-            .read(adminRepositoryProvider)
-            .listUsers(search: selected.loginAccount);
-        if (!mounted ||
-            requestEpoch != _requestEpoch ||
-            ref.read(sensitiveReadBoundaryProvider) != boundary ||
-            _selected?.id != selected.id) {
-          return;
-        }
-        AdminUserSummary? found;
-        for (final row in targetPage.items) {
-          if (row.id == selected.id) found = row;
-        }
-        setState(() {
-          _selected = found;
-        });
+      if (refreshSelection && selected != null && refreshed == null) {
+        unawaited(_refreshSelected(selected, requestEpoch, boundary));
       }
     } on ApiException catch (e) {
       if (!mounted ||
@@ -442,6 +457,52 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         _error = '加载失败，请稍后重试';
         _loading = false;
       });
+    } finally {
+      if (_activeQueryEpoch == requestEpoch) {
+        _activeQueryEpoch = null;
+        _activeQuery = null;
+      }
+    }
+  }
+
+  Future<void> _refreshSelected(
+    AdminUserSummary selected,
+    int epoch,
+    Object? boundary,
+  ) async {
+    bool current() =>
+        mounted &&
+        epoch == _requestEpoch &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary &&
+        _selected?.id == selected.id;
+    final repository = ref.read(adminRepositoryProvider);
+    Future<AdminUserSummary> lookup() {
+      if (repository is AdminUserLookupRepository) {
+        return (repository as AdminUserLookupRepository).userById(selected.id);
+      }
+      final employeeId = selected.employeeId;
+      if (employeeId == null || employeeId.isEmpty) {
+        return Future.value(selected);
+      }
+      return repository.userByEmployeeId(employeeId);
+    }
+
+    try {
+      final refreshed = await PagedReadIntent.scopedRead(current, lookup);
+      if (!current() || refreshed.id != selected.id) return;
+      setState(() => _selected = refreshed);
+    } on ApiException catch (error) {
+      if (!current()) return;
+      if (const {
+        'NOT_FOUND',
+        'FORBIDDEN',
+        'UNAUTHORIZED',
+      }.contains(error.code)) {
+        setState(() => _selected = null);
+      }
+      // An optional label refresh must not turn a valid search page into an error.
+    } catch (_) {
+      // The detail panel retains its own authoritative error/reload boundary.
     }
   }
 
@@ -459,14 +520,22 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       _loadingMore = true;
       _automaticLoadFailed = false;
     });
+    _activeQueryEpoch = requestEpoch;
+    _activeQuery = _search;
     try {
-      final r = await ref
-          .read(adminRepositoryProvider)
-          .listUsers(
-            page: nextPage,
-            search: _search.isEmpty ? null : _search,
-            status: _statusFilter,
-          );
+      final r = await PagedReadIntent.scopedRead(
+        () =>
+            mounted &&
+            requestEpoch == _requestEpoch &&
+            ref.read(sensitiveReadBoundaryProvider) == boundary,
+        () => ref
+            .read(adminRepositoryProvider)
+            .listUsers(
+              page: nextPage,
+              search: _search.isEmpty ? null : _search,
+              status: _statusFilter,
+            ),
+      );
       if (!mounted ||
           requestEpoch != _requestEpoch ||
           ref.read(sensitiveReadBoundaryProvider) != boundary) {
@@ -490,6 +559,11 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         // near-edge movement must not spin on the same failed page.
         _automaticLoadFailed = true;
       });
+    } finally {
+      if (_activeQueryEpoch == requestEpoch) {
+        _activeQueryEpoch = null;
+        _activeQuery = null;
+      }
     }
   }
 
@@ -727,7 +801,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
             ),
             const SizedBox(height: UtenSpacing.s12),
             Text(
-              '从左侧选择一名员工查看权限详情',
+              '未选择员工',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

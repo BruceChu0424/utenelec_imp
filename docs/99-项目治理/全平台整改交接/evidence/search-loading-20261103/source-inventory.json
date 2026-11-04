@@ -1,0 +1,6428 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "integrationBaseCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+  "scope": "Search only; unrelated loading, active projections, physical archive and publishing are excluded.",
+  "interpretation": "Discovery candidates with current source fingerprints. Dispositions and test limits belong to platform reviews; hits are not pages or accepted workflows.",
+  "normalization": "UTF-8 without BOM, newlines normalized to LF",
+  "platformCounts": {
+    "flutter": 192,
+    "server": 318,
+    "website": 27,
+    "wpf": 17
+  },
+  "candidates": [
+    {
+      "platform": "flutter",
+      "source": "lib/components/inputs/uten_dropdown_field.dart",
+      "sha256": "78648838d6adc8d396c0dbd79d7503e5f70e47b883c9f3cff279edcc39f11cb1",
+      "lines": [
+        1038
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/inputs/uten_employee_picker.dart",
+      "sha256": "ed78d6641ef5b96879de4f2da54d2e7017c2abe6976b7b57da105b6ebb2cd492",
+      "lines": [
+        9,
+        260
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/inputs/uten_employee_selection_panel.dart",
+      "sha256": "fb22cce7e6cc1a60944dccd24e1c287b217107bde5102d0785add154809046de",
+      "lines": [
+        328,
+        329,
+        334,
+        389,
+        435,
+        442,
+        575,
+        576
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/inputs/uten_filter_picker_field.dart",
+      "sha256": "ac2f806fbd9ab2772a84667851cdd9437b805647f1aa069418ca332248c2b6e1",
+      "lines": [
+        11
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/inputs/uten_search_bar.dart",
+      "sha256": "389d931cee26b881dbc882f7c8f88519c365849107902330490aea76ca1c732f",
+      "lines": [
+        1,
+        2,
+        40,
+        41,
+        91,
+        94,
+        177
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
+      "sha256": "4ca95602c0cb6f14dc2c946b474a359bb1918cc39bc88ba28744a6c4336ed891",
+      "lines": [
+        12
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_compact_toolbar.dart",
+      "sha256": "3006778dbf71729fb98247c9b345a1afc0a3b6713168e45953b7938da6fb7737",
+      "lines": [
+        54
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_doc_link_picker_sheet.dart",
+      "sha256": "73cbea2294fcb38260409ac00543c10ef6cb2c981105a6e0fb8951296b61aab4",
+      "lines": [
+        799
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_editable_grid.dart",
+      "sha256": "06f31fdf1a2817cca02a16c0fdf0c019d5044e3502189c057836750c39957e63",
+      "lines": [
+        259,
+        266,
+        1377,
+        1383,
+        1397,
+        1406,
+        2803,
+        3013,
+        3024,
+        3057,
+        3064,
+        3098,
+        4136,
+        4153,
+        4158
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_filter_toolbar.dart",
+      "sha256": "355fba58fb224cb3cbaf159d6866c358ddbcdd751be5a77e5751a734924598ae",
+      "lines": [
+        7,
+        35,
+        304
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_grid_header_filter_cell.dart",
+      "sha256": "836645036366ba6a66285cd7c32898f2135860a7e925e2c1085306e7e48b49d4",
+      "lines": [
+        367
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_panel_header.dart",
+      "sha256": "f937ad447b701ab012657d0b2bce54809f4cd81200f44b0aa4953fa50bdf1dda",
+      "lines": [
+        32
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/layout/uten_segment_row.dart",
+      "sha256": "4aa165fda94bf1cab22733a6f7201f52b1dda0f75469abb5a7c5f1e2d0bb0bf7",
+      "lines": [
+        76
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/components/print/uten_print_preview.dart",
+      "sha256": "23008e6a6ef8fd2922684e3ad1a5eb63d07704dd267dbd6481107969067e8375",
+      "lines": [
+        133
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/core/router/app_router.dart",
+      "sha256": "8ac8eccd4d9c801df7bae7df9c425b6e42cd5b3fbc2922d5b5f92a09b9f1cff7",
+      "lines": [
+        1102
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/pages/admin_audit_log_page.dart",
+      "sha256": "5a3f33e4c15a97466b896229c937ba07a3fb84a4eda473a41607e233eafba89a",
+      "lines": [
+        755,
+        873
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/pages/admin_permissions_page.dart",
+      "sha256": "01ad16ea38af82f18217bc7e4932ca4f798f5178ec23a24b3777832d00ebd447",
+      "lines": [
+        169,
+        203,
+        406,
+        535
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/pages/audit_overview_widgets.dart",
+      "sha256": "3c85b76a587585c70e20e1c0fdd79516f54bf27de90c5f814b185fa3d4bc53d2",
+      "lines": [
+        355
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/widgets/admin_data_scope_section.dart",
+      "sha256": "a301d283975749f391ce85edde5ecda0b362e030dfd16a99f727e76d21729f7a",
+      "lines": [
+        777,
+        789,
+        794
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/widgets/admin_permission_templates_workspace.dart",
+      "sha256": "cc78540ee502f6380ab13f85c68f443db72c23be95c7e3948c7f12a1828da445",
+      "lines": [
+        470
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/widgets/audit_query_scope.dart",
+      "sha256": "e1f3ebaed306dc5ce978ae2f319c9ac0b457cbac3bb3dc79bbcc74abfc824a69",
+      "lines": [
+        684,
+        765
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/widgets/page_permission_drawer.dart",
+      "sha256": "7f4e82a03d54cc3b248df98b9dd540c9592eb2377b3c07eedf4605401943b368",
+      "lines": [
+        401,
+        1089,
+        1265
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/widgets/permission_catalog_browser.dart",
+      "sha256": "5d3cfc610a9fbbceefa24ec671b03f77c96454e2cea68f457785faf12e464c3f",
+      "lines": [
+        153,
+        272,
+        277
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/admin/widgets/provision_account_dialog.dart",
+      "sha256": "716308d854d60aad5e8746f98d3cc974c53b5a6f5aebefbc561ec8e0c62b85c1",
+      "lines": [
+        61
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/applications/pages/business_application_detail_page.dart",
+      "sha256": "f2bdef8de39896c3a5a2f2be023e61d1cecc5afb98c7721aa450598f1bd08f9f",
+      "lines": [
+        1295,
+        1319,
+        1464
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/account_detail_page.dart",
+      "sha256": "1b875fc01edf7c854865a0afb45094522e0bbc533d75ce5f903294710d421903",
+      "lines": [
+        355,
+        411,
+        1205
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "sha256": "721ef2b5d91717ca366d83d98933d501035cb57b07da7c70c96cebfbd0952798",
+      "lines": [
+        339,
+        1396,
+        1428,
+        1701
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/client_category_page.dart",
+      "sha256": "b08051252c94cdba7aace90334026e9b142b19209b811e4e948b132aac28cd75",
+      "lines": [
+        168,
+        424,
+        433
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/color_page.dart",
+      "sha256": "ae47d0b7209ad0961d27600be1f7e690fe260d5b2a4a054861957400475cb10a",
+      "lines": [
+        253,
+        878,
+        931
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/currency_page.dart",
+      "sha256": "760048b73de0665c184f46f30780c8c31e67043da6fa22a9910dacd5b54de4e9",
+      "lines": [
+        262,
+        936,
+        991
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/goods_import_preview_page.dart",
+      "sha256": "efbd711f439f63796f9ca0e7293d0825ea735e6aba6eb1ab555a82406cabdad8",
+      "lines": [
+        942
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/mould_category_page.dart",
+      "sha256": "0e15129d516e442b1ff2069066a02bedfadd2203c1597c0138ca34916871a073",
+      "lines": [
+        189,
+        458,
+        467
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/payment_style_page.dart",
+      "sha256": "5be063a03e556c4295f077c3cd23122c04f6b115eb109a9f882d6cc8f1734152",
+      "lines": [
+        671,
+        1068,
+        1085,
+        1146
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/product_category_page.dart",
+      "sha256": "d324bfc3cf252e06981837c73b2a22ed74a2417a3eb57b5dc115cba26dc54e5d",
+      "lines": [
+        298,
+        721,
+        735,
+        754,
+        762,
+        774,
+        777
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/settlement_method_page.dart",
+      "sha256": "ff8df7cf5486773320f5c3faf63fc15a914bd8f583692136306fb888519b35ac",
+      "lines": [
+        215,
+        585,
+        738
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/supplier_category_page.dart",
+      "sha256": "cea6b20cdd2dad0acc75eb596ba15700755727e028ea05f71511da6c240cb7ea",
+      "lines": [
+        161,
+        370,
+        379
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/unit_page.dart",
+      "sha256": "4f547012a95bdceded4cb7cea7b226becc6c38c2ee0759b7a7beaba8368567a6",
+      "lines": [
+        246,
+        821,
+        895
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/pages/warehouse_page.dart",
+      "sha256": "26a0dbecb0905166274cf34ba7266b09403a9290c74edbb320bd2477b7f290e7",
+      "lines": [
+        807,
+        960,
+        1118
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/repositories/account_repository.dart",
+      "sha256": "0f5130fed8f8f383d5d8533f3f1918ea1eb6c2909121f0b000a70fa5e674b0e1",
+      "lines": [
+        112
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/repositories/client_repository.dart",
+      "sha256": "493fbcbbf20b01a8bc0654ae1f0f478af68fe3098cf721208262c40b87ba110a",
+      "lines": [
+        17,
+        53,
+        107,
+        140,
+        162,
+        195,
+        222
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/repositories/goods_repository.dart",
+      "sha256": "68887c5521cf1daf578225e0709a54eeb38b21d6cb08e625d50a97df3d38e7e7",
+      "lines": [
+        126,
+        142,
+        164,
+        241,
+        259,
+        297,
+        308,
+        323,
+        401
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/repositories/mould_repository.dart",
+      "sha256": "223b7998f0028d8a65ef4c6427a160264f4b9e79c3de4935edc5745cba3673a9",
+      "lines": [
+        40,
+        77,
+        95,
+        136
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/repositories/supplier_repository.dart",
+      "sha256": "6f53edd3ee4b5633170c8835e004069d3700ba2fc8c7aee70631430497643a57",
+      "lines": [
+        16,
+        51,
+        86,
+        113,
+        133,
+        163,
+        188
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/account_balance_reconciliation_dialog.dart",
+      "sha256": "5b50bfb2045607472c0f521ea01360442340342845788de5917a75f95a875a4f",
+      "lines": [
+        368,
+        379,
+        384,
+        972,
+        976
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/bom_component_picker.dart",
+      "sha256": "d83a65ea0aa1252c693f8b3c71d4e1038fd00692c3376fe01353becd21d434ce",
+      "lines": [
+        75,
+        81,
+        91,
+        102,
+        109
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/category_page_shell.dart",
+      "sha256": "3fefe480ca4ede1da0e6825330dba4c31befcd633cdab17aada675637e339fe1",
+      "lines": [
+        565
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/client_access_employee_loader.dart",
+      "sha256": "d4a9999a7d954b0f3fc2d86355f9fc5394ac52e234543c4c549a6cc4f325b7aa",
+      "lines": [
+        15
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/client_goods_alias_tab.dart",
+      "sha256": "7a6dcd2148eb156ef05f3156ecbac1933eecb583e0537496003f860025477845",
+      "lines": [
+        94,
+        189
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+      "sha256": "fd290061dee5f9a1885eb42bc80a90b21d7119eaa4f4bbf09ee59e886e08f43d",
+      "lines": [
+        1429,
+        1431
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/goods_material_market_panel.dart",
+      "sha256": "8b954bc69ba35330c4d08bd2a3c49048c827356141cca0f6b0d47938142ad5dc",
+      "lines": [
+        1037,
+        1040
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/goods_price_facet_picker.dart",
+      "sha256": "66ca9c978cc881bd988b358bc4cd5a0c65234d85836aa53602b1e892039618e2",
+      "lines": [
+        266
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/goods_quote_history_tab.dart",
+      "sha256": "448b1e950432e03ce55d3225760ef5df4cee89a28cc893602290e87e5df73421",
+      "lines": [
+        391
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "sha256": "3aa3342901966c47707f8d89ce2d7a6929a7644dc35d20af36a14d6c3742951f",
+      "lines": [
+        336,
+        3072,
+        5449,
+        6579,
+        8332,
+        9655
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "sha256": "75ae4b36816eecaabad3b186eb71ec2e7d0333c951929293990d244e7fd60737",
+      "lines": [
+        1247,
+        1284,
+        1468,
+        1502
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/mould_manufacturer_field.dart",
+      "sha256": "cb28c919cb0e8a7bcc31346aa316133ee0e27a248896b544f568ddadd3bf90a4",
+      "lines": [
+        200
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/mould_picker_field.dart",
+      "sha256": "5c7db9c9e7f3590ebb9170d9478f87049e4c7fd66f9f0b080b21663ecef0ec7a",
+      "lines": [
+        251,
+        283,
+        480,
+        487,
+        626,
+        630
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/uten_client_picker.dart",
+      "sha256": "e4876773093165dabc5de836a1a98a11ceda1fece52e3b7cbdc9d6a88743521c",
+      "lines": [
+        36,
+        40,
+        47
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+      "sha256": "2223869006a3601c6f40b40192fe6d301386c08508b12885be7cf11d411de3bc",
+      "lines": [
+        17,
+        303,
+        360,
+        364,
+        376,
+        377,
+        388,
+        706,
+        870,
+        874,
+        927,
+        943,
+        983,
+        1020,
+        1266,
+        1629,
+        1646,
+        1683,
+        1689
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/uten_master_picker.dart",
+      "sha256": "da095cd9ca316046f6ac957be3674a7ec2be88ed8cc88fad428c86c005bd7e99",
+      "lines": [
+        251,
+        401,
+        449,
+        722,
+        723
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/uten_supplier_picker.dart",
+      "sha256": "6b176e518a517061d564d327da2d0ab52b030c002180d6492a1946878798a208",
+      "lines": [
+        41,
+        44,
+        50
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "sha256": "f70432cbf6eb8fbcf0ddd7dc9048b345ee0bf5f3f8c80b65d8991fe50e59cb5c",
+      "lines": [
+        268,
+        347,
+        465
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/company_files/pages/company_files_page.dart",
+      "sha256": "2b4ae0bf85d3fd1c0ef4c54546a3709a42f66ad6eafc720a171990dd039808d7",
+      "lines": [
+        231,
+        1516,
+        2055
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/company_files/widgets/company_file_access_editor.dart",
+      "sha256": "d4bd2be27ed44c2a78031e3b51c39fa1bfbf94a0559a7c560a47d89af25fc1a1",
+      "lines": [
+        96
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/department/models/my_department.dart",
+      "sha256": "f36d5b52cdabc801119d752895e4acd94ac2f35d89cd33c4aef01834f1f5c373",
+      "lines": [
+        68
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/department/pages/department_page.dart",
+      "sha256": "ce33806d07a04a17a04240560cd18a630f953ab0e8fdfceaac9fd39f914b21a8",
+      "lines": [
+        200,
+        260
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/department/pages/my_department_page.dart",
+      "sha256": "f7cd630161fd8b26f86129054890cbbcedde17ac3d909617a37297f0671b32d0",
+      "lines": [
+        221,
+        299
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/department/widgets/department_overview_pane.dart",
+      "sha256": "a2c227ac4eb17a25b4d12688230ac68bb64509277c937ea0c39088872a94158c",
+      "lines": [
+        268,
+        486
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/department/widgets/uten_position_entry_picker.dart",
+      "sha256": "cc6723d6ddb6f425b37b4a31dd3217cee279af5fa71257379790e3ac2ef4d120",
+      "lines": [
+        266,
+        278,
+        279,
+        424
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/employee/pages/employee_list_page.dart",
+      "sha256": "eb1172cb95f6411f210d7a4a3461bde6b8065b5215c5b89a27f270bc705c97f4",
+      "lines": [
+        60,
+        111,
+        367,
+        382
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/employee/repositories/employee_picker_candidates.dart",
+      "sha256": "be24c39f0ea6aa3e314e3155254c7855486e4380811ffcde4dfb39a115b5154d",
+      "lines": [
+        28
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/employee/repositories/employee_repository.dart",
+      "sha256": "96a57436a5c0cb80a6714b4fe2453db2d558f14ce5ca00ec5df23041199a22ee",
+      "lines": [
+        116,
+        133,
+        210
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/employee/repositories/employee_roster_loader.dart",
+      "sha256": "fc2a09b7e8234adfe20e9c20e0b0a5982d19659de97bdd3ad63a4bf914d2502b",
+      "lines": [
+        34
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/employee/widgets/department_employee_picker.dart",
+      "sha256": "896a9efe822bf2bd28fe94375d6d7e6891a60990b8cd79574d6bf7ca8d7d4cc0",
+      "lines": [
+        239,
+        243,
+        295,
+        311,
+        335,
+        343,
+        389,
+        436,
+        440,
+        486,
+        566,
+        615,
+        616,
+        846
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "sha256": "11ce5c7c89711e4a94ef2a200af9ca9de58415ae864654f0c65b5e2086276279",
+      "lines": [
+        346,
+        693,
+        743
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "sha256": "33860835eb28be0f4079b138d7b13229d877a9af00af0aa8b90430799ac0a176",
+      "lines": [
+        139
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "sha256": "4ef507d26bc6a3e8214c468c11de4c2dfaafc889916dee144ad0d10873c1b917",
+      "lines": [
+        238,
+        645
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "sha256": "a06a070e449aa3a516594963bec7bee8e23bf1061591ee8416c4ae8567a60059",
+      "lines": [
+        365,
+        383,
+        470
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "sha256": "bdae6bf4bf3f77ebff806df6f9a81ca0a4deca171414416e74e9c72b37f99c47",
+      "lines": [
+        177,
+        187
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "sha256": "fb1d532e8a633182d028af2f662a354058ccfc069d32971551da2233ede95dbe",
+      "lines": [
+        116
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "sha256": "5f8eb9cbff374b86c4bbfb3c0e953dffc492fa22e8708ab8db1c4cc1f65a60b2",
+      "lines": [
+        297,
+        316
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "sha256": "04fb0fc46582ce204b2c8677ccdce2ca1b790941a16ef2491ce3d768895425c5",
+      "lines": [
+        205
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+      "sha256": "b59b71b217aa017885f1d4ffb1607a24f0c9d7139d90057a348d17986777ebf2",
+      "lines": [
+        126
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "sha256": "520bdfc82b1b542c7f47988eee8ace8f463e598cc761765f14131b58e1c1f089",
+      "lines": [
+        123
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/widgets/ar_ap_picker_dialog.dart",
+      "sha256": "eb1101737fc140649a18f37334010d9dbbee5d65d0378dc6a675c27f195fe2a2",
+      "lines": [
+        245,
+        329,
+        591
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/widgets/finance_account_picker_panel.dart",
+      "sha256": "fe91e6443414253c1a1b7be3134aba85e8ef4fd52e7087a10aa748fc2e02b506",
+      "lines": [
+        86,
+        93,
+        98,
+        123
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
+      "sha256": "d5da1cb9e6ea6f0a8187a264e7f99f1986280c4cae1551888f9c6a9a5a23ad0c",
+      "lines": [
+        392,
+        397,
+        418,
+        429
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
+      "sha256": "989d696378f6505cb2408ac52941db9ab032f7b7fa83861b870707f537e46e40",
+      "lines": [
+        476,
+        484,
+        489,
+        524
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "sha256": "ef4bf0e5c8bb891b8d576b651504c09f0cb56075061607bfb177890592caa9cd",
+      "lines": [
+        130
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/notice/pages/notice_publish_page.dart",
+      "sha256": "5f04455460405ab002ff93932b1334ae9a631de814f4989161deaa22a765c274",
+      "lines": [
+        251
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "sha256": "753b3304414279256d1f80d5d7cd7a0dba81deebd9437f3d000561f83e4ad242",
+      "lines": [
+        547,
+        560,
+        585,
+        1375
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
+      "sha256": "0a8256c132787c46c8800939ee49e12984d9d659d1713118d6d01c20934a7899",
+      "lines": [
+        64
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "sha256": "744d2a1204a397b2eeef37add5bd3bbc1c3477d6234122b5f6d28818f9713266",
+      "lines": [
+        189,
+        197,
+        211,
+        333
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/material_analysis_bom_tree.dart",
+      "sha256": "f1d52d87ab57765697e0842956af7b46944673efe8833bfa2ff6bbfd5238337b",
+      "lines": [
+        282,
+        533,
+        544
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/material_analysis_candidates.dart",
+      "sha256": "4bb1f1320bb5209c573ea6c1540bff919926bf2d3553accd717fe1a995157c97",
+      "lines": [
+        55,
+        744,
+        747
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/production_board_page.dart",
+      "sha256": "739c7412ecb608323a1aaf94109092d6bd17ec15d0e3b7c1e4c30e5de6435610",
+      "lines": [
+        168,
+        279,
+        285,
+        297,
+        318,
+        521,
+        793,
+        837,
+        1506,
+        1516,
+        1553
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "sha256": "083584194ffcb686ad19e4297de064fc3417477ff6954383b2ecef306732e7e8",
+      "lines": [
+        176,
+        366
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/production_material_analysis_history_page.dart",
+      "sha256": "763d0c5d870a4318991f4721ad75c9eb8c2d096d1cff552773f3995337e66779",
+      "lines": [
+        130,
+        249,
+        254
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/production_material_analysis_page.dart",
+      "sha256": "42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779",
+      "lines": [
+        1330,
+        2946
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/production_plan_list_page.dart",
+      "sha256": "5b6c1a54d57b05e6abc499cfd22d6d6f1b52c39b28a9c6a6b48c0e08a2c7734e",
+      "lines": [
+        158,
+        524
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "sha256": "af23389a4fcbf96dd424bb2c3dafc178d71e1dddff89e4ee7e07bd693487c17f",
+      "lines": [
+        394
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "sha256": "7f7b1d6d7f9f7826d5372c8b137dcad0c063ed8f00275d94c6e5e7489f359834",
+      "lines": [
+        1282,
+        2851
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/where_used_report_page.dart",
+      "sha256": "5869b2353a1c24a9dba8b10ed4965026a0f0a3f6c5324020a73793cc53d0db8e",
+      "lines": [
+        324,
+        365
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "sha256": "42bc4477b6ae698193562a121a2451d47d6b95900db9408b6afce5a5a74a175e",
+      "lines": [
+        1330
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/providers/production_page_preparation.dart",
+      "sha256": "c5b38489e8e27ae6c3d16a580795988f14da500b95c8e391342652e7b6c92f45",
+      "lines": [
+        48,
+        53,
+        96
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/repositories/production_execution_workbench_repository.dart",
+      "sha256": "78b60d64dda573e98c4be684baa390d8d5650e840c7bca6666a71436529ecbb5",
+      "lines": [
+        265,
+        290,
+        314,
+        373
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/repositories/production_repository.dart",
+      "sha256": "1eb05372880e6e12c6f1d5e59812e1a53acc3b13d3f67bfca1c5b6abb83ee2a9",
+      "lines": [
+        2474,
+        2501
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/widgets/material_reallocation_dialog.dart",
+      "sha256": "4ca8b3204c139d3c94be6c324a80241486f7c817a80facf802af9e284b20ee98",
+      "lines": [
+        419,
+        426,
+        1212,
+        1214
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/widgets/production_execution_group_panel.dart",
+      "sha256": "745a7d0d2cda98152c267484e0522893d1702488de724afd2772aa695f51c9b3",
+      "lines": [
+        174
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/widgets/reportable_plan_line_picker.dart",
+      "sha256": "d1e47e833a202f82e7dd5ae5d46dd2ff6b347e9c1705b685aa7fbb7f041a7c0c",
+      "lines": [
+        160,
+        203
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/production/widgets/where_used_material_picker.dart",
+      "sha256": "19db700c8e0950054df839f0a1f95440b53863825a7507f6d14dd3c886417da8",
+      "lines": [
+        57,
+        108,
+        111,
+        114,
+        124,
+        157
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/profile/pages/my_profile_changes_page.dart",
+      "sha256": "96c904924313bcfd9c1ea799a3f22e773b4ab007416ca94b0810fa3d621e14c7",
+      "lines": [
+        112
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "sha256": "4b309888775a9e0f3bef9991bcf992fcf8499d00bfc344ec4c49c37a91ec91fb",
+      "lines": [
+        439,
+        480,
+        627
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/purchase/widgets/doc_link_picker.dart",
+      "sha256": "12279dac0aa7431d500f7de949052e858b2c64a038abe04ffb45984d306afdee",
+      "lines": [
+        237
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/purchase/widgets/purchase_draft_task_category.dart",
+      "sha256": "1efbd0f29964c2e6758a52023abfd4b62758d5449ce024f5543fe224e4097eb4",
+      "lines": [
+        41
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "sha256": "b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e",
+      "lines": [
+        131,
+        189,
+        287
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "sha256": "9c899278b0a79967caee109c85c14cccfc55702d269c04a2d39c9547b3548fef",
+      "lines": [
+        258,
+        641,
+        658,
+        680
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "sha256": "b75488fd2696859af55bdcda0afa9f5d892ce442b1f3d670364e4222547d7895",
+      "lines": [
+        289
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/quality/repositories/quality_inspection_record_repository.dart",
+      "sha256": "84059715adba74cbdb0a9ad85bc4cb939a998906d1fdb2373c9eb968c4985950",
+      "lines": [
+        101
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/rd_task/pages/rd_task_page.dart",
+      "sha256": "54f4d5ccec4402afc7f05eca748ebd54c30963b141cd09a3b49dcf3fbeb1494c",
+      "lines": [
+        213,
+        220,
+        608,
+        814
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "sha256": "12486bf8d7057e4c32bc54d8bae66ebfa7e1a8206c351254b42eb765940895ab",
+      "lines": [
+        552,
+        1419
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "sha256": "f86e23485f2434e9582ca1dcb11bf25fc40adfa595721be7e154398286043af1",
+      "lines": [
+        336,
+        879
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/sales/providers/sales_shipment_task_reads.dart",
+      "sha256": "a8eb7f51df53d646ef2b39ec93933009f78b3646a347c40add8dcc934491c2e2",
+      "lines": [
+        16
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/sales/repositories/sales_repository.dart",
+      "sha256": "4320688ffd8996af867a418134a6f28c6b8e8db223b21b21984d40c57c856c2b",
+      "lines": [
+        316
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/sales/widgets/sales_batch_ship_panel.dart",
+      "sha256": "e9e5a2702c2148a98757ddfdbb0edb7d4df031838d7a3aad03a6bce51ef6042f",
+      "lines": [
+        186,
+        319,
+        531,
+        536
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/sales/widgets/sales_doc_link_picker.dart",
+      "sha256": "bcc0100c3bd8de8476223c3c5cbae7e8e61a4a7da6d8886ffef0ddabf32eb69a",
+      "lines": [
+        176
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "sha256": "ed2cbca3cd6b996fba50c1ba4ca7106a571578b4f2dc237572c4cbef005a650d",
+      "lines": [
+        296,
+        381,
+        401,
+        1054
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/security/pages/security_blacklist_page.dart",
+      "sha256": "a164f9739aecaae7adc83e5f75f927ff7181e780d4c7e398b818f046e689deda",
+      "lines": [
+        188
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "sha256": "b71d5cda9e787dc9de902187cd657f6483823e3c499f7798e8fb2e1036fa86d1",
+      "lines": [
+        280,
+        919
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+      "sha256": "ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4",
+      "lines": [
+        426,
+        1032
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/stock/counts/repositories/stock_count_request_repository.dart",
+      "sha256": "6bfa6c68e913a07ff56a0d53d9a082f3f491b9c758fb41947fa53011e964bf66",
+      "lines": [
+        200,
+        250
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/stock/counts/widgets/stock_count_candidate_picker.dart",
+      "sha256": "519fb9c948e177d7ceac4271fbf6a4877db026be5929fe9bd9d9cacccfc46ab1",
+      "lines": [
+        52,
+        55,
+        58,
+        61,
+        72,
+        98
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/stock/pages/instant_inventory_overview_page.dart",
+      "sha256": "d716c20fd61c2ddf8baf83d14850151ba618d0b3af4699a6e4b2a2f0c093b414",
+      "lines": [
+        137
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/stock/pages/instant_inventory_page.dart",
+      "sha256": "1fedeb1218b9b8e57ab3f6d71284136d2c8fd7f598651b6d3764bf852c82431a",
+      "lines": [
+        408,
+        526,
+        625
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/stock/repositories/stock_query_repository.dart",
+      "sha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5",
+      "lines": [
+        122
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "sha256": "c94acfcb488946fa0d2a47d6ce292dfc525f1096f98403cf65173a7e2a789dbf",
+      "lines": [
+        569,
+        621,
+        777
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "sha256": "7430e82db50b70f96a11813b07a2fd2ac30575ccf908ac0885f12aaa52a09383",
+      "lines": [
+        741,
+        756,
+        764,
+        1037,
+        1902
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "sha256": "0c2c5227c9ff4ab8f78ecc85965ebc85117f56f100bbe9f48e484643010b517a",
+      "lines": [
+        231
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/subcontract/repositories/subcontract_repository.dart",
+      "sha256": "59c3fc0eacf3e2239dfaf282470694acb723185c764638d2a49da88214fc32de",
+      "lines": [
+        126
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/subcontract/widgets/subcontract_draft_task_category.dart",
+      "sha256": "80b9de0f9b1cf5ae390fda0e481f170f2f8f45fad8d24c5b312c47ddf5fe08c8",
+      "lines": [
+        42
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/subcontract/widgets/subcontract_link_picker.dart",
+      "sha256": "831bd055f45d294e0ca0bf1cfc3f2c23e6dff1490479d0eea9a0408f30c249b7",
+      "lines": [
+        233
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/suggestion/pages/suggestion_list_page.dart",
+      "sha256": "bcb9c61a8307244e492cebb9f66eaa74c6bf733b3170ee79fce9c5a8a4c95c00",
+      "lines": [
+        135
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/visitor/pages/visitor_home_page.dart",
+      "sha256": "e6abb22a444dc636e3659fdb565722f4c2768b3e7a274f21b5e6b4dc8b0c15eb",
+      "lines": [
+        83
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "sha256": "78bd7c6b0e8b826d9ef32231ae5dc18af8583f5fbf28626e7fe29a31ed917891",
+      "lines": [
+        116
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "sha256": "da4f06a976e80840e97c4339df4c301e5c649aca6d9df022f7ed1a19cd1dee18",
+      "lines": [
+        117
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/materialbin/providers/workshop_material_page_preparation.dart",
+      "sha256": "e8e9f035d0bc174c727171f69bed87d082c6100a89a75a9371203525e4885aa1",
+      "lines": [
+        63
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+      "sha256": "30bd15d1b5246798cbd840710ae613f170ef209c8dbe0ba35507b00384f8bf45",
+      "lines": [
+        100,
+        107,
+        117,
+        260
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart",
+      "sha256": "0adadc8282895e1a7933fad0bc7b212aeb0fc7ba04eff74c9069ea2d1cc5c3f5",
+      "lines": [
+        63,
+        65,
+        68,
+        70,
+        79,
+        104,
+        266,
+        357
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "sha256": "d530bea6781508dc5b95927ba698f52c32cf4248b8a1db585782c564ffa5de8b",
+      "lines": [
+        129
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "sha256": "8a76fe250ec3b3b7578c6741d0334dc5ebfaf59be85ee8368e58325e558c968a",
+      "lines": [
+        156
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "sha256": "095486e89a3cf91059b4fea1b97d0b22e34dffa58d1144d16fcb433991abc1ee",
+      "lines": [
+        240,
+        280,
+        555
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
+      "sha256": "1e60b66c32a1f604ec565926465da85466db6247820ecb34f154d33cf6ef31b5",
+      "lines": [
+        100,
+        113
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "sha256": "5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8",
+      "lines": [
+        277,
+        413,
+        1300
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
+      "sha256": "5cef08e972fc319c51cda7942da116f79d24d912d6f421cc8c7f4a6107937afc",
+      "lines": [
+        94,
+        124
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "sha256": "52e2ee07cdce38c27fb6f3c73f81a8654114288eae89c0960ec9d38e2eba79fb",
+      "lines": [
+        277,
+        446,
+        654
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/pages/warehouse_task_center_page.dart",
+      "sha256": "eb41504ef8bbbc0501f471162c54a7fcdbdec0a6cb9cc920c98b409612208c41",
+      "lines": [
+        263,
+        267,
+        275,
+        409,
+        447
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/providers/warehouse_quality_page_preparation.dart",
+      "sha256": "f94da0e7522b643ffc8da31c9d375992320ba40c083a5e56d0c0458c7a6b4664",
+      "lines": [
+        68,
+        121,
+        175,
+        188
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/providers/warehouse_task_page_preparation.dart",
+      "sha256": "7c99afa35482b64ed5b28a97309396ec94cbff42d7d80add806de9dc7f2891c1",
+      "lines": [
+        110,
+        227
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart",
+      "sha256": "b5fd75932787e52ee9e90c3e211a1df52ddec97e2dedb7071024970755b0df9e",
+      "lines": [
+        225,
+        708,
+        713
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "sha256": "ac6140b62599f96a51c6bef98d9c2d20d830e69993bfd77680b8853bbdf67456",
+      "lines": [
+        436,
+        516
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+      "sha256": "f5f969d0379a9aca08e9dd1b7b34d11ef765ace3d99522440a8f39f435e62cc2",
+      "lines": [
+        235
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+      "sha256": "a8cc7d9c6d96a9271256deb4931acf28db715fd584ff50679338d54e82875f7e",
+      "lines": [
+        251
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_form_draft_categories.dart",
+      "sha256": "1816af3b4c1006488096c4038fac0de46f34772962d7f2d066ebf072be020651",
+      "lines": [
+        42
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "sha256": "31d02858515d39e46423e5ac69d093b098d26f71aaaa5c5803e60890eff1615a",
+      "lines": [
+        125,
+        516,
+        612
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "sha256": "72fda84acb2a36541bc84ecefb65d14f97bfc85b9391cabb5370cf0ba3f37a59",
+      "lines": [
+        245,
+        297
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "sha256": "bee427c8b060869230a1186183910b0cf4be2bcaee98763bcbc79acd6130cfb8",
+      "lines": [
+        273,
+        316,
+        641
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+      "sha256": "10abcaa0ab03191fc9cd474ce503471543ee4ee73aa8616d3206980ccf5fd470",
+      "lines": [
+        172,
+        382
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart",
+      "sha256": "f18bbb5ae95d27818a0ce1d018eb70e3d7ef0ccddec4e97a4bfc13b3dab88b41",
+      "lines": [
+        513
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "sha256": "80556f5324fb2885454aedc254ae1f7e04b6a6e311eb2d930e675f655f12e735",
+      "lines": [
+        301,
+        501,
+        513,
+        1192
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/business_columns/business_column_picker.dart",
+      "sha256": "9e21f91e5d4d113f860fbfc5710be508d8fc20ed3b72cf8e4524daa8913670eb",
+      "lines": [
+        146,
+        297
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/business_columns/business_columns_repository.dart",
+      "sha256": "0c582357f3161e2c206e78fd0839c53ff730d976038fcb1473e20523d881e800",
+      "lines": [
+        16
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/drafts/form_draft_category_table.dart",
+      "sha256": "3f6c92d4f8dc15990e448111b0ef230723eec3f19a49f21970f4489710879f2f",
+      "lines": [
+        228,
+        236,
+        273,
+        953
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/hierarchy/category_tree_search.dart",
+      "sha256": "4f9fb3823971040d4278bc9e8458aee92244bd97fc2808378d5781f46f2004c4",
+      "lines": [
+        18,
+        71,
+        99,
+        170
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/history/record_history_page.dart",
+      "sha256": "a19b2323fdf59c28477cecda12b31dd25f9321d32d825ff0d531c0da5de9d4b9",
+      "lines": [
+        297
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/history/record_revision_body.dart",
+      "sha256": "326f2309103150dd2b62456531c97eee82712a61df1aeb135ce4d52984104408",
+      "lines": [
+        401,
+        642,
+        650
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/platform_tables/platform_table_controller.dart",
+      "sha256": "b74ca009f53beae70b6b73225d377473b589e0a22ca45c868bbe5ebc4cddc18b",
+      "lines": [
+        688
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/platform_tables/platform_table_picker.dart",
+      "sha256": "c6eaa03ac5ca6a4816ca5cc370141f9112fc86a34d04485a8e39aac93f546358",
+      "lines": [
+        209,
+        570,
+        581
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/platform_tables/platform_table_repository.dart",
+      "sha256": "bfb9639c5cf82cfbb47bdeaecdafc18ed822a38e416d4fd230ac992c3b7c40eb",
+      "lines": [
+        30
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/providers/master_party_options.dart",
+      "sha256": "382a281c5af01e373f6d3c2a4c3ef5a3013a914412a0460871868c8cc782e1dc",
+      "lines": [
+        24,
+        55
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/repositories/employee_reference_repository.dart",
+      "sha256": "10f922c5ac8318ee3c370924ddf179c256f7f4227d18dd9dccd16c249a8a01e2",
+      "lines": [
+        139
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/search/column_keyword_policy.dart",
+      "sha256": "7a01c0d63b1edcf9aa08493cdb90b15c6c3e64d119b1d7293117fc06609ccdd3",
+      "lines": [
+        4
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/search/keyword_search.dart",
+      "sha256": "5d4b8d8380e7d0cd06065c3cf7f01e9c93c4ab219ca69d028b45e67675f35aa7",
+      "lines": [
+        2,
+        6,
+        15,
+        16,
+        52,
+        53,
+        57,
+        58,
+        62,
+        66,
+        76
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/search/report_contact_query.dart",
+      "sha256": "7afd5b155b097d02fd1f87fbcd7b1b7e86f1784f520047952bafc26dd6e10122",
+      "lines": [
+        17
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/search/table_column_query.dart",
+      "sha256": "727a1928a6425dd6bdf0987568a2929dc7aac15c256c2c590961b1c28979d845",
+      "lines": [
+        13
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/stock_inventory/instant_inventory_scope.dart",
+      "sha256": "78f8409ef90da7bbb9b6026527e59fb88892e25950127c18616fc31ddad8013b",
+      "lines": [
+        70
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/stock_ledger/widgets/goods_production_trace_view.dart",
+      "sha256": "a5052ac279743561a69e38a791755d135ccb403431b9c365571e58f355fec706",
+      "lines": [
+        374
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/stock_ledger/widgets/goods_stock_balance_view.dart",
+      "sha256": "fadf820b14198b4b9763a155c82d2a14839da86dae471e18afb89d93396141aa",
+      "lines": [
+        275
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "sha256": "48feea94af5cf4ee11a256f0768b866ec798747d052fbfb97bbe756024efc74a",
+      "lines": [
+        251
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/stock_ledger/widgets/goods_weight_learning_view.dart",
+      "sha256": "f481d77592b1b7f9536648685393983035da46a7fbf4cae24a92eb400c2eea97",
+      "lines": [
+        614
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/stock_ledger/widgets/material_trace_subject_picker.dart",
+      "sha256": "2ffdfc8572a7d9f20eff2516001a27167496bcb07c872486d01d79f73c294597",
+      "lines": [
+        131,
+        220
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/widgets/sales_order_picker.dart",
+      "sha256": "64ad9644f866173f2187617739c535b7f68ccd1b460deed5d43c7874ae97c670",
+      "lines": [
+        145,
+        241
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/widgets/uten_hierarchy_tree_view.dart",
+      "sha256": "1b2bc5eb5ffcd0650ec7477102ed66bb740de0c54437e6400bd9a9fc0641d7c6",
+      "lines": [
+        605,
+        1186,
+        1188
+      ]
+    },
+    {
+      "platform": "flutter",
+      "source": "lib/shared/widgets/warehouse_picker_panel.dart",
+      "sha256": "8ec743273ad60d8e54ad44c13a112047cc2397b78e7e5a8c6bf323efed137694",
+      "lines": [
+        354,
+        447
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/application/port/InventoryPositionPort.java",
+      "sha256": "30a62be05e0af40da53ba5ff00022ad81a034818a9ca3ca428a8c71f61182e76",
+      "lines": [
+        11
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/audit/AuditActorDirectory.java",
+      "sha256": "7615a52d477682d02c3be9b820901d7f16bc1dcfb8897e7cc2e37f48b97201a1",
+      "lines": [
+        8,
+        190,
+        228,
+        231,
+        254,
+        257
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/audit/AuditController.java",
+      "sha256": "aaf910e3a9624d2f454140b0254567a893c6eeb6db1ad2d3745e98163cc781d7",
+      "lines": [
+        71,
+        109,
+        138,
+        167
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/audit/AuditEventHeaderQuery.java",
+      "sha256": "2326cde185bd1f3824ff11956bb59cdf9d43b59587618f9c4ded5bbc6a39ba9a",
+      "lines": [
+        3,
+        4,
+        20,
+        23,
+        34,
+        35,
+        38
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/audit/AuditQueryService.java",
+      "sha256": "df48fd92457305dd0e5bfed4535c64b4feded16a0bdf79ba4ad4233925c81f27",
+      "lines": [
+        6,
+        413,
+        415,
+        416,
+        421,
+        422,
+        501,
+        502,
+        503,
+        504,
+        505,
+        506,
+        507,
+        508,
+        509,
+        510,
+        514,
+        515,
+        744,
+        747,
+        766,
+        767
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/audit/AuditSearchCriteria.java",
+      "sha256": "5d8a066104f95b7d7add5ca560e0ae7de06662a73be9847ac599084f42e05fc2",
+      "lines": [
+        25,
+        28,
+        69
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/audit/AuditSessionHeaderQuery.java",
+      "sha256": "24544b047ceb656ce10613c2f1f32bf856a3bd18c4ee7d651ef4316ab492ea05",
+      "lines": [
+        3,
+        4,
+        5,
+        37,
+        41,
+        53,
+        66,
+        79,
+        82
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreview.java",
+      "sha256": "020fb8c3ccb487082267898099e46419839b4eb8b793ccc84ed85e5639d5c5da",
+      "lines": [
+        18
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/report/ProcurementReportColumnSearch.java",
+      "sha256": "2fd722e7d2a9118233f506dbe207f7a66d0680730f8179bfdf70d65ba12dd7b4",
+      "lines": [
+        10,
+        11,
+        58,
+        59
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/report/ReportColumnSearch.java",
+      "sha256": "19089c4898d7ef80420f66f1ccb441af5747d233e04c8904782c71fea31fdef5",
+      "lines": [
+        3,
+        4,
+        5,
+        6,
+        12,
+        13,
+        22,
+        33,
+        42,
+        43,
+        44,
+        47,
+        52,
+        53
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/report/ReportQueryKit.java",
+      "sha256": "0658ed12766db521442afc2db7a9b4e2464417d754482d2b85dfb370d094b16e",
+      "lines": [
+        8,
+        85,
+        91,
+        96,
+        102,
+        106,
+        117,
+        178,
+        179,
+        180,
+        182
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/report/ReportRecordHeaders.java",
+      "sha256": "1ac29276aaa39d734edf059f99da06cb06056caedfbb9a6790028a1c97731669",
+      "lines": [
+        3,
+        4,
+        23,
+        26
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/CategoryKeywordSearch.java",
+      "sha256": "c6fc6bf8649069bf9e8534b5baf8d5e864acb07f7a91cad5598bc8323a3ee2b8",
+      "lines": [
+        25,
+        26,
+        41,
+        48,
+        72,
+        100,
+        101,
+        103,
+        105,
+        113,
+        114,
+        120,
+        129,
+        130,
+        192,
+        196,
+        197,
+        204,
+        211,
+        224,
+        228,
+        234,
+        235,
+        236,
+        237,
+        249,
+        254
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/ColumnKeywordSearch.java",
+      "sha256": "46511ee673f6036d7c1593bc1aecd5692415d1ba0f6b7ed485d894dd67caa311",
+      "lines": [
+        12,
+        14,
+        55
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/GoodsSearchPolicy.java",
+      "sha256": "a9773059b89ad21795b85c34987a144232f02d38ddc34f9deaf9be22f7efbd69",
+      "lines": [
+        26,
+        27,
+        34,
+        39,
+        42,
+        47,
+        52,
+        67,
+        68,
+        73,
+        75,
+        76,
+        77,
+        93,
+        117,
+        118,
+        159,
+        179,
+        188,
+        189,
+        214,
+        215,
+        218,
+        229,
+        240,
+        245,
+        263,
+        264,
+        280,
+        285,
+        295,
+        304,
+        311
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/JpaColumnSearch.java",
+      "sha256": "b2df12908e5a99c5f5b6e8723c918e9a95b6cd0acfdd57e7c3967d540745003e",
+      "lines": [
+        22,
+        24,
+        55,
+        75,
+        76
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/KeywordSearch.java",
+      "sha256": "1f55034736c506887a65f11843be1b5932ca937bbb1cc2a26e0dada95953003c",
+      "lines": [
+        17,
+        22,
+        125,
+        152
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/NameRefKeyword.java",
+      "sha256": "3f19bf679883d864aa7f1c371c006311d831c7a7b8066a4584863d485ea0c15d",
+      "lines": [
+        25,
+        32,
+        33,
+        38,
+        40,
+        44,
+        66,
+        67,
+        68,
+        72,
+        78,
+        80,
+        83,
+        84,
+        89,
+        102
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/QualityRecordHeaders.java",
+      "sha256": "cd69b7ae97267df651f18fd28e2a715fe978be981c83fb606f8346e3c42f66a6",
+      "lines": [
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/SqlColumnSearch.java",
+      "sha256": "b2c1e23afc7b5db480d75a382713bf94debb473873026db20b463e5653a7553f",
+      "lines": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        26,
+        34,
+        36,
+        37,
+        46,
+        53
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/util/TaskKeywordSearch.java",
+      "sha256": "f8c086a2c867e2bde1111d13dd63209278d08e3175f39dbc1eda89a124fc4a90",
+      "lines": [
+        12,
+        15,
+        18,
+        21,
+        27,
+        29,
+        31,
+        39,
+        43,
+        44,
+        120,
+        127,
+        129,
+        130,
+        131,
+        133,
+        134,
+        146,
+        147,
+        151,
+        152,
+        157,
+        163,
+        164,
+        170,
+        171,
+        172,
+        173,
+        180,
+        182,
+        183,
+        185
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/web/ContactSensitiveFilter.java",
+      "sha256": "70698d8e7318de78e95769f18fc105969cea0b8dee2277e1d2be8990245f9ffd",
+      "lines": [
+        18
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/web/HeaderColumnFilter.java",
+      "sha256": "ba067a65d2be91f5bef108b4ee3b780cb9580c86035bed84d27ae5ee7cbef034",
+      "lines": [
+        87,
+        89,
+        93,
+        94,
+        95,
+        98,
+        103,
+        106,
+        111,
+        126,
+        127,
+        130,
+        134,
+        135
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/common/web/NativeFacetCandidates.java",
+      "sha256": "374ad1c8e65f830f2bc0a4b27c56709bc371447b9e64d92d140bd7bcc3b6e676",
+      "lines": [
+        3,
+        5,
+        45,
+        60
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/config/ProductionSecretStrengthSafetyGate.java",
+      "sha256": "76d5e688db8de8a514c45c6209a0bee7df368df399da01ee001aa9274a6b28b2",
+      "lines": [
+        10
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/config/ProductionStorageSafetyGate.java",
+      "sha256": "98fd57a8a1ecb0c8d696e35cd41f28408b61b183bf0e696d67e4e8afc7aecb3e",
+      "lines": [
+        12
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/admin/AdminUserController.java",
+      "sha256": "6cde0b28411c93bc379bb8f9009912d2163460e455680e4b55341d12d1158e3d",
+      "lines": [
+        41,
+        104,
+        111
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/admin/AdminUserSummaryQuery.java",
+      "sha256": "cf4171710f3214d625c3fe0881c9e2f1afa39c74a3d89decb441d5d25165b142",
+      "lines": [
+        4,
+        51,
+        53,
+        55,
+        63,
+        64,
+        65,
+        68,
+        69
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/admin/AiPermissionGrantTool.java",
+      "sha256": "a187a673ac4c499f1af61bb0331cf0472d130a643b52183b551dba891cbc947f",
+      "lines": [
+        85
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/admin/DataScopeAdminService.java",
+      "sha256": "cbc6005789e60e9779204c2763eab76295c6569213229b06b8f135cf6ec9238a",
+      "lines": [
+        245,
+        250
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/admin/impersonation/ImpersonationController.java",
+      "sha256": "b7ef6bcfb2984b544d821d8b72ebb20b4f1ed243da5360a29b35326a37d0d6f2",
+      "lines": [
+        47,
+        54
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/admin/PermissionConfigurationTransferService.java",
+      "sha256": "0e4f3b41aee452cbd897412b754224e6890d7cc4051a1c4edb7445f347784425",
+      "lines": [
+        600
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/admin/ProvisionCandidateQuery.java",
+      "sha256": "07ef27dab48f45d2f1a86652e29b884cf0eaa40bc697e12f6ecf05552fc4f5d6",
+      "lines": [
+        5,
+        63,
+        69,
+        70,
+        71,
+        72,
+        73,
+        75,
+        76
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiChatAnswerGuard.java",
+      "sha256": "c8ce6e003163c33598ddd3dd5c5325740dcd681c73ebbe3839cae387dc4a2ba1",
+      "lines": [
+        288,
+        570
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiChatController.java",
+      "sha256": "b917faef53300b5d918ed2dbbf055a537ed86f95b67bfe4f51dcb3d95a8a8df8",
+      "lines": [
+        102,
+        140,
+        160
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiChatInternalContent.java",
+      "sha256": "47826d362476ce6a28423f78bbd65e12c249bfaf29639e96040182ad26a7f2ff",
+      "lines": [
+        90
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiChatJobHandler.java",
+      "sha256": "00c02f9f22bb0a1100c6294cc66fd8f0b97968905dbdaa1208368c245c276525",
+      "lines": [
+        145,
+        557,
+        1749
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiChatPageSnapshot.java",
+      "sha256": "2c52cab7e78344b539bce547c700e769cce6c29e82e469585e7e1e1659a065b0",
+      "lines": [
+        147
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiChatScopeGate.java",
+      "sha256": "57da99191952001ae805590f768bc4262adfc5ea393e6163b045d9879a6ab1d6",
+      "lines": [
+        65,
+        693
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiDocChunker.java",
+      "sha256": "848b5f554f5ea3bdd08b53b6f1a780054e451aa310157033f58ad3885ac0c894",
+      "lines": [
+        133
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiDocKnowledgePolicy.java",
+      "sha256": "1a259347d172b358686f849cd851e2d6f90f26fd53967f194ef8139a4567c3d2",
+      "lines": [
+        129
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiDocLexicon.java",
+      "sha256": "663bdfd81316090fc2a6eafa7384b5325baeee8f04dda579f547263f01f129ec",
+      "lines": [
+        15
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiDocumentModelAssist.java",
+      "sha256": "9877e6bd9ef2f09db11ec211aead7c1c9b104f5a59b9de628cbc95081739e97f",
+      "lines": [
+        27,
+        141,
+        157
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/chat/AiDocumentProfiler.java",
+      "sha256": "2fb6c3d05c145a420ef3d7abf3d58d1c040fc79cd59acbf01bd9d469e9561203",
+      "lines": [
+        23,
+        41,
+        379
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/usage/AiUsageAuditController.java",
+      "sha256": "92274fcdd3676479d79966e99cf9c18bb99a600154fe96d768f3d2f07ef3bac7",
+      "lines": [
+        34
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/usage/AiUsageAuditHeaderQuery.java",
+      "sha256": "7943a5a7e3cf372db5d6eb27593398ec79875e17757be0b74ddbe4572e427d45",
+      "lines": [
+        3,
+        4,
+        5,
+        34,
+        40,
+        42,
+        49
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/ai/usage/AiUsageAuditService.java",
+      "sha256": "cc4ec198eed5becb981e406578066ee8ab5be4f0cc2ba51b23ca35aee497af50",
+      "lines": [
+        41,
+        48
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/applications/BusinessApplicationController.java",
+      "sha256": "c7e5b607002cf720666c1bd1435dcf8fb89e2a79c2b042727c924f2e74372370",
+      "lines": [
+        37
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/approvalpolicy/DepartmentApprovalPolicyController.java",
+      "sha256": "a2a2d790bcb0878ed93bd426937d62e434cfaabcca7800630cc30429c235b024",
+      "lines": [
+        15,
+        17
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/approvalpolicy/DepartmentApprovalPolicyService.java",
+      "sha256": "0cd0fa6d2971bbeee942f12405e71ace6b11cba7cfae455bdb5a6d8404a1f824",
+      "lines": [
+        9,
+        64,
+        66,
+        67,
+        71
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/companyfiles/CompanyFileController.java",
+      "sha256": "b6d4301bd1ab6490a2b6f63bb62dee17e5ceb70b99a8c014cee9581032000430",
+      "lines": [
+        4,
+        30,
+        36,
+        46,
+        55
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/companyfiles/CompanyFileHeaderQuery.java",
+      "sha256": "00e17998f2f249fa2d52f1ba2c254088822a8950859643e92700fd25d83c3459",
+      "lines": [
+        3,
+        4,
+        5,
+        19,
+        22,
+        29,
+        37,
+        38,
+        43
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/companyfiles/CompanyFileService.java",
+      "sha256": "f1989ba9f50c471bf982271420dea911945ea72bc7287a5cdf64d4a017d8fc6f",
+      "lines": [
+        10,
+        11,
+        102,
+        135,
+        738,
+        741,
+        750,
+        751
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/arap/ArApLedgerController.java",
+      "sha256": "bbf19fbd2860d27a426eea0400802e939251a9245dfe71d6a2183b0f4c70f1d7",
+      "lines": [
+        48,
+        76
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/arap/ArApLedgerHeaderQuery.java",
+      "sha256": "29d508cd84a234bf055ee34bca3bf42bbeb0ada0492ef885b0667f2fb906866a",
+      "lines": [
+        3,
+        4,
+        5,
+        6,
+        25,
+        26,
+        27,
+        28,
+        29,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        41,
+        42,
+        46,
+        67,
+        69,
+        70,
+        73
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/arap/ArApLedgerQueryService.java",
+      "sha256": "bb159cee8311337b2c75bb193c6d060bbd7f958039ba2242e8fe1c98d4883df9",
+      "lines": [
+        6,
+        61,
+        107,
+        112,
+        114,
+        115
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/asset/application/FinanceAssetQueryService.java",
+      "sha256": "35eb80ace8e19e1a264679fc2c72a78689bb7147b7902c73946815b5411ae0e7",
+      "lines": [
+        4,
+        5,
+        138,
+        183,
+        466,
+        467,
+        468,
+        493,
+        494
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferController.java",
+      "sha256": "f7ad3ce5ea267524e33d2be13ceaa7c3ac0115a67b8915736b10df680dfad721",
+      "lines": [
+        54,
+        74
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferService.java",
+      "sha256": "40ad6e1fde4d9c9bd1fc2a580c91d80ded44ece394350b9f308f9a0fca1907ba",
+      "lines": [
+        3,
+        98,
+        126,
+        127,
+        128,
+        129,
+        130,
+        132,
+        141,
+        142
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostController.java",
+      "sha256": "dea52cb6cfe277687074a5373e1fcb15bc87e99ff01c29e4ee11d26b524c52fe",
+      "lines": [
+        40,
+        51,
+        62,
+        73,
+        84,
+        96
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostService.java",
+      "sha256": "a1e18cb2e748b4f8cffcf5a67072c47386b4d17ef74fd730185d59a0311dd3d2",
+      "lines": [
+        3,
+        4,
+        279,
+        498,
+        499,
+        501,
+        508
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseController.java",
+      "sha256": "7477db49318825b4e225f09594e5d06c6621970a11683a38392d5257fae52f60",
+      "lines": [
+        61,
+        83
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseService.java",
+      "sha256": "90f4e5048a86eb702296a24bcb52af2634a7524c49ada1ce9df0826ccf36ec07",
+      "lines": [
+        4,
+        93,
+        143,
+        144,
+        145,
+        146,
+        147,
+        149
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/FinanceApplicationReferenceAdapter.java",
+      "sha256": "a6c3303e15175f5eae9e5859d35d4aa8d71b25784231edbbaaa94ea48ddf381a",
+      "lines": [
+        4,
+        77
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/gl/GlReportService.java",
+      "sha256": "de02de4e9f2f59401ba9a2b4cf54b0bdbd2d63700e3a5cb1baeb1f78625a38e3",
+      "lines": [
+        620,
+        624
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeController.java",
+      "sha256": "2509aa3d619486c63f361a62e3305093bca2f7f247324c67e7610138def4e1f5",
+      "lines": [
+        54,
+        75
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeService.java",
+      "sha256": "efb69004173ebb38eb2b8d3b29e1d8855cb45e5f74bcd894ac84fa10ff32d48f",
+      "lines": [
+        4,
+        91,
+        118,
+        119,
+        120,
+        121,
+        122,
+        124
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementIqcRejectionColumnQuery.java",
+      "sha256": "10780409707114183f68d9f7342a25e30bbebf902150d708f77821a5ed7ba958",
+      "lines": [
+        3,
+        46,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        70,
+        92
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementIqcRejectionController.java",
+      "sha256": "c6df33690e8609e97fa72ce170cd1415036ff09b639ef33142c4d914586b8202",
+      "lines": [
+        44,
+        55
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementIqcRejectionService.java",
+      "sha256": "4685b8053f06a1a8b807913e4d658f683fa5d98ec390d39a1039d8f91f06fbd9",
+      "lines": [
+        9,
+        10,
+        352,
+        353,
+        363,
+        396,
+        397
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayablesController.java",
+      "sha256": "e2916f42710031ad09c1a1c1dec50930f813838be68546897f244b86ca4b4444",
+      "lines": [
+        44,
+        71
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayablesService.java",
+      "sha256": "f77ad4a468bd09e64f9716adf08f1336b05b755d35643732d28d8f2aad35f997",
+      "lines": [
+        5,
+        6,
+        73,
+        314,
+        315
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimController.java",
+      "sha256": "059e53a96ec541110882647b96a10f6621169b0528b6364b77eedee53f766b2f",
+      "lines": [
+        31,
+        48
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimService.java",
+      "sha256": "5f83acd567dac59261f6ec53814cf675df6ddf8895718e75d287ee7785ecda0c",
+      "lines": [
+        5,
+        6,
+        364,
+        365,
+        379
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementController.java",
+      "sha256": "5cebe1dd4fa8f2834370c43faee5b19e16e9cc672309a031565ad3249e74b4ab",
+      "lines": [
+        36
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementService.java",
+      "sha256": "dbcdacb3693a4a44f3049a3e46066c58bb9cb93dc3496dd72dab0a774550abfb",
+      "lines": [
+        5,
+        6,
+        159,
+        160,
+        180,
+        181,
+        194
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentController.java",
+      "sha256": "fa1c9a926d5dd2b521a9673064a74facdcaa0875a0018f7689f3e924e94c5599",
+      "lines": [
+        54,
+        75
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java",
+      "sha256": "a4d70d17fb73c6ddbf28d7ada0dd5070bab579e3c803818b33601647004837af",
+      "lines": [
+        4,
+        111,
+        138,
+        139,
+        140,
+        141,
+        142,
+        144,
+        146,
+        148
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementFinanceApprovalController.java",
+      "sha256": "976f29a021ca03210ab1f2c6f6256e25e413e1233249c6ffaebb33614c9b436a",
+      "lines": [
+        68,
+        81,
+        95,
+        108
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementFinanceApprovalService.java",
+      "sha256": "27d96aad6b2b9c06e69dea087211675e023b8e4d4f6409e99ec61e04ca6afb99",
+      "lines": [
+        11,
+        12,
+        458,
+        460,
+        587,
+        588,
+        1246
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptController.java",
+      "sha256": "98692b57bb290f0e65bfb07c69452cf302cce08f9b64d0b73285beb445a0a80b",
+      "lines": [
+        54,
+        77
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java",
+      "sha256": "7014d9188172583e09821d515c069cbe59c7ddc655da8655fb547e5b7d724f3d",
+      "lines": [
+        4,
+        133,
+        163,
+        164,
+        165,
+        166,
+        167,
+        169,
+        171,
+        173
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/reconciliation/dto/FinanceReconciliationQueryFilter.java",
+      "sha256": "c412977fb34dbd6c0ab13e2d4f4baa29c598229fb4de34a96ecebf786daa8b65",
+      "lines": [
+        19,
+        22
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/reconciliation/FinanceReconciliationController.java",
+      "sha256": "d804040ab0bfcb8e019bc1864fb0a15e8bd4042846a95a280f61a989b5f75617",
+      "lines": [
+        42,
+        55,
+        74,
+        82,
+        96
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/reconciliation/FinanceReconciliationService.java",
+      "sha256": "756b53f77b638bb913b085b1888be35b721032b8463b4cd192e780144d7bc22e",
+      "lines": [
+        8,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        61,
+        79,
+        87,
+        88,
+        89,
+        90,
+        91,
+        93,
+        112,
+        125
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/AccountStatementColumnQuery.java",
+      "sha256": "2cb1c2b25f7e14584aa5e9e04613cc882a9c409e3fb4e886948f00746d66bd49",
+      "lines": [
+        3,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        30,
+        35,
+        40
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/ArApOverviewHeaderQuery.java",
+      "sha256": "e6a04e15edf623e76c3a9bc00487c83335e8a804d281f31876cecd6fcc423bd9",
+      "lines": [
+        3,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        26
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceProjectedReportTable.java",
+      "sha256": "0842c7b41dcd9f0c707b24c1394750de761c5ab52b52dd804ac8061616028e9f",
+      "lines": [
+        4,
+        89,
+        105,
+        111,
+        117
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java",
+      "sha256": "f40bcdbf57a5690f733d9c975b4f4793dc3332df3f644064e9f8613bd72398c6",
+      "lines": [
+        70,
+        92,
+        114,
+        131,
+        150,
+        168,
+        205,
+        225,
+        244,
+        264,
+        287,
+        307,
+        328,
+        348,
+        369,
+        448,
+        469,
+        481
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportHeaderRequest.java",
+      "sha256": "3c700576f593ab567e45cfc6a126b47f74ad4a2c957f04b700b86a34a2a9354e",
+      "lines": [
+        4,
+        14,
+        34,
+        47
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+      "sha256": "92270c60b0ddb07284ce73c991a99a28a0cee1f21cde2486f69fc1182cfb7a5c",
+      "lines": [
+        8,
+        9,
+        10,
+        226,
+        227,
+        228,
+        229,
+        230,
+        231,
+        244,
+        262,
+        277,
+        278,
+        279,
+        280,
+        288,
+        302,
+        316,
+        317,
+        319,
+        324,
+        944,
+        945,
+        964,
+        970,
+        995,
+        1653,
+        1772,
+        1824,
+        1835,
+        1881,
+        1943,
+        2232,
+        2233,
+        2245,
+        2415,
+        2504
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/PartyStatementHeaderQuery.java",
+      "sha256": "c9dfc79c9a6e0ef92b965ca08ee900cd7e12177d8e82101daeee097ec7f87a07",
+      "lines": [
+        3,
+        11,
+        18,
+        20,
+        22,
+        24,
+        26,
+        28,
+        31,
+        47,
+        50,
+        55,
+        56,
+        74
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/report/ReportTableResponse.java",
+      "sha256": "d751fd7ee658303354754a17457bdcc8d99dad9a8c70d7984e0ed64a3b8a8ff7",
+      "lines": [
+        28,
+        54,
+        57
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementController.java",
+      "sha256": "6f438123d362f5e0020855b0240788ead0afb6b1805eaceb9c230617c8296a64",
+      "lines": [
+        42,
+        56,
+        69,
+        82
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementService.java",
+      "sha256": "e829e3aac915d638cc8eb710ef897d25efaacfddc2f235f03ba358a4975ffce4",
+      "lines": [
+        3,
+        4,
+        370,
+        371,
+        373,
+        382
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/history/ScopedRecordHistoryController.java",
+      "sha256": "dace3e7758236c66355aa88b0d9bd2d46443b4d1b5a9ddde168907fd04367bef",
+      "lines": [
+        23,
+        24,
+        26
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/history/ScopedRecordHistoryService.java",
+      "sha256": "02c2bf05bb27409e220c446dc44f0d136338754fa9f8298f85ef809a2fbc9787",
+      "lines": [
+        7,
+        259,
+        260,
+        261
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/account/AccountController.java",
+      "sha256": "d27ffd408ca492c359dbf5661ce9090b396fd9b2415103cc93f915cd46a96ddc",
+      "lines": [
+        70,
+        83,
+        104,
+        108,
+        145,
+        158
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/account/AccountService.java",
+      "sha256": "f1087fc86c50d90270bb1a8cf40ddc158423f23cd72c5bc8cadb4d4945e3d77b",
+      "lines": [
+        11,
+        83,
+        84,
+        85,
+        86,
+        87,
+        129,
+        133,
+        138,
+        139,
+        140,
+        141,
+        146,
+        157
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/account/dto/AccountQueryFilter.java",
+      "sha256": "16228affd129ad75bdc26529c97bda7c1bd796f69d16ca786bd10a797c71e8a1",
+      "lines": [
+        20,
+        25
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/client/ClientAccessController.java",
+      "sha256": "76c27614a99c6e6eefd6e4eab8aab5d9b9d7b63782e86360c6a246a7123f2c45",
+      "lines": [
+        34
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/client/ClientAccessService.java",
+      "sha256": "705167a0ee707699b121d0a2fb4769ca42d6a87a03ebf228e079c20088e1f798",
+      "lines": [
+        4,
+        5,
+        73,
+        74,
+        91,
+        102
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/client/ClientController.java",
+      "sha256": "d8a91c93e4e92c8405c16f8ae6cf6aabbd97fb3caa41169b3ce42390052cb226",
+      "lines": [
+        101,
+        102,
+        146,
+        147,
+        179,
+        180,
+        228,
+        229
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/client/ClientService.java",
+      "sha256": "f13f98e0e2ef2cb8a9407195254beb757ec65c89b51fd4e2f62253918d10940d",
+      "lines": [
+        3,
+        4,
+        243,
+        248,
+        255,
+        256,
+        269,
+        276,
+        314,
+        315,
+        317,
+        416,
+        420
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/client/dto/ClientQueryFilter.java",
+      "sha256": "83fc4db657b723e5616c26f71ed51a8db2f8da4a5d2a3fa84aa3a4d35de0a084",
+      "lines": [
+        45,
+        57
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/color/ColorController.java",
+      "sha256": "f0db6950ac371da421da14f769d559e43e66fc4cf89a12dc667dc956847e6e43",
+      "lines": [
+        64,
+        80
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/color/ColorService.java",
+      "sha256": "d10895992d9224a248649c7ec272fd5d373236b0a0546eb8e6fe42f7b0465d18",
+      "lines": [
+        12,
+        81,
+        82,
+        83,
+        84,
+        97
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/currency/CurrencyController.java",
+      "sha256": "e1db4d81dcdbc8a7190cfdcb4ff0b4ef1794acb496d308b3431479320108ab4d",
+      "lines": [
+        70,
+        80,
+        115,
+        125
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/currency/CurrencyService.java",
+      "sha256": "a46a30fb1e1a48e9eea53c43f3e29699c6733f6d46d38a5afd271c22596afad8",
+      "lines": [
+        12,
+        62,
+        63,
+        64,
+        65,
+        87,
+        92,
+        93,
+        94,
+        98,
+        108
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/currency/dto/CurrencyQueryFilter.java",
+      "sha256": "4cb5d0151d75e98dba18f1fccf4947749e38dfe218c72a1995861a38f4921f67",
+      "lines": [
+        17,
+        21
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostContracts.java",
+      "sha256": "c120a00cda77376265d582ea57648587f2006cb6b846e222115eeca75e31fd88",
+      "lines": [
+        49
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostSheetController.java",
+      "sha256": "c555c05aba0b9536611f47254af16a81c924c227fac0295ac4ba9bdf35267ff2",
+      "lines": [
+        29
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostVersionQuery.java",
+      "sha256": "cff202c012c1c21598c6a0d881afcf781ebb7982e3d6a8c5985287ac47d6e91b",
+      "lines": [
+        17,
+        20,
+        32,
+        44,
+        45
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/dto/GoodsQueryFilter.java",
+      "sha256": "b080bec7114cb6f9fc8117dfd7759c63895c8327c3f980fa6ff65233f12370b6",
+      "lines": [
+        41,
+        51,
+        54,
+        61,
+        74,
+        105
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/GoodsController.java",
+      "sha256": "673fbcfeb4e603126c9335c8a94ede74272ee47603e79ff3b6f7c5945bae0fc0",
+      "lines": [
+        75,
+        110,
+        111,
+        140,
+        155,
+        156,
+        163,
+        164,
+        170,
+        171,
+        179,
+        182,
+        183,
+        219,
+        251,
+        252
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/GoodsService.java",
+      "sha256": "69de669bc88ae11fe8d230cf7b312a77356f7577c15e118b101dfa181283905b",
+      "lines": [
+        3,
+        4,
+        181,
+        182,
+        184,
+        192,
+        193,
+        255,
+        256,
+        277,
+        278,
+        299,
+        300,
+        322,
+        336,
+        337,
+        374,
+        436,
+        438,
+        822,
+        823,
+        825,
+        829,
+        834,
+        837,
+        840,
+        893,
+        894,
+        909,
+        910,
+        1201
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsPriceHistoryTableController.java",
+      "sha256": "b7c569f6ca4908b22b03bfb2c3fe489b1b0e85003294ff2589904c0204f5d073",
+      "lines": [
+        37
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsPriceHistoryTableService.java",
+      "sha256": "0a8b8e0ba554125e41399aa2e81de7546cf95229af352b23cf6657bdeae07942",
+      "lines": [
+        68,
+        168,
+        171,
+        172,
+        173,
+        175
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryController.java",
+      "sha256": "cd688060a85aaefff765ccf49fa15912a33ba3e07ab3b9569e8ae2334b1db600",
+      "lines": [
+        30,
+        31,
+        35
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryService.java",
+      "sha256": "2217197cc07551efb8434bb096d52618eed9df6b6e8175eeeb0ea2bd88236089",
+      "lines": [
+        500,
+        503,
+        506,
+        507,
+        508,
+        509,
+        511
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/learning/ClientGoodsAliasController.java",
+      "sha256": "f310d569a44fd789fa9d811a96de75283c71c8266d4fafddb8ff37a767cb2a90",
+      "lines": [
+        36
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/learning/ClientGoodsAliasService.java",
+      "sha256": "3e38149d7c40d156b43f5d95aa7801d2bb7497f7b8fbae72af54025d93a5662e",
+      "lines": [
+        6,
+        7,
+        55,
+        57,
+        58
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/learning/MasterIntakeLookupAdapter.java",
+      "sha256": "6b41074e0ab7be9aad35aec796e561de4adad6cda02fc02bbae70ad04169a29d",
+      "lines": [
+        80
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/mould/dto/MouldQueryFilter.java",
+      "sha256": "01cd7eef2471222c3fc5b132013cd0fd9ddd3b8983bceaf05b47c1afa5f3a0f5",
+      "lines": [
+        27,
+        34
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/mould/MouldController.java",
+      "sha256": "7274d5859110f21c57d1e75b9ff3a9f02b0232e0a1918fa7c658faf10143e4b4",
+      "lines": [
+        68,
+        81,
+        82,
+        92,
+        104,
+        105
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/mould/MouldService.java",
+      "sha256": "a7bd94f8b27efdd843eb5c1d81255d80d1187e6a3843896c72afdcc634f6161e",
+      "lines": [
+        3,
+        4,
+        112,
+        113,
+        117,
+        122,
+        148,
+        149,
+        151
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/reference/BusinessMasterReferenceController.java",
+      "sha256": "3d48da5a538d97931d3ba0a8888447be4043c530df725dbadfb631ce9d3dfbb9",
+      "lines": [
+        79,
+        107,
+        168,
+        210,
+        223,
+        230,
+        234,
+        244
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/reference/GoodsReferenceProjection.java",
+      "sha256": "ae936e537f441c8d6c30f93bcca4428ee823f74e23153197a735acb098bc4ca9",
+      "lines": [
+        41
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/referencemethod/ReferenceMethodController.java",
+      "sha256": "05fde257ce3c81d1da93773b209cb9d7e21c66d02aac33e1ca42dc37dfead085",
+      "lines": [
+        64,
+        91,
+        107
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/referencemethod/ReferenceMethodService.java",
+      "sha256": "1de3db4b1ebc6b9f2ec859c3f799b719631205f68dc6b87357f6d0f686643ecb",
+      "lines": [
+        115,
+        128,
+        129,
+        130
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/search/MasterColumnSearch.java",
+      "sha256": "e762fc8d621985553e290e4bc6960b1e36b8db2942b245f7b6cc10cb4a317995",
+      "lines": [
+        3,
+        4,
+        18,
+        20,
+        28,
+        44,
+        45,
+        46
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/supplier/dto/SupplierQueryFilter.java",
+      "sha256": "fa39c29be4f5950f90ea5d1227fbf6e4b4f181840e13efb2d5d26d0b5db1b25d",
+      "lines": [
+        44,
+        56
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/supplier/SupplierController.java",
+      "sha256": "dde3eb334a1daef82d9f8dee3138d929e5b8cfdf83883bb16d94720f076a8111",
+      "lines": [
+        95,
+        96,
+        135,
+        136,
+        164,
+        165,
+        208,
+        209
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/supplier/SupplierService.java",
+      "sha256": "4afa51949bda2f3a316d8480c9ebdc0365af8765fcb984eec7057931465715bf",
+      "lines": [
+        3,
+        4,
+        171,
+        175,
+        180,
+        186,
+        187,
+        198,
+        205,
+        248,
+        249,
+        252,
+        253,
+        255
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitController.java",
+      "sha256": "03b5b5ac53e76fd14ad13ea1f2aa9527d62d216fc53d1089a452ccfe8f7adaa1",
+      "lines": [
+        64,
+        80
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitService.java",
+      "sha256": "7f9f0131d879d8cdef27ef7000b5ed576e73c41252cd181ba5e83f734df18397",
+      "lines": [
+        12,
+        246,
+        247,
+        248,
+        272
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseController.java",
+      "sha256": "566ce212f48e601b8e9b23b720fc026bbd7c9a86c1c5c2920a7ec8d3eda01880",
+      "lines": [
+        74,
+        95,
+        148,
+        155
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseKeeperService.java",
+      "sha256": "46f16ff46d8367dff4bb77ea8bf4bd36fbe9b59b427d31d870a8c98b4cb95245",
+      "lines": [
+        4,
+        202,
+        203,
+        206,
+        216
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseService.java",
+      "sha256": "659619ebd709b9988388e1333b1e62ff96979efbf7baf5af8c06fd3df3692563",
+      "lines": [
+        15,
+        152,
+        153,
+        154,
+        155
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/notice/NoticeAudienceService.java",
+      "sha256": "cf7a0b4f902c14e5beccc72335706cba2ae6551eadda293e8b6e417e3eb8c469",
+      "lines": [
+        5,
+        6,
+        62,
+        63,
+        80,
+        82
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/notice/NoticeController.java",
+      "sha256": "c7ef1fb8e9fb9606a83afa1ce3c153c43bab645b0ca519aa4a58a9bc2e2385c0",
+      "lines": [
+        157,
+        164
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/notice/NoticeRepository.java",
+      "sha256": "c358ab850d8f432111ec20fb261cffcc7f3ab434c40577bf052ebf0ed71c0e51",
+      "lines": [
+        75
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchController.java",
+      "sha256": "1afa2c3ba4b5fdad94252dbb023140fef6a16922e6d914aca415996768687491",
+      "lines": [
+        31,
+        37,
+        44,
+        54,
+        99,
+        126
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchExportController.java",
+      "sha256": "6c5b84a3b06795d30acc8d85ae6d33a4e1991c0da93aa42a50484489c3d7d5d4",
+      "lines": [
+        41,
+        63
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageRead.java",
+      "sha256": "e32a5ed375ec4aecea4a5cb7024688dd9e5d83230ffe2142411dedfbe19abd30",
+      "lines": [
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java",
+      "sha256": "fff20f700a26ebb99e26f6afc46006f98d423a42352dd01dbb1fb24c8e12bec3",
+      "lines": [
+        4,
+        5,
+        287,
+        303,
+        310,
+        400,
+        415,
+        424,
+        435
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchTableQuery.java",
+      "sha256": "b568bcddf2132282065c758b6f5092e90e61897b55697326320d7949ea438f6f",
+      "lines": [
+        75,
+        76,
+        77,
+        78,
+        88,
+        94,
+        128,
+        156
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/department/staffpermission/DepartmentPermissionStaffQuery.java",
+      "sha256": "dc88548d29d2b8af91698674e6e9c5e21b589850dbf5e9d30c724af3a2c71ba2",
+      "lines": [
+        5,
+        48,
+        57,
+        58,
+        59,
+        60,
+        75,
+        77,
+        78,
+        80,
+        81
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/department/staffpermission/PagePermissionWorkspaceController.java",
+      "sha256": "7c3e318d72d8938e0e3c0fb88b20b72c9e429d269797cf993cef2c7c81cf71fb",
+      "lines": [
+        36
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/employee/BusinessEmployeeReferenceController.java",
+      "sha256": "18833d8bfb7487bdc3f10e37a03d0c3e76ce5765f5a2bb84f69455fe050971a9",
+      "lines": [
+        23
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/employee/BusinessEmployeeReferenceService.java",
+      "sha256": "bb0dfba388f9894fca6b3730c64090556b25644969fa29fef338326b192c48de",
+      "lines": [
+        3,
+        4,
+        46,
+        51,
+        52,
+        53,
+        54,
+        72
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/employee/EmployeeController.java",
+      "sha256": "1d82d81ee614e8515a3786a5fc33ded42af287306a190edce11695615236ac46",
+      "lines": [
+        50,
+        57,
+        74
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/employee/EmployeeHeaderQuery.java",
+      "sha256": "2d513b81bf0a9397b9bb061fde46bbee34e4bdfd0d7ea81fcd99e8f1a46f5300",
+      "lines": [
+        3,
+        4,
+        23,
+        33,
+        34,
+        35
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/employee/EmployeeListQuery.java",
+      "sha256": "9455649f56ad97a9155b75517996cb5d3327fd170c5ca6c48c084e785e173cf1",
+      "lines": [
+        4,
+        85,
+        109,
+        113,
+        114,
+        173,
+        174,
+        176,
+        177,
+        179,
+        180,
+        224,
+        226,
+        227,
+        228,
+        229,
+        230,
+        231,
+        232,
+        233,
+        267,
+        269,
+        270,
+        272,
+        273
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/org/hrtask/HrCelebrationHistoryService.java",
+      "sha256": "c39e958a5b1a53d048a7223f8d8a032264bbd1a0b283662aa00742ff5d6c8e91",
+      "lines": [
+        19,
+        84,
+        85,
+        86,
+        87,
+        92
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/payroll/PayrollSlipHeaderQuery.java",
+      "sha256": "79b2e948cdfbde53639a60d3ee0f8d3e1c55b2a945010bafb86a5c4ba9043b44",
+      "lines": [
+        3,
+        29,
+        43
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisController.java",
+      "sha256": "85dd609b1a45ca5468127d9c33bf6ce214ee302b5441c81029b64a6b90b15c0b",
+      "lines": [
+        76,
+        87,
+        105,
+        184,
+        196
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisSalesSourceQuery.java",
+      "sha256": "35d730eee384a881bffec733f74fd95c3a8a895e8208dbf6dd70f518a66e3231",
+      "lines": [
+        3,
+        26
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+      "sha256": "46e34ae6b79aaaeaf408edde3290aaad350df989d4120b86c9bffd4f24c20644",
+      "lines": [
+        7,
+        8,
+        379,
+        406,
+        409,
+        1134,
+        1145,
+        1250
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialStockReallocationService.java",
+      "sha256": "f3752e4613cd9a96a0dcef93c0909242af438c3c6611b561f89f026408d0ca20",
+      "lines": [
+        3,
+        4,
+        150,
+        244,
+        897,
+        901,
+        907,
+        943
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportController.java",
+      "sha256": "bc91ad492fd56e8342b9f85cd8571de76cf29f76da40d227a8bfcb7b3a0a5db1",
+      "lines": [
+        67,
+        115
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportService.java",
+      "sha256": "480c22d64fad56f58976d249c8c74ebe898fbb785308b4c3a613a685764db1d6",
+      "lines": [
+        14,
+        176,
+        177,
+        178,
+        179,
+        180,
+        182,
+        184,
+        186,
+        188,
+        201
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionOverLimitDispositionService.java",
+      "sha256": "9a46d86410c70af9d34d8e21e3421ead009755b9513b4a85f9d5c92f53738348",
+      "lines": [
+        103,
+        250,
+        251,
+        252,
+        253,
+        254,
+        255,
+        256,
+        257,
+        258,
+        259,
+        260
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/dailyreport/ReportablePlanLineQueryService.java",
+      "sha256": "29de82b484ab132a3f43ce0c1f994e518afd5a267f6b4aee714861b8c067b10e",
+      "lines": [
+        5,
+        6,
+        437,
+        445,
+        446,
+        467
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchController.java",
+      "sha256": "aff393209f5aec27253505a934d1ab97d5510a9ecbdd36433e781622d16064c6",
+      "lines": [
+        29,
+        48
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+      "sha256": "3989c2789c2a0d7c84761b788c11617d78dba2ca780a5738ad50ad0f70cae04c",
+      "lines": [
+        7,
+        8,
+        109,
+        318,
+        320,
+        357,
+        419,
+        1471,
+        1503,
+        1542
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskController.java",
+      "sha256": "b720f1aaec9d57d89ab05560d34a005a03b67703119b0a91589c0b5c08087b79",
+      "lines": [
+        29,
+        54
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialDiscoveryService.java",
+      "sha256": "30150e91a0713dcd2c2723705a6fc998754d830cf06d03f19da0b5d8d1b14fc3",
+      "lines": [
+        50
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/plan/ProductionPlanController.java",
+      "sha256": "190e97f4505a343c72bc4cbf94a36d95e5563097425e46e06413f17ee794d1de",
+      "lines": [
+        56,
+        85,
+        97
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/plan/ProductionPlanService.java",
+      "sha256": "6d5184e3a1181d5e3a6bae5ddf6fc743f4de6e4f186653cc625173d84d15b6ff",
+      "lines": [
+        9,
+        10,
+        11,
+        136,
+        137,
+        139,
+        140,
+        142,
+        144,
+        146,
+        164,
+        1384,
+        1399,
+        1418,
+        1435,
+        1448,
+        1668
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcInspectionController.java",
+      "sha256": "8151d78af28da2b5bc767f1128fa651a3f8fa3e93fa74d9adce52a0065ac5cef",
+      "lines": [
+        40,
+        48,
+        56
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcInspectionService.java",
+      "sha256": "d586c8c4e3c0d2719766531d253446dfd3c262e20dd2633ab4207a4faa364a67",
+      "lines": [
+        3,
+        4,
+        299,
+        300,
+        301,
+        302,
+        303,
+        304,
+        305,
+        306,
+        307,
+        308,
+        309,
+        310,
+        311,
+        312,
+        319,
+        336,
+        345,
+        357,
+        392,
+        410,
+        424,
+        436,
+        510
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordController.java",
+      "sha256": "977dff363f99ccf08176f0fe831e2c3ed1f3505d52f68582e245127459f33419",
+      "lines": [
+        33,
+        51,
+        52,
+        67,
+        77,
+        78
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordQueryService.java",
+      "sha256": "7267515a0582bdd1dd805b08098691ec01870e0eefd4022bb260a128a2beed95",
+      "lines": [
+        3,
+        4,
+        85,
+        98,
+        146,
+        193,
+        264,
+        316,
+        363
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/report/MaterialTraceabilityController.java",
+      "sha256": "08a47d700e0a6f6b41fefc2f64cb07416312e720de49b4233938bd73d2587c87",
+      "lines": [
+        22,
+        36,
+        37
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportController.java",
+      "sha256": "eb83df784b1551953484f2357c40a279abcd5fdc63396987ecd9b1e77edaa955",
+      "lines": [
+        71,
+        88,
+        115,
+        131,
+        158
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java",
+      "sha256": "a973cefc54151a9210fffeabd1dae8daea939e65cdc23d55cb3725fc5cd67444",
+      "lines": [
+        92,
+        94,
+        95,
+        172,
+        238,
+        239,
+        241,
+        242
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/report/ProductionWhereUsedQueryService.java",
+      "sha256": "8a803cc49af673a2d662fe318a918024142459f2fc233c906e474ee80fd32fe3",
+      "lines": [
+        4,
+        6,
+        436,
+        443,
+        526,
+        593,
+        627,
+        847,
+        848,
+        852
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/report/ReportTableResponse.java",
+      "sha256": "b25ff7e7491ec85b869347f2d334e5fd03eb60bbddb6476026f5a75be869c7ae",
+      "lines": [
+        32,
+        38
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/report/WhereUsedExportController.java",
+      "sha256": "34ad5f2a1667c295cb9356c6bc8263ccd226a24e15e015258b77d854467ea601",
+      "lines": [
+        45
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/schedule/ProductionScheduleController.java",
+      "sha256": "f7fb6794575e834d970388be3a2d5f7d59503df06b4a63ecefdfac8746989042",
+      "lines": [
+        47,
+        61
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/production/schedule/ProductionScheduleService.java",
+      "sha256": "1daf750c8ca235e451b901039fcf7e5f529f4231a7f532b15dc03e95c323c2a2",
+      "lines": [
+        3,
+        4,
+        102,
+        125,
+        156,
+        186,
+        262,
+        306
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeBatchQuery.java",
+      "sha256": "d183c38eba7f73e7ef8b550c4b6e45c6ed078129a2aa1690602cd7b88eccfdf8",
+      "lines": [
+        3,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        52,
+        69
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeController.java",
+      "sha256": "7ad8293a85678014a032117bb8f3e8d7a0ccfa10b9990955ef0718271c446994",
+      "lines": [
+        59,
+        89
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeRepository.java",
+      "sha256": "ddd9afba758d1fe47a59007a1863aa0581f7fb93145ce83ce0475060fdd4febd",
+      "lines": [
+        95
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeSubmitService.java",
+      "sha256": "f278be7ae3fb3dace0679d0a1aacd3700591836a3b53ff9043105d58fb0069c1",
+      "lines": [
+        96
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderController.java",
+      "sha256": "4582f5ab8ce5a9b75879a07cfbd7688ab0af5fb5de7956e1ec0bbbbadf7fb170",
+      "lines": [
+        51,
+        73
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderService.java",
+      "sha256": "e7f425a55bf28ca19b3fb320c0e73978f94df6db32d54fadf73f0af14665ad08",
+      "lines": [
+        16,
+        153,
+        202,
+        203,
+        204,
+        205,
+        206,
+        208,
+        210
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptAmountAuthority.java",
+      "sha256": "b827dc2d8ee91012a2264d8d4d32c4bb642a739d01905f6cee8ceb6443ed3b5b",
+      "lines": [
+        27
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptController.java",
+      "sha256": "8aedfe8ffa2beff795d11b37792219e7b090ed997638c94a2f044d3585da2441",
+      "lines": [
+        49,
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptService.java",
+      "sha256": "71d030d9c6abab52aec3ea77de60f2cd5ad38c4d85344ea44c122848e5ba1d3a",
+      "lines": [
+        12,
+        137,
+        166,
+        167,
+        168,
+        169,
+        170,
+        172,
+        174
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java",
+      "sha256": "460000161d0bac1abc9d3a9d7055e10d0da5f1b1272e196ef5e4ba8f51564e56",
+      "lines": [
+        67,
+        84,
+        101,
+        119,
+        137,
+        156,
+        175,
+        194,
+        213
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+      "sha256": "9dc492011bfec47c56c1239837d6bf89c950d3091f0e97981729e21d73d9c988",
+      "lines": [
+        106,
+        112,
+        202
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/report/ReportTableResponse.java",
+      "sha256": "58bb424a8b298a8e21640c3f041b6a890700a1c65223d997e2aed3d9e0db5da9",
+      "lines": [
+        32,
+        39
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/request/PurchaseRequestController.java",
+      "sha256": "cafa84dcbcd717e05edc539cc0f024e9e3c02c5ef0fa92ef5a88a7713241cd1c",
+      "lines": [
+        32,
+        53
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/request/PurchaseRequestService.java",
+      "sha256": "afa74c3c06d19ddba37de90cdd36dcdee3b27097b3dda7ed1e824d76dfe3caa1",
+      "lines": [
+        12,
+        101,
+        126,
+        127,
+        128,
+        129,
+        130
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnController.java",
+      "sha256": "1e0abf0ed51e2d4998d0b05856d6e8de1e6ecceeb6d3b6de15acbc381c69f192",
+      "lines": [
+        31,
+        52
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnService.java",
+      "sha256": "198bfc1cac435fda392391b3ebe522412084729f033f29a36d3f1ee659ac7dc9",
+      "lines": [
+        8,
+        125,
+        155,
+        156,
+        157,
+        158,
+        159,
+        161,
+        163
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/quality/pending/QualityPendingQueueService.java",
+      "sha256": "df737b3aedc81db13afd98b5463fa7dc00f3cf49ac7bd7dfa6656c831efbf85f",
+      "lines": [
+        7,
+        8,
+        9,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        67,
+        72,
+        93,
+        123,
+        140
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/rd_task/RdTaskController.java",
+      "sha256": "43b95f9ef1da37d6d68d4e6347c3683795f858017fad8774ba6a8b76881544c9",
+      "lines": [
+        56,
+        64
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/rd_task/RdTaskService.java",
+      "sha256": "191ad943c8afc7df18b398b1b07924d31a3e63239ca93389f91073a59b27dba7",
+      "lines": [
+        7,
+        8,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        117,
+        119,
+        120,
+        131
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderAttachmentAccessPolicy.java",
+      "sha256": "c2043d92f18406f52e46f0431598519e8a140a8af5ffda489ea5fba26957e5b5",
+      "lines": [
+        20
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderController.java",
+      "sha256": "403bb082f97dc10183ed73fba639d31dac89bf43729e3ef555b25410218a6c0f",
+      "lines": [
+        42,
+        67,
+        97,
+        111,
+        134
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmController.java",
+      "sha256": "f04bf29decca88ca92ff2de618e871cf91e7c7e4509686947faf262ce5011e43",
+      "lines": [
+        53,
+        73
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java",
+      "sha256": "4a0c3ef4d32158db39e5f4e1af227593cdd5c9c393a5063308e9fd9a8538c200",
+      "lines": [
+        5,
+        6,
+        162,
+        164,
+        305,
+        334,
+        336
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java",
+      "sha256": "7fa30510baa9feafe61160cbe649f1bf6e90d7ac587b6a304438b4195d6ce1b6",
+      "lines": [
+        7,
+        8,
+        12,
+        159,
+        193,
+        199,
+        200,
+        201,
+        202,
+        204,
+        342,
+        374,
+        461,
+        475,
+        540,
+        560
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/other_shipment/SalesOtherShipmentController.java",
+      "sha256": "81e9c81149cec11e94776346403d6dab594f929a42dd0f79736ce43930680334",
+      "lines": [
+        40,
+        63
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/other_shipment/SalesOtherShipmentService.java",
+      "sha256": "1f90d9f0ce0f6db97d51aa21e22e33e7e4031d9ed33ab7d4f468296bd2d9fb88",
+      "lines": [
+        7,
+        82,
+        112,
+        118,
+        119,
+        120,
+        121,
+        122,
+        124
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/quote/history/GoodsQuoteHistoryController.java",
+      "sha256": "751e8ed3865a84001ad2130d271f0972c28a65c3bccf5abf8962fcfddb747898",
+      "lines": [
+        27
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/quote/history/GoodsQuoteHistoryService.java",
+      "sha256": "03b9c5ccd8f9b00f6779b812df59cace6b30493dfe7415918140a9582854d7d5",
+      "lines": [
+        48,
+        50,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        63,
+        72
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteController.java",
+      "sha256": "137e7c2c52751d762badc5d60a1643224472b6385d4c90802addbac45741bbee",
+      "lines": [
+        55,
+        86
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteFinanceController.java",
+      "sha256": "4abe193f9dd7e6379e8c95a4e2f87ea90516b4bd7878ab8ebab9eb9e8c77361a",
+      "lines": [
+        51
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteFinanceService.java",
+      "sha256": "f7c9b2d2a6e96934457960fe037946f3d088ce5e5cb6356d72fe791739adcefa",
+      "lines": [
+        8,
+        9,
+        100,
+        102,
+        109
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteService.java",
+      "sha256": "e76bb958985b4c36c5e3af010d1f0ed65b67fe150e8901daa488185a2a1c01dd",
+      "lines": [
+        10,
+        142,
+        215,
+        221,
+        222,
+        223,
+        224,
+        226
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/report/ReportTableResponse.java",
+      "sha256": "0e6debfaf3135060b997eb1b6b82e153175f41658478a5191703e279af110855",
+      "lines": [
+        31,
+        37
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportController.java",
+      "sha256": "a22b8559952503513b58f42271d89c99638bfb7c890538f60719ef857e4bed88",
+      "lines": [
+        68,
+        91
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+      "sha256": "5c89dcece77370f81034d3eb521812fef28580d72b27be14c840fe796562a8ac",
+      "lines": [
+        137,
+        170,
+        174,
+        175,
+        254,
+        325,
+        326,
+        327,
+        328,
+        329
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/ret/SalesReturnController.java",
+      "sha256": "000c0677a4db775ecce79d114103a2f9d5ab3f0f39f5a4bc7353842af225f8dc",
+      "lines": [
+        54,
+        77
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/ret/SalesReturnService.java",
+      "sha256": "50959cff83467d38e9d8f8047ed35e2c1ee63c715ac38aed215e3f4061ec9a98",
+      "lines": [
+        9,
+        129,
+        159,
+        165,
+        166,
+        167,
+        168,
+        169,
+        171
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewController.java",
+      "sha256": "86ef94e091eeb4f1592922638303e33167b9a1c7bc8eb9b734c10eb283c419e8",
+      "lines": [
+        27,
+        29,
+        30
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewService.java",
+      "sha256": "4ad32bee0b8904c159a9a706592819a271242e2ab3fb654ced9960bfed01495d",
+      "lines": [
+        107,
+        108,
+        115,
+        117,
+        118,
+        119,
+        120,
+        122
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentController.java",
+      "sha256": "082da927bfb73748bc5e340d96bdf073f82e66b4cd5de25f8a51604d1a561a23",
+      "lines": [
+        54,
+        86
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java",
+      "sha256": "b836fb6896e4be87024a7b111e9eecae5571fb801cefddb493da81cf7032d75b",
+      "lines": [
+        10,
+        218,
+        285,
+        291,
+        292,
+        293,
+        294,
+        295,
+        297
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundController.java",
+      "sha256": "e58a97a8793581642232c32f0b8bcbdaedc06d61aaf4b70f3afbdc05ec9939eb",
+      "lines": [
+        45,
+        72
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/count/StockCountRequestController.java",
+      "sha256": "dcf22ba6767e32b8232f25b16dc754a9f35d1a14dd42e1abc6d05740307028a5",
+      "lines": [
+        26,
+        34,
+        46,
+        62,
+        67
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/count/StockCountRequestService.java",
+      "sha256": "ee97f17fe708fcdd083258f16a2c0b76567d4b9461a2d48773831c5f27654ef6",
+      "lines": [
+        15,
+        16,
+        18,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        178,
+        222,
+        223,
+        225,
+        285,
+        602,
+        603,
+        604,
+        605,
+        606,
+        607,
+        608,
+        631,
+        632,
+        635,
+        638,
+        640
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/insight/WarehouseInsightController.java",
+      "sha256": "f179df8089cc5f9807f730f4b5cba831dbf553b0e5843f88e503b81a799017ca",
+      "lines": [
+        51,
+        88
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/insight/WarehouseInsightDefinitions.java",
+      "sha256": "1cc8fba58de57aac8d46853a81578c355bca5dd5250c7b1ef97ed6e4078f480a",
+      "lines": [
+        3,
+        195
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/insight/WarehouseInsightService.java",
+      "sha256": "f4b6333af55889b4081664c0f8c4de27e2bbb66906b4c41debda0b7236405287",
+      "lines": [
+        3,
+        117,
+        237,
+        253
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/insight/WarehouseInsightSql.java",
+      "sha256": "4f6349583bee1078d8f3faafa6dbdf6d10b8f7ac3de344daaafd6bcc610743cd",
+      "lines": [
+        3,
+        499
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/ledger/StockLedgerController.java",
+      "sha256": "0212c60cab5d0f7a79085a429e40e0aae98dfc6587e944c15bbfccc0126377ac",
+      "lines": [
+        54
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/ledger/StockLedgerQueryService.java",
+      "sha256": "cffeba8d99e7c029738f1c10bf8d5afc3e59500a782af4ebefbd006ee6d1fc6a",
+      "lines": [
+        121,
+        147,
+        153,
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/report/ReportTableResponse.java",
+      "sha256": "7c53e95f80f5f7f66bed8d3ab9227cf8dfa829514b2723507c0a105bd404fe5f",
+      "lines": [
+        24,
+        30
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/report/StockReportController.java",
+      "sha256": "53f10ace2f9d9489ae2f427f96aebfcaee9c7b21d2731a5e0bf714e2cb849b19",
+      "lines": [
+        66,
+        89
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+      "sha256": "befeb55874c3de0c94e289f9ff1366d249b40b6a5001edc11c1d2692cb1b6a49",
+      "lines": [
+        102,
+        105,
+        121,
+        124,
+        361,
+        362,
+        363,
+        364,
+        797,
+        807,
+        808
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/ShelfLabelSql.java",
+      "sha256": "271a463c9c69e0404f804e669de1093bc877c6746c1cb6a60cdc4a975d803b1b",
+      "lines": [
+        3,
+        128
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/StockDocController.java",
+      "sha256": "6385e694a5e506b8fd14d6a086ab5625a7cf65b8ecd09ce39c0fea5a2533a68c",
+      "lines": [
+        59,
+        93,
+        114
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/StockDocService.java",
+      "sha256": "8b7644fd605e02a6a1fcf1aea2a1f55a509b3a2c5a747ea377075cc742ee3318",
+      "lines": [
+        15,
+        213,
+        312,
+        313,
+        314,
+        315,
+        317,
+        319,
+        321
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java",
+      "sha256": "048e9fd9dd8b906e5e29a91b535fb78788cc5df07e90ff3d2bba8a6bf950cf89",
+      "lines": [
+        50,
+        84,
+        119,
+        158
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java",
+      "sha256": "001a2af98db281c5116eb92f004ca1bec6d6cc7fdc0a63059bd7ef254455600a",
+      "lines": [
+        3,
+        4,
+        6,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        82,
+        95,
+        465,
+        492,
+        633,
+        672,
+        924,
+        931,
+        934,
+        978
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/trace/GoodsProductionTraceController.java",
+      "sha256": "a83ea63b84672ec206a64a08b723dc36b2a7b5077d82cb53c309631e0e681e0f",
+      "lines": [
+        21,
+        22
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/trace/GoodsProductionTraceQueryService.java",
+      "sha256": "1ffe87e11667a8f4a32e5a9e8173d22f5ed44ee4054a30a1b9828613738ddabe",
+      "lines": [
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        150
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/trace/MaterialTraceabilityQueryService.java",
+      "sha256": "a11d2fc487dec0b41926867556e634e83df583eae4a82e83c3fdfd9e7a1df18b",
+      "lines": [
+        58
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/weight/GoodsWeightEstimateService.java",
+      "sha256": "38dcf7ad03749f429f0d19bc085db4e7f03b52fcd3b84c79c56219d2a406295f",
+      "lines": [
+        416,
+        474,
+        485,
+        486,
+        487,
+        488,
+        489,
+        490,
+        491,
+        492
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/stock/weight/StockWeightController.java",
+      "sha256": "f3011ad8e2914e32d6b764b3bbfa82736ede91868b2040b8cf13937c40f1547a",
+      "lines": [
+        77
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/application/SubcontractApplicationController.java",
+      "sha256": "3358d4a8a7e2da4e3f42b319e5f49503d949937ce152044b3ef14e8a1f55c3e8",
+      "lines": [
+        40,
+        61
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/application/SubcontractApplicationService.java",
+      "sha256": "5ace4be41497fadfeff471d06e4ea4488c7d5305f79c7ab1860424e3e91321d9",
+      "lines": [
+        19,
+        154
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/draw/SubcontractDrawController.java",
+      "sha256": "6d98f22c5ab804d78642400eda2fc20fd5ad9ff87470e4e8b6d7004021e51cbf",
+      "lines": [
+        46
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/draw/SubcontractDrawQueryService.java",
+      "sha256": "a1fc47530101f6676aada4862d7e223b99eb590b1ff7ba302acc344d32c7d773",
+      "lines": [
+        4,
+        5,
+        99,
+        715,
+        717
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/draw/SubcontractDrawTableQuery.java",
+      "sha256": "2e66b828e3f60f0760955a0b9e7386eee59435f2a45f29f1ccdc6559c550f9df",
+      "lines": [
+        4,
+        5,
+        6,
+        49,
+        50,
+        51,
+        81,
+        89,
+        120,
+        143,
+        149
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/inquiry/SubcontractInquiryController.java",
+      "sha256": "0e72b963da481e07f5cf8d4437e9a7f63d0939ce3cf03da1039e5bd7d613ac82",
+      "lines": [
+        49,
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/inquiry/SubcontractInquiryService.java",
+      "sha256": "ffbb4a39645f91e529682659586e7cd4b9459bbc249bb0ebde05ce3b380a2794",
+      "lines": [
+        17,
+        96
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/material_issue/SubcontractMaterialIssueController.java",
+      "sha256": "19462bbf28430bed1cc806d6f19eb3082e4e372ac8736429cb9aa9e9928e5730",
+      "lines": [
+        49,
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/material_issue/SubcontractMaterialIssueService.java",
+      "sha256": "22c46447c3c004ee593072ef06de7b9a57efa39e562b261360bd31a7b8d60f3e",
+      "lines": [
+        26,
+        167
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnController.java",
+      "sha256": "58670454fe01aee3338ba12ea88f4701fa73e41843e28f82f8d86b26b3a27666",
+      "lines": [
+        49,
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnService.java",
+      "sha256": "de7e9a2af820e2e81334a4b565a142ec88ebd70528f76c44a8223486f5fd62a9",
+      "lines": [
+        23,
+        110
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderController.java",
+      "sha256": "00455221504440842c8b6681a85d36a070afd61cff5f359dc88774b0a0e078a8",
+      "lines": [
+        52,
+        75
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
+      "sha256": "44611a04ddd6b1cb145f37208991fbea58eb8521b8358400c368514b427efe34",
+      "lines": [
+        33,
+        193
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/plan/SubcontractMaterialPlanService.java",
+      "sha256": "fd416d526d58b06177245832d8aa52957717dede97a7ea3e3528c29aa8a83803",
+      "lines": [
+        1111,
+        1113,
+        1130,
+        1131,
+        1172
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptController.java",
+      "sha256": "5d7afea33a9eacbc4b9aa12e0e27e6472989dfe934d2722eef567b70327e1b85",
+      "lines": [
+        49,
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptService.java",
+      "sha256": "6cf958829a7594d0bcfd20e77c97d65affb43b28bda28b42b0a2728f402f61d3",
+      "lines": [
+        33,
+        150
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/report/ReportTableResponse.java",
+      "sha256": "2f1c83513a4cc5b991344f524aa1db1e9bbee22cd71427308160d4be209c1577",
+      "lines": [
+        26,
+        33
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportController.java",
+      "sha256": "ed8b0cf876e5eba89b69a37ed5fb57a573527904fde97857ae3dd5e74986bc44",
+      "lines": [
+        69,
+        104
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+      "sha256": "dd9cb31dbfefbe6e46dc5354a7cfda3762a468e079144260c267ce1445821c85",
+      "lines": [
+        95,
+        102,
+        181,
+        790,
+        798,
+        920
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/ret/SubcontractReturnController.java",
+      "sha256": "c5b0c9956b1ff9b8e340270547b841fe7fabb5eb28c1cbf3f51df155726a7dd0",
+      "lines": [
+        49,
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/ret/SubcontractReturnService.java",
+      "sha256": "8f05087e2192c18d9651a31d094837e2569cba15bfa2c82d356cf133eb4935d5",
+      "lines": [
+        31,
+        143
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryController.java",
+      "sha256": "7e8f226f4883334bbed8efd2abb7bf55d26e9f012caf9460f893f70db056d277",
+      "lines": [
+        50,
+        72
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryService.java",
+      "sha256": "c1d89817fcfa38fe1c18a102f17aec4b90be3f9e15388b0f590c90f72de42b91",
+      "lines": [
+        3,
+        4,
+        723,
+        724,
+        803,
+        817
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryTableQuery.java",
+      "sha256": "7696569d52ab863b010667ed999a58a851a1b0f61bf14140eec3374577382eef",
+      "lines": [
+        4,
+        5,
+        6,
+        32,
+        33,
+        34,
+        35,
+        53,
+        61,
+        81,
+        99,
+        105
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/SubcontractGoodsKeyword.java",
+      "sha256": "b55feff4023c3e7bff569812e6c17a4367b26fe4f71ac41107ed3b222b48c563",
+      "lines": [
+        10,
+        31,
+        47,
+        48,
+        55,
+        56,
+        62,
+        64
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteController.java",
+      "sha256": "2465dc3d758421e490fb6bdfa4524725b6e0e1894b1e7885badb49594db3359a",
+      "lines": [
+        48,
+        69
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteService.java",
+      "sha256": "ddaeecfc001ad81104aae6d2a9939f07f029101de716355818b2075f86bfadd2",
+      "lines": [
+        23,
+        120
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/suggestion/SuggestionController.java",
+      "sha256": "1ab2cc8465415725b36ab0cd20b9554e13004cfb3525dfab2ce813d0ebeaa0d4",
+      "lines": [
+        28,
+        52,
+        71
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/suggestion/SuggestionService.java",
+      "sha256": "8618c77978707b3751b4d7aaead9447619ccb88b55b1ae886b0c14ede5e8bd58",
+      "lines": [
+        95,
+        101,
+        151,
+        153,
+        154,
+        155,
+        166,
+        172,
+        174,
+        175,
+        252,
+        253,
+        254
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/SecurityVisitorController.java",
+      "sha256": "effe85b19e23f4bee69195f7ff7d4664d967fb0cea5ed63bfdb66a719169c9bf",
+      "lines": [
+        74,
+        87
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorApplicationService.java",
+      "sha256": "c290d92e8386d88900bbaee2e02159550da4fec355a79aa4168648e60a8f2d7f",
+      "lines": [
+        169,
+        185
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorApprovalController.java",
+      "sha256": "5375c85e32c3fbeb4ef5af4d5622ddd44555232c2e17a52c8147d0244e544d70",
+      "lines": [
+        58,
+        78
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorColumnQueries.java",
+      "sha256": "5cdc8c15de9fac7bb2b50f2aef0cc38b637d0b65366dc7a3554d3d48cfcd689d",
+      "lines": [
+        3,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        27,
+        29,
+        31
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorController.java",
+      "sha256": "ff704a61ccd5e698c68fda90f3215514588c5f1c92dd60fe386fb93c513cda1d",
+      "lines": [
+        41
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorDirectoryController.java",
+      "sha256": "089055e5ba36440baa5e617827048335a11a5370f6eb6ab44499fa502f7ab265",
+      "lines": [
+        29
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorGateService.java",
+      "sha256": "019c1ffa2fc63a23de4e0d8d621e335dfca62fe101569c131f86c43ea65bbe83",
+      "lines": [
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        181,
+        193
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorHostConfirmService.java",
+      "sha256": "43fc8198faf8efc8c2265e4f653bb0b960751c85f04ba143fb1d3cd4cea224bc",
+      "lines": [
+        54,
+        61
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorHostEligibility.java",
+      "sha256": "22013bb82ae142fc3aaf6c29c1d489233568fde35a27c83223938879d32d6b89",
+      "lines": [
+        88
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/visitor/VisitorHrApprovalService.java",
+      "sha256": "0a4e51580d4092cbad83817e986d30d82a611855a17486e248d41189bf83ace9",
+      "lines": [
+        65,
+        79
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedInboundTaskController.java",
+      "sha256": "c27e22ed718a742871efc76f45d358f947f6730478de5c6eed740522515df74a",
+      "lines": [
+        37,
+        50,
+        51,
+        61,
+        66,
+        67
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedInboundTaskService.java",
+      "sha256": "4930d68dae68cccfa09c0274b417cae54b87ad8992a8e51d7d0cf85dcd5b3831",
+      "lines": [
+        6,
+        7,
+        300,
+        309,
+        335,
+        367,
+        375,
+        376,
+        394,
+        405,
+        407,
+        408,
+        409,
+        410,
+        411,
+        412,
+        414,
+        415,
+        416,
+        428,
+        454,
+        468,
+        469
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryController.java",
+      "sha256": "de7a9d90b0d70a1fde29a83613e0861ed52c481f4adaf91575e0ac71f380e1a5",
+      "lines": [
+        34,
+        68,
+        102,
+        137,
+        171,
+        206,
+        242,
+        254,
+        266,
+        278,
+        290,
+        302
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueries.java",
+      "sha256": "1206c81009afd5c9e83f064fd064b4eb3d0429c233a4a2b89df782bf935181d4",
+      "lines": [
+        4,
+        22,
+        293
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueryService.java",
+      "sha256": "0c2fca4fb1fcc5b3c2dd86859cac9b0285b488e9bd612e50a18da65dfd4c0e8f",
+      "lines": [
+        204
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java",
+      "sha256": "18634f03ac74cdd33bd3ba631ed2983918851e61282044b771b5d9d7f900fa9d",
+      "lines": [
+        284,
+        287,
+        293,
+        739,
+        741,
+        742,
+        745,
+        1085,
+        1143,
+        1145,
+        1146,
+        1769,
+        1771,
+        1772,
+        1812,
+        1817,
+        1818,
+        1820,
+        1823,
+        1825,
+        1826,
+        1827,
+        1901
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalExceptionController.java",
+      "sha256": "ee2600954af6b66161158883344cbffdee77dd100f6ee9c0bf0ed7a044702b86",
+      "lines": [
+        41
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordController.java",
+      "sha256": "076390a6054b1dd0e9b3ace14bd09a41afd08ad0bca402f0c6f38cb479afea42",
+      "lines": [
+        33,
+        50,
+        51,
+        66,
+        76,
+        77
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordQueryService.java",
+      "sha256": "6cdaa702a9d6702dee431cf9e5975f7d819f4def0e73f68379994f8877a37489",
+      "lines": [
+        74,
+        88,
+        135,
+        176,
+        236,
+        282
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/WarehouseInboundController.java",
+      "sha256": "31452c785c78803f9d49e1bd06dd3226ead2f8df44e2ed94a4d580fd57581d62",
+      "lines": [
+        51,
+        68,
+        98,
+        119
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/WarehouseQualityResultController.java",
+      "sha256": "6208826001ffe7d91137f376eaf763711be3d2710e99db89721175f6dc041c4e",
+      "lines": [
+        39,
+        62,
+        78
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/WarehouseQualityResultService.java",
+      "sha256": "f759d553246322d2d63b83a89bc5e562ba581ee3fea0af88c13accdbc6635234",
+      "lines": [
+        254,
+        360,
+        1185
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/report/WorkshopMaterialReportController.java",
+      "sha256": "71d40dad7b5de82d6b5a74a6cf3311686f183a7a2f86b5b5c6fa8a2c398dc2fb",
+      "lines": [
+        69,
+        70
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/report/WorkshopMaterialReportQueryService.java",
+      "sha256": "3ff3e85fdd10683212bf588478a3f40ba57d2a3ef82f4928d11a8f3cbd9b02b3",
+      "lines": [
+        274,
+        275,
+        276,
+        277,
+        278,
+        279,
+        280,
+        281,
+        282
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialPositionController.java",
+      "sha256": "f2f2a884b7d5e48e0090e7433ea6220c7baaa4dcadc3d9bca89c75a3bbcc0935",
+      "lines": [
+        45,
+        63
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialPositionQueryService.java",
+      "sha256": "3778056ada5fb2915ceae80fdf1e2894bba0806253ea76e8af4f8179ce00a823",
+      "lines": [
+        8,
+        10,
+        289,
+        320,
+        321,
+        323
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialRequisitionController.java",
+      "sha256": "79bbfbb5560cc58dd454ab2dacf7c35aa7cbe323b6232719c91ab3d8a8ae1484",
+      "lines": [
+        55
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialRequisitionService.java",
+      "sha256": "944ab7c7ed1e04977cfab03c9773b8768f8c4cde96b6eef37b3ab06e43f33996",
+      "lines": [
+        383,
+        390,
+        392
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/outbound/WarehouseSubcontractOutboundController.java",
+      "sha256": "cb6e788bf5962e799eed26342900f8e1ce1dcf0f9f7b38ab7bc173c26bfb53ef",
+      "lines": [
+        48
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java",
+      "sha256": "2ae432e8362b17900d515bd0de30c9c09cc886f491edd654c4821456bac3a174",
+      "lines": [
+        51,
+        61,
+        62,
+        63,
+        73,
+        82,
+        83,
+        84,
+        104,
+        105
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterQueryService.java",
+      "sha256": "ea4921e8f09b4c4d1ee4a79bcd058161c08dfd49f7a4c959e2df9767eea178de",
+      "lines": [
+        9,
+        88,
+        101
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterSql.java",
+      "sha256": "ac5b2d2f7f541673c1af18ab130cc6eb31ce1b91ce316ae590502471445eef92",
+      "lines": [
+        6,
+        83,
+        86
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterController.java",
+      "sha256": "9c2479e4c023735342a6ec1b12ff3958884b5919a179c3b5d705141aa75edf43",
+      "lines": [
+        8,
+        58,
+        69,
+        70,
+        80,
+        90,
+        91,
+        113,
+        114
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterQueryService.java",
+      "sha256": "dec33456d9e71513b93c13b8812d16678e294212abd633f0a6d8a7c6ab10c873",
+      "lines": [
+        349
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterSql.java",
+      "sha256": "ec1c440cdeec9344b1a0a910ce60123cc5863a1a31c98926e7c51d47f1f2b43f",
+      "lines": [
+        4,
+        164,
+        165,
+        194,
+        196
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehousePhysicalDetailHeaders.java",
+      "sha256": "1c6b433d1ecae433fbda1bf3836fa5e20f7b3f676f5cb6c0d0226d556631435f",
+      "lines": [
+        3,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterContracts.java",
+      "sha256": "6b9386f28085b28f113494668109ba86e9e676db2869ad08a269b0f89ec1b969",
+      "lines": [
+        87,
+        90,
+        97
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java",
+      "sha256": "652d128e741daec8b77c573be13a4cce3c5a382794aa9f242edb726586301a29",
+      "lines": [
+        76
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskHeaderQuery.java",
+      "sha256": "ffcb8daeb2bf311056786249bd64eba23aa1b0550a79c1e015aca58d932d7723",
+      "lines": [
+        3,
+        11,
+        12,
+        16,
+        21,
+        23,
+        26,
+        28,
+        34,
+        35
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/webinquiry/WebsiteInquiryController.java",
+      "sha256": "580cf8e18e96313bb125a16e3db8c2b01c4152d2586349574804499c0d959c95",
+      "lines": [
+        82
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/features/webinquiry/WebsiteInquiryRepository.java",
+      "sha256": "5a04e482a8fbcbf1e8fe79b9a72522e2229fbaf70981138f573cb84bd16571b1",
+      "lines": [
+        3,
+        4,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        39
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/migration/AppliedMigrationCompatibilityCallback.java",
+      "sha256": "471376a97f12d7e2d30f18959b429cbcd2a1ba0ccfe96a4e14ce41dc0af2922d",
+      "lines": [
+        219,
+        220,
+        238
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/responsibility/DataHandoverCandidateService.java",
+      "sha256": "a24b1f85c9cfa6c843b0b6c77e8b227734c398d2c9422f8cbaa20e37d9ddf59e",
+      "lines": [
+        4,
+        5,
+        53,
+        83,
+        85,
+        97,
+        127
+      ]
+    },
+    {
+      "platform": "server",
+      "source": "server/src/main/java/com/uten/imp/responsibility/DataHandoverService.java",
+      "sha256": "3878b9485bf2f2f1c47e403165e2d91c99ede70bc627e816ee9962b9ac0cc4a8",
+      "lines": [
+        969,
+        972,
+        1011,
+        1013
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/[locale]/contact/page.tsx",
+      "sha256": "c0a75f0ed5ea798f75d6213d247630c3b8130fccc66ac537bbc1794efa34da14",
+      "lines": [
+        19,
+        22,
+        25
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/[locale]/news/page.tsx",
+      "sha256": "fc55d085304ce8f064ab2b5166299afe766d54e45e2876e658c60969d0563333",
+      "lines": [
+        18,
+        23
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/[locale]/products/[code]/[slug]/page.tsx",
+      "sha256": "b63cfc7db215b3a5eb2747321f2704aec051f2b53416af17d8e55c64edaaa018",
+      "lines": [
+        67,
+        70,
+        72
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/[locale]/products/[code]/page.tsx",
+      "sha256": "301008b44e99aee8a39acc6c19e4f6985acd7fb99466e00119677ff7ae10b49b",
+      "lines": [
+        28,
+        30,
+        31,
+        32,
+        36,
+        63,
+        66,
+        68
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/[locale]/resources/page.tsx",
+      "sha256": "ee204ee285610ab4fd1e87c8bff555772164cc0aee56746666d46aaab554bcab",
+      "lines": [
+        33,
+        34
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/[locale]/studio/page.tsx",
+      "sha256": "be32e44f85a826c956209a02ea8acb57a49f40c2915939afa9b1eeecf9e4a708",
+      "lines": [
+        25,
+        28,
+        31
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/admin/(protected)/inquiries/page.tsx",
+      "sha256": "025a8c72806ecbe8c371200375352342961d2fc2e31cb7107bb36caaa8287a3b",
+      "lines": [
+        5,
+        7
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/admin/(protected)/media/page.tsx",
+      "sha256": "119082d46ab181036c4b98966d2a6092feafd91495c7c9f5ccb6a64fa6b307cd",
+      "lines": [
+        6,
+        7
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/admin/(protected)/news/page.tsx",
+      "sha256": "29653ff33106726bab51b5c75dd4a43afc7629b2b6a2d492f9ac9d475b94b4df",
+      "lines": [
+        14,
+        15
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/admin/(protected)/products/page.tsx",
+      "sha256": "de37fb24951bd5d53fdb2ee3df3180f4aa25aee2689cbdcfdaf1d1c25a98dbd1",
+      "lines": [
+        10,
+        30,
+        32,
+        34,
+        48,
+        55
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/admin/(protected)/releases/page.tsx",
+      "sha256": "c5509a469890479ae3c827a5150d4668e983fd14ae90145e6d888bebb92f3ea2",
+      "lines": [
+        7,
+        8
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/admin/(protected)/series/page.tsx",
+      "sha256": "31726a8c17131c318292754302a1a6d4486450f5d338ac3f09c7ae8c84dd38d2",
+      "lines": [
+        14,
+        15
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/admin/(protected)/settings/page.tsx",
+      "sha256": "7b61752e9fe0b61219345ac88023090f0ec1f05c37cd4d6d3a37f5f8efcac991",
+      "lines": [
+        27,
+        29,
+        33
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/api/catalog/route.ts",
+      "sha256": "1a71bdee9bdbd152e7db97dd42a83086a6e36d6a5551df64ce6d20c164449800",
+      "lines": [
+        17,
+        18,
+        22,
+        23,
+        24,
+        26,
+        27
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/api/imp/bridge/inquiries/route.ts",
+      "sha256": "8796f01f8eec786586a1386f00f8777a2ca7a639b11e63659531e09ef3c56687",
+      "lines": [
+        5
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/api/imp/bridge/sessions/route.ts",
+      "sha256": "3cc5edf3d83b9014337d0953f610b78104a25fe92bfe9baa9070387b5e05b666",
+      "lines": [
+        5
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/app/api/legacy/[legacyLocale]/[legacyFile]/route.ts",
+      "sha256": "e3d33e6b21c1010a3091bb52ce0a63d1b0bdce39ac800cb32f92fdb3236122ac",
+      "lines": [
+        7
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/components/products/VariantViewer.tsx",
+      "sha256": "699e1f802f8ffb7a87c4c53e2c1711aa56c1f7c52801a8621c687366cc5e2e25",
+      "lines": [
+        87
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/components/studio/SceneStudio.tsx",
+      "sha256": "d714d70af7fb3a26868dfc9b8e6a83d3966744b6c8899114f4e137f845531938",
+      "lines": [
+        6,
+        116
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/lib/product-search.ts",
+      "sha256": "30fd170ad5166c9b824788a3bb879321f46926b863d9431e0ef0550d185a2017",
+      "lines": [
+        3,
+        22,
+        63
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/lib/queries.ts",
+      "sha256": "d2e9b0a07cf79c86e415a55d6da25613a139ba00b887e6a6ad7ef3de07b09338",
+      "lines": [
+        13,
+        207,
+        248,
+        249,
+        258
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/lib/resources.ts",
+      "sha256": "46f9bde914fb5679f4671109f5f8977739d2e359b7306b439c2887cbb4b84dda",
+      "lines": [
+        57,
+        58
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/lib/text-search.ts",
+      "sha256": "0728afc0d491c1275e3183b4a00e34cea76ecb3ceb3eb3e5251bc73c6b91fad5",
+      "lines": [
+        2
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/tests/helpers/isolated-postgresql.ts",
+      "sha256": "008e1900bfd8109232fbe1ac24f3718ea88850cb2f6a7b6c710ff2e1d25cc935",
+      "lines": [
+        45,
+        46
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/tests/product-search.test.ts",
+      "sha256": "9f87345de55bb739b1b127accf2a72cf61e15022dc316caee0a1c978db80de7e",
+      "lines": [
+        6,
+        21,
+        22,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/tests/public-catalog-pagination.test.ts",
+      "sha256": "b31ef6996cd363d99b4973935a1a48520cc243f6467a4b93efbc5dabb4a6ac7b",
+      "lines": [
+        112
+      ]
+    },
+    {
+      "platform": "website",
+      "source": "website/tests/text-search.test.ts",
+      "sha256": "71af66fd377be77db8ab9698d7e31f48cbb81cb814801d66914f714d6515b58f",
+      "lines": [
+        3,
+        6,
+        7,
+        12
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Core/Tests/UnitExportDownloadChecks.cs",
+      "sha256": "37e51f4c81cd89c06188e362f99acf5f44617df9622c493dfb8ee27fdd1331f0",
+      "lines": [
+        58,
+        61
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Core/Tests/UnitExportMutationChecks.cs",
+      "sha256": "67027dcb953b12b2596306850ad469813103cf08fa83c0725aeed18331845ca6",
+      "lines": [
+        18,
+        102,
+        140
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Core/UnitExportDownload.cs",
+      "sha256": "45338894d0e66e81d32d801e9b0dd324325bbb1ce035a2fe872363a8ba3c366b",
+      "lines": [
+        172
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Core/UnitExportMutationContract.cs",
+      "sha256": "c77a165bbe07a160e1f0f8722a15bc000dfb2e5afd6eec21e5924aa17e69ed55",
+      "lines": [
+        97
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/UnitColumnSettingsWindow.cs",
+      "sha256": "682fe21d4c9e69f786b39c077cf2c35c2707785259b18318bbdf142eb8dc0c7c",
+      "lines": [
+        85,
+        189,
+        191,
+        235
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/UnitColumnsService.cs",
+      "sha256": "5b9bce6316c14f3ffd9578e1f0f2edda3525ffae082facc840cc688dd784a2b7",
+      "lines": [
+        93
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs",
+      "sha256": "4ec5b9ab872afbf0d7f03f3babc46b8856d8beb254d604df43346b73d582553e",
+      "lines": [
+        23
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs",
+      "sha256": "1899cf97dc49fa18bd962299af31997eb46b08438d4a8e2c038452ecace7bc89",
+      "lines": [
+        43,
+        47,
+        139,
+        152,
+        153
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "sha256": "902e91edf697951b763b7e6fda8040546bc8f4decf4172c604ba204b8cc98ca3",
+      "lines": [
+        319,
+        324,
+        328
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitContractChecks.cs",
+      "sha256": "02d04f054ed776bea3aedce2bcc4236a44e292d7b83c6364545e1edd1d78343c",
+      "lines": [
+        47
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportService.cs",
+      "sha256": "de72d792cf663b8439f9370dcd308a82977fb9772c01d686f529e12fc830ba5d",
+      "lines": [
+        67,
+        85
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportUiChecks.cs",
+      "sha256": "24b166eee1cc20302e8331c6e213cb12e052be5a72b208235432b0c6fc3fbfe7",
+      "lines": [
+        42,
+        47,
+        93,
+        97
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryContractChecks.cs",
+      "sha256": "683c25fcd68c24f1dca0f5d7840704f04d88b90a8d565cc8d3a78bc8c483a04b",
+      "lines": [
+        56,
+        59,
+        145
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryModels.cs",
+      "sha256": "007d6884998e9f76575d6b4d01b2df3eebef7e2555b81db53185f24711210ace",
+      "lines": [
+        97,
+        110,
+        126
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitQuery.cs",
+      "sha256": "b2943a4e4def051a6c057669477a30d36b7a1e9bff18c2a81561dc6e6af47b82",
+      "lines": [
+        28,
+        32,
+        46
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecordHistoryWindow.cs",
+      "sha256": "1fd5ae32dc79928dd6618565e4eeba293262766e6706c9bc7867c4cec05cf16c",
+      "lines": [
+        22,
+        57,
+        98,
+        135,
+        229
+      ]
+    },
+    {
+      "platform": "wpf",
+      "source": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "ccb9cf4c73f45cff860de845af0feafc06b3ccf31dd1f5bd2c003d02d7dc200f",
+      "lines": [
+        95,
+        169
+      ]
+    }
+  ],
+  "reviewFiles": [
+    "backend-query-elision-followup-review.json",
+    "combined-backend-review.json",
+    "combined-flutter-review.json",
+    "flutter-search-review.json",
+    "server-search-review.json",
+    "website-wpf-search-review.json"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "result": "PASS",
+  "runtime": "Flutter release JavaScript/CanvasKit in real headless Chrome",
+  "fixture": "loopback-only HTTP; production ApiClient/DioAdminRepository/AdminPermissionsPage",
+  "scenarios": [
+    "single Chinese character search",
+    "name plus employee-code terms",
+    "in-flight same-query Enter is suppressed",
+    "retire/cancel delayed old query",
+    "20 rapid repeat edits",
+    "empty result",
+    "recover from empty without losing input",
+    "completed same-query Enter rereads changed data",
+    "Enter dispatches once without debounce replay"
+  ],
+  "requests": [
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ],
+    [
+      "GET",
+      "/api/admin/users"
+    ]
+  ],
+  "queries": [
+    "",
+    "",
+    "张",
+    "张 E001",
+    "旧",
+    "新",
+    "不存在",
+    "张 E001",
+    "张 E001",
+    "张"
+  ],
+  "cancelled": [
+    "旧"
+  ],
+  "browserExceptions": [],
+  "screenshot": "build/search-web-evidence/permission-search.png",
+  "companyUat": false,
+  "testedProductionSources": {
+    "lib/components/inputs/uten_search_bar.dart": "389d931cee26b881dbc882f7c8f88519c365849107902330490aea76ca1c732f",
+    "lib/features/admin/pages/admin_permissions_page.dart": "9f55fab928f222e23a02c457819868e0aae936904713b44c087bb2a00540a590",
+    "lib/features/admin/repositories/admin_repository.dart": "7a4fbf8a59a2a66830861382fb51e61909f004be1b1e19bdd0560603e991b21d",
+    "lib/core/network/api_client.dart": "4d8ba161cd6263b6a4fa016550d06231b69f6941548d9dde9e5624c07694d492",
+    "lib/shared/paging/paged_read_intent.dart": "e680f77632279de02283e0d238855cceb20d62f9a58404d9c0d057a4c27bbac8",
+    "tool/search_web_probe.dart": "b620a5966d4160feea2defa9fc02bbb5b921279583142f099bed85ff2fd105e0"
+  },
+  "scope": "Production permission search surface. Later audit/library directory pages have separate targeted VM and backend evidence; this receipt is not exhaustive platform UAT."
+}

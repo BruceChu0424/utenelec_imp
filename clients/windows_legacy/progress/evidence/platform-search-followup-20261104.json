@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "scope": "Narrow follow-up: remove duplicate personnel label searches and native text/category/filter reads; no result/permission cache or business writes",
+  "workspaceRoot": "D:/Projects/uten_imp_worktrees/platform-search-integration-20261104",
+  "verifiedAtUtc": "2026-11-04T10:42:40.886099+00:00",
+  "nativeChangedFiles": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DebouncedSearchInput.cs",
+      "rawSha256": "8029b4d570f0c6e35b889c9b9edfc2f11a4440e1fc60f10bc3b3d4c9433ad823",
+      "lfSha256": "8029b4d570f0c6e35b889c9b9edfc2f11a4440e1fc60f10bc3b3d4c9433ad823"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "rawSha256": "9cd230353916ce88d490b2372ddc423fb6b40c927533de9e647aaa885bb12a13",
+      "lfSha256": "902e91edf697951b763b7e6fda8040546bc8f4decf4172c604ba204b8cc98ca3"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "rawSha256": "0d418a1867ce2d21d8dec786e55535ba3bb080b2b9d647b1c463db409f6ef16e",
+      "lfSha256": "0d418a1867ce2d21d8dec786e55535ba3bb080b2b9d647b1c463db409f6ef16e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "rawSha256": "c4117c23bc6f0db2fb9d91e613c36f91b4ab8ffd6778f8d802a45702375b8f92",
+      "lfSha256": "baed809ad124976c5ba18cd1d620eb4b8a14e15c9e7fbfb78d3a68f34ccaa1e8"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "rawSha256": "ff5188974bce4f1069544a6b7275afe6d3e7c58acbec896931632cf699c9d7f1",
+      "lfSha256": "ccb9cf4c73f45cff860de845af0feafc06b3ccf31dd1f5bd2c003d02d7dc200f"
+    }
+  ],
+  "nativeSourceLfFingerprintSha256": "b87faed4a85637dee56dd065ad59b1c277b2ecf966a778125b4b19ccf199cc45",
+  "flutterChangedFiles": [
+    {
+      "path": "lib/components/inputs/uten_employee_picker.dart",
+      "rawSha256": "e4945f56a502de5604b9c0bd6586c644faebe6949d2f523e2f9933db0f4d6a31",
+      "lfSha256": "ed78d6641ef5b96879de4f2da54d2e7017c2abe6976b7b57da105b6ebb2cd492"
+    },
+    {
+      "path": "lib/shared/widgets/business_employee_picker.dart",
+      "rawSha256": "1c9f9f960ab58265744917360d3ebf7a145a0df72eb64187036bab06d4f03056",
+      "lfSha256": "1c9f9f960ab58265744917360d3ebf7a145a0df72eb64187036bab06d4f03056"
+    },
+    {
+      "path": "test/shared/widgets/business_employee_picker_test.dart",
+      "rawSha256": "78e2ae7bf8fa29890efe6d98009a81c9ac2f3e054001909ed54c40e65a03910f",
+      "lfSha256": "78e2ae7bf8fa29890efe6d98009a81c9ac2f3e054001909ed54c40e65a03910f"
+    }
+  ],
+  "behavior": [
+    "BusinessEmployeePicker retains one authoritative byIds lookup; hydrateInitialSelection=false prevents its child from also searching by name. Opening/searching the candidate picker still issues the original authorized page requests.",
+    "All native goods/unit triggers run through one shared in-flight query/page/filter/session-generation/read-revision identity; external reads consume pending debounce without retiring a valid joined read.",
+    "Completed same-query Enter dispatches again. Incomplete IME input does not read; new input/scope retires old responses and owner callbacks retain their existing authority.",
+    "Confirmed Units operation/recovery callbacks retire the old search generation and page sequence/transport before their existing mandatory refresh. They do not clear remembered failed selections or replay write/unknown-submit commands. The actual refresh helper is exercised against an older held same-query response, with a new committed result and preserved selection."
+  ],
+  "nativeChecks": [
+    {
+      "architecture": "x86",
+      "configuration": "Debug",
+      "warningAsError": true,
+      "buildCommand": "MSBuild.exe clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj /m:1 /warnaserror /p:Configuration=Debug /p:Platform=x86 /p:PlatformTarget=x86 /p:UtenBuildScope=search-request-review /p:OutputPath=D:/Projects/uten_imp_worktrees/platform-search-integration-20261104/build/search-request-review-20261104/x86/ /p:Restore=false /p:RestoreDuringBuild=false /v:minimal /nologo",
+      "msBuildPath": "D:/Software/Visual Studio Installe/MSBuild/Current/Bin/MSBuild.exe",
+      "testCommand": "D:/Projects/uten_imp_worktrees/platform-search-integration-20261104/build/search-request-review-20261104/x86/Uten.Legacy.Tests.exe --search-input-contracts",
+      "exitCode": 0,
+      "realStaControls": true,
+      "assertions": {
+        "originalImeInput": 5,
+        "leafRequestCountsAndAccurateResults": 16,
+        "goodsContracts": 66,
+        "unitContracts": 38,
+        "totalPerArchitecture": 125
+      },
+      "buildLog": "build/search-request-review-20261104/logs/x86-build.log",
+      "testLog": "build/search-request-review-20261104/logs/x86-search.log",
+      "hostOs": "Windows local developer host; not a Win7 target-machine acceptance"
+    },
+    {
+      "architecture": "x64",
+      "configuration": "Debug",
+      "warningAsError": true,
+      "buildCommand": "MSBuild.exe clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj /m:1 /warnaserror /p:Configuration=Debug /p:Platform=x64 /p:PlatformTarget=x64 /p:UtenBuildScope=search-request-review /p:OutputPath=D:/Projects/uten_imp_worktrees/platform-search-integration-20261104/build/search-request-review-20261104/x64/ /p:Restore=false /p:RestoreDuringBuild=false /v:minimal /nologo",
+      "msBuildPath": "D:/Software/Visual Studio Installe/MSBuild/Current/Bin/MSBuild.exe",
+      "testCommand": "D:/Projects/uten_imp_worktrees/platform-search-integration-20261104/build/search-request-review-20261104/x64/Uten.Legacy.Tests.exe --search-input-contracts",
+      "exitCode": 0,
+      "realStaControls": true,
+      "assertions": {
+        "originalImeInput": 5,
+        "leafRequestCountsAndAccurateResults": 16,
+        "goodsContracts": 66,
+        "unitContracts": 38,
+        "totalPerArchitecture": 125
+      },
+      "buildLog": "build/search-request-review-20261104/logs/x64-build.log",
+      "testLog": "build/search-request-review-20261104/logs/x64-search.log",
+      "hostOs": "Windows local developer host; not a Win7 target-machine acceptance"
+    }
+  ],
+  "flutterChecks": {
+    "files": [
+      "test/shared/widgets/business_employee_picker_test.dart",
+      "test/components/inputs/uten_employee_picker_display_test.dart",
+      "test/components/inputs/uten_employee_picker_race_test.dart"
+    ],
+    "passed": 31,
+    "failed": 0,
+    "analyzeFiles": 3,
+    "analyzeIssues": 0,
+    "dedicatedRequestCountRepeat": {
+      "passed": 1,
+      "log": "build/search-request-review-20261104/logs/flutter-read-count.log",
+      "overlap": "This test is already included in the 31, not an additional distinct case."
+    }
+  },
+  "logs": [
+    {
+      "path": "build/search-request-review-20261104/logs/flutter-read-count.log",
+      "sha256": "f9b76cd6c48bdea1b9dede635f46517d6069791dfbf904d2323291678a1ee1cd"
+    },
+    {
+      "path": "build/search-request-review-20261104/logs/x64-build.log",
+      "sha256": "5a6623d3674930064b50468f2d7b01a4ae365ceb185c9bb1561628b6886462da"
+    },
+    {
+      "path": "build/search-request-review-20261104/logs/x64-search.log",
+      "sha256": "f8adc94660c878c37e4d3e272c3a39a28108affe9ce99729fa106b52c48db4c6"
+    },
+    {
+      "path": "build/search-request-review-20261104/logs/x86-build.log",
+      "sha256": "376113ff216b17eb415c536db70016d2d8cf05c673ce1d1c7ab970e1519fbc4c"
+    },
+    {
+      "path": "build/search-request-review-20261104/logs/x86-search.log",
+      "sha256": "d5902633e6e89c847ec34c59f09ee60571f0f31a3a0df28e0e412f3e0895f25b"
+    }
+  ],
+  "notPerformed": [
+    "Old 201-test whole batch or full architecture/ERP suite",
+    "Main edits, commits, uploads, deployment or release configuration changes",
+    "Organization tree cancellation implementation: root owns explicit independent/shared-reader work",
+    "Updates to old global evidence, task status, owner, DoD or migration acceptance"
+  ],
+  "targetPcAccepted": false,
+  "productionDeployed": false,
+  "finalFreeze": true,
+  "nativeTestSources": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "rawSha256": "c4117c23bc6f0db2fb9d91e613c36f91b4ab8ffd6778f8d802a45702375b8f92",
+      "lfSha256": "baed809ad124976c5ba18cd1d620eb4b8a14e15c9e7fbfb78d3a68f34ccaa1e8"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "rawSha256": "ff5188974bce4f1069544a6b7275afe6d3e7c58acbec896931632cf699c9d7f1",
+      "lfSha256": "ccb9cf4c73f45cff860de845af0feafc06b3ccf31dd1f5bd2c003d02d7dc200f"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DebouncedSearchInputChecks.cs",
+      "rawSha256": "b4bd0f376e4180207081fb440035d0c4831f06324504fe80509b228169fa60e6",
+      "lfSha256": "b4bd0f376e4180207081fb440035d0c4831f06324504fe80509b228169fa60e6"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs",
+      "rawSha256": "dd47a62c3fc70218732f7b4621ffeaf7dc7975f2b2678593bb8e742e1f20ae49",
+      "lfSha256": "4ec5b9ab872afbf0d7f03f3babc46b8856d8beb254d604df43346b73d582553e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitContractChecks.cs",
+      "rawSha256": "5773e0b22e990df9e3342c3e542b169ab14863fa1a9e98509e4099d917bf4c5b",
+      "lfSha256": "02d04f054ed776bea3aedce2bcc4236a44e292d7b83c6364545e1edd1d78343c"
+    }
+  ],
+  "nativeTestSourceLfFingerprintSha256": "b30c1abe3cff356ffeb083242b400b212af30dcf34690f700f759d57b2f52680",
+  "assertionCounting": "125 assertions per architecture (5 IME/input, 16 actual leaf request/result, 66 goods, 38 units); x86/x64 repeat the same contracts and are not 250 distinct scenarios. Flutter request-count repeat overlaps the 31-case combination.",
+  "fingerprintMethod": "SHA256 of UTF-8 JSON sorted by path with compact separators; records contain path and SHA256 of source bytes after CRLF-to-LF normalization. Raw SHA256 is retained per source.",
+  "taskIdsEvidenceOnly": [
+    "W7-BIZ-025",
+    "W7-BIZ-034",
+    "W7-BIZ-037"
+  ],
+  "workItemStatusPreserved": true,
+  "fullErpEquivalent": false,
+  "win7Accepted": false
+}

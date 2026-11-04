@@ -23,6 +23,159 @@ namespace Uten.Legacy.Tests
 {
     internal static class UiContractChecks
     {
+        internal static int RunSearchReadCoalescing()
+        {
+            if (Application.Current == null)
+            {
+                var application = new App(); application.InitializeComponent();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            }
+            int assertions = 0;
+            Action<bool, string> check = (value, message) => { if (!value) throw new InvalidOperationException(message); assertions++; };
+            var configuration = new ClientConfiguration(new[] { new ServerEndpoint("first", "Fixture", "https://first.company.test/api") }, "first");
+            foreach (bool goods in new[] { true, false })
+            {
+                var handler = new SearchReadUiHandler();
+                using (var session = new SessionCoordinator(configuration, handler, new MemoryStore()))
+                {
+                    session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                    FrameworkElement view = goods ? (FrameworkElement)new GoodsWorkspaceView(session) : new UnitsWorkspaceView(session);
+                    var window = new Window { Content = view, Width = 1400, Height = 850, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                    var release = new TaskCompletionSource<bool>();
+                    try
+                    {
+                        window.Show();
+                        var table = FindVisual<DataGrid>(view, item => true);
+                        PumpUntil(() => table.Items.Count > 0 && !ReadBusy(view, goods), "The native leaf must finish its first read.");
+                        var search = FindVisual<TextBox>(view, item => true);
+                        if (!goods) PumpUntil(() => FindVisual<ComboBox>(view, box => Equals(box.ToolTip, "全部状态")).Items.Count >= 3, "The unit status filter must load.");
+                        handler.BeforeList = (uri, token) => release.Task;
+                        search.Text = "needle";
+                        SelectReadFilter(view, goods, 2);
+                        PumpUntil(() => handler.ListReads == 2, "A changed category/filter must dispatch one current query.");
+                        PumpFor(380);
+                        check(handler.ListReads == 2, "A category/filter read consumes the pending text debounce instead of sending it twice.");
+                        RaiseEnter(search); RaiseEnter(search); PumpFor(25);
+                        check(handler.ListReads == 2, "Enter joins the actual in-flight category/filter read.");
+                        handler.BeforeList = null; release.SetResult(true);
+                        PumpUntil(() => !ReadBusy(view, goods) && ShownSearchName(table, goods).Contains("needle"), "The joined read must publish the latest query's actual rows.");
+                        check(handler.LastQuery.Contains("needle"), "The dispatched read contains the current input.");
+                        PumpFor(25); RaiseEnter(search);
+                        PumpUntil(() => handler.ListReads == 3 && !ReadBusy(view, goods), "Completed same-query Enter must refresh.");
+                        check(handler.ListReads == 3, "No completed-query cache suppresses an explicit refresh.");
+
+                        if (!goods)
+                        {
+                            // Recovery stays available while a background read runs.
+                            // Exercise the same post-confirmation callback as recovered
+                            // edits without issuing any fixture business command.
+                            var beforeWrite = new TaskCompletionSource<bool>();
+                            handler.BeforeList = (uri, token) => beforeWrite.Task;
+                            var oldRead = (Task)view.GetType().GetMethod("LoadPageAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                .Invoke(view, new object[] { 1 });
+                            PumpUntil(() => handler.ListReads == 4, "The same-query read must precede recovery completion.");
+                            var failedSelection = (UnitRecord)table.Items[0];
+                            var selection = (Uten.Legacy.Desktop.Shared.PersistentRowSelection<UnitRecord>)view.GetType()
+                                .GetField("selection", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(view);
+                            selection.Remember(failedSelection);
+                            handler.CommittedVersion = 1; handler.BeforeList = null;
+                            var afterWrite = (Task)view.GetType().GetMethod("ReloadPageAfterOperationAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                .Invoke(view, null);
+                            PumpUntil(() => afterWrite.IsCompleted && !ReadBusy(view, false) && ShownSearchName(table, false).Contains("|v1"), "Confirmed recovery must issue a fresh same-query read.");
+                            check(handler.ListReads == 5, "A confirmed write cannot join the earlier same-query flight.");
+                            check(selection.Contains(failedSelection), "Retiring a pre-write read keeps failed/cross-page selection state.");
+                            beforeWrite.SetResult(true); PumpUntil(() => oldRead.IsCompleted, "Cancelled pre-write fixture read must settle."); PumpFor(30);
+                            check(ShownSearchName(table, false).Contains("|v1"), "A late pre-write response cannot replace confirmed post-write data.");
+                            RaiseEnter(search); PumpUntil(() => handler.ListReads == 6 && !ReadBusy(view, false), "Same-query Enter still refreshes after the forced post-write read.");
+                            check(handler.ListReads == 6, "Post-write retirement does not permanently suppress explicit refresh.");
+                        }
+
+                        var retired = new TaskCompletionSource<bool>();
+                        int beforeRetirement = handler.ListReads;
+                        handler.BeforeList = (uri, token) => SearchReadUiHandler.Parameter(uri, "keyword") == "retired" ? retired.Task : Task.CompletedTask;
+                        search.Text = "retired"; SelectReadFilter(view, goods, 1);
+                        PumpUntil(() => handler.ListReads == beforeRetirement + 1, "The old read must be in flight before supersession.");
+                        if (goods)
+                        {
+                            search.Text = "newest"; SelectReadFilter(view, true, 2);
+                            PumpUntil(() => handler.ListReads == beforeRetirement + 2 && !ReadBusy(view, true) && ShownSearchName(table, true).Contains("newest"), "A newer category query must replace the retired read.");
+                        }
+                        else
+                        {
+                            handler.UserId = "fixture-new-search-owner";
+                            session.LoginAsync("fixture-new", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                            PumpUntil(() => handler.ListReads == beforeRetirement + 2 && !ReadBusy(view, false) && ShownSearchName(table, false).Contains(handler.UserId), "A new owner must read its own rows rather than join the old scope.");
+                        }
+                        retired.SetResult(true); PumpFor(60);
+                        check(!ShownSearchName(table, goods).Contains("retired"), "A cancelled older query must never overwrite the new query/owner's rows.");
+                        check(handler.ListReads == beforeRetirement + 2, "Supersession does not leave another delayed duplicate query.");
+                    }
+                    finally { handler.BeforeList = null; release.TrySetResult(true); window.Close(); }
+                }
+            }
+            return assertions;
+        }
+
+        private static bool ReadBusy(object view, bool goods) => (bool)view.GetType()
+            .GetField(goods ? "listBusy" : "loading", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(view);
+        private static string ShownSearchName(DataGrid table, bool goods) => goods ? ((GoodsRecord)table.Items[0]).Name : ((UnitRecord)table.Items[0]).Name;
+        private static void RaiseEnter(TextBox input) => input.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+            PresentationSource.FromVisual(input), 0, System.Windows.Input.Key.Enter) { RoutedEvent = System.Windows.Input.Keyboard.KeyDownEvent });
+        private static void PumpFor(int milliseconds)
+        {
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            PumpUntil(() => elapsed.ElapsedMilliseconds >= milliseconds, "Timed native input fixture must complete.");
+        }
+        private static void SelectReadFilter(DependencyObject view, bool goods, int index)
+        {
+            if (goods) FindVisual<TreeView>(view, item => true).Items.Cast<TreeViewItem>().ElementAt(index).IsSelected = true;
+            else FindVisual<ComboBox>(view, box => Equals(box.ToolTip, "全部状态")).SelectedIndex = index;
+        }
+
+        private sealed class SearchReadUiHandler : HttpMessageHandler
+        {
+            internal int ListReads;
+            internal string LastQuery, UserId = "fixture-search-owner";
+            internal int CommittedVersion;
+            internal Func<Uri, CancellationToken, Task> BeforeList;
+            internal static string Parameter(Uri uri, string name)
+            {
+                foreach (string part in uri.Query.TrimStart('?').Split('&'))
+                {
+                    int equal = part.IndexOf('=');
+                    if (equal > 0 && part.Substring(0, equal) == name) return Uri.UnescapeDataString(part.Substring(equal + 1));
+                }
+                return "";
+            }
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+            {
+                string path = request.RequestUri.AbsolutePath, body;
+                var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                if (path.EndsWith("/auth/login") || path.EndsWith("/auth/refresh"))
+                    body = "{\"accessToken\":\"access.fixture\",\"refreshToken\":\"refresh.fixture\",\"expiresIn\":900,\"user\":{\"id\":\"" + UserId
+                        + "\",\"loginAccount\":\"fixture\",\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":[\"goods:view\",\"material_category:view\",\"unit:view\"],"
+                        + "\"businessDatasetId\":\"00000000-0000-0000-0000-000000000001\",\"businessResetGeneration\":0}}";
+                else if (path == "/api/master/material-categories/tree")
+                    body = "[{\"id\":\"00000000-0000-4000-8000-000000000001\",\"name\":\"分类甲\",\"code\":\"A\",\"children\":[]},{\"id\":\"00000000-0000-4000-8000-000000000002\",\"name\":\"分类乙\",\"code\":\"B\",\"children\":[]}]";
+                else if (path == "/api/master/units/facets")
+                    body = "{\"status\":[{\"value\":\"使用\",\"count\":1},{\"value\":\"禁用\",\"count\":1}]}";
+                else if (path == "/api/master/goods" || path == "/api/master/units")
+                {
+                    int snapshotVersion = CommittedVersion;
+                    LastQuery = request.RequestUri.Query; Interlocked.Increment(ref ListReads);
+                    var hold = BeforeList;
+                    if (hold != null) await hold(request.RequestUri, token);
+                    token.ThrowIfCancellationRequested();
+                    string marker = Parameter(request.RequestUri, "keyword") + "|" + Parameter(request.RequestUri, "categoryId") + "|" + UserId + "|v" + snapshotVersion;
+                    var rows = Enumerable.Range(1, path.EndsWith("/goods") ? 20 : 1).Select(index => new Dictionary<string, object> {
+                        ["id"] = "00000000-0000-4000-8000-" + index.ToString("D12"), ["code"] = "T" + index, ["name"] = marker, ["status"] = "使用" }).ToArray();
+                    body = serializer.Serialize(new { items = rows, page = 1, size = 20, total = rows.Length, totalPages = 1 });
+                }
+                else return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"code\":\"NOT_FOUND\",\"message\":\"fixture optional metadata unavailable\"}", Encoding.UTF8, "application/json") };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+            }
+        }
+
         internal static void RunGoodsCurrency()
         {
             if (Application.Current == null)

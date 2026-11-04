@@ -1,6 +1,9 @@
 import 'package:uten_imp/core/ui/human_error_message.dart';
 import '../../../core/responsive/compact_presentation.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 // UtenGoodsPicker - 货品选择器（单据明细/报表选货品用）。
 //
 // 触发：函数式 showUtenGoodsPicker(context, ref) → 返回 GoodsListItem?。
@@ -571,6 +574,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
   String? _globalResolutionQuery;
   HierarchySearchResolution? _globalResolution;
   int _requestVersion = 0;
+  int? _activeQueryVersion;
+  String? _activeQuery;
+  bool _isQueryPending(String value) =>
+      _activeQueryVersion == _requestVersion && _activeQuery == value.trim();
+
   bool _acceptPendingSearch = false;
   int _page = 1;
   PagedResult<GoodsListItem>? _paged;
@@ -618,10 +626,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
   }
 
   void _confirm(Object? value, {required int requestVersion}) {
-    if (_canRead &&
-        requestVersion == _requestVersion &&
-        !_loading &&
-        !_searchLoading) {
+    if (_canRead && requestVersion == _requestVersion && !_loading) {
       Navigator.of(context).pop(value);
     }
   }
@@ -717,7 +722,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       _searchError = null;
       _globalResolutionQuery = null;
       _globalResolution = null;
-      if (query.isNotEmpty) _loading = true;
+      _loading = true;
     });
   }
 
@@ -725,6 +730,16 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
     if (!mounted || !_acceptPendingSearch) return;
     _acceptPendingSearch = false;
     _applySearch(v.trim());
+  }
+
+  void _onKeywordSubmitted(String value) {
+    if (!_canRead) return;
+    _acceptPendingSearch = false;
+    // A completed same-query refresh may observe category moves or new matches.
+    // The query string and authorization stamp do not version category content.
+    _globalResolution = null;
+    _globalResolutionQuery = null;
+    _applySearch(value.trim());
   }
 
   Future<void> _applySearch(String query) async {
@@ -993,6 +1008,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       _loading = true;
       _error = null;
     });
+    _activeQueryVersion = requestVersion;
+    _activeQuery = _query;
     try {
       final result = await readScopedPage<GoodsListItem>(
         requestedPage,
@@ -1023,6 +1040,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         );
         _loading = false;
       });
+    } finally {
+      if (_activeQueryVersion == requestVersion) {
+        _activeQueryVersion = null;
+        _activeQuery = null;
+      }
     }
   }
 
@@ -1054,24 +1076,20 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       });
       return;
     }
+    _activeQueryVersion = requestVersion;
+    _activeQuery = _query;
     try {
       final needsLocation =
-          _globalResolutionQuery != query || _globalResolution == null;
-      final responses = await Future.wait<Object?>([
-        readScopedPage<GoodsListItem>(
-          requestedPage,
-          query: _pagingQuery(),
-          currentQuery: _pagingQuery,
-          useCache: useCache,
-          isCurrent: () => _canRead,
-          fetchPage: _searchReader(query),
-        ),
-        if (needsLocation)
-          _searchCategoryIds(
-            query,
-          ).then<Set<String>?>((ids) => ids, onError: (_) => null),
-      ]);
-      final result = responses.first as PagedResult<GoodsListItem>;
+          !useCache &&
+          (_globalResolutionQuery != query || _globalResolution == null);
+      final result = await readScopedPage<GoodsListItem>(
+        requestedPage,
+        query: _pagingQuery(),
+        currentQuery: _pagingQuery,
+        useCache: useCache,
+        isCurrent: () => _canRead,
+        fetchPage: _searchReader(query),
+      );
       if (!mounted ||
           !_canRead ||
           requestVersion != _requestVersion ||
@@ -1080,48 +1098,52 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         return;
       }
 
-      final allowedCategoryIds = _searchAllowedCategoryIds;
-
-      final HierarchySearchResolution resolution;
-      if (needsLocation) {
-        var matchingCategoryIds =
-            responses[1] as Set<String>? ??
-            result.items
-                .map((goods) => goods.categoryId)
-                .whereType<String>()
-                .toSet();
-        // Some dedicated report APIs offer only global location hints. Keep
-        // those hints inside the explicit scope; rows are never filtered here.
-        if (widget.dataSource != null) {
-          matchingCategoryIds = matchingCategoryIds.intersection(
-            allowedCategoryIds,
-          );
-        }
-        if (matchingCategoryIds.any(
-          (categoryId) => !allowedCategoryIds.contains(categoryId),
-        )) {
-          throw StateError(
-            'goods location search returned a category outside picker scope',
-          );
-        }
-        resolution = resolveHierarchySearch(
-          roots: _tree,
-          query: query,
-          contentCategoryIds: matchingCategoryIds,
-        );
-      } else {
-        resolution = _globalResolution!;
+      // Cached rows need new category metadata before becoming actionable;
+      // the authorization stamp alone cannot version business category moves.
+      final verifiedLocation = useCache
+          ? await PagedReadIntent.scopedRead(
+              () =>
+                  mounted &&
+                  _canRead &&
+                  requestVersion == _requestVersion &&
+                  query == _query &&
+                  requestedPage == _page,
+              () => _searchCategoryIds(query),
+            )
+          : null;
+      if (!mounted ||
+          !_canRead ||
+          requestVersion != _requestVersion ||
+          query != _query ||
+          requestedPage != _page) {
+        return;
       }
+      final resolution = verifiedLocation != null
+          ? _resolveSearchLocation(query, verifiedLocation, result)
+          : needsLocation
+          ? resolveHierarchySearch(
+              roots: _tree,
+              query: query,
+              contentCategoryIds: result.items.map((goods) => goods.categoryId),
+            )
+          : _globalResolution!;
 
       setState(() {
-        _globalResolutionQuery = query;
-        _globalResolution = resolution;
+        if (!needsLocation) {
+          _globalResolutionQuery = query;
+          _globalResolution = resolution;
+        }
         _visibleFilterIds = resolution.visibleIds;
         _showingGlobalResults = true;
         _paged = result;
         _loading = false;
-        _searchLoading = false;
+        _searchLoading = needsLocation;
       });
+      if (needsLocation) {
+        unawaited(
+          _finishSearchLocation(query, requestVersion, requestedPage, result),
+        );
+      }
       unawaited(_reloadFacets(requestVersion));
     } catch (error) {
       if (!mounted || !_canRead || requestVersion != _requestVersion) return;
@@ -1131,7 +1153,76 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         _loading = false;
         _searchLoading = false;
       });
+    } finally {
+      if (_activeQueryVersion == requestVersion) {
+        _activeQueryVersion = null;
+        _activeQuery = null;
+      }
     }
+  }
+
+  Future<void> _finishSearchLocation(
+    String query,
+    int version,
+    int requestedPage,
+    PagedResult<GoodsListItem> result,
+  ) async {
+    bool current() =>
+        mounted &&
+        _canRead &&
+        version == _requestVersion &&
+        query == _query &&
+        requestedPage == _page;
+    try {
+      final matchingIds = await PagedReadIntent.scopedRead(
+        current,
+        () => _searchCategoryIds(query),
+      );
+      if (!current()) return;
+      final resolution = _resolveSearchLocation(query, matchingIds, result);
+      setState(() {
+        _globalResolutionQuery = query;
+        _globalResolution = resolution;
+        _visibleFilterIds = resolution.visibleIds;
+        _searchLoading = false;
+        _searchError = null;
+      });
+    } catch (error) {
+      if (!current()) return;
+      if (pagedReadAccessDenied(error)) {
+        scopedPagedReadOwnerChanged();
+        return;
+      }
+      setState(() {
+        _searchLoading = false;
+        _searchError = _pickerErrorMessage(error, '分类定位失败，请重新搜索');
+      });
+    }
+  }
+
+  HierarchySearchResolution _resolveSearchLocation(
+    String query,
+    Set<String> ids,
+    PagedResult<GoodsListItem> result,
+  ) {
+    final allowed = _searchAllowedCategoryIds;
+    // Report hints may be global; actual row predicates remain explicitly scoped.
+    final matchingIds = widget.dataSource == null
+        ? ids
+        : ids.intersection(allowed);
+    if (matchingIds.any((id) => !allowed.contains(id))) {
+      throw StateError(
+        'goods location search returned a category outside picker scope',
+      );
+    }
+    return resolveHierarchySearch(
+      roots: _tree,
+      query: query,
+      contentCategoryIds: {
+        ...matchingIds,
+        ...result.items.map((goods) => goods.categoryId),
+      },
+    );
   }
 
   Future<void> _reloadCurrentPage({
@@ -1158,22 +1249,29 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       if (_query.isEmpty) {
         final categoryId = _selectedCategoryId;
         if (categoryId == null) return;
-        result = await repository.facets(
-          categoryId,
-          filters: _columnFilters,
-          excludeDisabled: true,
-          excludeStub: true,
+        result = await PagedReadIntent.scopedRead(
+          () => mounted && _canRead && requestVersion == _requestVersion,
+          () => repository.facets(
+            categoryId,
+            filters: _columnFilters,
+            excludeDisabled: true,
+            excludeStub: true,
+          ),
         );
       } else {
-        result = await repository.globalFacets(
-          keyword: _query,
-          includeRelated: _includeRelated,
-          filters: _columnFilters,
-          excludeDisabled: true,
-          excludeStub: true,
-          categoryRootIds: _searchesAllSelectableGoods
-              ? const {}
-              : _scopeRootIds,
+        result = await PagedReadIntent.scopedRead(
+          () => mounted && _canRead && requestVersion == _requestVersion,
+          () => repository.globalFacets(
+            categoryId: _searchCategoryId,
+            keyword: _query,
+            includeRelated: _includeRelated,
+            filters: _columnFilters,
+            excludeDisabled: true,
+            excludeStub: true,
+            categoryRootIds: _searchesAllSelectableGoods
+                ? const {}
+                : _scopeRootIds,
+          ),
         );
       }
       if (!mounted || !_canRead || requestVersion != _requestVersion) return;
@@ -1534,6 +1632,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       hint: '搜索分类/货品名称或编号',
       onInputChanged: _onKeywordInputChanged,
       onChanged: _onKeywordChanged,
+      onSubmitted: _onKeywordSubmitted,
+      isQueryPending: _isQueryPending,
       popupFooter: compact && (before.isNotEmpty || after.isNotEmpty)
           ? Column(
               mainAxisSize: MainAxisSize.min,
@@ -1583,10 +1683,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       search: search,
       page: page,
       categoryId: _query.isEmpty ? _selectedCategoryId : _searchCategoryId,
-      categoryRootIds:
-          _query.isEmpty ||
-              _searchCategoryId != null ||
-              _searchesAllSelectableGoods
+      categoryRootIds: _query.isEmpty || _searchesAllSelectableGoods
           ? const {}
           : _scopeRootIds,
       keyword: _query.isEmpty ? null : _query,
@@ -1602,7 +1699,6 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
     bool selectable(GoodsListItem goods) =>
         _canRead &&
         !_loading &&
-        !_searchLoading &&
         (widget.dataSource?.isSelectable(goods) ?? true);
     MasterColumnDef<GoodsListItem> column(
       String key,
@@ -1671,10 +1767,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       showSelectionSummary: false,
       selectedIds: _selected.keys.toSet(),
       onSelectedIdsChanged: (ids) {
-        if (!_canRead ||
-            requestVersion != _requestVersion ||
-            _loading ||
-            _searchLoading) {
+        if (!_canRead || requestVersion != _requestVersion || _loading) {
           return;
         }
         final available = {
@@ -1734,10 +1827,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         setState(() => _page = page);
         return _reloadCurrentPage(useCache: true);
       },
-      isLoading:
-          (_loading || _searchLoading) && (_paged?.items.isEmpty ?? true),
-      loadingMore:
-          (_loading || _searchLoading) && (_paged?.items.isNotEmpty ?? false),
+      isLoading: _loading && (_paged?.items.isEmpty ?? true),
+      loadingMore: _loading && (_paged?.items.isNotEmpty ?? false),
       error: _error,
       onRetry: () => _reloadCurrentPage(reloadVisible: true),
       emptyMessage: _paged == null

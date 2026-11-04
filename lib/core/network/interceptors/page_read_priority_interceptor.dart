@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import '../request_reload_semantics.dart';
 
 /// Reserve transport capacity for visible rows and category counts. Every
 /// request still crosses the ordinary authentication and read-scope fences;
@@ -35,7 +36,9 @@ class PageReadPriorityInterceptor extends Interceptor {
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     final read =
         options.method == 'GET' ||
-        (options.method == 'POST' && options.path.endsWith('/facets'));
+        (options.method == 'POST' &&
+            (options.path.endsWith('/facets') ||
+                isSearchReadPost(options.path)));
     if (!read ||
         options.responseType == ResponseType.stream ||
         options.responseType == ResponseType.bytes) {

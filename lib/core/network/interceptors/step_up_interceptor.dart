@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 
 import '../step_up_coordinator.dart';
 import '../user_activity.dart';
+import '../request_reload_semantics.dart';
 
 class StepUpInterceptor extends Interceptor {
   StepUpInterceptor(
@@ -40,7 +41,8 @@ class StepUpInterceptor extends Interceptor {
         path.endsWith('/auth/refresh') ||
         path.endsWith('/auth/logout') ||
         path.endsWith('/auth/step-up');
-    if (exchange) {
+    if (exchange ||
+        (options.method == 'POST' && isSearchReadPost(options.path))) {
       options.headers.remove(header);
     } else if (!const {'GET', 'HEAD', 'OPTIONS'}.contains(options.method)) {
       final token = _coordinator.cachedToken;
@@ -72,6 +74,10 @@ class StepUpInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final response = err.response;
     final options = err.requestOptions;
+    if (options.method == 'POST' && isSearchReadPost(options.path)) {
+      handler.next(err);
+      return;
+    }
     if (response?.statusCode != 403 ||
         _code(response?.data) != 'REAUTH_REQUIRED') {
       handler.next(err);

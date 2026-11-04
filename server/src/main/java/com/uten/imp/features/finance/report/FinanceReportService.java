@@ -443,7 +443,7 @@ public class FinanceReportService {
                 """;
         FinanceWhereBuilder w = new FinanceWhereBuilder("WHERE COALESCE(l.is_deleted,false)=false AND l.direction=:dir AND l.status=1");
         w.add("", "dir", dir);
-        if (billNo != null && !billNo.isBlank()) w.add("l.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "l.bill_no", "billNo");
         if (partyId != null) w.add(isAR ? "l.client_id=:pid" : "l.supplier_id=:pid", "pid", partyId);
         if (settled != null) w.add("l.is_settled=:settled", "settled", settled);
         if (dateFrom != null) w.add("l.bill_date>=:dateFrom", "dateFrom", dateFrom);
@@ -547,7 +547,7 @@ public class FinanceReportService {
                 + " AND COALESCE(sales_order.is_deleted,false)=false"
                 + " AND COALESCE(client.is_deleted,false)=false");
         if (billNo != null && !billNo.isBlank()) {
-            w.add("sales_order.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+            w.containsLiteral(billNo, "sales_order.bill_no", "billNo");
         }
         if (clientId != null) w.add("sales_order.client_id=:clientId", "clientId", clientId);
         if (dateFrom != null) w.add("sales_order.bill_date>=:dateFrom", "dateFrom", dateFrom);
@@ -2311,7 +2311,7 @@ public class FinanceReportService {
     private static void addFinanceDocFilters(FinanceWhereBuilder w, String billNo, UUID partyId, UUID accountId,
                                              Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                              String partyIdCol, String billNoCol, String dateCol, String partyNameCol) {
-        if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, billNoCol, "billNo");
         if (partyId != null) w.add(partyIdCol + "=:pid", "pid", partyId);
         if (accountId != null) w.add("t.account_id=:accountId", "accountId", accountId);
         addApprovedByDefault(w, status);
@@ -2324,7 +2324,7 @@ public class FinanceReportService {
     private static void addFinanceItemFilters(FinanceWhereBuilder w, String billNo, UUID accountId, UUID departmentId,
                                               Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                               String billNoCol, String dateCol) {
-        if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, billNoCol, "billNo");
         if (accountId != null) w.add("t.account_id=:accountId", "accountId", accountId);
         if (departmentId != null) w.add("i.department_id=:departmentId", "departmentId", departmentId);
         addApprovedByDefault(w, status);

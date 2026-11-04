@@ -9,7 +9,43 @@ bool isPlatformValuesRead(String path) =>
     _platformValuesRead.hasMatch(_apiPath(path));
 
 bool isReadOnlyPost(String path) =>
-    isNativeFacetPath(path) || isPlatformValuesRead(path);
+    isNativeFacetPath(path) ||
+    isPlatformValuesRead(path) ||
+    isSearchReadPost(path);
+
+/// Reviewed query handlers only. Body-carried contact/bank terms remain out of
+/// URLs, while searches retain the same read lifecycle as their GET versions.
+bool isSearchReadPost(String path) =>
+    isGoodsSearchRead(path) ||
+    const {
+      '/master/clients/search',
+      '/master/clients/search-context',
+      '/master/suppliers/search',
+      '/master/suppliers/search-context',
+      '/master/accounts/search',
+      '/business-references/clients/search',
+      '/business-references/clients/search-context',
+      '/business-references/suppliers/search',
+      '/business-references/suppliers/search-context',
+      '/finance/reports/ar-ap/overview/search',
+      '/quality/pending-disposals/query',
+      '/security/blacklist/search',
+      '/master/clients/access-candidates/query',
+      '/admin/data-handovers/candidates/query',
+    }.contains(_apiPath(path));
+
+/// Large authorized category scopes travel in a JSON body rather than an URL.
+/// Match only these pure reads; neighboring goods commands remain mutations.
+bool isGoodsSearchRead(String path) => const {
+  '/master/goods/search',
+  '/master/goods/search-category-ids',
+  '/master/goods/facets',
+  '/master/goods/facet-values',
+  '/business-references/goods/search',
+  '/business-references/goods/search-category-ids',
+  '/business-references/goods/facets',
+  '/business-references/goods/facet-values',
+}.contains(_apiPath(path));
 
 /// A failed sign-in may leave an unused server session, but has no document
 /// commit to reconcile. Do not replay it or persist its credentials. Refresh,

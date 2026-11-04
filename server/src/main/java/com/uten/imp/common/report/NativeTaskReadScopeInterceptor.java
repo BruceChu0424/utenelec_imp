@@ -20,13 +20,22 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
     private static final String ID="[0-9a-fA-F-]{36}";
     private static final List<Route> ROUTES=List.of(
             route("/api/business-references/clients(?:/(?:search|search-context))?","client"),
-            route("/api/business-references/goods(?:/(?:categories|search-category-ids|facet-values|facets))?","master_goods"),
+            route("/api/business-references/goods(?:/(?:categories|search|search-category-ids|facet-values|facets))?","master_goods"),
             route("/api/business-references/suppliers(?:/(?:search|search-context))?","supplier"),
             route("/api/business-references/accounts","master_account"),
             route("/api/business-references/warehouses","master_warehouse"),
             route("/api/business-references/(?:supplier-categories|client-categories|departments)","native_feature"),
             route("/api/master/(?:payment-styles/tree|reference-methods/(?:settlement|finance))","native_feature"),
             route("/api/org/employee-references(?:/(?:by-ids|departments))?","native_feature"),
+            route("/api/master/clients/access-candidates(?:/query)?","native_feature"),
+            route("/api/master/warehouses/keeper-candidates(?:/page)?","native_feature"),
+            route("/api/admin/data-handovers/candidates(?:/query)?","native_feature"),
+            route("/api/admin/users/provision-candidates(?:/page)?","native_feature"),
+            route("/api/admin/impersonation/targets(?:/(?:page|departments))?","native_feature"),
+            route("/api/notices/audience/employees(?:/page)?","native_feature"),
+            route("/api/admin/audit-logs/actors","native_feature"),
+            route("/api/company-files/principals(?:/page)?","native_feature"),
+            route("/api/approval-policy/departments/"+ID+"/candidates(?:/page)?","native_feature"),
             route("/api/production/workshop-assignment-defaults","native_workshop_tasks"),
             route("/api/production/workshop-tasks(?:/(?:facets|count|"+ID+"/materials))?","native_workshop_tasks"),
             route("/api/workshop-material/segments/"+ID+"/stock-readiness","native_workshop_tasks"),
@@ -57,7 +66,9 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
         boolean referenceSearch="POST".equals(request.getMethod()) && java.util.Set.of(
                 "/api/business-references/suppliers/search-context", "/api/business-references/clients/search-context",
                 "/api/business-references/suppliers/search", "/api/business-references/clients/search").contains(path);
-        if(!"GET".equals(request.getMethod()) && !referenceSearch)return true;
+        if(!"GET".equals(request.getMethod()) && !referenceSearch
+                && !com.uten.imp.common.web.GoodsSearchReadRoutes.matches(request.getMethod(),path)
+                && !com.uten.imp.common.web.EmployeeCandidateReadRoutes.matches(request.getMethod(),path))return true;
         // The original authenticated metadata endpoint remains available to
         // password-change/visitor flows. Only the new explicit browse mode
         // participates in the staff task publication protocol.

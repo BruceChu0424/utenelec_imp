@@ -946,30 +946,17 @@ class _FinanceAssetActionInputState
         '${value.day.toString().padLeft(2, '0')}';
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
-    final result = await ref
-        .read(employeeReferenceRepositoryProvider)
-        .listPickerCandidates(
-          purpose: EmployeeReferencePurpose.financeAssetCustodian,
-          size: 30,
-          search: keyword,
-          departmentId: _department?.id,
-          includeSubtree: true,
-        );
-    return [
-      for (final employee in result)
-        UtenEmployeePickerItem(
-          id: employee.id,
-          name: employee.fullName,
-          employeeCode: employee.code,
-          accountStatus: employee.accountStatus,
-          employmentStatus: employee.status,
-          departmentId: employee.departmentId,
-          departmentName: employee.departmentName,
-          positionName: employee.positionName,
-        ),
-    ];
-  }
+  Future<UtenEmployeePickerPage> _loadEmployees(
+    UtenEmployeePickerQuery query,
+  ) => ref
+      .read(employeeReferenceRepositoryProvider)
+      .listPickerPage(
+        query,
+        purpose: EmployeeReferencePurpose.financeAssetCustodian,
+        size: 30,
+        departmentId: _department?.id,
+        includeSubtree: true,
+      );
 
   void _submit() {
     final transfer = widget.action == 'TRANSFER';
@@ -1073,6 +1060,7 @@ class _FinanceAssetActionInputState
                       UtenEmployeePicker(
                         presentation:
                             UtenEmployeePickerPresentation.businessReference,
+                        cancelDepartmentTreeReadOnClose: true,
                         departmentTreeLoader: () => ref
                             .read(employeeReferenceRepositoryProvider)
                             .departments(
@@ -1090,7 +1078,7 @@ class _FinanceAssetActionInputState
                         allowClear: true,
                         initial: _custodian,
                         departmentName: _department?.fullPath,
-                        loader: _loadEmployees,
+                        pagedLoader: _loadEmployees,
                         onChanged: (value) => setState(() {
                           _custodian = value;
                         }),

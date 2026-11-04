@@ -40,7 +40,7 @@
 
 ## W7-BIZ-164 · lib/features/suggestion/pages/suggestion_new_page.dart
 
-模块 `suggestion`；238 行；SHA256 `3fa186f9bc3c968815a9b2fecc08e63912117ff390fc5597410cbd8933523a89`。
+模块 `suggestion`；238 行；SHA256 `1b4c5685b298e6d56bfcfff1e2296bd27db40b5dc0deacd89e6065bc635a5390`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

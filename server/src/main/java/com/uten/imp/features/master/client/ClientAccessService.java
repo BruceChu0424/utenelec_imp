@@ -3,6 +3,8 @@ package com.uten.imp.features.master.client;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.DepartmentSearchSql;
+import com.uten.imp.common.util.EmployeeCandidateFilter;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.client.dto.ClientAccessCandidate;
@@ -54,6 +56,12 @@ public class ClientAccessService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PageResponse<ClientAccessCandidate> candidates(
             String search, int page, int size) {
+        return candidates(search, page, size, null, false, List.of());
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResponse<ClientAccessCandidate> candidates(String search, int page, int size,
+            UUID departmentId, boolean includeSubtree, List<UUID> excludeEmployeeIds) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 100);
         long offset = (long) (safePage - 1) * safeSize;
@@ -63,9 +71,15 @@ public class ClientAccessService {
                     ErrorCode.VALIDATION_FAILED, "候选员工搜索关键词最长100个字符");
         }
         String keyword = KeywordSearch.phrase(normalizedSearch);
+        boolean searched = !KeywordSearch.terms(keyword).isEmpty();
+        String prefix = DepartmentSearchSql.prefix(searched);
+        String departmentName = searched ? DepartmentSearchSql.name("department.name") : "department.name";
+        var narrowing = EmployeeCandidateFilter.of(departmentId, includeSubtree, excludeEmployeeIds,
+                "employee.id", "employee.department_id");
         String fromWhere = """
                 FROM employees employee
                 LEFT JOIN departments department ON department.id = employee.department_id
+                """ + DepartmentSearchSql.joins(searched, "employee.department_id") + """
                 WHERE employee.is_deleted = FALSE
                   AND employee.status IN ('active','probation','onLeave')
                   AND EXISTS (
@@ -74,19 +88,22 @@ public class ClientAccessService {
                         AND account.is_deleted = FALSE
                         AND account.status = 'active')
                   AND
-                """ + TaskKeywordSearch.conditionParameter("keyword", "employee.full_name", "employee.code", "department.name");
-        Number totalValue = (Number) em.createNativeQuery("SELECT count(*) " + fromWhere)
+                """ + TaskKeywordSearch.conditionParameter("keyword", "employee.full_name", "employee.code", departmentName)
+                + narrowing.sql();
+        Number totalValue = (Number) narrowing.bind(em.createNativeQuery(prefix + "SELECT count(*) " + fromWhere))
                 .setParameter("keyword", keyword)
                 .getSingleResult();
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        long total = totalValue.longValue();
+        if (total == 0) return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(narrowing.bind(em.createNativeQuery(prefix + """
                         SELECT employee.id, employee.full_name, employee.code,
                                department.name, employee.status, TRUE, employee.department_id
                         """ + fromWhere + " ORDER BY "
                         + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"employee.full_name"},
-                                new String[]{}, new String[]{"employee.full_name", "employee.code", "department.name"}) + """
+                                new String[]{}, new String[]{"employee.full_name", "employee.code", departmentName}) + """
                         , employee.full_name, employee.code, employee.id
                         LIMIT :limit OFFSET :offset
-                        """)
+                        """))
                 .setParameter("keyword", keyword)
                 .setParameter("limit", safeSize)
                 .setParameter("offset", offset));
@@ -100,7 +117,6 @@ public class ClientAccessService {
                         // The original candidate predicate requires an active, non-deleted account.
                         "active"))
                 .toList();
-        long total = totalValue.longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }

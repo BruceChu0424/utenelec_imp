@@ -1,0 +1,375 @@
+{
+  "reviewType": "Search-only follow-up: eliminate proven unnecessary SQL reads",
+  "writtenAtUtc": "2026-11-04T10:41:46.245338+00:00",
+  "worktree": "D:\\Projects\\uten_imp_worktrees\\platform-search-integration-20261104",
+  "baselineCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+  "scope": "Only the three approved read optimizations. No API, permission, eligibility, write path, transaction isolation, table/index/migration, deployment, packaging, main or old evidence changes.",
+  "independentValidation": "This 40-case follow-up stands alone. Previous 52 and 258 checks are not added to this total and are not claimed rerun.",
+  "changes": [
+    {
+      "files": [
+        "server/src/main/java/com/uten/imp/features/master/client/ClientAccessService.java",
+        "server/src/main/java/com/uten/imp/responsibility/DataHandoverCandidateService.java"
+      ],
+      "change": "After the authoritative filtered count is zero, return the existing empty page shape without executing the row query.",
+      "boundary": "Original permission/scope/role validation runs first. Keyword/departments/exclusions/account/employment/manager/super-admin eligibility and requested page/size are unchanged. Existing REPEATABLE_READ transaction boundaries remain unchanged.",
+      "evidence": "Two new real PostgreSQL candidate-SQL instrumentation tests execute exactly one count and no row SQL; the handover test also verifies candidateScope is called. Existing positive client/handover role/eligibility/rank tests pass. Scope authority is mocked at the existing port in this SQL harness, so the number is candidate SQL executions, not all production authorization database work."
+    },
+    {
+      "files": [
+        "server/src/main/java/com/uten/imp/audit/AuditActorDirectory.java"
+      ],
+      "change": "Use existing Spring PageableExecutionUtils on raw SQL rows and a lazy exact count supplier. Empty first page and non-full nonempty pages infer the exact total; full pages and empty deep pages retain exact count.",
+      "boundary": "Use rawRows before item mapping so malformed actor IDs do not undercount. Preserve staff/visitor/history/mask/filter/order and one batched lastActivity query only for nonempty displayed items. Actors remain readOnly with their original isolation; no REPEATABLE_READ change.",
+      "evidence": "Nine unit cases cover original display facts plus empty/partial/full/tail/deep pages and malformed raw IDs. Real production service + migrated PG + JDBC instrumentation verifies five page shapes and exact totals."
+    },
+    {
+      "files": [
+        "server/src/main/java/com/uten/imp/features/master/goods/GoodsService.java"
+      ],
+      "change": "Build color/unit/mould legacy fallback batches only from rows whose corresponding UUID relationship is null.",
+      "boundary": "The already fetched canonical relationship retains authority. Deleted or nameless canonical rows do not fall back or resurrect old names. Historical null-UUID rows retain read-only legacy display; no UUID relation is invented. Mixed pages batch only unresolved IDs.",
+      "evidence": "New unit tests assert no fallback repo reads for canonical/deleted/nameless relationships, only unresolved IDs for a mixed page. Real production service JDBC comparison sees canonical 3 statements versus legacy-only 6, with equal displayed names and retained historical null UUID. Existing actual HTTP UUID/legacy/facet/export/soft-delete tests pass."
+    }
+  ],
+  "validation": {
+    "command": "$env:UTEN_RUN_DB_TESTS='true'; mvn '-Duten.build.directory=target-search-query-elision' '-Dtest=AuditActorDirectoryTest,GoodsListMasterNameResolutionTest,GoodsListUuidReferenceTest,GoodsListScopeProjectionTest,SearchReadSavingsPostgresTest,FinancialQueueSearchPostgresTest#zeroMatchClientCandidatesExecuteOnlyTheirAuthoritativeCount+zeroMatchHandoverCandidatesKeepScopeValidationButSkipRows+clientAssignmentCandidatesRequireAllWordsRankNamesAndKeepAccountAndEmploymentEligibility+handoverCandidatesKeepManagerSubtreeProtectedAccountsAndDifferentSourceTargetRules,GoodsReferenceFacetPostgresTest' test",
+    "environment": "Java 21, Docker/Testcontainers PostgreSQL 16 disposable isolated databases, UTEN_RUN_DB_TESTS=true. No shared business database.",
+    "result": "BUILD SUCCESS",
+    "uniqueTests": 40,
+    "classes": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "compiledMainJava": 2948,
+    "compiledTestJava": 2424,
+    "mainResourceFiles": 942,
+    "actualMigratedPostgres": {
+      "appliedMigrationCount": 928,
+      "version": "V1002"
+    },
+    "log": "server/target-search-query-elision.log",
+    "logSha256": "47f0f63ca63a9669f78cb5d5b19ede16e35ceb17b97e1800a9f2a5eaf49fb447",
+    "suites": [
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xml": "server/target-search-query-elision/surefire-reports/TEST-com.uten.imp.audit.AuditActorDirectoryTest.xml"
+      },
+      {
+        "class": "com.uten.imp.businesschain.GoodsReferenceFacetPostgresTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xml": "server/target-search-query-elision/surefire-reports/TEST-com.uten.imp.businesschain.GoodsReferenceFacetPostgresTest.xml"
+      },
+      {
+        "class": "com.uten.imp.businesschain.SearchReadSavingsPostgresTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xml": "server/target-search-query-elision/surefire-reports/TEST-com.uten.imp.businesschain.SearchReadSavingsPostgresTest.xml"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xml": "server/target-search-query-elision/surefire-reports/TEST-com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest.xml"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xml": "server/target-search-query-elision/surefire-reports/TEST-com.uten.imp.features.master.goods.GoodsListScopeProjectionTest.xml"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListUuidReferenceTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xml": "server/target-search-query-elision/surefire-reports/TEST-com.uten.imp.features.master.goods.GoodsListUuidReferenceTest.xml"
+      },
+      {
+        "class": "com.uten.searchtest.FinancialQueueSearchPostgresTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "xml": "server/target-search-query-elision/surefire-reports/TEST-com.uten.searchtest.FinancialQueueSearchPostgresTest.xml"
+      }
+    ],
+    "cases": [
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "historicalUnassignedShapeKeepsItsIdentityAndUsesAnExplicitStaffOnlyFilter",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "pageActorResolutionUnderstandsBothStaffAndVisitorUuids",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "peopleDirectoryPagesStaffAndVisitorsWithoutSensitiveVisitorColumns",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "partialPagesInferTotalFromRawRowsEvenWhenAMalformedIdentityIsNotDisplayed",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "emptyFirstPageNeedsNeitherCountNorActivity",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "uuidActorNeverFallsBackToAReusedMutableAccount",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "fullPageKeepsExactCountAndBatchedActivity",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "emptyDeepPageStillReadsTheExactCount",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.audit.AuditActorDirectoryTest",
+        "name": "nonemptyTailPageInfersOffsetPlusRawRowCount",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.businesschain.GoodsReferenceFacetPostgresTest",
+        "name": "uuidAndExactLegacyReferencesShareCandidatesFiltersNullCountsAndExports",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.businesschain.GoodsReferenceFacetPostgresTest",
+        "name": "duplicateNamesNeverMergeDistinctUuidTargetsAndDeletedCanonicalNeverFallsBack",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.businesschain.SearchReadSavingsPostgresTest",
+        "name": "canonicalGoodsSkipThreeRealLegacyLookupsWhileMixedPagesKeepHistoricalNames",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.businesschain.SearchReadSavingsPostgresTest",
+        "name": "actorCountElisionRetainsExactTotalsAcrossEmptyPartialFullAndDeepPages",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "listTreatsNullColorNameAsUnresolvedWithoutDroppingLegacyId",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "mixedPagesReadOnlyTheLegacyIdsWhoseUuidRelationshipIsMissing",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "listTreatsDeletedMouldRelationAsUnresolved",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "listCarriesRearInsertCodeAndPaperThrough",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "listTreatsNullUnitNameAsUnresolvedWithoutDroppingLegacyId",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "listResolvesMouldCodeFromLegacySnapshotWhenUuidMissing",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "deletedOrNamelessCanonicalReferencesNeverResurrectFromLegacyShadows",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "listResolvesMouldCodeFromUuidRelationFirst",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest",
+        "name": "resolvedUuidReferencesDoNotReadUnusedLegacyNames",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[1]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[2]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[3]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[4]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[5]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[6]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[7]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String, Case)[8]",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "theSingleRecordWriteGuardStillResolvesItsCurrentScopeAfterAList",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "bomPageCapabilitiesUseTheSameWritableRuleAndKeepTheirVisibleOwnerFilter",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "aLaterListReadsTheNewScopeRatherThanReusingTheEarlierRequest",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "anEmptyPageDoesNotIntroduceRowScopeReads",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListScopeProjectionTest",
+        "name": "aHundredRowsDoNotRepeatTheActualOwnerScopeReadPath",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.GoodsListUuidReferenceTest",
+        "name": "listReturnsColorAndUnitUuidWhenNewMastersHaveNoLegacyId",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.searchtest.FinancialQueueSearchPostgresTest",
+        "name": "handoverCandidatesKeepManagerSubtreeProtectedAccountsAndDifferentSourceTargetRules",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.searchtest.FinancialQueueSearchPostgresTest",
+        "name": "clientAssignmentCandidatesRequireAllWordsRankNamesAndKeepAccountAndEmploymentEligibility",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.searchtest.FinancialQueueSearchPostgresTest",
+        "name": "zeroMatchClientCandidatesExecuteOnlyTheirAuthoritativeCount",
+        "status": "passed"
+      },
+      {
+        "class": "com.uten.searchtest.FinancialQueueSearchPostgresTest",
+        "name": "zeroMatchHandoverCandidatesKeepScopeValidationButSkipRows",
+        "status": "passed"
+      }
+    ]
+  },
+  "observedSqlExecutions": {
+    "instrument": "Existing test-only ProductionJdbcMeasurement counts real JDBC executions in direct production read services; no HTTP/authentication overhead is included.",
+    "productionServiceScenarios": {
+      "goods-canonical": 3,
+      "goods-legacy-only": 6,
+      "actor-empty-first": 1,
+      "actor-partial-first": 2,
+      "actor-full-page": 3,
+      "actor-nonempty-tail": 2,
+      "actor-empty-deep": 2
+    },
+    "clientZeroMatchCandidateSql": 1,
+    "handoverZeroMatchCandidateSql": 1,
+    "interpretation": "Structural reductions only. Prior unconditional row/count/fallback SQL shapes identify which reads were removed; no old binary A/B latency benchmark was run. No production p95 or SLA conclusion."
+  },
+  "inputEvidence": {
+    "manifest": "server/target-search-query-elision/input-fingerprint.json",
+    "normalization": "Raw file bytes; aggregate sorted relative path NUL sha256 LF",
+    "aggregateSha256": "a2220eb09e8ff0e3448df385999911eadfccd5ca9238f9b7b5a3ff08173c28b3",
+    "parts": {
+      "main_java": {
+        "files": 2948,
+        "sha256": "75cef7880d16f527a61e059cf94c1d4d02f01673565195b7314fef305725a22f"
+      },
+      "test_java": {
+        "files": 2424,
+        "sha256": "eee0d2d6888628833e3f1a9227bf7a04cffe616814ac24834296174324bfec93"
+      },
+      "resources": {
+        "files": 942,
+        "sha256": "3122499c2eef44e3cd03ce41b098bce5e163301161958e2a46938463656d525b"
+      }
+    },
+    "comparisonToPreviousInput": "Compared individual file bytes to prior 02a4 input manifest. Exactly the eight paths below differ; all 942 main resources/migrations remain byte-identical. Aggregate calculation here is independently specified, not a claim that the previous aggregate algorithm was rerun.",
+    "changedPaths": [
+      "server/src/main/java/com/uten/imp/audit/AuditActorDirectory.java",
+      "server/src/main/java/com/uten/imp/features/master/client/ClientAccessService.java",
+      "server/src/main/java/com/uten/imp/features/master/goods/GoodsService.java",
+      "server/src/main/java/com/uten/imp/responsibility/DataHandoverCandidateService.java",
+      "server/src/test/java/com/uten/imp/audit/AuditActorDirectoryTest.java",
+      "server/src/test/java/com/uten/imp/businesschain/SearchReadSavingsPostgresTest.java",
+      "server/src/test/java/com/uten/imp/features/master/goods/GoodsListMasterNameResolutionTest.java",
+      "server/src/test/java/com/uten/searchtest/FinancialQueueSearchPostgresTest.java"
+    ],
+    "postValidationDrift": [],
+    "changedPathSha256": {
+      "server/src/main/java/com/uten/imp/audit/AuditActorDirectory.java": "7615a52d477682d02c3be9b820901d7f16bc1dcfb8897e7cc2e37f48b97201a1",
+      "server/src/main/java/com/uten/imp/features/master/client/ClientAccessService.java": "705167a0ee707699b121d0a2fb4769ca42d6a87a03ebf228e079c20088e1f798",
+      "server/src/main/java/com/uten/imp/features/master/goods/GoodsService.java": "69de669bc88ae11fe8d230cf7b312a77356f7577c15e118b101dfa181283905b",
+      "server/src/main/java/com/uten/imp/responsibility/DataHandoverCandidateService.java": "a24b1f85c9cfa6c843b0b6c77e8b227734c398d2c9422f8cbaa20e37d9ddf59e",
+      "server/src/test/java/com/uten/imp/audit/AuditActorDirectoryTest.java": "bddc9995a3fb03ec19f0236112c52a2e2061f786dafc65dfb3d5fee7912ea74e",
+      "server/src/test/java/com/uten/imp/businesschain/SearchReadSavingsPostgresTest.java": "ea7234b40a6c2d23501203af8b1979a723001ce7496ba5a3f5a3f5257b2394ee",
+      "server/src/test/java/com/uten/imp/features/master/goods/GoodsListMasterNameResolutionTest.java": "72027595674f3230180c06bb8938e96c1ab6608274f225d35b4b4c88c3efeacf",
+      "server/src/test/java/com/uten/searchtest/FinancialQueueSearchPostgresTest.java": "73481cd452b45f9318402dc6ca4703b792c92c5e994942953dd8e853a074c406"
+    }
+  },
+  "limits": [
+    "No production latency measurement or shared-database load test.",
+    "No non-search task loading, activity/history table split or cold archival work.",
+    "No additional issues or unrelated tests expanded into this follow-up."
+  ]
+}

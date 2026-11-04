@@ -33,6 +33,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
@@ -54,6 +55,7 @@ class EmployeeListPage extends ConsumerStatefulWidget {
 
 class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   String _search = '';
+  bool _pendingSearch = false;
 
   /// 搜索框控制器：正常态与全屏路由两处 UtenSearchBar 共享（同时只挂一棵树），
   /// 进出全屏不丢已输入的关键字。
@@ -136,9 +138,10 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   Future<void> _refreshSimilar(String search, int request) async {
     if (search.isEmpty || _items.isNotEmpty) return;
     try {
-      final similar = await ref
-          .read(employeeRepositoryProvider)
-          .similar(search);
+      final similar = await PagedReadIntent.scopedRead(
+        () => mounted && request == _request && _items.isEmpty,
+        () => ref.read(employeeRepositoryProvider).similar(search),
+      );
       if (!mounted || request != _request || _items.isNotEmpty) return;
       setState(() => _similar = similar);
     } catch (_) {}
@@ -379,10 +382,25 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
             child: UtenSearchBar(
               controller: _searchCtrl,
               hint: l10n.employeeSearchHint,
+              onInputChanged: (value) {
+                final query = value.trim();
+                if (query == _search && !_pendingSearch) return;
+                ++_request;
+                setState(() {
+                  _search = query;
+                  _pendingSearch = true;
+                  _similar = const [];
+                  _loading = true;
+                  _loadingMore = false;
+                  _error = null;
+                  _rosterError = null;
+                });
+              },
               onChanged: (v) {
                 final t = v.trim();
-                if (t != _search) {
+                if (_pendingSearch || t != _search) {
                   _search = t;
+                  _pendingSearch = false;
                   _reload();
                 }
               },

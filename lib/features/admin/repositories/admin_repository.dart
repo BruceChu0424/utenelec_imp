@@ -104,7 +104,13 @@ abstract interface class AdminRepository {
   Future<String> resetPassword(String userId, {String? temporaryPassword});
 
   /// 开通账号候选：尚无登录账号的在册员工（姓名/工号/部门 + 资料齐备标记）。
-  Future<List<AccountProvisionCandidate>> provisionCandidates({String? search});
+  Future<PagedResult<AccountProvisionCandidate>> provisionCandidatesPage({
+    String? search,
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  });
 
   /// 设置/取消超级管理员（仅超管可调；降级禁止降本人/最后一位超管，由后端校验）。
   Future<void> setSuperAdmin(String userId, {required bool superAdmin});
@@ -113,9 +119,19 @@ abstract interface class AdminRepository {
   Future<void> setRemoteAccess(String userId, {required bool remoteAccess});
 }
 
-class DioAdminRepository implements AdminRepository {
+abstract interface class AdminUserLookupRepository {
+  Future<AdminUserSummary> userById(String userId);
+}
+
+class DioAdminRepository implements AdminRepository, AdminUserLookupRepository {
   DioAdminRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<AdminUserSummary> userById(String userId) async =>
+      AdminUserSummary.fromJson(
+        await api.get('${ApiEndpoints.adminUsers}/$userId/summary'),
+      );
 
   @override
   Future<PagedResult<AdminUserSummary>> listUsers({
@@ -349,16 +365,28 @@ class DioAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<List<AccountProvisionCandidate>> provisionCandidates({
+  Future<PagedResult<AccountProvisionCandidate>> provisionCandidatesPage({
     String? search,
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
   }) async {
-    final list = await api.getList(
-      ApiEndpoints.adminProvisionCandidates,
+    final response = await api.get(
+      '${ApiEndpoints.adminProvisionCandidates}/page',
       query: <String, dynamic>{
-        if (search != null && search.isNotEmpty) 'search': search,
+        'page': page,
+        'size': size,
+        if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
+        'departmentId': ?departmentId,
+        if (departmentId != null || includeSubtree)
+          'includeSubtree': includeSubtree,
       },
     );
-    return list.map(AccountProvisionCandidate.fromJson).toList();
+    return PagedResult.fromJsonResponsive(
+      response,
+      AccountProvisionCandidate.fromJson,
+    );
   }
 
   @override

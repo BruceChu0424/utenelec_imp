@@ -4,12 +4,6 @@ import { publicProductWhere } from './publication';
 
 export const CATALOG_PAGE_SIZE = 24;
 
-/** SQLite LIKE already folds ASCII case; PostgreSQL needs its explicit mode.
- * Keep the runtime query compatible with both generated Prisma clients. */
-export function catalogTextFilter(value: string, postgres = Boolean(process.env.DATABASE_URL?.startsWith('postgres'))) {
-  return { contains: value, ...(postgres ? { mode: 'insensitive' } : {}) } as Prisma.StringFilter;
-}
-
 export type CatalogFilters = { query?: string; functionType?: ProductFunctionType | null; gangCount?: number | null };
 
 export function catalogWindow(offset = 0, take = CATALOG_PAGE_SIZE) {
@@ -22,16 +16,11 @@ export function catalogWindow(offset = 0, take = CATALOG_PAGE_SIZE) {
 /** Persisted classifications are the filter authority. Unclassified records
  * remain available in Other and text search; names never become SKU facts. */
 export function catalogWhere(seriesIds: string[], filters: CatalogFilters = {}): Prisma.ProductWhereInput {
-  const query = filters.query?.normalize('NFKC').trim().slice(0, 80) || '';
   const conditions: Prisma.ProductWhereInput[] = [{ seriesId: { in: seriesIds } }];
   if (filters.functionType === 'other') {
     conditions.push({ OR: [{ functionType: null }, { functionType: { notIn: PRODUCT_FUNCTION_TYPES.filter(x => x !== 'other') } }] });
   } else if (isProductFunctionType(filters.functionType)) conditions.push({ functionType: filters.functionType });
   if (Number.isInteger(filters.gangCount) && filters.gangCount! > 0) conditions.push({ gangCount: filters.gangCount });
-  if (query) conditions.push({ OR: [
-    { model: catalogTextFilter(query) }, { i18n: catalogTextFilter(query) },
-    { variants: { some: { published: true, OR: [{ i18n: catalogTextFilter(query) }, { sku: catalogTextFilter(query) }] } } },
-  ] });
   return publicProductWhere({ AND: conditions });
 }
 

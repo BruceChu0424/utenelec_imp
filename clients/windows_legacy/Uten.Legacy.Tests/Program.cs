@@ -19,6 +19,16 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--search-input-contracts")
+                {
+                    int search = RunUi(DebouncedSearchInputChecks.Run);
+                    int leafReads = RunUi(UiContractChecks.RunSearchReadCoalescing);
+                    int searchGoods = GoodsReadContractChecks.Run();
+                    int searchUnits = UnitContractChecks.Run();
+                    Console.WriteLine("PASS native search input/IME/duplicate Enter/retirement; UI=" + search + "; leaf request/result checks=" + leafReads + "; goods=" + searchGoods + "; units=" + searchUnits
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--date-range-contracts")
                 {
                     int dates = RunUi(DateRangeDialogChecks.Run);

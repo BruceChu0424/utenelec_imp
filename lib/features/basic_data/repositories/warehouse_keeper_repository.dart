@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../shared/models/paged_result.dart';
 
 /// 一名负责人 / 负责人候选。
 class WarehouseKeeper {
@@ -102,13 +103,26 @@ class WarehouseKeeperRepository {
   }
 
   /// 负责人候选：在职员工，仓库部门的人排前面(warehouse:edit)。
-  Future<List<WarehouseKeeper>> candidates(String? keyword) async {
+  Future<PagedResult<WarehouseKeeper>> candidatesPage(
+    String? keyword, {
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  }) async {
     final kw = keyword?.trim();
-    final list = await api.getList(
-      ApiEndpoints.warehouseKeeperCandidates,
-      query: {if (kw != null && kw.isNotEmpty) 'keyword': kw},
+    final response = await api.get(
+      '${ApiEndpoints.warehouseKeeperCandidates}/page',
+      query: {
+        'page': page,
+        'size': size,
+        if (kw != null && kw.isNotEmpty) 'keyword': kw,
+        'departmentId': ?departmentId,
+        if (departmentId != null || includeSubtree)
+          'includeSubtree': includeSubtree,
+      },
     );
-    return list.map(WarehouseKeeper.fromJson).toList();
+    return PagedResult.fromJsonResponsive(response, WarehouseKeeper.fromJson);
   }
 
   /// 整组替换负责人；空列表 = 清空(该仓的通知回到整个仓库部门)。

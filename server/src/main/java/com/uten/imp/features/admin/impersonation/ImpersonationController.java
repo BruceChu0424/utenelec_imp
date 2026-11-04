@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
+import com.uten.imp.common.web.PageResponse;
 
 /**
  * 超级管理员「切换人 / 模拟身份」端点。
@@ -36,6 +38,7 @@ import java.util.List;
 public class ImpersonationController {
 
     private final ImpersonationService service;
+    private final com.uten.imp.features.org.department.DepartmentService departments;
 
     /** 模拟目标候选（picker）：始终用 admin 凭证加载（前端拦截器把 /targets 当管理端点）。 */
     @GetMapping("/targets")
@@ -43,6 +46,22 @@ public class ImpersonationController {
     public List<ImpersonationTargetDto> targets(
             @RequestParam(required = false) String search) {
         return service.listTargets(search);
+    }
+
+    @GetMapping("/targets/page")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public PageResponse<ImpersonationTargetDto> targetsPage(
+            @RequestParam(required = false) String search, @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "false") boolean includeSubtree) {
+        return service.targetsPage(search, page, size, departmentId, includeSubtree);
+    }
+
+    /** Same administrative identity as targets; never use the simulated target's ordinary organization request. */
+    @GetMapping("/targets/departments")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public List<com.uten.imp.application.port.DepartmentPickerNode> targetDepartments() {
+        return departments.employeePickerTree();
     }
 
     @PostMapping("/enter")

@@ -76,7 +76,7 @@
 
 ## W7-BIZ-217 · lib/features/sales/pages/sales_manager_review_page.dart
 
-模块 `sales`；751 行；SHA256 `6b4fb269b2890bad6d82808908b22a76ed42f541601916ecfe3b9b8d343627df`。
+模块 `sales`；751 行；SHA256 `249cff3b38c4e8c9a4cf5810f590f5c62b96fc05b300238ff79677692ed68916`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

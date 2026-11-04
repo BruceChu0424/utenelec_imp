@@ -497,6 +497,7 @@ class _ProductionExecutionSegmentsCardState
                     UtenEmployeePicker(
                       presentation:
                           UtenEmployeePickerPresentation.businessReference,
+                      cancelDepartmentTreeReadOnClose: true,
                       departmentTreeLoader: () => ref
                           .read(employeeReferenceRepositoryProvider)
                           .departments(
@@ -506,32 +507,19 @@ class _ProductionExecutionSegmentsCardState
                       key: ValueKey(responsible?.id ?? ''),
                       initial: responsible,
                       hint: '选择负责人',
-                      loader: (keyword) async {
-                        final result = await ref
+                      pagedLoader: (query) async {
+                        return await ref
                             .read(employeeReferenceRepositoryProvider)
-                            .listPickerCandidates(
+                            .listPickerPage(
+                              query,
                               purpose: EmployeeReferencePurpose
                                   .productionSegmentOwner,
                               size: 30,
-                              search: keyword,
                               statuses: const {'active', 'probation'},
                               departmentId: teamId ?? workshopId,
                               includeSubtree:
                                   teamId != null || workshopId != null,
                             );
-                        return [
-                          for (final employee in result)
-                            UtenEmployeePickerItem(
-                              id: employee.id,
-                              name: employee.fullName,
-                              employeeCode: employee.code,
-                              accountStatus: employee.accountStatus,
-                              employmentStatus: employee.status,
-                              departmentId: employee.departmentId,
-                              departmentName: employee.departmentName,
-                              positionName: employee.positionName,
-                            ),
-                        ];
                       },
                       onChanged: (value) =>
                           setDialogState(() => responsible = value),

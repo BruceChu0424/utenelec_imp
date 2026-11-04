@@ -93,25 +93,26 @@ class ProcurementFinanceApprovalBatchValidationTest {
 
         fixture.service().tasks(2, 30, "PURCHASE", " Vendor A ");
 
-        String supplierFilter = "LOWER(COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '')) LIKE ?";
+        String supplierFilter = "COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '') ILIKE ? ESCAPE '\\'";
         verify(fixture.jdbc()).queryForObject(
                 contains(supplierFilter),
                 eq(Long.class),
                 aryEq(new Object[]{
                         "PURCHASE",
-                        "%vendor a%",
-                        "%vendor a%",
-                        "%vendor a%"
+                        "%vendor%", "%vendor%", "%vendor%",
+                        "%a%", "%a%", "%a%"
                 }));
         verify(fixture.jdbc()).query(
                 argThat(sql -> sql.contains(supplierFilter)
-                        && sql.contains("ORDER BY c.submitted_at, c.id")),
+                        && sql.contains("ORDER BY CASE") && sql.contains(", c.submitted_at, c.id")),
                 any(RowMapper.class),
                 aryEq(new Object[]{
                         "PURCHASE",
-                        "%vendor a%",
-                        "%vendor a%",
-                        "%vendor a%",
+                        "%vendor%", "%vendor%", "%vendor%",
+                        "%a%", "%a%", "%a%",
+                        "vendor a", "vendor a", "vendor a",
+                        "vendor%", "vendor%", "vendor%",
+                        "a%", "a%", "a%",
                         30,
                         30
                 }));

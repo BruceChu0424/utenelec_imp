@@ -13,6 +13,7 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../business_columns/business_column.dart';
 import '../search/keyword_search.dart';
+import '../paging/paged_read_intent.dart';
 import '../widgets/column_editor_dialog.dart';
 import 'platform_table_controller.dart';
 import 'platform_table_models.dart';
@@ -199,9 +200,16 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
       }
       final repository = widget.controller.repository;
       final result = _catalog
-          ? await repository!.search(
-              widget.controller.binding!.scope,
-              _query.text.trim(),
+          ? await PagedReadIntent.scopedRead(
+              () =>
+                  mounted &&
+                  _editing &&
+                  generation == _generation &&
+                  identical(repository, widget.controller.repository),
+              () => repository!.search(
+                widget.controller.binding!.scope,
+                _query.text.trim(),
+              ),
             )
           : widget.controller.definitions;
       if (!mounted ||

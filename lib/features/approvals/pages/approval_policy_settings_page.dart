@@ -362,23 +362,27 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor> {
                         UtenEmployeePickerPresentation.businessReference,
                     showDepartmentFilter: false,
                     candidateScopeKey: (_policy.departmentId, epoch),
-                    loader: (search) async {
+                    pagedLoader: (query) async {
                       final generation = ++_candidateGeneration;
                       await Future<void>.value();
                       if (!mounted ||
                           ref.read(exportContextEpochProvider) != epoch) {
-                        return const [];
+                        return UtenEmployeePickerPage.empty(page: query.page);
                       }
                       setState(() => _candidateLoading = true);
                       try {
                         final result = await ref
                             .read(approvalPolicyRepositoryProvider)
-                            .candidates(_policy.departmentId, search);
+                            .candidatesPage(
+                              _policy.departmentId,
+                              query.keyword,
+                              page: query.page,
+                            );
                         return mounted &&
                                 generation == _candidateGeneration &&
                                 ref.read(exportContextEpochProvider) == epoch
                             ? result
-                            : const [];
+                            : UtenEmployeePickerPage.empty(page: query.page);
                       } finally {
                         if (mounted && generation == _candidateGeneration) {
                           setState(() => _candidateLoading = false);

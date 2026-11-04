@@ -158,6 +158,17 @@ public class NoticeController {
         return audienceService.searchEmployees(search);
     }
 
+    @GetMapping("/audience/employees/page")
+    @PreAuthorize("hasAuthority('notice:publish')")
+    public com.uten.imp.common.web.PageResponse<NoticeAudienceEmployeeDto> audienceEmployeesPage(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "100") int size,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "false") boolean includeSubtree) {
+        return audienceService.searchEmployeesPage(search, page, size, departmentId, includeSubtree);
+    }
+
     @PostMapping("/audience/preview")
     @PreAuthorize("hasAuthority('notice:publish')")
     public NoticeAudiencePreviewDto previewAudience(

@@ -322,6 +322,26 @@ class BusinessApplicationPostgresTest {
         assertEquals("PENDING",call(keeper,()->service.detail(app.id())).get("postingStatus"));
         principal.set(keeper);try{assertEquals(0,service.prepaymentFinanceCandidates(app.id(),1,24,null).getTotal());new BusinessApplicationAttachmentPolicy(service).applicationPaymentEvidence().requireCanView(app.id(),keeper);}finally{principal.remove();}
     }
+    @Test void prepaymentCandidateBillNumberSearchTreatsWildcardsLiterallyWithoutChangingEligibilityOrCase(){
+        var app=prepayment();cashPay(app);var keeper=bookkeeper();
+        UUID literal=UUID.randomUUID(),lookalike=UUID.randomUUID();
+        for(var entry:Map.of(literal,"CF_100%\\A",lookalike,"CFX100YZA").entrySet()){
+            jdbc.update("INSERT INTO finance_payments(id,maker_id,bill_no,status,amount_local,bill_date,account_id,supplier_id) VALUES(?,?,?,1,123.45,'2026-11-01',?,?)",
+                entry.getKey(),executive,entry.getValue(),UUID.randomUUID(),app.supplier());
+            jdbc.update("INSERT INTO ar_ap_ledger(id,source_doc_id,source_doc_type,direction,open_item_kind,status,supplier_id,amount_original_local,amount_received_local) VALUES(?,?,'DIRECT_PAYMENT','AP','PREPAYMENT',1,?,0,123.45)",UUID.randomUUID(),entry.getKey(),app.supplier());
+        }
+        principal.set(keeper);
+        try{
+            for(String keyword:List.of("%","_","\\","cf_100%\\a")){
+                var result=service.prepaymentFinanceCandidates(app.id(),1,24,keyword);
+                assertEquals(1,result.getTotal());assertEquals(literal,result.getItems().getFirst().get("id"));
+            }
+            var broad=service.prepaymentFinanceCandidates(app.id(),1,1,"cf");
+            assertEquals(2,broad.getTotal());assertEquals(1,broad.getItems().size());
+            when(financeAccess.nativeReadScope(anyString(),anyString())).thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=0",null,Set.of()));
+            assertEquals(0,service.prepaymentFinanceCandidates(app.id(),1,24,"cf_100%\\a").getTotal());
+        }finally{principal.remove();}
+    }
     @Test void cancelledDraftRetainsItsNumberAndRejectedHistoryCanAlsoBeClosed(){
         var owner=actor(applicant,"application:apply:travel");var in=input("TRAVEL");var draft=call(owner,()->service.create(in));
         var cancelled=call(owner,()->service.act(in.id(),"cancel",version(draft)));

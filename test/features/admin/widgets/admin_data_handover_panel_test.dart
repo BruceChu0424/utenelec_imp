@@ -92,6 +92,9 @@ class _HandoverRepositoryFake extends DataHandoverRepository {
     String? query,
     int page = 1,
     int size = 20,
+    String? departmentId,
+    bool includeSubtree = false,
+    Set<String> excludeEmployeeIds = const {},
   }) async => PagedResult(
     items: const [
       DataHandoverCandidate(

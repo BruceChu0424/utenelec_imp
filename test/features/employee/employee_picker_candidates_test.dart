@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker_models.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
@@ -27,25 +28,34 @@ void main() {
     expect(legacy.status, 'active');
   });
 
-  test('员工候选加载全部页并始终保留调用方的部门和状态范围', () async {
+  test('员工候选首屏不拉全量，显式续页完整可达且保留部门状态及排序', () async {
     final repository = _Repository();
-    final employees = await repository.listPickerCandidates(
+    Future<UtenEmployeePickerPage> read(int page) => repository.listPickerPage(
+      UtenEmployeePickerQuery(page: page, keyword: '张'),
       size: 2,
-      search: '张',
       statuses: {'active', 'probation'},
       departmentId: 'workshop',
       includeSubtree: true,
       sort: 'code',
       order: 'asc',
+      loadDepartments: () async => [],
     );
-
+    final first = await read(1);
+    expect(repository.queries.map((query) => query['page']), [1]);
+    expect(first.totalPages, 3);
+    final second = await read(2);
+    final third = await read(3);
+    final employees = {
+      for (final employee in [...first.items, ...second.items, ...third.items])
+        employee.id: employee,
+    }.values;
     expect(employees.map((employee) => employee.id), ['e1', 'e2', 'e3']);
     expect(employees.map((employee) => employee.accountStatus), [
       'active',
       'locked',
       'notProvisioned',
     ]);
-    expect(employees.map((employee) => employee.status), [
+    expect(employees.map((employee) => employee.employmentStatus), [
       'active',
       'probation',
       'onLeave',
@@ -64,14 +74,28 @@ void main() {
 
   test('空候选不再请求后续页', () async {
     final repository = _Repository(empty: true);
-    expect(await repository.listPickerCandidates(), isEmpty);
+    final result = await repository.listPickerPage(
+      const UtenEmployeePickerQuery(),
+      loadDepartments: () async => [],
+    );
+    expect(result.items, isEmpty);
+    expect(result.totalPages, 0);
     expect(repository.queries, hasLength(1));
   });
 
   test('后续分页失败时不把不完整名单显示成完整候选', () async {
     final repository = _Repository(failPage: 2);
+    final first = await repository.listPickerPage(
+      const UtenEmployeePickerQuery(),
+      loadDepartments: () async => [],
+    );
+    expect(first.items, hasLength(1));
+    expect(first.totalPages, 3);
     await expectLater(
-      repository.listPickerCandidates(),
+      repository.listPickerPage(
+        const UtenEmployeePickerQuery(page: 2),
+        loadDepartments: () async => [],
+      ),
       throwsA(isA<StateError>()),
     );
     expect(repository.queries, hasLength(2));

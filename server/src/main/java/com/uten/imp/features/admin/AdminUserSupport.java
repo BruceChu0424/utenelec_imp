@@ -48,12 +48,16 @@ class AdminUserSupport {
 
     /** Read-side capability; resigned/disabled targets may still need safe credential support. */
     boolean canSupportTarget(UserAccount target) {
-        return target != null && !target.isSuperAdmin()
+        return target != null && canSupportTarget(target.getId(), target.isSuperAdmin());
+    }
+
+    boolean canSupportTarget(UUID targetId, boolean superAdmin) {
+        return targetId != null && !superAdmin
                 && currentUser.get().map(actor -> !actor.isVisitor()
                         && !actor.isMustChangePassword()
                         && actor.getImpersonatedBy() == null
                         && actor.getPermissions().contains("account:support")
-                        && !actor.getId().equals(target.getId()))
+                        && !actor.getId().equals(targetId))
                 .orElse(false);
     }
 
@@ -77,6 +81,11 @@ class AdminUserSupport {
     boolean canResetPasswordTarget(UserAccount target) {
         return currentUser.get().map(actor -> CredentialIssuancePolicy.passwordResetSupportAllowed(actor, target))
                 .orElse(false);
+    }
+
+    boolean canResetPasswordTarget(UUID targetId, UUID employeeId, boolean superAdmin) {
+        return currentUser.get().map(actor -> CredentialIssuancePolicy.passwordResetSupportAllowed(
+                actor, targetId, employeeId, false, superAdmin)).orElse(false);
     }
 
     /** Authorization policy is a super-admin-only boundary, independent of JWT permission claims. */

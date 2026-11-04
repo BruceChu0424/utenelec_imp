@@ -348,7 +348,7 @@ public class StockReportService {
     private static void addCommonFilters(WhereBuilder w, String billNo, UUID warehouseId, UUID clientId, Short status,
                                          UUID departmentId,
                                          LocalDate dateFrom, LocalDate dateTo, String kw, boolean hasItems, boolean approvedFacet) {
-        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "o.bill_no", "billNo");
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
         // 默认口径（草稿不进报表）见 ReportQueryKit.addApprovedByDefault（2026-09-16 收敛）。

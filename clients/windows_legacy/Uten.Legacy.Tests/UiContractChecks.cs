@@ -855,13 +855,27 @@ namespace Uten.Legacy.Tests
                         throw new InvalidOperationException("A local annotation must preserve text without claiming success or replaying the unknown operation.");
 
                     var view = new UnitsWorkspaceView(session);
+                    var tableHost = new Window { Content = view, Width = 1100, Height = 640,
+                        Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
                     try
                     {
-                        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() => view.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent))));
-                        var table = FindVisual<DataGrid>(view, item => true);
+                        int previousReads = handler.UnitListReads;
+                        var unmountedRead = (Task)typeof(UnitsWorkspaceView).GetMethod("LoadPageAsync",
+                            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                            .Invoke(view, new object[] { 1 });
+                        unmountedRead.GetAwaiter().GetResult();
+                        if (view.IsLoaded || handler.UnitListReads != previousReads)
+                            throw new InvalidOperationException("An unmounted native workspace must not dispatch business reads.");
+                        // Raising Loaded manually does not set FrameworkElement.IsLoaded.
+                        // The shared read coordinator deliberately rejects unmounted views;
+                        // use the real owning-window lifecycle, as the application does.
+                        tableHost.Show();
+                        PumpUntil(() => view.IsLoaded, "The unit workspace must be attached to its actual native window before reads.");
                         LayoutElement(view, 1100, 640);
-                        table = FindVisual<DataGrid>(view, item => true);
+                        var table = FindVisual<DataGrid>(view, item => true);
                         PumpUntil(() => table?.Items.Count == 1, "Native unit table must consume the actual scoped service response.");
+                        if (handler.UnitListReads <= previousReads)
+                            throw new InvalidOperationException("The loaded native unit table must issue a real scoped service read.");
                         LayoutElement(view, 1100, 640); Snapshot(view, "units-workspace-fixture.png");
                         if (table.CanUserSortColumns || table.AutoGenerateColumns || !table.IsReadOnly || table.Columns.Count != 3)
                             throw new InvalidOperationException("Unit daily table must keep its three owning columns and server ordering.");
@@ -907,7 +921,7 @@ namespace Uten.Legacy.Tests
                         PumpUntil(() => queryInput.Text.Length == 0 && codeFilter.Items.Count == 2,
                             "Retiring a scope must clear old code/name facet values even when the replacement facet request fails.");
                     }
-                    finally { view.Dispose(); }
+                    finally { tableHost.Content = null; tableHost.Close(); view.Dispose(); }
                 }
             }
         }
@@ -948,6 +962,7 @@ namespace Uten.Legacy.Tests
         {
             internal string UserId = "fixture-unit-user";
             internal int BusinessWrites;
+            internal int UnitListReads;
             internal bool RefreshOnce, FailFacets;
             internal string Proof = "scope-a";
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -981,7 +996,10 @@ namespace Uten.Legacy.Tests
                         ["id"] = "ffda6731-4bce-4fa1-a5a5-2acf55fd6d01", ["code"] = "U001", ["name"] = values["name"], ["status"] = values["status"] });
                 }
                 else if (path == "/api/master/units" && request.Method == HttpMethod.Get)
+                {
+                    Interlocked.Increment(ref UnitListReads);
                     body = "{\"items\":[{\"id\":\"ffda6731-4bce-4fa1-a5a5-2acf55fd6d01\",\"code\":\"U001\",\"name\":\"确认保存单位\",\"status\":\"使用\"}],\"page\":1,\"size\":20,\"total\":1,\"totalPages\":1,\"readScopeVersion\":\"" + Proof + "\"}";
+                }
                 else if (path == "/api/master/units/ffda6731-4bce-4fa1-a5a5-2acf55fd6d01" && request.Method == HttpMethod.Get)
                     body = "{\"id\":\"ffda6731-4bce-4fa1-a5a5-2acf55fd6d01\",\"code\":\"U001\",\"name\":\"确认保存单位\",\"status\":\"使用\"}";
                 else if (path == "/api/master/units/facets" && FailFacets)

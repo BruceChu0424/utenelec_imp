@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
@@ -16,6 +17,7 @@ import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../support/table_read_status.dart';
 
 late SharedPreferences _preferences;
 
@@ -92,7 +94,14 @@ void main() {
     expect(find.text('客户预收流水'), findsWidgets);
     expect(find.byType(ClientPickerField), findsOneWidget);
     expect(find.byType(FinanceDateRangeFilter), findsOneWidget);
-    expect(find.textContaining('日期:'), findsOneWidget);
+    final dates = tester.widget<UtenDateRangeSelectionButton>(
+      find.descendant(
+        of: find.byType(FinanceDateRangeFilter),
+        matching: find.byType(UtenDateRangeSelectionButton),
+      ),
+    );
+    expect(dates.from, isNotNull);
+    expect(dates.to, isNotNull);
     expect(find.text('搜索'), findsNothing);
     expect(find.text('记账日期'), findsOneWidget);
     expect(find.text('资金单号'), findsOneWidget);
@@ -123,7 +132,7 @@ void main() {
     final l10n = AppLocalizations.of(
       tester.element(find.byType(FinanceReportTablePage)),
     );
-    expect(find.text(l10n.financeReportLoadFailed), findsOneWidget);
+    await expectTableReadFailureDetails(tester, l10n.financeReportLoadFailed);
     expect(find.text('重试'), findsOneWidget);
     api.fail = false;
     await tester.tap(find.text('重试'));
@@ -144,7 +153,7 @@ void main() {
     final l10n = AppLocalizations.of(
       tester.element(find.byType(FinanceReportTablePage)),
     );
-    expect(find.text(message), findsOneWidget);
+    await expectTableReadFailureDetails(tester, message);
     expect(find.text(l10n.financeReportLoadFailed), findsNothing);
     expect(find.text('重试'), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -313,6 +313,13 @@ public class FinanceReportService {
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
         FinanceWhereBuilder.Built full = w.build(null);
+        if(FinanceReportColumnCandidates.current()!=null) {
+            String source=FinanceProjectedReportTable.aliasProjection(dataSelect+" "+full.sql(),cols,"overview_candidates","partyCode","partyCategoryId","partyId");
+            FinanceReportColumnCandidates.current().readSql(em,cols,java.util.Set.of(),source,
+                    query->{full.params().forEach(query::setParameter);query.setParameter("fromDate",dateFrom).setParameter("toDate",dateTo);
+                            if(catParam!=null)query.setParameter("catId",catParam);});
+            return empty(cols);
+        }
         String relevance = KeywordSearch.terms(keyword).isEmpty() ? "" :
                 "CASE WHEN partyType='客户' THEN " + CategoryKeywordSearch.nativeRank(keyword, "kw", "client_categories",
                         "partyCategoryId", "partyCode", "partyName", "partyCode", "partyName")
@@ -1966,6 +1973,14 @@ public class FinanceReportService {
             sql = sql.replace("SUM(in_amount) OVER() AS total_in", "NULL::numeric AS total_in")
                     .replace("SUM(out_amount) OVER() AS total_out", "NULL::numeric AS total_out");
         }
+        if(FinanceReportColumnCandidates.current()!=null) {
+            String projected=sql.substring(0,sql.indexOf("SELECT bill_date,bill_no"))+" SELECT bill_date AS \"billDate\",bill_no AS \"billNo\",check_no AS \"checkNo\",summary,counterpart_name AS \"counterpartName\",source,settled_date AS \"settledDate\",in_amount AS \"inAmount\",out_amount AS \"outAmount\",balance,entry_kind AS \"entryKind\" FROM filtered";
+            FinanceReportColumnCandidates.current().readSql(em,cols,java.util.Set.of(),projected,
+                    candidate->{candidate.setParameter("aid",accountId).setParameter("fromAt",fromAt).setParameter("fromMonth",fromMonth)
+                            .setParameter("fromMonthAt",fromMonthAt).setParameter("toExclusive",toExclusive).setParameter("keyword",normalizedKeyword)
+                            .setParameter("billNoFilter",billNo==null||billNo.isBlank()?null:billNo.trim());columnCriteria.bind(candidate);});
+            return empty(cols);
+        }
         var query=ReportExportCursor.query(em, sql)
                 .setParameter("aid",accountId)
                 .setParameter("fromAt",fromAt)
@@ -2357,6 +2372,12 @@ public class FinanceReportService {
                 .collect(java.util.stream.Collectors.joining(","));
         var conditions = headers.criteria();
         String filtered = "SELECT * FROM (" + core + ") report WHERE " + conditions.predicate();
+        if(FinanceReportColumnCandidates.current()!=null) {
+            FinanceReportColumnCandidates.current().readSql(em,columns,java.util.Set.of(),filtered,
+                    query->{query.setParameter("pid",party).setParameter("from",from).setParameter("to",to)
+                            .setParameter("fromMonth",fromMonth);scope.bind(query);conditions.bind(query);});
+            return empty(columns);
+        }
         var data=ReportExportCursor.query(em, "SELECT "+selected+" FROM ("+core+") report WHERE " + conditions.predicate()
                 +" ORDER BY " + ordering + " LIMIT :__limit OFFSET :__offset")
                 .setParameter("pid",party).setParameter("from",from).setParameter("to",to)
@@ -2467,6 +2488,12 @@ public class FinanceReportService {
         long offset = (long) (safePage - 1) * safeSize;
         var conditions = headers.criteria();
         String filtered = "SELECT * FROM (" + sql + ") report WHERE " + conditions.predicate();
+        if(FinanceReportColumnCandidates.current()!=null) {
+            FinanceReportColumnCandidates.current().readSql(em,cols,java.util.Set.of(),filtered,
+                    query->{query.setParameter("pid",pid).setParameter("ys",yearStart).setParameter("ye",yearEnd);
+                            documentScope.bind(query);conditions.bind(query);});
+            return empty(cols);
+        }
         var dataQ = ReportExportCursor.query(em, filtered + " ORDER BY " + ordering + " LIMIT :__limit OFFSET :__offset")
                 .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd)
                 .setParameter("__limit", safeSize).setParameter("__offset", offset);
@@ -2539,6 +2566,40 @@ public class FinanceReportService {
      */
     @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        var loader = reportLoader(report,p,sort,order);
+        LocalDate dateTo=ReportQueryKit.parseDate(p==null?null:p.get("dateTo"));
+        if ("gl/operating-pl".equals(report) && com.uten.imp.common.export.ExportPageSink.current() != null) {
+            var result = glReportService.exportInCurrentSnapshot(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo),
+                    settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS),FinanceReportColumnOptions.from(p,sort,order));
+            return new ExportPayload(result.columns().stream().map(c ->
+                    new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
+                    List.of(), Math.toIntExact(result.total()));
+        }
+        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+                ReportTableResponse::total,
+                r -> r.columns() == null ? null : r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
+                ReportTableResponse::rows);
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public Map<String,Object> columnCandidates(String report,String column,Map<String,String> input) {
+        var parameters=new LinkedHashMap<>(input);
+        parameters.remove("f."+column);parameters.remove("f.search."+column);parameters.remove("search."+column);
+        parameters.remove("sort");parameters.remove("order");
+        try(var candidates=FinanceReportColumnCandidates.open(column);
+            var plan=ReportReadPlan.open(new ReportReadPlan(true,false,false,ReportReadPlan.current().readScopeVersion()))) {
+            var response="account/statement".equals(report)
+                    ? accountStatement(ReportQueryKit.parseUuid(parameters.get("accountId")),ReportQueryKit.parseDate(parameters.get("dateFrom")),
+                            ReportQueryKit.parseDate(parameters.get("dateTo")),parameters.get("keyword"),1,1,parameters.get("billNo"),parameters)
+                    : reportLoader(report,parameters,null,null).apply(1,1);
+            candidates.readComplete(response);
+            return Map.of();
+        }
+    }
+
+    /** One authorization and loader contract for report export and header candidates. */
+    private BiFunction<Integer,Integer,ReportTableResponse> reportLoader(String report,Map<String,String> p,String sort,String order) {
         if ("account/statement".equals(report) || "bank/detail".equals(report) || "bank/summary".equals(report)) {
             requireAccountStatementAccess();
         }
@@ -2570,13 +2631,6 @@ public class FinanceReportService {
         Boolean settled = parseBool(p == null ? null : p.get("settled"));
         int year = parseIntOrZero(p == null ? null : p.get("year"));
         Map<String, String> facets = FinanceReportHeaderRequest.filters(p==null?Map.of():p);
-        if ("gl/operating-pl".equals(report) && com.uten.imp.common.export.ExportPageSink.current() != null) {
-            var result = glReportService.exportInCurrentSnapshot(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo),
-                    settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS),FinanceReportColumnOptions.from(p,sort,order));
-            return new ExportPayload(result.columns().stream().map(c ->
-                    new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
-                    List.of(), Math.toIntExact(result.total()));
-        }
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
             case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz, facets, sort, order);
             case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
@@ -2625,11 +2679,7 @@ public class FinanceReportService {
             case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order),dateTo);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
-        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
-                ReportTableResponse::total,
-                r -> r.columns() == null ? null : r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
-                ReportTableResponse::rows);
+        return loader;
     }
 
     private ReportTableResponse glSnapshotReport(String report, LocalDate dateTo, int year, int month,

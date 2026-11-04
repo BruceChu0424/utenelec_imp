@@ -14,6 +14,8 @@ import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../providers/finance_report_facet_options.dart';
 import 'dart:convert';
 import '../../report/shared/account_statement_column_query.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -402,16 +404,22 @@ class _FinanceAccountFlowPageState
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
       ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenCollapsingHeaderScrollView(
-              collapsingHeader: _buildFilterPane(theme),
-              body: _buildTable(),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: UtenContentContainer.wide(
+              child: Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: _buildFilterPane(theme),
+                  body: _buildTable(),
+                ),
+              ),
             ),
           ),
-        ),
+          if (_loading)
+            const UtenBusyOverlay(title: '正在查询报表', showDoNotLeaveHint: false),
+        ],
       ),
     );
   }
@@ -473,17 +481,6 @@ class _FinanceAccountFlowPageState
                   },
                 ),
               ),
-              FinanceDateRangeFilter(
-                from: _from,
-                to: _to,
-                onChanged: (from, to) {
-                  setState(() {
-                    _from = from!;
-                    _to = to!;
-                  });
-                  return _persistAndReload();
-                },
-              ),
             ],
           ),
         ],
@@ -527,6 +524,10 @@ class _FinanceAccountFlowPageState
             label: c.label,
             width: (c.width ?? 120).toDouble(),
             type: c.type,
+            facetCandidatesUseKeyword:
+                c.key != 'billNo' &&
+                c.key != 'entryKind' &&
+                c.key != 'currencyCode',
             sortable:
                 _view != _FlowView.statement &&
                 isSortableReportType(c.type) &&
@@ -562,6 +563,17 @@ class _FinanceAccountFlowPageState
           : data.columnSearchKeys.where(_bankColumnQueryable).toSet(),
       items: data.rows,
       toolbarActions: [
+        FinanceDateRangeFilter(
+          from: _from,
+          to: _to,
+          onChanged: (from, to) {
+            setState(() {
+              _from = from!;
+              _to = to!;
+            });
+            return _persistAndReload();
+          },
+        ),
         UtenPrintPreviewButton(
           enabled: _canReadAccounts && _acceptedQueryCurrent && !_loading,
           title: _title,
@@ -589,28 +601,38 @@ class _FinanceAccountFlowPageState
       facets: _view == _FlowView.statement
           ? const {'entryKind': accountStatementEntryKinds}
           : data.facets,
-      facetPageLoaders: _view == _FlowView.statement
-          ? nativeFacetLoaders(
-              ref,
-              path: '/finance/reports/account/statement/facets',
-              fields: const ['billNo'],
-              filters: {
-                'accountId': _accountId,
-                'dateFrom': _fmt(_from),
-                'dateTo': _fmt(_to),
-                'keyword': _keyword,
-              },
-            )
-          : const {},
-      facetSearchScope: nativeFacetSearchScope(
+      facetPageLoaders: {
+        ...financeReportFacetLoaders(
+          ref,
+          report: _exportReport,
+          query: _exportQuery,
+          fields: [
+            for (final column in columns)
+              if (column.type == 'text' &&
+                  column.columnSearchEnabled != false &&
+                  column.key != 'currencyCode' &&
+                  column.key != 'entryKind' &&
+                  column.key != 'billNo')
+                column.key,
+          ],
+        ),
+        if (_view == _FlowView.statement)
+          ...nativeFacetLoaders(
+            ref,
+            path: '/finance/reports/account/statement/facets',
+            fields: const ['billNo'],
+            filters: {
+              'accountId': _accountId,
+              'dateFrom': _fmt(_from),
+              'dateTo': _fmt(_to),
+              'keyword': _keyword,
+            },
+          ),
+      },
+      facetSearchScope: financeReportFacetScope(
         ref,
-        '/finance/reports/account/statement/facets',
-        {
-          'accountId': _accountId,
-          'dateFrom': _fmt(_from),
-          'dateTo': _fmt(_to),
-          'keyword': _keyword,
-        },
+        report: _exportReport,
+        query: _exportQuery,
       ),
       nullCounts: const {},
       filters: {'billNo': _billNoFilter, ..._columnQuery},

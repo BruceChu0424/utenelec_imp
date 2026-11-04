@@ -144,7 +144,14 @@ namespace Uten.Legacy.Desktop.Features.Units
                     Snapshot(window, "unit-record-history-fixture.png");
                     var search = Field<TextBox>(window, "keyword"); search.Text = "保留的查询";
                     var dateEntry = Field<Button>(window, "dateRange");
-                    check(dateEntry.Content.ToString().StartsWith("选择日期 ", StringComparison.Ordinal), "history has a single date selection entry with selected range");
+                    check(Equals(dateEntry.Content, "选择日期") && dateEntry.ToolTip.ToString().Contains(" 至 "), "history date entry keeps selected range in tooltip only");
+                    var refreshEntry = Field<Button>(window, "refresh");
+                    check(dateEntry.MinHeight == refreshEntry.MinHeight && dateEntry.FontSize == refreshEntry.FontSize, "history date and query toolbar buttons share generated standard geometry");
+                    var datePosition = dateEntry.TranslatePoint(new Point(), (UIElement)window.Content);
+                    var queryPosition = refreshEntry.TranslatePoint(new Point(), (UIElement)window.Content);
+                    check(Math.Abs(datePosition.Y - queryPosition.Y) < 1 && datePosition.Y < rows.TranslatePoint(new Point(), (UIElement)window.Content).Y, "date entry shares the table-top query toolbar row");
+                    window.Width = 480; Snapshot(window, "unit-record-history-narrow-fixture.png");
+                    window.Width = 1080; Snapshot(window, "unit-record-history-fixture.png");
                     var defaultQuery = (UnitHistoryQuery)typeof(UnitRecordHistoryWindow).GetMethod("Query", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(window, null);
                     var chinaToday = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).Date;
                     check(defaultQuery.DateFrom == chinaToday.AddMonths(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) && defaultQuery.DateTo == chinaToday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), "history defaults to recent calendar month in China wall time");
@@ -158,6 +165,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     check(rows.ItemsSource == null && search.Text == "保留的查询", "date selection invalidates old rows while retaining other filters");
                     Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); PumpUntil(() => rows.Items.Count == 1);
                     check(fixture.Handler.LastPath.Contains("dateFrom=2026-10-01") && fixture.Handler.LastPath.Contains("dateTo=2026-10-02"), "confirmed range uses unchanged server date filter keys");
+                    check(Equals(dateEntry.Content, "选择日期") && dateEntry.ToolTip.ToString().Contains("2026-10-01"), "confirmed dates stay in tooltip instead of repeating them on the toolbar button");
                     var clearDate = Field<Button>(window, "clearDate");
                     check(clearDate.Style == Application.Current.FindResource("Uten.CaptionButton") && clearDate.Visibility == Visibility.Visible, "date card uses the shared red circular clear button");
                     clearDate.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

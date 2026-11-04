@@ -21,7 +21,7 @@ class UtenTotalsSummaryBar extends StatelessWidget {
   /// 合计项（按展示顺序）。
   final List<UtenTotalEntry> entries;
 
-  /// 紧凑模式（嵌入卡片内时用，字号略小）。
+  /// 保留已有调用接口。汇总始终使用正常正文字号，不因紧凑布局缩小。
   final bool density;
 
   /// 顶部分隔线。2026-09-15 用户口径：合计条不再画顶部分隔线（表格自带行线，
@@ -56,12 +56,6 @@ class UtenTotalsSummaryBar extends StatelessWidget {
       ),
     ];
     if (visible.isEmpty) return const SizedBox.shrink();
-    final labelStyle = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    final valueStyle =
-        (density ? theme.textTheme.bodyMedium : theme.textTheme.titleSmall)
-            ?.copyWith(fontWeight: FontWeight.w700);
     return Container(
       width: double.infinity,
       padding: compact
@@ -82,23 +76,42 @@ class UtenTotalsSummaryBar extends StatelessWidget {
         children: [
           // 一个完整段落保留标签与原始格式化值；长币种或金额也可自然换行。
           // 不固定标签宽、不用 FittedBox 缩小金额。
-          for (final e in visible)
-            Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text('${e.label}: ', style: labelStyle),
-                Text(
-                  e.value,
-                  textAlign: TextAlign.end,
-                  style: valueStyle?.copyWith(
-                    color: e.danger ? theme.colorScheme.error : null,
-                  ),
-                ),
-              ],
-            ),
+          for (final e in visible) UtenTotalEntryView(entry: e),
         ],
       ),
+    );
+  }
+}
+
+/// 单项汇总的公共文字入口，供带有详情按钮等专用表尾复用。
+/// 标签和数值都使用正常正文；完整保留长数值，不省略或缩小字号。
+class UtenTotalEntryView extends StatelessWidget {
+  const UtenTotalEntryView({super.key, required this.entry});
+
+  final UtenTotalEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final normal = theme.textTheme.bodyLarge;
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          '${entry.label}: ',
+          style: normal?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        Text(
+          entry.value,
+          textAlign: TextAlign.end,
+          style: normal?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: entry.danger ? theme.colorScheme.error : null,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }

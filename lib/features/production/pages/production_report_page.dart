@@ -47,7 +47,6 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
-import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
@@ -485,65 +484,17 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
               _persistAndReload();
             },
           ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('日期范围'),
-          UtenDateRangeButton(
-            range: DateTimeRange(start: _from, end: _to),
-            firstDate: DateTime(2010),
-            lastDate: DateTime(2100),
-            onChanged: (range) async {
-              if (!mounted) return;
-              setState(() {
-                _from = range.start;
-                _to = range.end;
-              });
-              _persistPrefs();
-              _page = 1;
-              await _load();
-            },
-          ),
-          if (_filters.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _filterLabel('已选筛选 (${_filters.length})'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                for (final e in _filters.entries)
-                  Chip(
-                    label: Text(
-                      '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                    onDeleted: () => _onFilterChanged(e.key, null),
-                    visualDensity: VisualDensity.compact,
-                  ),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 
   Widget _buildTable() {
-    final source = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final source = _data ?? _reportMetadata.loadingData;
     final matches =
         _acceptedEndpoint == _readEndpoint &&
         const DeepCollectionEquality().equals(_acceptedQuery, _readQuery);
-    final data = matches ? source : source?.pendingQuery();
-    if (data == null) {
-      final error = _reportPages.error;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(error ?? '暂无报表数据'),
-            TextButton(onPressed: _load, child: const Text('重试')),
-          ],
-        ),
-      );
-    }
+    final data = matches ? source : source.pendingQuery();
     final columns = data.columns
         .map(
           (c) => MasterColumnDef<Map<String, dynamic>>(
@@ -572,6 +523,21 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         serverColumnSearchKeys: data.columnSearchKeys,
         items: data.rows,
         toolbarActions: [
+          UtenDateRangeButton(
+            range: DateTimeRange(start: _from, end: _to),
+            firstDate: DateTime(2010),
+            lastDate: DateTime(2100),
+            onChanged: (range) async {
+              if (!mounted) return;
+              setState(() {
+                _from = range.start;
+                _to = range.end;
+              });
+              _persistPrefs();
+              _page = 1;
+              await _load();
+            },
+          ),
           UtenPrintPreviewButton(
             title: '生产${_kind.label}',
             subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',

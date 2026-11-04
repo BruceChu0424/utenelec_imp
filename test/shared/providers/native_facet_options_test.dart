@@ -79,7 +79,7 @@ void main() {
     (tester) async {
       final api = _Api();
       final (ref, _) = await _mount(tester, api);
-      expect(nativeFacetPaths.length, 21);
+      expect(nativeFacetPaths.length, 22);
       for (final path in nativeFacetPaths) {
         final filters = <String, dynamic>{
           'keyword': '采购 %_ 原文',

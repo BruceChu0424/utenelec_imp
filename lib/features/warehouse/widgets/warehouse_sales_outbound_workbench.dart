@@ -483,17 +483,7 @@ class _WarehouseSalesOutboundWorkbenchState
             const SizedBox(height: UtenFilterRow.rowGap),
           ],
           _toolbar(result),
-          if (_seg?.history == true) ...[
-            const SizedBox(height: UtenFilterRow.rowGap),
-            Padding(
-              padding: EdgeInsets.zero,
-              child: UtenHistoryTimeFilter(
-                key: const Key('warehouse-sales-outbound-history-time'),
-                value: _historyTime,
-                onChanged: _onHistoryTime,
-              ),
-            ),
-          ],
+
           if (_error != null && result.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s8),
             Semantics(
@@ -513,8 +503,22 @@ class _WarehouseSalesOutboundWorkbenchState
               description: '分类默认不选中；历史单据需先选时间段或「全部」',
             )
           : _seg!.history && _historyTime.isNone
-          ? const UtenHistoryTimePlaceholder()
+          ? UtenHistoryTimePlaceholder(
+              controls: UtenHistoryTimeFilter(
+                key: const Key('warehouse-sales-outbound-history-time'),
+                value: _historyTime,
+                onChanged: _onHistoryTime,
+              ),
+            )
           : MasterDataTableView<WarehouseSalesOutboundSummary>(
+              toolbarLeadingActions: [
+                if (_seg?.history == true)
+                  UtenHistoryTimeFilter(
+                    key: const Key('warehouse-sales-outbound-history-time'),
+                    value: _historyTime,
+                    onChanged: _onHistoryTime,
+                  ),
+              ],
               expensiveRowMounts: false,
               rowsController: _tableRows,
               paginationRevision: _result,

@@ -1410,13 +1410,7 @@ class _OperationsWorkbenchPageState
             : null;
         final filterRows = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            stageRow,
-            if (historyTimeRow != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              historyTimeRow,
-            ],
-          ],
+          children: [stageRow],
         );
 
         // 大小屏共用一张表：统一走折叠头+表格，窄屏横向滚动（卡片形态已退役）。
@@ -1444,11 +1438,14 @@ class _OperationsWorkbenchPageState
                     ),
                   )
                 else if (seg.history && _historyTime.isNone)
-                  const Expanded(child: UtenHistoryTimePlaceholder())
+                  Expanded(
+                    child: UtenHistoryTimePlaceholder(controls: historyTimeRow),
+                  )
                 else
                   Expanded(
                     child: _DesktopTaskTable(
                       key: const Key('operations-workbench-desktop-table'),
+                      historyTimeAction: historyTimeRow,
                       data: data,
                       rowsController: _tableRows,
                       paginationScope: (
@@ -1559,6 +1556,7 @@ class _DesktopTaskTable extends StatelessWidget {
   const _DesktopTaskTable({
     super.key,
     required this.data,
+    this.historyTimeAction,
     required this.rowsController,
     required this.paginationScope,
     required this.paginationRevision,
@@ -1592,6 +1590,7 @@ class _DesktopTaskTable extends StatelessWidget {
   });
 
   final OperationsWorkbenchData data;
+  final Widget? historyTimeAction;
   final MasterDataTableRowsController<OperationsWorkbenchTask> rowsController;
   final Object paginationScope;
   final int paginationRevision;
@@ -1634,6 +1633,7 @@ class _DesktopTaskTable extends StatelessWidget {
     // primary:true → 表体参与「概览卡折叠 → 表格内滚」联动（拾取外层
     // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController）。
     return MasterDataTableView<OperationsWorkbenchTask>(
+      toolbarLeadingActions: [?historyTimeAction],
       expensiveRowMounts: false,
       rowsController: rowsController,
       paginationRevision: paginationRevision,

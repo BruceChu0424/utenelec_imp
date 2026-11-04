@@ -49,9 +49,9 @@
 1. 尺寸和字段提示一致，显示名称不泄露类型名、无双padding，IME/焦点/禁用和验证可用。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
 
-接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。；2026-11-03：新增公共UtenDateRangeDialog，年月标题可直达年份和月份；日期边界、单日、开放起止、取消/清除与快速反复切换均有本机交互证据。复用同源主题及标题右侧红圆白X；此为公共日期增量，不提高全部表单控件或Win7目标机完成状态。见 E-DATE-RANGE-ENTRY-20261103。。
+接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。；2026-11-03：新增公共UtenDateRangeDialog，年月标题可直达年份和月份；日期边界、单日、开放起止、取消/清除与快速反复切换均有本机交互证据。复用同源主题及标题右侧红圆白X；此为公共日期增量，不提高全部表单控件或Win7目标机完成状态。见 E-DATE-RANGE-ENTRY-20261103。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 WPF已有单位修改历史日期同步同排40高按钮，范围仅留提示；本机x86/x64各dates37/history UI13通过。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
 
 ## W7-UI-004
 

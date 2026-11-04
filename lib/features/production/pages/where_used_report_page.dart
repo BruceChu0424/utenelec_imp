@@ -1179,21 +1179,6 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           )),
         ),
         const SizedBox(height: UtenSpacing.s4),
-        if (filters.limitHistoryDates) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          UtenDateRangeButton(
-            key: const Key('where-used-select-dates'),
-            range: DateTimeRange(start: filters.from, end: filters.to),
-            firstDate: DateTime(2010),
-            lastDate: DateTime(2100),
-            onChanged: (range) => onChanged((
-              source: filters.source,
-              limitHistoryDates: filters.limitHistoryDates,
-              from: ChinaDateTime.dateOnly(range.start),
-              to: ChinaDateTime.dateOnly(range.end),
-            )),
-          ),
-        ],
         const SizedBox(height: UtenSpacing.s12),
       ],
     );
@@ -1275,6 +1260,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       subject: subject,
       direction: _traceDirection,
       showDirectionSelector: false,
+      toolbarActions: [if (_limitHistoryDates) _dateRangeAction()],
       dateFrom: _limitHistoryDates ? _formatDate(_from) : null,
       dateTo: _limitHistoryDates ? _formatDate(_to) : null,
       reloadTick: _traceReloadTick,
@@ -1455,6 +1441,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         Text(_source.label, style: Theme.of(context).textTheme.bodySmall),
       ],
       toolbarActions: [
+        if (_limitHistoryDates) _dateRangeAction(),
         if (_loadedQuery != null)
           UtenExportButton(
             key: const Key('where-used-export'),
@@ -1473,8 +1460,6 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
               : '共 ${data.total} 个成品/半成品',
           style: Theme.of(context).textTheme.bodySmall,
         ),
-        if (_limitHistoryDates)
-          Text(range, style: Theme.of(context).textTheme.bodySmall),
       ],
       items: data.rows,
       facets: data.facets,
@@ -1530,6 +1515,22 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       },
     );
   }
+
+  Widget _dateRangeAction() => UtenDateRangeButton(
+    key: const Key('where-used-select-dates'),
+    range: DateTimeRange(start: _from, end: _to),
+    firstDate: DateTime(2010),
+    lastDate: DateTime(2100),
+    onChanged: (range) async {
+      setState(() {
+        _from = ChinaDateTime.dateOnly(range.start);
+        _to = ChinaDateTime.dateOnly(range.end);
+        _page = 1;
+        _invalidateLoadedResults();
+      });
+      if (_subject != null) await _refreshQuery();
+    },
+  );
 
   Widget _filterLabel(String text, {String? info}) {
     final theme = Theme.of(context);

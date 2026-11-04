@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_revision_table.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_invoice.dart';
@@ -379,11 +380,10 @@ class ExpenseSubmissionItemTable extends StatelessWidget {
         value: (row) => row['amount']?.toString(),
       ),
     ],
-    summaryBar: Align(
-      alignment: Alignment.centerRight,
-      child: Text(
-        '本次共 ${(revision.current['items'] as List).length} 项 · 合计 ${revision.totalAmount} 元',
-      ),
+    summaryBar: UtenTotalsSummaryBar(
+      rowCount: (revision.current['items'] as List).length,
+      compact: true,
+      entries: [UtenTotalEntry('合计', '${revision.totalAmount} 元')],
     ),
   );
 }

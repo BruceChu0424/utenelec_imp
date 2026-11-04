@@ -1,6 +1,7 @@
 import '../data_display/uten_table_surface.dart';
 import 'uten_panel_opening_scope.dart';
 import 'uten_action_overflow.dart';
+import 'uten_table_action_scope.dart';
 import '../buttons/uten_button.dart';
 import '../../core/responsive/compact_presentation.dart';
 import 'uten_ancestor_row_window.dart';
@@ -3363,14 +3364,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
                   final footer = widget.footer == null
                       ? null
                       : DefaultTextStyle.merge(
-                          style:
-                              theme.textTheme.bodyMedium ?? const TextStyle(),
+                          style: theme.textTheme.bodyLarge ?? const TextStyle(),
                           child: widget.footer!,
                         );
                   final sideBySide =
                       addBar != null &&
                       footer != null &&
-                      c.maxWidth >= _footerSingleRowMinWidth;
+                      c.maxWidth >=
+                          _footerSingleRowMinWidth *
+                              MediaQuery.textScalerOf(context).scale(1);
                   return Padding(
                     padding: const EdgeInsets.symmetric(
                       vertical: UtenSpacing.s8,
@@ -3389,10 +3391,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              ?footer,
+                              ?addBar,
                               if (footer != null && addBar != null)
                                 const SizedBox(height: UtenSpacing.s4),
-                              ?addBar,
+                              ?footer,
                             ],
                           ),
                   );
@@ -3774,7 +3776,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
                     onReset: _resetColumnSettings,
                   ),
                 // 与选择无关的常驻入口（「从上游引入」），紧挨表头设置同排同高。
-                ...widget.toolbarActions,
+                for (final action in widget.toolbarActions)
+                  UtenTableActionScope(child: action),
                 if (!editMode &&
                     widget._showSelect &&
                     widget.showSelectAllToggle)

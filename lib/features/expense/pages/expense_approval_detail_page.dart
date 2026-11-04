@@ -18,6 +18,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -572,23 +573,13 @@ class _ExpenseApprovalDetailPageState
             onFilterChanged: (_, _) {},
             embedded: true,
             stickyHeaderPinned: _itemsPinned,
-            summaryBar: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: UtenSpacing.s8,
-              children: [
-                Text(
-                  '共 ${claim.items.length} 项 · 合计 ',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                Text(
+            summaryBar: UtenTotalsSummaryBar(
+              rowCount: claim.items.length,
+              compact: true,
+              entries: [
+                UtenTotalEntry(
+                  '合计',
                   '${claim.totalAmount.toStringAsFixed(2)} 元',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
                 ),
               ],
             ),

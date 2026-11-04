@@ -442,7 +442,8 @@ class _WarehouseTaskCenterPageState
       key: const ValueKey('warehouse-subcontract-return-history'),
       timeKey: const Key('warehouse-task-center-sc-return-time'),
       externalHeader: categoryBar,
-      builder: (time) => WarehouseDocumentHistoryView(
+      builder: (time, timeAction) => WarehouseDocumentHistoryView(
+        toolbarLeadingActions: [timeAction],
         type: WarehouseDocumentHistoryType.subcontractReturn,
         keyword: _keyword,
         refreshTick: _refreshTick,

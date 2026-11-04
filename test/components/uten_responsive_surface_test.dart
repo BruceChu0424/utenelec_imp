@@ -47,7 +47,7 @@ Future<void> _pump(
 
 void main() {
   testWidgets(
-    'history range retains complete dates on the narrow scaled canvas',
+    'history range keeps a short control and the complete dates in its hint on a narrow scaled canvas',
     (tester) async {
       await _pump(
         tester,
@@ -66,7 +66,9 @@ void main() {
         ),
         zoom: 2,
       );
-      expect(find.textContaining('2024-01-01'), findsOneWidget);
+      expect(find.textContaining('2024-01-01'), findsNothing);
+      expect(find.text('选择日期'), findsOneWidget);
+      expect(find.byTooltip('2024-01-01 ~ 2024-10-13'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

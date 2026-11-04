@@ -17,11 +17,13 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../providers/finance_report_facet_options.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -520,24 +522,6 @@ class _FinanceReportTablePageState
     _load();
   }
 
-  String _filterCaption(String key, String value) {
-    final columnKey = key.startsWith('search.') ? key.substring(7) : key;
-    final label =
-        _data?.columns
-            .firstWhereOrNull((column) => column.key == columnKey)
-            ?.label ??
-        '筛选';
-    final display = value == kMasterFilterNullValue
-        ? '(空)'
-        : key.startsWith('search.')
-        ? value
-        : _data?.facets[columnKey]
-                  ?.firstWhereOrNull((bucket) => bucket.value == value)
-                  ?.display ??
-              value;
-    return '$label: $display';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -566,16 +550,22 @@ class _FinanceReportTablePageState
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
       ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenCollapsingHeaderScrollView(
-              collapsingHeader: _buildFilterPane(theme),
-              body: _buildTable(),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: UtenContentContainer.wide(
+              child: Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: _buildFilterPane(theme),
+                  body: _buildTable(),
+                ),
+              ),
             ),
           ),
-        ),
+          if (_loading)
+            const UtenBusyOverlay(title: '正在查询报表', showDoNotLeaveHint: false),
+        ],
       ),
     );
   }
@@ -624,64 +614,40 @@ class _FinanceReportTablePageState
               _persistAndReload();
             },
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              FinanceDateRangeFilter(
-                from: _from,
-                to: _to,
-                info: _exportReport == 'gl/profit-monthly'
-                    ? '按截止日所在月份统计本月及本年累计'
-                    : _exportReport == 'gl/balance-sheet' ||
-                          _exportReport.startsWith('fa/')
-                    ? '余额与明细截至所选截止日'
-                    : null,
-                onChanged: (from, to) {
-                  setState(() {
-                    _from = from!;
-                    _to = to!;
-                  });
-                  return _persistAndReload();
-                },
-              ),
-              if (_isCustomerPrepaymentEvents)
-                SizedBox(
-                  width: 240,
-                  child: ClientPickerField(
-                    key: ValueKey(
-                      'prepayment-report-client-${_clientId ?? 'all'}',
+          if (_isCustomerPrepaymentEvents || widget.cardId == 'gl') ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (_isCustomerPrepaymentEvents)
+                  SizedBox(
+                    width: 240,
+                    child: ClientPickerField(
+                      key: ValueKey(
+                        'prepayment-report-client-${_clientId ?? 'all'}',
+                      ),
+                      initialId: _clientId,
+                      initialName: _clientName,
+                      onPick: () async {
+                        final selected = await _pickClient();
+                        if (selected != null) _clientName = selected.name;
+                        return selected;
+                      },
+                      onChanged: _onClientChanged,
                     ),
-                    initialId: _clientId,
-                    initialName: _clientName,
-                    onPick: () async {
-                      final selected = await _pickClient();
-                      if (selected != null) _clientName = selected.name;
-                      return selected;
-                    },
-                    onChanged: _onClientChanged,
                   ),
-                ),
-              if (widget.cardId == 'gl')
-                TextButton.icon(
-                  key: const ValueKey('gl-line-bindings'),
-                  onPressed: _openLineBindings,
-                  icon: const Icon(Icons.tune_outlined, size: 18),
-                  label: const Text('报表取数设置'),
-                ),
-              for (final entry in _filters.entries)
-                Chip(
-                  label: Text(
-                    _filterCaption(entry.key, entry.value),
-                    style: theme.textTheme.labelSmall,
+                if (widget.cardId == 'gl')
+                  TextButton.icon(
+                    key: const ValueKey('gl-line-bindings'),
+                    onPressed: _openLineBindings,
+                    icon: const Icon(Icons.tune_outlined, size: 18),
+                    label: const Text('报表取数设置'),
                   ),
-                  onDeleted: () => _onFilterChanged(entry.key, null),
-                  visualDensity: VisualDensity.compact,
-                ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -689,32 +655,8 @@ class _FinanceReportTablePageState
 
   Widget _buildTable() {
     final data = _acceptedQueryCurrent
-        ? _data
-        : (_data?.pendingQuery() ??
-              (_loading ? _reportMetadata.loadingData : null));
-    if (_error != null && _data == null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            TextButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      );
-    }
-    if (data == null) {
-      return const Center(child: Text('点击「查询」加载'));
-    }
+        ? _data!
+        : (_data?.pendingQuery() ?? _reportMetadata.loadingData);
     // 状态列前置（全站口径）：列元数据来自服务端，客户端映射时把「状态」类列
     // （单据状态/审核状态等）排到最前，其余列保持服务端顺序；两个分区各自保持
     // 原有相对顺序。
@@ -736,6 +678,11 @@ class _FinanceReportTablePageState
                 ? (_) => (c.width ?? 180).toDouble()
                 : null,
             type: c.type,
+            facetCandidatesUseKeyword:
+                c.type == 'text' &&
+                c.key != 'currencyCode' &&
+                !(_exportReport.startsWith('gl/') &&
+                    const {'side', 'category'}.contains(c.key)),
             columnSearchEnabled:
                 data.columnSearchKeys.contains(c.key) &&
                 !_nonQueryableColumns.contains(c.key) &&
@@ -777,6 +724,26 @@ class _FinanceReportTablePageState
           'features.finance.pages.finance_report_table_page.FinanceReportTablePageState._buildTable.1',
       columns: columns,
       serverColumnSearchKeys: data.columnSearchKeys,
+      facetPageLoaders: financeReportFacetLoaders(
+        ref,
+        report: _exportReport,
+        query: _exportQuery,
+        fields: [
+          for (final column in columns)
+            if (column.type == 'text' &&
+                data.columnSearchKeys.contains(column.key) &&
+                !_nonQueryableColumns.contains(column.key) &&
+                column.key != 'currencyCode' &&
+                !(_exportReport.startsWith('gl/') &&
+                    const {'side', 'category'}.contains(column.key)))
+              column.key,
+        ],
+      ),
+      facetSearchScope: financeReportFacetScope(
+        ref,
+        report: _exportReport,
+        query: _exportQuery,
+      ),
       headerFilterScopeDescription: _exportReport == 'statements/subcontract'
           ? '库存为同委外商、货品、颜色及数量单位的整组事实，在各加工币别重复显示，不累计；加工金额按本币别计价数量检索'
           : _exportReport == 'cost/copper-fee'
@@ -786,6 +753,23 @@ class _FinanceReportTablePageState
           : '检索所选条件的完整报表；合计与导出沿用同一范围',
       items: data.rows,
       toolbarActions: [
+        FinanceDateRangeFilter(
+          from: _from,
+          to: _to,
+          info: _exportReport == 'gl/profit-monthly'
+              ? '按截止日所在月份统计本月及本年累计'
+              : _exportReport == 'gl/balance-sheet' ||
+                    _exportReport.startsWith('fa/')
+              ? '余额与明细截至所选截止日'
+              : null,
+          onChanged: (from, to) {
+            setState(() {
+              _from = from!;
+              _to = to!;
+            });
+            return _persistAndReload();
+          },
+        ),
         if (widget.cardId == 'gl' &&
             ref.watch(costWorkbenchCapabilityProvider).canReadPostings)
           UtenButton(

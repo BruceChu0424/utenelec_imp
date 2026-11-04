@@ -2990,17 +2990,7 @@ class _ProductionWorkshopTasksPageState
                     _load();
                   },
                 ),
-                if (_isHistory) ...[
-                  // 历史任务时间门控（ADR-066 §1.3，2026-10-24 起默认近一个月）。
-                  Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                    child: UtenHistoryTimeFilter(
-                      key: const Key('workshop-history-time'),
-                      value: _historyTime,
-                      onChanged: _onHistoryTime,
-                    ),
-                  ),
-                ],
+
                 const SizedBox(height: UtenSpacing.s8),
                 if (_serverReportDraftsError != null && _status != null)
                   Padding(
@@ -3016,12 +3006,25 @@ class _ProductionWorkshopTasksPageState
                           description: '开工准备包含待认料、等待物料和可开工任务；生产中可报工',
                         )
                       : _isHistory && _historyTime.isNone
-                      ? const UtenHistoryTimePlaceholder(
+                      ? UtenHistoryTimePlaceholder(
+                          controls: UtenHistoryTimeFilter(
+                            key: const Key('workshop-history-time'),
+                            value: _historyTime,
+                            onChanged: _onHistoryTime,
+                          ),
                           description: '按计划完工日期加载已完工 / 已取消 / 已撤回工单',
                         )
                       : MasterDataTableView<
                           ProductionExecutionWorkbenchSegment
                         >(
+                          toolbarLeadingActions: [
+                            if (_isHistory)
+                              UtenHistoryTimeFilter(
+                                key: const Key('workshop-history-time'),
+                                value: _historyTime,
+                                onChanged: _onHistoryTime,
+                              ),
+                          ],
                           rowsController: _tableRows,
                           expensiveRowMounts: _isPreparing && _canStart,
                           paginationRevision: _items,

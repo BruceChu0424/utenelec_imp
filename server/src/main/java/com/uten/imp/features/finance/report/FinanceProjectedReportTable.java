@@ -43,6 +43,11 @@ public final class FinanceProjectedReportTable {
             throw invalid("此列尚无可检索或排序的已核实事实");
         var header=conditions(columns,input,facetKeys,sort,nonQueryableKeys);
         String filtered="SELECT report.* FROM ("+source+") report "+header.where().sql();
+        if(FinanceReportColumnCandidates.current()!=null) {
+            FinanceReportColumnCandidates.current().readSql(em,columns,nonQueryableKeys,filtered,
+                    query->{bindSource.accept(query);header.where().params().forEach(query::setParameter);});
+            return new ReportTableResponse(columns,List.of(),Map.of(),1,1,0,0);
+        }
         int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
         String ordering=fallbackOrder;
         Map<String,String> visible=new LinkedHashMap<>();

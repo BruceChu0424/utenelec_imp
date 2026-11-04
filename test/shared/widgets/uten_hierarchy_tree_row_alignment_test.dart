@@ -57,7 +57,7 @@ void main() {
     );
   });
 
-  testWidgets('部门徽标人数和多选框在窄栏仍与名称同行', (tester) async {
+  testWidgets('部门默认层级色与管理页一致且人数和多选框在窄栏仍与名称同行', (tester) async {
     await tester.pumpWidget(
       _app(
         UtenDepartmentTreeView(
@@ -81,10 +81,9 @@ void main() {
     );
 
     final label = tester.getRect(find.text('生产部'));
-    expect(tester.getCenter(find.text('部')).dy, label.center.dy);
+    expect(find.text('部'), findsNothing);
     expect(tester.getCenter(find.text('12人')).dy, label.center.dy);
     expect(tester.getCenter(find.byType(Checkbox)).dy, label.center.dy);
-    expect(tester.getRect(find.text('部')).right, lessThan(label.left));
     expect(tester.takeException(), isNull);
   });
 

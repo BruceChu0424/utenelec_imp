@@ -111,6 +111,9 @@ class _FinanceAccountPickerPanelState
     final theme = Theme.of(context);
     final accounts = _filtered;
     final selectedAccount = _selectedAccount;
+    final contentPadding = EdgeInsets.symmetric(
+      horizontal: UtenPanelSpacing.inset(context, UtenSpacing.s16),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -119,7 +122,7 @@ class _FinanceAccountPickerPanelState
           onClose: () => Navigator.pop(context),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
+          padding: contentPadding,
           child: UtenSearchBar(
             hint: '搜索账户编号 / 名称 / 币种',
             // 纯本地过滤：输入即筛（onInputChanged 无防抖，组合期由组件挂起）。
@@ -128,76 +131,79 @@ class _FinanceAccountPickerPanelState
         ),
         const SizedBox(height: UtenSpacing.s8),
         Expanded(
-          child: accounts.isEmpty
-              ? Center(
-                  child: Text(
-                    '没有匹配的账户',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              : MasterDataTableView<FinanceAccountReference>(
-                  columns: [
-                    MasterColumnDef(
-                      key: 'name',
-                      label: '账户名称',
-                      width: 200,
-                      value: (a) => a.name,
-                      sortable: true,
-                      filterFromRows: true,
-                    ),
-                    MasterColumnDef(
-                      key: 'code',
-                      label: '编号',
-                      width: 130,
-                      value: (a) => a.code,
-                      sortable: true,
-                      filterFromRows: true,
-                    ),
-                    MasterColumnDef(
-                      key: 'currency',
-                      label: '币种',
-                      width: 140,
-                      value: (a) => financeCurrencyDisplayLabel(
-                        name: a.currencyName,
-                        code: a.currencyCode,
+          child: Padding(
+            padding: contentPadding,
+            child: accounts.isEmpty
+                ? Center(
+                    child: Text(
+                      '没有匹配的账户',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
-                      filterFromRows: true,
-                      facetSearchEnabled: true,
                     ),
-                    MasterColumnDef(
-                      key: 'baseCurrency',
-                      label: '本位币账户',
-                      width: 110,
-                      type: 'bool',
-                      value: (a) => a.baseCurrency ? '是' : '否',
-                      filterFromRows: true,
-                      facetSearchEnabled: true,
-                    ),
-                  ],
-                  items: accounts,
-                  rowKeyOf: (a) => a.id,
-                  rowWidgetKeyOf: (a) =>
-                      ValueKey('finance-account-picker-${a.id}'),
-                  singleTapRows: true,
-                  isSelected: (a) => a.id == selectedAccount?.id,
-                  onRowTap: (account) {
-                    if (mounted &&
-                        _isUsable(account) &&
-                        widget.accounts.contains(account)) {
-                      setState(() => _selectedId = account.id);
-                    }
-                  },
-                  facets: const {},
-                  nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
-                  showFullscreenToggle: false,
-                  showColumnChooser: false,
-                  showPaginationControls: false,
-                  enableTextSelection: false,
-                ),
+                  )
+                : MasterDataTableView<FinanceAccountReference>(
+                    columns: [
+                      MasterColumnDef(
+                        key: 'name',
+                        label: '账户名称',
+                        width: 200,
+                        value: (a) => a.name,
+                        sortable: true,
+                        filterFromRows: true,
+                      ),
+                      MasterColumnDef(
+                        key: 'code',
+                        label: '编号',
+                        width: 130,
+                        value: (a) => a.code,
+                        sortable: true,
+                        filterFromRows: true,
+                      ),
+                      MasterColumnDef(
+                        key: 'currency',
+                        label: '币种',
+                        width: 140,
+                        value: (a) => financeCurrencyDisplayLabel(
+                          name: a.currencyName,
+                          code: a.currencyCode,
+                        ),
+                        filterFromRows: true,
+                        facetSearchEnabled: true,
+                      ),
+                      MasterColumnDef(
+                        key: 'baseCurrency',
+                        label: '本位币账户',
+                        width: 110,
+                        type: 'bool',
+                        value: (a) => a.baseCurrency ? '是' : '否',
+                        filterFromRows: true,
+                        facetSearchEnabled: true,
+                      ),
+                    ],
+                    items: accounts,
+                    rowKeyOf: (a) => a.id,
+                    rowWidgetKeyOf: (a) =>
+                        ValueKey('finance-account-picker-${a.id}'),
+                    singleTapRows: true,
+                    isSelected: (a) => a.id == selectedAccount?.id,
+                    onRowTap: (account) {
+                      if (mounted &&
+                          _isUsable(account) &&
+                          widget.accounts.contains(account)) {
+                        setState(() => _selectedId = account.id);
+                      }
+                    },
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    showFullscreenToggle: false,
+                    showColumnChooser: false,
+                    showPaginationControls: false,
+                    enableTextSelection: false,
+                  ),
+          ),
         ),
         UtenPickerConfirmBar(
           selectedCount: selectedAccount == null ? 0 : 1,

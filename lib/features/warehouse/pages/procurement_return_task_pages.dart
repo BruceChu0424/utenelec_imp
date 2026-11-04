@@ -391,6 +391,17 @@ class _ProcurementReturnTasksPageState
             // 2026-09-24 任务中心统一：分段行（待退回红徽章 / 历史记录时间门控）
             // + 页级搜索。红徽章与 hub「待退回供应商」卡同源（徽章汇总入口）。
             UtenFilterToolbar<_ReturnSeg>(
+              trailing: _seg == _ReturnSeg.history
+                  ? UtenHistoryTimeFilter(
+                      key: const Key('procurement-return-task-history-time'),
+                      value: _historyTime,
+                      onChanged: (value) {
+                        if (value == _historyTime) return;
+                        setState(() => _historyTime = value);
+                        _load(1);
+                      },
+                    )
+                  : null,
               segmentsKey: const Key('procurement-return-task-segments'),
               segments: [
                 UtenFilterSegment(
@@ -435,18 +446,7 @@ class _ProcurementReturnTasksPageState
                 if (_shouldLoad) _load(1);
               },
             ),
-            if (_seg == _ReturnSeg.history) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenHistoryTimeFilter(
-                key: const Key('procurement-return-task-history-time'),
-                value: _historyTime,
-                onChanged: (value) {
-                  if (value == _historyTime) return;
-                  setState(() => _historyTime = value);
-                  _load(1);
-                },
-              ),
-            ],
+
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(

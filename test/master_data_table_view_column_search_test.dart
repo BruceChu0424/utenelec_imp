@@ -1,9 +1,110 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
+  testWidgets('text suggestions support keyboard focus and activation', (
+    tester,
+  ) async {
+    final changes = <(String, String?)>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MasterDataTableView<String>(
+            columns: [
+              MasterColumnDef(
+                key: 'clientName',
+                label: '客户名称',
+                width: 200,
+                value: (row) => row,
+              ),
+            ],
+            items: const ['当前页客户'],
+            facets: const {
+              'clientName': [MasterFacetBucket(value: '优腾电器', count: 2)],
+            },
+            nullCounts: const {},
+            filters: const {},
+            serverColumnSearchKeys: const {'clientName'},
+            onPageChange: (_) async {},
+            onFilterChanged: (key, value) => changes.add((key, value)),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('客户名称'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '优腾',
+    );
+    await tester.pumpAndSettle();
+    final candidate = tester.getRect(find.text('优腾电器 (2)'));
+    var focusedCandidate = false;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      final box = FocusManager.instance.primaryFocus?.context
+          ?.findRenderObject();
+      if (box is RenderBox &&
+          candidate.contains(box.localToGlobal(box.size.center(Offset.zero)))) {
+        focusedCandidate = true;
+        break;
+      }
+    }
+    expect(focusedCandidate, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(changes, [('search.clientName', '优腾电器')]);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'typing then selecting a text candidate applies the Search action',
+    (tester) async {
+      final changes = <(String, String?)>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MasterDataTableView<String>(
+              columns: [
+                MasterColumnDef(
+                  key: 'clientName',
+                  label: '客户名称',
+                  width: 200,
+                  value: (row) => row,
+                ),
+              ],
+              items: const ['当前页客户'],
+              facets: const {
+                'clientName': [MasterFacetBucket(value: '优腾电器', count: 2)],
+              },
+              nullCounts: const {},
+              filters: const {},
+              serverColumnSearchKeys: const {'clientName'},
+              onPageChange: (_) async {},
+              onFilterChanged: (key, value) => changes.add((key, value)),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('客户名称'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '优腾',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('优腾电器 (2)'));
+      await tester.pumpAndSettle();
+      expect(changes, [('search.clientName', '优腾电器')]);
+      expect(find.byKey(const Key('uten-column-keyword-input')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   test(
     'keyword controls follow column meaning and allow business overrides',
     () {

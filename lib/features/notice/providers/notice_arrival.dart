@@ -25,12 +25,14 @@ import '../../../core/network/api_exception.dart';
 import '../../../components/feedback/uten_center_alert.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/app_visibility_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/shared_providers.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 import '../repositories/notice_repository.dart';
 import 'notice_unread_index_provider.dart';
 import '../widgets/notice_detail_dialog.dart';
+import '../widgets/notice_action_busy.dart';
 import '../widgets/review_pending_dialog.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 
@@ -900,7 +902,16 @@ void dispatchNoticeArrival(
             AppNotificationAction(
               label: '打卡确认',
               filled: true,
-              onPressed: () => acknowledgeNoticeInline(container, notice.id),
+              onPressed: () {
+                if (isCurrent?.call() == false) return;
+                unawaited(
+                  acknowledgeNoticeInline(
+                    container,
+                    notice.id,
+                    context: detailContext,
+                  ),
+                );
+              },
             ),
           ]
         : null,
@@ -925,13 +936,19 @@ bool manualAckPending(Notice notice) =>
 /// 登录弹窗也会兜底。
 Future<void> acknowledgeNoticeInline(
   ProviderContainer container,
-  String noticeId,
-) async {
+  String noticeId, {
+  required BuildContext context,
+}) async {
+  final scope = container.read(authenticatedScopeProvider);
   try {
-    await container.read(noticeRepositoryProvider).acknowledge(noticeId);
-    container.invalidate(noticeListProvider);
-    container.invalidate(noticeDetailProvider(noticeId));
+    if (!context.mounted) return;
+    await runNoticeActionWithBusy(
+      context,
+      title: '正在确认收到',
+      action: () => acknowledgeNoticeContainer(container, noticeId),
+    );
   } catch (caughtError) {
+    if (container.read(authenticatedScopeProvider) != scope) return;
     container
         .read(appNotificationProvider.notifier)
         .showError(

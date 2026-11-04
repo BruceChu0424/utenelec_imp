@@ -12,6 +12,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/ui/uten_top_banner_card.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/providers/notice_arrival.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
@@ -669,6 +670,10 @@ void main() {
         overrides: [
           noticeRepositoryProvider.overrideWithValue(repository),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'staff'),
+          ),
+          fixedBadgeSummaryOverride(),
         ],
       );
       late BuildContext dispatchContext;
@@ -1678,6 +1683,7 @@ void main() {
                   ..._noticeJson(notice),
                   'interactionMode': 'acknowledge',
                   'myAcked': true,
+                  'isRead': true,
                 };
               }
             } else if (request.path == '/notices/unread-count') {
@@ -1698,8 +1704,13 @@ void main() {
         overrides: [
           noticeRepositoryProvider.overrideWithValue(repository),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'staff'),
+          ),
+          fixedBadgeSummaryOverride(),
         ],
       );
+      addTearDown(container.dispose);
       late BuildContext dispatchContext;
       var delivered = 0;
       var opens = 0;
@@ -1772,7 +1783,7 @@ void main() {
               request.path == '/notices/${holiday.id}/read',
         ),
         isFalse,
-        reason: '打卡不代行已读',
+        reason: '回执由服务端原子置读，不另发 markRead',
       );
     },
   );

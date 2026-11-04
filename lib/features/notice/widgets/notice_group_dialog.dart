@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_close_button.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/feedback/uten_motion.dart';
 import '../../../core/performance/performance_tier.dart';
 import '../../../core/theme/uten_anim.dart';
@@ -28,6 +29,7 @@ import '../models/notice.dart';
 import '../models/notice_group.dart';
 import '../providers/notice_providers.dart';
 import 'notice_card.dart';
+import 'notice_action_busy.dart';
 import 'notice_detail_dialog.dart';
 
 /// The source rectangle is captured before pushing, in the root overlay's coordinates.
@@ -161,7 +163,11 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
     );
     try {
       if (_isUnread(notice)) {
-        await markNoticeReadContainer(container, notice.id);
+        await runNoticeActionWithBusy(
+          context,
+          title: '正在打开通知',
+          action: () => markNoticeReadContainer(container, notice.id),
+        );
         if (!mounted) return;
         setState(() => _readIds.add(notice.id));
       }
@@ -193,15 +199,21 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
     );
     var failed = 0;
     try {
-      for (final notice in targets) {
-        if (!mounted || !widget.originContext.mounted) break;
-        try {
-          await markNoticeReadContainer(container, notice.id);
-          if (mounted) setState(() => _readIds.add(notice.id));
-        } catch (_) {
-          failed++;
-        }
-      }
+      await runNoticeActionWithBusy(
+        context,
+        title: '正在标记已读',
+        action: () async {
+          for (final notice in targets) {
+            if (!mounted || !widget.originContext.mounted) break;
+            try {
+              await markNoticeReadContainer(container, notice.id);
+              if (mounted) setState(() => _readIds.add(notice.id));
+            } catch (_) {
+              failed++;
+            }
+          }
+        },
+      );
       if (mounted && failed > 0) context.appError('$failed 条通知未能标为已读，请重试');
     } finally {
       if (mounted) setState(() => _markingAll = false);
@@ -243,7 +255,7 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
     );
   }
 
-  /// 浮动头部：类型图标 + 计数/未读副题 + 全部已读 + 收起。
+  /// 浮动头部：类型图标 + 标题/计数/提示入口 + 全部已读 + 收起。
   /// 不做底板背景，文字用白色系压在暗化页面上；卡片就位后再落定。
   Widget _buildHeader(int unread, int total) {
     final typeColor = widget.group.face.type.color;
@@ -270,8 +282,10 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
           ),
           const SizedBox(width: UtenSpacing.s12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Wrap(
+              spacing: UtenSpacing.s6,
+              runSpacing: UtenSpacing.s4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text(
                   '相关通知',
@@ -282,9 +296,9 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
                     height: 1.3,
                   ),
                 ),
-                const SizedBox(height: UtenSpacing.s2),
+                const UtenFieldHintIcon(info: '未读通知排在前面', dense: true),
                 Text(
-                  '共 $total 条${unread > 0 ? ' · 未读 $unread 条' : ' · 全部已读'}，未读排在前面',
+                  '共 $total 条${unread > 0 ? ' · 未读 $unread 条' : ' · 全部已读'}',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.85),
                     fontSize: 12.5,

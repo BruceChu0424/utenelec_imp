@@ -6,8 +6,8 @@
 // - 卡下阴影 = 柔软扩散的同色弥散影（近景接触影保持中性色），
 //   让卡片像轻轻浮在背景上，与叠层、徽章同色系呼应；
 // - 顶部 = 类型图标（同色浅底托）+ 类型名（主题色）；
-//   通知标题是主要视觉重点，来源/时间/阅读状态是次级层次；
-// - 分组顶卡右上角 = 数量徽章（实色主题色 + 浅色描边圈）；
+//   未读红点与文字放在顶行右侧，通知标题是主要视觉重点；
+// - 分组数量徽章与未读状态同排，各自留出空间；
 // - 悬停整组轻轻上浮、阴影加深（点击展开的暗示）。
 //
 // 本卡是「渐变卡」的定制表面（UtenCard 契约是白底+细边框、不用渐变），
@@ -30,7 +30,7 @@ import 'celebration_subjects.dart';
 import 'notice_interaction_footer.dart';
 
 /// One visual contract for the inbox and the cards unfolded from a stack.
-/// Reading, acknowledging and completing a business task remain separate actions.
+/// Acknowledging also marks the notice read; completing a task stays separate.
 class NoticeCard extends StatefulWidget {
   const NoticeCard({
     super.key,
@@ -136,7 +136,6 @@ class _NoticeCardState extends State<NoticeCard> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
                               width: 40,
@@ -153,54 +152,39 @@ class _NoticeCardState extends State<NoticeCard> {
                             ),
                             const SizedBox(width: UtenSpacing.s12),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    notice.type.label,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      color: typeInk,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: UtenSpacing.s2),
-                                  Text(
-                                    notice.type.isWork
-                                        ? '业务消息'
-                                        : notice.type.isCelebratory
-                                        ? '同事庆典'
-                                        : notice.sourceEvent == null &&
-                                              notice.type != NoticeType.system
-                                        ? '公司通知'
-                                        : '系统提醒',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: scheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                notice.type.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: typeInk,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                            const SizedBox(width: UtenSpacing.s8),
-                            if (widget.selecting)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: UtenSpacing.s4,
-                                ),
-                                child: Icon(
-                                  widget.checked
-                                      ? Icons.check_circle_rounded
-                                      : Icons.radio_button_unchecked,
-                                  color: widget.checked
-                                      ? scheme.primary
-                                      : scheme.outline,
-                                  semanticLabel: widget.checked ? '已选择' : '未选择',
-                                ),
-                              )
-                            else if (grouped)
+                            if (grouped && !widget.selecting) ...[
+                              const SizedBox(width: UtenSpacing.s8),
                               _CountBadge(
                                 count: widget.groupCount!,
                                 color: accent,
                               ),
+                            ],
+                            if (isUnread) ...[
+                              const SizedBox(width: UtenSpacing.s8),
+                              const _UnreadBadge(),
+                            ],
+                            if (widget.selecting) ...[
+                              const SizedBox(width: UtenSpacing.s8),
+                              Icon(
+                                widget.checked
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked,
+                                color: widget.checked
+                                    ? scheme.primary
+                                    : scheme.outline,
+                                semanticLabel: widget.checked ? '已选择' : '未选择',
+                              ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: UtenSpacing.s12),
@@ -248,25 +232,6 @@ class _NoticeCardState extends State<NoticeCard> {
                                 color: scheme.onSurfaceVariant,
                               ),
                             ),
-                            if (isUnread) ...[
-                              const SizedBox(width: UtenSpacing.s2),
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: scheme.error,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: UtenSpacing.s4),
-                              Text(
-                                '未读',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: scheme.error,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                         if (effectivePriority.showBadge ||
@@ -350,12 +315,6 @@ class _NoticeCardState extends State<NoticeCard> {
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              Text(
-                                '展开查看',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                ),
-                              ),
                             ],
                           ),
                         ] else if (widget.showInteractions &&
@@ -426,6 +385,37 @@ List<BoxShadow> _glowShadow(
 ];
 
 /// 分组数量徽章：实色主题色 + 浅色描边圈 + 清楚数字。
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      key: const ValueKey('notice-unread-indicator'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: UtenSpacing.s8,
+          height: UtenSpacing.s8,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.error,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: UtenSpacing.s6),
+        Text(
+          '未读',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.error,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _CountBadge extends StatelessWidget {
   const _CountBadge({required this.count, required this.color});
 

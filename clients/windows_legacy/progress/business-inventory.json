@@ -89093,7 +89093,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9"
+          "targetSha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf"
         },
         {
           "directive": "import",
@@ -90675,7 +90675,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9"
+          "targetSha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf"
         },
         {
           "directive": "import",
@@ -90699,7 +90699,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2d87c0d060af9c64e3caa326372f1083842fe15be59a2c6dfb0a3cc598ce5b36"
+          "targetSha256": "eeaf8dc84d864d4c2beeccc4c3928b2f317f481bf32f7cf75805b521309d0554"
         }
       ],
       "partUnits": [],
@@ -90871,18 +90871,18 @@
       "id": "page:notice/pages/notice_list_page.dart",
       "feature": "notice",
       "source": "lib/features/notice/pages/notice_list_page.dart",
-      "sha256": "b80edfe45bd1701137cc93ae50807754e508757df6d331245f591de3d8af7ab0",
-      "lineCount": 406,
+      "sha256": "ec5005230ff86200ad2defb0fee58d29a570adb05304930a96b32ea29b32d107",
+      "lineCount": 427,
       "classes": [
         {
           "name": "NoticeListPage",
-          "line": 41,
+          "line": 42,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_NoticeListPageState",
-          "line": 52,
+          "line": 53,
           "role": "state-class",
           "extends": "ConsumerState<NoticeListPage>"
         }
@@ -91150,7 +91150,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9"
+          "targetSha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf"
         },
         {
           "directive": "import",
@@ -91162,13 +91162,25 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "895969e4ab864f3ed1f052e800da3a96fd47955007fe94aa0a31babc34575da4"
+          "targetSha256": "6a494f38d941a9cfbceef059e42bc1707f9dd011ea313fd59b8518a32e0a58c6"
+        },
+        {
+          "directive": "import",
+          "uri": "../widgets/notice_action_busy.dart",
+          "source": "lib/features/notice/widgets/notice_action_busy.dart",
+          "line": 37,
+          "role": "featureWidgets",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "d5fb086a713c9ceeceb54cedb8dffdf6e7e4d4486550c01b08c6fd29dd242450"
         },
         {
           "directive": "import",
           "uri": "../widgets/notice_detail_dialog.dart",
           "source": "lib/features/notice/widgets/notice_detail_dialog.dart",
-          "line": 37,
+          "line": 38,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -91180,19 +91192,19 @@
           "directive": "import",
           "uri": "../widgets/notice_group_dialog.dart",
           "source": "lib/features/notice/widgets/notice_group_dialog.dart",
-          "line": 38,
+          "line": 39,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "827c4e6f90e9cca47de0c4fdd447e9d684ec666aded9a27045b6abbe7d13d22b"
+          "targetSha256": "417f9eb7feddca628a271ff906e4fea2f8ae52f1604fa0d44e27190a8578c935"
         },
         {
           "directive": "import",
           "uri": "../widgets/notice_popup_settings_dialog.dart",
           "source": "lib/features/notice/widgets/notice_popup_settings_dialog.dart",
-          "line": 39,
+          "line": 40,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -91209,7 +91221,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 65,
+          "line": 66,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -91219,7 +91231,7 @@
         {
           "symbol": "remove",
           "receiver": "_selected",
-          "line": 101,
+          "line": 102,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -91229,7 +91241,7 @@
         {
           "symbol": "_deleteSelected",
           "receiver": null,
-          "line": 106,
+          "line": 107,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "delete"
@@ -91239,17 +91251,17 @@
         {
           "symbol": "deleteNotices",
           "receiver": null,
-          "line": 130,
+          "line": 135,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "delete"
           ],
-          "evidenceLine": "final deleted = await deleteNotices(ref, _selected.toList());"
+          "evidenceLine": "action: () => deleteNotices(ref, _selected.toList()),"
         },
         {
           "symbol": "removeAll",
           "receiver": "_selected",
-          "line": 328,
+          "line": 349,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -91258,7 +91270,7 @@
         },
         {
           "symbol": "_deleteSelected",
-          "line": 397,
+          "line": 418,
           "kind": "callback-reference",
           "callback": "onAction",
           "actionNameHints": [
@@ -91688,7 +91700,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9"
+          "targetSha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf"
         },
         {
           "directive": "import",
@@ -141248,7 +141260,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9"
+          "targetSha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf"
         },
         {
           "directive": "import",
@@ -144422,7 +144434,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9"
+          "targetSha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf"
         },
         {
           "directive": "import",
@@ -166820,7 +166832,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b80edfe45bd1701137cc93ae50807754e508757df6d331245f591de3d8af7ab0"
+          "targetSha256": "ec5005230ff86200ad2defb0fee58d29a570adb05304930a96b32ea29b32d107"
         },
         {
           "directive": "import",
@@ -166832,7 +166844,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9"
+          "targetSha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf"
         },
         {
           "directive": "import",
@@ -255711,8 +255723,8 @@
     },
     {
       "source": "lib/features/notice/pages/notice_list_page.dart",
-      "sha256": "b80edfe45bd1701137cc93ae50807754e508757df6d331245f591de3d8af7ab0",
-      "lineCount": 406
+      "sha256": "ec5005230ff86200ad2defb0fee58d29a570adb05304930a96b32ea29b32d107",
+      "lineCount": 427
     },
     {
       "source": "lib/features/notice/pages/notice_publish_page.dart",
@@ -255721,8 +255733,8 @@
     },
     {
       "source": "lib/features/notice/providers/notice_providers.dart",
-      "sha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9",
-      "lineCount": 274
+      "sha256": "b38e6c7ea5de836dd6aeb085d16e786e8a4adedd71d0fd9ccda2817997136faf",
+      "lineCount": 299
     },
     {
       "source": "lib/features/notice/widgets/celebration_popup_gate.dart",
@@ -255735,14 +255747,19 @@
       "lineCount": 189
     },
     {
+      "source": "lib/features/notice/widgets/notice_action_busy.dart",
+      "sha256": "d5fb086a713c9ceeceb54cedb8dffdf6e7e4d4486550c01b08c6fd29dd242450",
+      "lineCount": 47
+    },
+    {
       "source": "lib/features/notice/widgets/notice_blessing.dart",
-      "sha256": "2d87c0d060af9c64e3caa326372f1083842fe15be59a2c6dfb0a3cc598ce5b36",
-      "lineCount": 432
+      "sha256": "eeaf8dc84d864d4c2beeccc4c3928b2f317f481bf32f7cf75805b521309d0554",
+      "lineCount": 443
     },
     {
       "source": "lib/features/notice/widgets/notice_card.dart",
-      "sha256": "895969e4ab864f3ed1f052e800da3a96fd47955007fe94aa0a31babc34575da4",
-      "lineCount": 651
+      "sha256": "6a494f38d941a9cfbceef059e42bc1707f9dd011ea313fd59b8518a32e0a58c6",
+      "lineCount": 641
     },
     {
       "source": "lib/features/notice/widgets/notice_detail_dialog.dart",
@@ -255751,8 +255768,8 @@
     },
     {
       "source": "lib/features/notice/widgets/notice_group_dialog.dart",
-      "sha256": "827c4e6f90e9cca47de0c4fdd447e9d684ec666aded9a27045b6abbe7d13d22b",
-      "lineCount": 405
+      "sha256": "417f9eb7feddca628a271ff906e4fea2f8ae52f1604fa0d44e27190a8578c935",
+      "lineCount": 419
     },
     {
       "source": "lib/features/notice/widgets/notice_popup_settings_dialog.dart",

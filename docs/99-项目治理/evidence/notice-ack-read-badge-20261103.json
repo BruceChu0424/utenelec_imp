@@ -1,0 +1,140 @@
+{
+  "task": "notice-ack-read-badge-20261103",
+  "date": "2026-11-03",
+  "branch": "uimp/notice-ack-read-badge-20261103",
+  "baseline": "8937e02d2",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "rootCause": "acknowledge saved the receipt but did not write notice_user_states.read_at",
+  "commonEntries": {
+    "server": "NoticeAcknowledgmentRepository.acknowledgeAndMarkRead",
+    "client": "acknowledgeNoticeContainer",
+    "waiting": "runNoticeActionWithBusy / UtenBusyOverlay",
+    "card": "NoticeCard"
+  },
+  "migratedCallers": [
+    "NoticeListPage / NoticeInteractionFooter",
+    "NoticeDetailPage / NoticeInteractionSection / _AckSection",
+    "ReviewPendingDialog._acknowledgeManual",
+    "notice_arrival.acknowledgeNoticeInline",
+    "NoticeListPage and notice_group_dialog read/delete/retry actions"
+  ],
+  "removedDuplicates": [
+    "NoticeService acknowledge find-then-save race",
+    "login/arrival independent receipt refresh paths",
+    "card publisher-row unread dot/text",
+    "card category subtitle and standalone expand hint"
+  ],
+  "preservedDifferences": [
+    "read does not imply receipt; receipt implies read",
+    "business task completion / resolve / popup acknowledgement / snooze remain independent",
+    "deleted recipients are not revived",
+    "existing read timestamps and original notice contents remain intact",
+    "old-session responses do not refresh the new session"
+  ],
+  "migration": {
+    "file": "server/src/main/resources/db/migration/V1023__notice_acknowledgment_marks_read.sql",
+    "scope": "only real historical acknowledgement recipients",
+    "numbering": "main through V999; parallel finance candidate already reserves V1000-V1022",
+    "executedOnProduction": false
+  },
+  "platforms": [
+    {
+      "platform": "Web",
+      "runtimeFamily": "flutter",
+      "source": "shared Dart notification UI",
+      "localWidgetRegression": "passed"
+    },
+    {
+      "platform": "Windows",
+      "runtimeFamily": "flutter",
+      "source": "shared Dart notification UI",
+      "localWidgetRegression": "passed",
+      "targetPcUat": false
+    },
+    {
+      "platform": "Windows 7",
+      "runtimeFamily": "wpf_legacy",
+      "status": "notification feature not migrated",
+      "tasks": [
+        "W7-SHELL-004",
+        "W7-FLOW-014",
+        "W7-BIZ-084",
+        "W7-BIZ-085"
+      ],
+      "evidence": "clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json"
+    }
+  ],
+  "validation": {
+    "flutter": {
+      "command": "flutter test --no-pub test/features/notice test/notice_interaction_repository_test.dart",
+      "passed": 181,
+      "failed": 0,
+      "log": "build/notice-ack-read/notice-suite-verified.log"
+    },
+    "backend": {
+      "tests": [
+        "NoticeServiceTest",
+        "NoticeControllerContractTest",
+        "NoticeAcknowledgmentReadPostgresTest"
+      ],
+      "passed": 91,
+      "failed": 0,
+      "skipped": 0,
+      "realPostgres": true,
+      "concurrentReceipts": 8,
+      "log": "build/notice-ack-read/backend-tests.log"
+    },
+    "staticAnalysis": {
+      "issues": 0,
+      "log": "build/notice-ack-read/analyze-final.log"
+    },
+    "lockedDependencies": {
+      "status": "passed with PUB_HOSTED_URL=https://pub.dev matching repository lock",
+      "lockChanged": false,
+      "log": "build/notice-ack-read/lockfile-pubdev-check.log"
+    },
+    "dartFormatting": {
+      "files": 15,
+      "changed": 0
+    },
+    "progressRegistry": {
+      "status": "passed",
+      "total": 362,
+      "done": 10,
+      "statusOwnerDoDAndIdentityPreserved": true,
+      "log": "build/notice-ack-read/progress-check.log"
+    },
+    "interactionScenarios": [
+      "receipt failure/retry",
+      "rapid repeated clicks",
+      "unread filter removal and all-filter reload",
+      "route cover/restore without replay",
+      "owner disposal",
+      "session changes and late results",
+      "375px narrow layout and 200% fonts",
+      "light/dark card status alignment",
+      "group expansion, partial read failures, nested navigation"
+    ],
+    "visualReview": [
+      "build/notice-ack-read/screenshots/notice-inbox.png",
+      "build/notice-ack-read/screenshots/notice-expanded.png",
+      "build/notice-ack-read/screenshots/notice-mobile-dark-200.png",
+      "build/notice-ack-read/screenshots/receipt-before.png",
+      "build/notice-ack-read/screenshots/receipt-after.png"
+    ]
+  },
+  "limitations": {
+    "productionInteractionUat": false,
+    "targetWindowsPcUat": false,
+    "win7Accepted": false,
+    "fullErpEquivalent": false,
+    "remoteCiRun": false,
+    "packaged": false,
+    "pushed": false,
+    "deployed": false
+  }
+}

@@ -124,11 +124,8 @@ String? noticeActionTarget(Notice notice) {
 }
 
 Future<void> markNoticeRead(WidgetRef ref, String id) async {
-  await ref.read(noticeRepositoryProvider).markRead(id);
-  ref.read(noticeUnreadIndexProvider.notifier).forget((item) => item.id == id);
-  ref.invalidate(noticeDetailProvider(id));
-  ref.invalidate(noticeListProvider);
-  refreshBadges(ref);
+  final container = ProviderScope.containerOf(ref.context, listen: false);
+  await markNoticeReadContainer(container, id);
 }
 
 /// 与 [markNoticeRead] 等价，但取 `ProviderContainer` 而非 `WidgetRef`。
@@ -141,7 +138,9 @@ Future<void> markNoticeReadContainer(
   ProviderContainer container,
   String id,
 ) async {
+  final scope = container.read(authenticatedScopeProvider);
   await container.read(noticeRepositoryProvider).markRead(id);
+  if (container.read(authenticatedScopeProvider) != scope) return;
   container
       .read(noticeUnreadIndexProvider.notifier)
       .forget((item) => item.id == id);
@@ -158,10 +157,13 @@ Future<void> completeNoticeTodo(WidgetRef ref, String id) async {
 }
 
 Future<void> markAllNoticeRead(WidgetRef ref) async {
-  await ref.read(noticeRepositoryProvider).markAllRead();
-  ref.read(noticeUnreadIndexProvider.notifier).forget((_) => true);
-  ref.invalidate(noticeListProvider);
-  refreshBadges(ref);
+  final container = ProviderScope.containerOf(ref.context, listen: false);
+  final scope = container.read(authenticatedScopeProvider);
+  await container.read(noticeRepositoryProvider).markAllRead();
+  if (container.read(authenticatedScopeProvider) != scope) return;
+  container.read(noticeUnreadIndexProvider.notifier).forget((_) => true);
+  container.invalidate(noticeListProvider);
+  refreshBadgesIn(container);
 }
 
 /// 按站内办理路由批量标记已读：用户落定到某页面后，action_route 精确指向该页
@@ -239,9 +241,14 @@ Future<int> markNoticesReadBySource(
 
 /// 批量删除（从当前用户列表移除），返回实际删除条数
 Future<int> deleteNotices(WidgetRef ref, List<String> ids) async {
-  final deleted = await ref.read(noticeRepositoryProvider).deleteMany(ids);
-  ref.invalidate(noticeListProvider);
-  refreshBadges(ref);
+  final container = ProviderScope.containerOf(ref.context, listen: false);
+  final scope = container.read(authenticatedScopeProvider);
+  final deleted = await container
+      .read(noticeRepositoryProvider)
+      .deleteMany(ids);
+  if (container.read(authenticatedScopeProvider) != scope) return deleted;
+  container.invalidate(noticeListProvider);
+  refreshBadgesIn(container);
   return deleted;
 }
 
@@ -258,11 +265,29 @@ final myCelebrationTodayProvider =
       return ref.watch(noticeRepositoryProvider).myCelebrationToday();
     });
 
-/// 「点击收到」回执（acknowledge 模式）。完成后失效详情+列表。
+/// 「点击收到」回执。来源卡片可能随未读列表刷新销毁，异步后用稳定容器刷新。
 Future<void> acknowledgeNotice(WidgetRef ref, String id) async {
-  await ref.read(noticeRepositoryProvider).acknowledge(id);
-  ref.invalidate(noticeDetailProvider(id));
-  ref.invalidate(noticeListProvider);
+  final container = ProviderScope.containerOf(ref.context, listen: false);
+  await acknowledgeNoticeContainer(container, id);
+}
+
+/// 列表、详情、登录提醒和顶部横幅共用回执后的权威刷新。
+/// 回执由服务端原子置读；只在回查确认已读后移除本地索引，不代办结待办。
+Future<void> acknowledgeNoticeContainer(
+  ProviderContainer container,
+  String id,
+) async {
+  final scope = container.read(authenticatedScopeProvider);
+  final notice = await container.read(noticeRepositoryProvider).acknowledge(id);
+  if (container.read(authenticatedScopeProvider) != scope) return;
+  if (notice.isRead) {
+    container
+        .read(noticeUnreadIndexProvider.notifier)
+        .forget((item) => item.id == id);
+  }
+  container.invalidate(noticeDetailProvider(id));
+  container.invalidate(noticeListProvider);
+  refreshBadgesIn(container);
 }
 
 /// 「送上祝福」（bless 模式）。完成后失效详情+列表+祝福墙。

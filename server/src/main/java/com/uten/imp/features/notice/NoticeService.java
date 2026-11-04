@@ -557,7 +557,7 @@ public class NoticeService {
 
     // =========================== 互动：回执 / 祝福 ===========================
 
-    /** 回执（点击收到）。幂等：重复调用不报错，仅刷新 acked_at。返回最新计数与本人状态。 */
+    /** 回执（点击收到）同时已读。幂等：刷新 acked_at，保留既有 read_at 及其他状态。 */
     @Transactional
     public AckResult acknowledge(UUID id) {
         UUID userId = requireStaffId();
@@ -566,19 +566,7 @@ public class NoticeService {
         if (!"acknowledge".equals(effectiveInteractionMode(n))) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "该通知不支持回执");
         }
-        NoticeAcknowledgment existing = ackRepo.findById(new NoticeAcknowledgmentId(id, userId))
-                .orElse(null);
-        Instant now = Instant.now();
-        if (existing == null) {
-            NoticeAcknowledgment ack = new NoticeAcknowledgment();
-            ack.setId(new NoticeAcknowledgmentId(id, userId));
-            ack.setAckedAt(now);
-            ackRepo.save(ack);
-        } else {
-            // 幂等：刷新 acked_at（前端可能多次点击"确认收到"）
-            existing.setAckedAt(now);
-            ackRepo.save(existing);
-        }
+        ackRepo.acknowledgeAndMarkRead(id, userId);
         auditExplicit("notice_acknowledge", n.getTitle());
         return new AckResult(ackRepo.countByIdNoticeId(id), true);
     }

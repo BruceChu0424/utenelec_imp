@@ -12,6 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
@@ -27,6 +29,7 @@ class _FakeNoticeRepository implements NoticeRepository {
   final Map<String, Notice> noticesById = {};
   List<PendingReviewStatus>? statusResult;
   Object? acknowledgeError;
+  Completer<Notice>? acknowledgeGate;
 
   @override
   Future<void> snooze(String id, {int minutes = 15}) async {
@@ -37,7 +40,8 @@ class _FakeNoticeRepository implements NoticeRepository {
   Future<Notice> acknowledge(String id) async {
     if (acknowledgeError != null) throw acknowledgeError!;
     acknowledgedIds.add(id);
-    return noticesById[id]!.copyWith(myAcked: true);
+    if (acknowledgeGate != null) return acknowledgeGate!.future;
+    return noticesById[id]!.copyWith(myAcked: true, isRead: true);
   }
 
   @override
@@ -64,6 +68,16 @@ class _FakeNoticeRepository implements NoticeRepository {
 
   @override
   noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+void expectHeaderInfo(WidgetTester tester, String text) {
+  expect(
+    tester
+        .widgetList<UtenFieldHintIcon>(find.byType(UtenFieldHintIcon))
+        .any((hint) => hint.info?.contains(text) ?? false),
+    isTrue,
+  );
+  expect(find.text(text), findsNothing);
 }
 
 void main() {
@@ -388,7 +402,7 @@ void main() {
         ],
       );
       expect(find.byType(Dialog), findsOneWidget);
-      expect(find.text('待办 2'), findsOneWidget);
+      expectHeaderInfo(tester, '待办 2');
       await tester.tap(find.text('去工作台处理'));
       await tester.pumpAndSettle();
       expect(find.text('manager-workspace'), findsOneWidget);
@@ -437,7 +451,7 @@ void main() {
       );
       // ADR-166：头部摘要为分级计数（两条均 approval+normal → 待办 2，
       // 2026-10-06 修订：审批类不因 normal 降进度级），不再是事件域 chips。
-      expect(find.text('待办 2'), findsOneWidget);
+      expectHeaderInfo(tester, '待办 2');
       await tester.tap(find.text('生产申请'));
       await tester.pumpAndSettle();
       expect(find.text(entry.$3), findsOneWidget);
@@ -473,7 +487,7 @@ void main() {
     );
     // ADR-166：两条 approval+normal 待办的头部摘要是「待办 2」分级计数
     // （2026-10-06 修订：审批类一律行动级）。
-    expect(find.text('待办 2'), findsOneWidget);
+    expectHeaderInfo(tester, '待办 2');
     await tester.tap(find.text('委外可下单：EB-001 委外件 可下单 4 件'));
     await tester.pumpAndSettle();
     expect(find.text('任务中心 pending EB-001'), findsOneWidget);
@@ -528,7 +542,7 @@ void main() {
       // 只有人工通知：标题「登录提醒」、无「去工作台处理」、条目带打卡按钮。
       expect(find.text('登录提醒'), findsOneWidget);
       expect(find.text('待办提醒'), findsNothing);
-      expect(find.text('有 1 条通知需要你确认'), findsOneWidget);
+      expectHeaderInfo(tester, '有 1 条通知需要你确认');
       expect(find.text('人事/公司通知 · 1'), findsOneWidget);
       expect(find.text('国庆放假安排'), findsOneWidget);
       expect(find.text('打卡确认'), findsOneWidget);
@@ -548,9 +562,32 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
       await tester.pumpAndSettle();
       expect(find.byType(ReviewPendingDialog), findsNothing);
-      expect(repo.readIds, isEmpty, reason: '打卡不代行已读');
+      expect(repo.readIds, isEmpty, reason: '回执由服务端原子置读，不另发 markRead');
     },
   );
+
+  testWidgets('manual receipt waits once and clears its mask after success', (
+    tester,
+  ) async {
+    final gate = Completer<Notice>();
+    final repo = _FakeNoticeRepository()..acknowledgeGate = gate;
+    final notice = manualOf('m-wait');
+    await pumpDialog(tester, repo: repo, pending: [], manual: [notice]);
+    await tester.tap(find.text('打卡确认'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+    await tester.tap(find.text('打卡确认'), warnIfMissed: false);
+    expect(repo.acknowledgedIds, ['m-wait']);
+    gate.complete(notice.copyWith(myAcked: true, isRead: true));
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenBusyOverlayCard), findsNothing);
+    expect(find.text('已打卡'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewPendingDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('manual none-mode card shows 知道了 which marks read and removes', (
     tester,
@@ -613,7 +650,7 @@ void main() {
       // 有审核待办时保留原标题与主按钮；两组各有分组标题。
       expect(find.text('待办提醒'), findsOneWidget);
       expect(find.text('登录提醒'), findsNothing);
-      expect(find.text('有 2 项事务等待你处理'), findsOneWidget);
+      expectHeaderInfo(tester, '有 2 项事务等待你处理');
       expect(find.text('人事/公司通知 · 1'), findsOneWidget);
       expect(find.text('待办审核 · 1'), findsOneWidget);
       expect(find.text('今日停电'), findsOneWidget);
@@ -623,8 +660,8 @@ void main() {
       // 紧急人工通知带「紧急」红徽章（ADR-166 分级徽章）。
       expect(find.text('紧急'), findsOneWidget);
       // 头部分级计数：待办(approval+normal→行动 1，2026-10-06 修订) + 人工紧急(紧急 1)。
-      expect(find.text('待办 1'), findsOneWidget);
-      expect(find.text('紧急 1'), findsOneWidget);
+      expectHeaderInfo(tester, '待办 1');
+      expectHeaderInfo(tester, '紧急 1');
 
       await tester.tap(find.text('全部稍后再看'));
       await tester.pumpAndSettle();
@@ -663,7 +700,7 @@ void main() {
     await pumpDialog(tester, repo: repo, pending: [noticeOf('n1')]);
 
     expect(find.text('待办提醒'), findsOneWidget);
-    expect(find.text('有 1 项事务等待你处理'), findsOneWidget);
+    expectHeaderInfo(tester, '有 1 项事务等待你处理');
     expect(find.text('待财务确认：SO-001'), findsOneWidget);
     expect(find.text('待处理'), findsOneWidget);
     expect(find.text('去工作台处理'), findsOneWidget);
@@ -692,7 +729,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('有 2 项事务等待你处理'), findsOneWidget);
+    expectHeaderInfo(tester, '有 2 项事务等待你处理');
     expect(find.text('到货 IQC 待检：CR-005'), findsOneWidget);
     expect(find.text('待处理'), findsOneWidget);
     expect(find.text('张三 正在审核'), findsOneWidget);
@@ -739,7 +776,7 @@ void main() {
       expect(find.text('结束待财务审批'), findsNothing);
       expect(find.text('原订单可领料'), findsNothing);
       expect(find.text('原单品质合格待入库'), findsOneWidget);
-      expect(find.text('有 1 项事务等待你处理'), findsOneWidget);
+      expectHeaderInfo(tester, '有 1 项事务等待你处理');
       expect(repo.snoozedIds, isEmpty);
       expect(repo.readIds, isEmpty);
     },
@@ -874,7 +911,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('待办提醒'), findsOneWidget);
-    expect(find.text('有 2 项事务等待你处理'), findsOneWidget);
+    expectHeaderInfo(tester, '有 2 项事务等待你处理');
     expect(find.text('第二项'), findsOneWidget);
   });
 
@@ -923,7 +960,7 @@ void main() {
     );
     expect(cardSize.height, lessThanOrEqualTo(600 * 0.6));
     // 头部与操作按钮始终可见（不被列表挤掉）。
-    expect(find.text('有 30 项事务等待你处理'), findsOneWidget);
+    expectHeaderInfo(tester, '有 30 项事务等待你处理');
     expect(find.text('去工作台处理'), findsOneWidget);
     // 最后一项初始在视口外，列表内部可滚动直达（不被裁掉丢失）。
     final lastItem = find.text('待办事项 #29');
@@ -1100,40 +1137,41 @@ void main() {
         lessThan(tester.getTopLeft(find.text('国庆放假安排')).dy),
       );
       // 头部分级计数带各级色点。
-      expect(find.text('紧急 1'), findsOneWidget);
-      expect(find.text('公告 1'), findsOneWidget);
+      expectHeaderInfo(tester, '紧急 1');
+      expectHeaderInfo(tester, '公告 1');
     },
   );
 
-  testWidgets('header summary counts every level with colored dots', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1920, 1080);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final repo = _FakeNoticeRepository();
-    await pumpDialog(
-      tester,
-      repo: repo,
-      pending: [
-        noticeOf('u1', title: '紧急卡', priority: NoticePriority.urgent),
-        noticeOf('a1', title: '行动卡', priority: NoticePriority.important),
-        noticeOf('p1', title: '进度卡', type: NoticeType.task),
-      ],
-      manual: [manualOf('m1', title: '公告卡')],
-    );
+  testWidgets(
+    'header hint retains every level count without a standalone subtitle',
+    (tester) async {
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [
+          noticeOf('u1', title: '紧急卡', priority: NoticePriority.urgent),
+          noticeOf('a1', title: '行动卡', priority: NoticePriority.important),
+          noticeOf('p1', title: '进度卡', type: NoticeType.task),
+        ],
+        manual: [manualOf('m1', title: '公告卡')],
+      );
 
-    expect(find.text('紧急 1'), findsOneWidget);
-    expect(find.text('待办 1'), findsOneWidget);
-    expect(find.text('进度 1'), findsOneWidget);
-    expect(find.text('公告 1'), findsOneWidget);
-    // 待办审核组在前、人事广播组在后（ADR-166 排序：broadcast 垫底）。
-    expect(
-      tester.getTopLeft(find.text('待办审核 · 3')).dy,
-      lessThan(tester.getTopLeft(find.text('人事/公司通知 · 1')).dy),
-    );
-  });
+      expectHeaderInfo(tester, '紧急 1');
+      expectHeaderInfo(tester, '待办 1');
+      expectHeaderInfo(tester, '进度 1');
+      expectHeaderInfo(tester, '公告 1');
+      // 待办审核组在前、人事广播组在后（ADR-166 排序：broadcast 垫底）。
+      expect(
+        tester.getTopLeft(find.text('待办审核 · 3')).dy,
+        lessThan(tester.getTopLeft(find.text('人事/公司通知 · 1')).dy),
+      );
+    },
+  );
 
   // ---------------- 2026-10-06 修订：审批/工作流类一律行动级 ----------------
 

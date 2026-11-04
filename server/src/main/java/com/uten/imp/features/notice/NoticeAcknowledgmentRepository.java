@@ -1,6 +1,7 @@
 package com.uten.imp.features.notice;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -9,6 +10,24 @@ import java.util.UUID;
 
 public interface NoticeAcknowledgmentRepository
         extends JpaRepository<NoticeAcknowledgment, NoticeAcknowledgmentId> {
+
+    /** 显式收到即已读；同一 SQL 原子更新，并发重复确认仍只有一条回执。 */
+    @Modifying
+    @Query(value = """
+            WITH acknowledged AS (
+                INSERT INTO notice_acknowledgments (notice_id, user_id, acked_at)
+                VALUES (:noticeId, :userId, CURRENT_TIMESTAMP)
+                ON CONFLICT (notice_id, user_id) DO UPDATE
+                SET acked_at = EXCLUDED.acked_at
+                RETURNING notice_id, user_id, acked_at
+            )
+            INSERT INTO notice_user_states (notice_id, user_id, read_at)
+            SELECT notice_id, user_id, acked_at FROM acknowledged WHERE true
+            ON CONFLICT (notice_id, user_id) DO UPDATE
+            SET read_at = COALESCE(notice_user_states.read_at, EXCLUDED.read_at)
+            WHERE notice_user_states.deleted_at IS NULL
+            """, nativeQuery = true)
+    int acknowledgeAndMarkRead(@Param("noticeId") UUID noticeId, @Param("userId") UUID userId);
 
     long countByIdNoticeId(UUID noticeId);
 

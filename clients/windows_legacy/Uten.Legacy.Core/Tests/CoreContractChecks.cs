@@ -31,6 +31,7 @@ namespace Uten.Legacy.Core.Tests
             ManagedTlsChecks.Run();
             PublishUploadSinkChecks.Run();
             ConfigurationAndPathBounds();
+            RunSessionLifecycle();
             ConcurrentRefreshIsSingleFlight().GetAwaiter().GetResult();
             LogoutFencesPendingRefresh().GetAwaiter().GetResult();
             EndpointSwitchFencesPendingLogin().GetAwaiter().GetResult();
@@ -44,6 +45,139 @@ namespace Uten.Legacy.Core.Tests
             FailedCredentialCommitIsFencedAndRevocable().GetAwaiter().GetResult();
             PermissionAndDatasetChangesFenceReads().GetAwaiter().GetResult();
             DpapiEnvelopeContainsOnlyOwnedCredentials();
+        }
+
+        public static void RunSessionLifecycle()
+        {
+            ApplicationStartupRetiresPreviousRun().GetAwaiter().GetResult();
+            LateLogoutDoesNotClearNewLogin().GetAwaiter().GetResult();
+            SessionWatchRetiresOnlyItsOwner().GetAwaiter().GetResult();
+            LateAndCancelledWatchCannotRetireNewLogin().GetAwaiter().GetResult();
+            AutomaticWatchRefreshDoesNotRenewActivity().GetAwaiter().GetResult();
+            WatchRetainsDispatchedMutationAndDraft().GetAwaiter().GetResult();
+        }
+
+        private static async Task WatchRetainsDispatchedMutationAndDraft()
+        {
+            const string body = " {\"name\":\"  原始单位输入  \"} ";
+            var entered = new TaskCompletionSource<bool>(); var reply = new TaskCompletionSource<HttpResponseMessage>();
+            int writes = 0; bool nextAccount = false;
+            using (var state = new BusinessStateTestFixture())
+            using (var session = new SessionCoordinator(Configuration(), new Handler((request, ct) =>
+            {
+                var path = request.RequestUri.AbsolutePath;
+                if (path.EndsWith("/login")) return Task.FromResult(Json(Token("mutation-access", "mutation-refresh")
+                    .Replace("goods:view", "unit:view\",\"unit:create").Replace("user-1", nextAccount ? "user-2" : "user-1")));
+                if (path.EndsWith("/logout")) return Task.FromResult(Json("", HttpStatusCode.NoContent));
+                if (path.EndsWith("/session/watch")) return Task.FromResult(Json("{\"status\":\"replaced\",\"code\":\"SESSION_REPLACED\",\"message\":\"fixture replacement\"}"));
+                writes++; entered.TrySetResult(true); return reply.Task;
+            }), new MemoryStore(), state.Store))
+            {
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                var owner = session.CaptureMutationOwner(); var id = Guid.NewGuid().ToString("D");
+                var lease = session.CreateDraftLease(MutationAction.UnitCreate, Guid.NewGuid().ToString("D"), owner);
+                var draft = await session.SaveDraftAsync(lease, 0, body, CancellationToken.None);
+                var command = await session.PrepareMutationFromDraftAsync(id, draft.DraftId, draft.Revision, owner, CancellationToken.None);
+                var sending = session.MutateAsync(command, CancellationToken.None); await entered.Task;
+                await session.WatchSessionAsync(CancellationToken.None);
+                reply.SetResult(Json("{}")); var result = await sending;
+                Equal(MutationOutcome.Unknown, result.Outcome, "watch after dispatch cannot invent a failed or successful write");
+                var journal = state.Store.ListJournal(owner).Single();
+                True(journal.State == MutationJournalState.Unknown && journal.RequestId == id && journal.BodyJson == body,
+                    "watch retirement retains the original durable request ID and raw body");
+                Equal(body, state.Store.ListDrafts(owner).Single().BodyJson, "watch retains the last original-owner draft");
+                nextAccount = true; await session.LoginAsync("UT0002", "test-password", CancellationToken.None);
+                var next = session.CaptureMutationOwner();
+                True(state.Store.ListJournal(next).Count == 0 && state.Store.ListDrafts(next).Count == 0 && writes == 1,
+                    "a new account neither receives nor replays the original unknown submission");
+            }
+        }
+
+        private static async Task SessionWatchRetiresOnlyItsOwner()
+        {
+            var requests = 0;
+            var ended = new List<SessionEndedEventArgs>();
+            var store = new MemoryStore();
+            using (var session = new SessionCoordinator(Configuration(), new Handler((request, ct) =>
+            {
+                if (request.RequestUri.AbsolutePath.EndsWith("/login")) return Task.FromResult(Json(Token("watch-access", "watch-refresh")));
+                Equal("/api/auth/session/watch", request.RequestUri.AbsolutePath, "replacement is observed without a business refresh");
+                Equal("1", request.Headers.GetValues("X-Uten-Automatic").Single(), "watch does not count as human activity");
+                Equal("watch-access", request.Headers.Authorization.Parameter, "watch uses the staff bearer");
+                Equal(TimeSpan.FromSeconds(35), SessionWatchContract.ForRequest(request, TimeSpan.FromSeconds(5)), "watch receives a bounded long-poll budget");
+                requests++;
+                return Task.FromResult(Json(requests == 1 ? "{\"status\":\"active\",\"code\":null,\"message\":null}"
+                    : "{\"status\":\"replaced\",\"code\":\"SESSION_REPLACED\",\"message\":\"账号已在 Android 登录，本设备已自动下线\"}"));
+            }), store))
+            {
+                var changed = 0;
+                session.SessionChanged += (sender, value) => { throw new InvalidOperationException("fixture failing changed listener"); };
+                session.SessionChanged += (sender, value) => changed++;
+                session.SessionEnded += (sender, value) => { throw new InvalidOperationException("fixture failing ended listener"); };
+                session.SessionEnded += (sender, value) => ended.Add(value);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                var generation = session.Generation;
+                True(await session.WatchSessionAsync(CancellationToken.None) == null && session.IsAuthenticated, "active watch preserves current login");
+                var notice = await session.WatchSessionAsync(CancellationToken.None);
+                True(!session.IsAuthenticated && store.Load() == null && generation < session.Generation, "replacement retires the active login immediately");
+                Equal("SESSION_REPLACED", notice.Code, "replacement is distinct from expiry");
+                Equal(1, ended.Count, "one authoritative termination event");
+                True(changed > 1, "a failing subscriber cannot suppress subsequent session notifications");
+                Equal(session.Generation, ended[0].RetiredGeneration, "termination notice is fenced to the retired generation");
+                True(ended[0].Reason.UserMessage.Contains("Android"), "replacement preserves the server's device explanation");
+            }
+        }
+
+        private static async Task LateAndCancelledWatchCannotRetireNewLogin()
+        {
+            foreach (var newLogin in new[] { false, true })
+            {
+                var reply = new TaskCompletionSource<HttpResponseMessage>();
+                var ended = 0;
+                using (var cancellation = new CancellationTokenSource())
+                using (var session = new SessionCoordinator(Configuration(), new Handler((request, ct) =>
+                {
+                    if (request.RequestUri.AbsolutePath.EndsWith("/login")) return Task.FromResult(Json(Token("next-access", "next-refresh")));
+                    if (request.RequestUri.AbsolutePath.EndsWith("/logout")) return Task.FromResult(Json("", HttpStatusCode.NoContent));
+                    return reply.Task; // Deliberately ignore cancellation and return an old result.
+                }), new MemoryStore()))
+                {
+                    session.SessionEnded += (sender, value) => ended++;
+                    await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                    var pending = session.WatchSessionAsync(cancellation.Token);
+                    if (newLogin) await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                    else cancellation.Cancel();
+                    reply.SetResult(Json("{\"status\":\"replaced\",\"code\":\"SESSION_REPLACED\",\"message\":\"旧会话已下线\"}"));
+                    if (newLogin) Equal("SESSION_CHANGED", (await ThrowsAsync<ApiException>(() => pending)).Code, "late watch cannot target a new same-account login");
+                    else await ThrowsAsync<OperationCanceledException>(() => pending);
+                    True(session.IsAuthenticated && ended == 0, "retired/cancelled watcher cannot clear or notify another owner");
+                }
+            }
+        }
+
+        private static async Task AutomaticWatchRefreshDoesNotRenewActivity()
+        {
+            var watches = 0;
+            var refreshes = 0;
+            using (var session = new SessionCoordinator(Configuration(), new Handler((request, ct) =>
+            {
+                var path = request.RequestUri.AbsolutePath;
+                if (path.EndsWith("/login")) return Task.FromResult(Json(Token("old-access", "old-refresh")));
+                Equal("1", request.Headers.GetValues("X-Uten-Automatic").Single(), "automatic watch and its refresh never renew human activity");
+                if (path.EndsWith("/refresh")) { refreshes++; return Task.FromResult(Json(Token("fresh-access", "fresh-refresh"))); }
+                if (path.EndsWith("/me")) return Task.FromResult(Json("{}"));
+                watches++;
+                return Task.FromResult(watches == 1 ? Unauthorized() : Json("{\"status\":\"active\"}"));
+            }), new MemoryStore()))
+            {
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                await session.WatchSessionAsync(CancellationToken.None);
+                Equal(1, refreshes, "401 watch uses the existing single-flight refresh");
+                await session.ProbeSessionAsync(CancellationToken.None);
+                True(session.IsAuthenticated, "compatibility probe does not change the current login");
+            }
+            using (var ordinary = new HttpRequestMessage(HttpMethod.Get, "https://imp.utenelec/api/auth/me"))
+                Equal(TimeSpan.FromSeconds(5), SessionWatchContract.ForRequest(ordinary, TimeSpan.FromSeconds(5)), "ordinary reads keep their timeout");
         }
 
         private static ClientConfiguration Configuration(int maxResponseBytes = 2097152)
@@ -191,6 +325,59 @@ namespace Uten.Legacy.Core.Tests
                 True(session.Generation > generation, "logout advances generation");
                 Equal(1, store.PendingRevocations().Count, "late refresh response queued");
                 Equal("refresh-new", store.PendingRevocations()[0].RefreshToken, "newly issued late refresh not lost");
+            }
+        }
+
+        private static async Task ApplicationStartupRetiresPreviousRun()
+        {
+            var store = new MemoryStore();
+            store.Save(new StoredSession("refresh-previous-run", "https://cloud.example.test/api", "cloud", "old-user"));
+            var requests = 0;
+            using (var session = new SessionCoordinator(Configuration(), new Handler(async (request, ct) =>
+            {
+                requests++;
+                Equal("https://cloud.example.test/api/auth/logout", request.RequestUri.AbsoluteUri,
+                    "startup retires only at the previous record's issuer");
+                True(request.Headers.Authorization == null, "startup never attaches another session bearer");
+                True((await request.Content.ReadAsStringAsync()).Contains("refresh-previous-run"), "startup revokes the exact old credential");
+                return Json("", HttpStatusCode.NoContent);
+            }), store))
+            {
+                await session.StartApplicationAsync(CancellationToken.None, waitForPendingRevocations: false);
+                True(!session.IsAuthenticated && store.Load() == null, "previous process cannot automatically log in");
+                Equal(0, requests, "startup local retirement does not wait for network");
+                Equal(1, store.PendingRevocations().Count, "previous process credential is durably revocable");
+                await session.DrainPendingRevocationsAsync(CancellationToken.None);
+                Equal(1, requests, "startup cleanup sends no refresh or me request");
+                Equal(0, store.PendingRevocations().Count, "issuer acknowledged old process logout");
+            }
+        }
+
+        private static async Task LateLogoutDoesNotClearNewLogin()
+        {
+            var store = new MemoryStore();
+            var release = new TaskCompletionSource<HttpResponseMessage>();
+            var entered = new TaskCompletionSource<bool>();
+            var logins = 0;
+            using (var session = new SessionCoordinator(Configuration(), new Handler(async (request, ct) =>
+            {
+                if (request.RequestUri.AbsolutePath.EndsWith("/login"))
+                    return Json(++logins == 1 ? Token("access-old", "refresh-old") : Token("access-new", "refresh-new"));
+                True(request.Headers.Authorization == null, "old logout carries no new bearer");
+                True((await request.Content.ReadAsStringAsync()).Contains("refresh-old"), "old logout retains its exact token");
+                entered.TrySetResult(true);
+                return await release.Task;
+            }), store))
+            {
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                var logout = session.LogoutAsync(CancellationToken.None);
+                await entered.Task;
+                True(!session.IsAuthenticated && store.Load() == null, "close retires local session before remote reply");
+                var nextLogin = session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                True(session.IsAuthenticated && store.Load().RefreshToken == "refresh-new", "next login committed while old logout waits");
+                release.SetResult(Json("", HttpStatusCode.NoContent));
+                await Task.WhenAll(logout, nextLogin);
+                True(session.IsAuthenticated && store.Load().RefreshToken == "refresh-new", "late old logout never clears the new login");
             }
         }
 
@@ -386,7 +573,8 @@ namespace Uten.Legacy.Core.Tests
                     return Task.FromResult(Json("", HttpStatusCode.NoContent));
                 }), store))
                 {
-                    await reopened.RestoreAsync(CancellationToken.None);
+                    var startupError = await ThrowsAsync<ApiException>(() => reopened.StartApplicationAsync(CancellationToken.None));
+                    Equal("LOGOUT_STORAGE_FAILED", startupError.Code, "startup reports the unresolved disk cleanup failure");
                     True(!reopened.IsAuthenticated && restoreRequests == 0, "failed logout cannot automatically restore old disk credentials");
                 }
             }

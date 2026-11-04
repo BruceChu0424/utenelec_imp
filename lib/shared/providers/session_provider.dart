@@ -24,6 +24,7 @@ import '../../features/auth/models/auth_session.dart';
 import '../../features/auth/repositories/auth_repository.dart';
 import '../models/user.dart';
 import 'shared_providers.dart';
+import 'session_kick_notice_provider.dart';
 
 enum AuthStatus { unauthenticated, authenticated, mustChangePassword }
 
@@ -222,9 +223,9 @@ class SessionNotifier extends Notifier<SessionState> {
     );
 
     final expirationSubscription = SessionEventBus.instance.onSessionExpired
-        .listen((_) {
+        .listen((notice) {
           final observedEpoch = _sessionMutationEpoch;
-          unawaited(_expireIfStillCurrent(observedEpoch));
+          unawaited(_expireIfStillCurrent(observedEpoch, notice));
         });
     final profileSubscription = SessionEventBus.instance.onProfileRefreshed
         .listen((userJson) {
@@ -423,25 +424,46 @@ class SessionNotifier extends Notifier<SessionState> {
     }
   }
 
-  Future<void> _expireIfStillCurrent(int observedEpoch) async {
+  Future<void> _expireIfStillCurrent(
+    int observedEpoch,
+    SessionExpiryNotice? notice,
+  ) async {
+    final hadVisibleSession = state.status != AuthStatus.unauthenticated;
+    if (hadVisibleSession &&
+        notice?.sessionLineage != null &&
+        notice!.sessionLineage != _visibleSessionLineage) {
+      return;
+    }
+    bool current() =>
+        !_requestOwnerDisposed && observedEpoch == _sessionMutationEpoch;
     try {
       final snapshot = await _storage.getAuthTokenSnapshot();
-      if (observedEpoch != _sessionMutationEpoch ||
-          snapshot.hasAccessToken ||
-          snapshot.hasRefreshToken) {
+      if (!current() || snapshot.hasAccessToken || snapshot.hasRefreshToken) {
         return;
       }
       _rememberVisibleRecord(snapshot);
     } catch (_) {
       // Confirmed credential rejection is fail-closed when secure storage is
       // unreadable, unless a newer local session operation has started.
-      if (observedEpoch != _sessionMutationEpoch) return;
+      if (!current()) return;
     }
     // 会话失效（非显式登出路径）：清模拟身份，避免残留模拟 token 在重新登录后串账号。
     try {
       await _storage.clearAllImpersonation();
     } catch (_) {}
+    // Cleanup can yield while a newer sign-in is committing.
+    if (!current()) return;
     state = const SessionState();
+    if (hadVisibleSession && notice?.replacedByOtherDevice == true) {
+      ref
+          .read(sessionKickNoticeProvider.notifier)
+          .publish(
+            SessionKickNotice(
+              message: notice!.message,
+              intentEpoch: requestIntentEpoch,
+            ),
+          );
+    }
   }
 
   Future<bool> _hasDurableLogoutFence() async {
@@ -457,12 +479,62 @@ class SessionNotifier extends Notifier<SessionState> {
 
   /// 启动期：先清模拟键再恢复会话（保证 /auth/me 不读到残留模拟 token）。
   Future<void> _clearImpersonationThenRestore() async {
+    final epoch = _sessionMutationEpoch;
+    bool current() => !_requestOwnerDisposed && epoch == _sessionMutationEpoch;
     try {
+      await _storage.prepareForApplicationSession(
+        retirePersistedSession: (previous) async {
+          final refresh = previous.refreshToken;
+          if (refresh == null || refresh.isEmpty) return;
+          await ref
+              .read(pendingRefreshRevocationDrainerProvider)
+              .enqueueAndDrain(refresh, issuer: previous.issuer);
+        },
+      );
+      if (!current()) return;
       await _storage.clearAllImpersonation();
     } catch (_) {
       // 清理失败不阻断恢复；最坏情况下 _restore 会按 admin 令牌恢复。
     }
-    await _restore();
+    if (current()) await _restore();
+  }
+
+  /// A watch is bound to one visible sign-in, never to the latest account at
+  /// response time. Refresh rotation may change token bytes within that sign-in.
+  Future<void> acceptSessionWatchResult({
+    required AuthTokenSnapshot observed,
+    required int observedIntentEpoch,
+    required String status,
+    String? message,
+  }) async {
+    if (status != 'replaced' && status != 'expired') return;
+    bool current() =>
+        !_requestOwnerDisposed &&
+        requestIntentEpoch == observedIntentEpoch &&
+        state.status != AuthStatus.unauthenticated &&
+        _visibleSessionLineage == observed.sessionLineage;
+    await _serializeSessionCommit(() async {
+      if (!current()) return;
+      final latest = await _storage.getAuthTokenSnapshot();
+      if (!current() ||
+          latest.sessionLineage != observed.sessionLineage ||
+          latest.intentGeneration != observed.intentGeneration ||
+          !latest.hasTokens) {
+        return;
+      }
+      if (!await _storage.clearTokensIfUnchanged(latest) || !current()) return;
+      final notice = status == 'replaced'
+          ? SessionExpiryNotice.replaced(
+              message,
+              sessionLineage: observed.sessionLineage,
+              intentGeneration: observed.intentGeneration,
+            )
+          : SessionExpiryNotice.other(
+              sessionLineage: observed.sessionLineage,
+              intentGeneration: observed.intentGeneration,
+            );
+      await _expireIfStillCurrent(_sessionMutationEpoch, notice);
+    });
   }
 
   Future<void> _restore() async {
@@ -523,6 +595,7 @@ class SessionNotifier extends Notifier<SessionState> {
         'UNAUTHORIZED',
         'ACCOUNT_LOCKED',
         'ACCOUNT_DISABLED',
+        'SESSION_REPLACED',
       }.contains(error.code)) {
         final cleared = await _storage.clearTokensIfUnchanged(submitted);
         if (cleared && observedEpoch == _sessionMutationEpoch) {

@@ -617,21 +617,29 @@ class AuthInterceptor extends Interceptor {
         error,
       );
     }
-    SessionEventBus.instance.expire(_replacedNotice(error));
+    SessionEventBus.instance.expire(_expiryNotice(submitted, error));
     return TokenRefreshResult.rejected(error);
   }
 
   /// 明确拒绝的响应体里若是单设备顶号（SESSION_REPLACED），提取服务端说明给 UI
   /// （「账号已在「Windows 客户端」登录，本设备已自动下线」）；其余结束原因不带载荷。
-  SessionExpiryNotice? _replacedNotice(DioException? error) {
+  SessionExpiryNotice _expiryNotice(
+    AuthTokenSnapshot submitted,
+    DioException? error,
+  ) {
     final data = error?.response?.data;
     if (data is Map && data['code'] == 'SESSION_REPLACED') {
       final message = data['message'];
       return SessionExpiryNotice.replaced(
         message is String && message.isNotEmpty ? message : null,
+        sessionLineage: submitted.sessionLineage,
+        intentGeneration: submitted.intentGeneration,
       );
     }
-    return null;
+    return SessionExpiryNotice.other(
+      sessionLineage: submitted.sessionLineage,
+      intentGeneration: submitted.intentGeneration,
+    );
   }
 
   TokenRefreshResult _resultForLatestSession(
@@ -729,6 +737,7 @@ class AuthInterceptor extends Interceptor {
   /// 用显式白名单（而非子串匹配），避免将来新增路径被误判为管理端点。
   static bool _isImpersonationManagementPath(String path) {
     return path.endsWith('/admin/impersonation/enter') ||
+        path.endsWith('/auth/session/watch') ||
         path.endsWith('/admin/impersonation/start') ||
         path.endsWith('/admin/impersonation/targets') ||
         path.endsWith('/admin/impersonation/targets/page') ||

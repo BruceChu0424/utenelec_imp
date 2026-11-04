@@ -53,6 +53,55 @@ String visible(FormDraftHistoryProjection? projection) => [
 
 void main() {
   test(
+    'retired preservation nesting never exposes price, cost or frozen command payloads',
+    () {
+      final original = draft(
+        data: {
+          'billDate': '2026-11-03',
+          'rows': [
+            {
+              'text': {
+                'qty': '0001.',
+                'price': 'PRIVATE_PRICE',
+                'cost': 'PRIVATE_COST',
+              },
+            },
+          ],
+          formDraftRetirementConflictKey: true,
+          '_formDraftRetiredPreviousSnapshot': {
+            'rows': [
+              {'price': 'NESTED_PRIVATE_PRICE', 'cost': 'NESTED_PRIVATE_COST'},
+            ],
+            dailyReportCreateCommandKey: {
+              'bodyJson': 'NESTED_PRIVATE_FROZEN_BODY',
+            },
+            'attachments': {'bytes': 'NESTED_PRIVATE_ATTACHMENT'},
+          },
+        },
+      );
+      final raw = jsonEncode(original.toJson());
+      for (final permissions in [
+        {Perm.salesOrderView},
+        {Perm.salesOrderView, Perm.salesOrderPriceView},
+      ]) {
+        final projected = projectFormDraftHistorySnapshot(
+          original,
+          permissions,
+        )!;
+        final text =
+            '${jsonEncode(projected.toJson())}|${visible(projectFormDraftHistory(original, permissions))}';
+        expect(text, isNot(contains('NESTED_PRIVATE')));
+        expect(text, isNot(contains('PRIVATE_COST')));
+        if (!permissions.contains(Perm.salesOrderPriceView)) {
+          expect(text, isNot(contains('PRIVATE_PRICE')));
+        }
+        expect(text, contains('0001.'));
+        expect(projected.data[formDraftHistoryReadOnlyProjectionKey], isTrue);
+      }
+      expect(jsonEncode(original.toJson()), raw);
+    },
+  );
+  test(
     'public history snapshots use the same typed field policy and are detached',
     () {
       final original = draft();

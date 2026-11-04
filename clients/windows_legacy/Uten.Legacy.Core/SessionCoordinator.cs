@@ -14,6 +14,14 @@ using System.Threading.Tasks;
 
 namespace Uten.Legacy.Core
 {
+    public sealed class SessionEndedEventArgs : EventArgs
+    {
+        public ApiException Reason { get; private set; }
+        public long RetiredGeneration { get; private set; }
+        internal SessionEndedEventArgs(ApiException reason, long retiredGeneration)
+        { Reason = reason; RetiredGeneration = retiredGeneration; }
+    }
+
     /// <summary>
     /// Native authentication foundation. No business write replay, arbitrary URL, global TLS hook,
     /// cookie authentication, or shared Flutter credential store is used here.
@@ -57,6 +65,7 @@ namespace Uten.Legacy.Core
         }
 
         public event EventHandler SessionChanged;
+        public event EventHandler<SessionEndedEventArgs> SessionEnded;
         public event EventHandler ReadScopeChanged;
         public UserProfile CurrentUser { get { lock (gate) return credentials?.User; } }
         public bool IsAuthenticated { get { lock (gate) return credentials?.User != null && credentials.AccessToken != null; } }
@@ -106,25 +115,13 @@ namespace Uten.Legacy.Core
             await TryDrainPendingAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task RestoreAsync(CancellationToken cancellationToken, bool waitForPendingRevocations = true)
+        /// <summary>A new process starts at login. Old disk credentials are revocation material only.</summary>
+        public async Task StartApplicationAsync(CancellationToken cancellationToken, bool waitForPendingRevocations = true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Scope scope = null;
-            lock (gate)
-            {
-                RequireNotDisposed();
-                if (endpoint == null) return;
-                var saved = Persist(() => store.Load());
-                if (saved != null && saved.IssuerApiBaseUrl == endpoint.ApiBaseUrl && saved.EndpointId == endpoint.Id)
-                {
-                    AdvanceGenerationLocked();
-                    credentials = new Credentials(saved);
-                    scope = CaptureLocked();
-                }
-            }
-            if (scope != null) await EnsureAccessAsync(scope, false, null, cancellationToken).ConfigureAwait(false);
-            // A logged-out startup still drains the durable queue. This never restores an
-            // active record hidden behind the storage failure fence.
+            // Reuse the same durable retirement/fence as explicit logout. A crash or forced
+            // process exit must never turn an old credential into a new login on restart.
+            await LogoutAsync(cancellationToken, waitForPendingRevocations: false).ConfigureAwait(false);
             if (waitForPendingRevocations) await TryDrainPendingAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -152,7 +149,7 @@ namespace Uten.Legacy.Core
             await CommitAsync(scope, owned, ParseIssuedCredentials(response.Text), cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task LogoutAsync(CancellationToken cancellationToken)
+        public async Task LogoutAsync(CancellationToken cancellationToken, bool waitForPendingRevocations = true)
         {
             // Local logout is committed even if the caller's network wait was cancelled.
             ApiException persistenceFailure = null;
@@ -204,6 +201,7 @@ namespace Uten.Legacy.Core
                     + "请联系管理员修复本机存储，不能将本次退出视为完整成功。";
                 throw new ApiException("LOGOUT_STORAGE_FAILED", message, isSubmissionUnknown: !revoked);
             }
+            if (!waitForPendingRevocations) return;
             try { await DrainPendingRevocationsAsync(cancellationToken).ConfigureAwait(false); }
             catch (Exception error) when (error is ApiException || error is OperationCanceledException)
             { throw new ApiException("LOGOUT_PENDING", "已退出本机；服务器注销已保存在待处理队列，恢复连接后重试。", isSubmissionUnknown: true); }
@@ -212,7 +210,51 @@ namespace Uten.Legacy.Core
         public Task<string> GetAsync(string relativePath, CancellationToken cancellationToken)
         { return ReadJsonAsync(HttpMethod.Get, relativePath, null, cancellationToken); }
 
-        private async Task<string> ReadJsonAsync(HttpMethod method, string relativePath, object body, CancellationToken cancellationToken, string requiredPermission = null)
+        public Task ProbeSessionAsync(CancellationToken cancellationToken, bool automatic = true)
+        { return ReadJsonAsync(HttpMethod.Get, "auth/me", null, cancellationToken, automatic: automatic); }
+
+        /// <summary>One bounded automatic watch. Only the still-current login may be retired.</summary>
+        public async Task<ApiException> WatchSessionAsync(CancellationToken cancellationToken)
+        {
+            Scope scope;
+            lock (gate) { RequireAuthenticated(); scope = CaptureLocked(); }
+            var owned = await EnsureAccessAsync(scope, false, null, cancellationToken, automatic: true).ConfigureAwait(false);
+            var response = await SendAsync(scope, HttpMethod.Get, "auth/session/watch", null, owned.AccessToken,
+                cancellationToken, automatic: true).ConfigureAwait(false);
+            RequireScope(scope);
+            cancellationToken.ThrowIfCancellationRequested();
+            var failure = ErrorFrom(response, false);
+            if (failure != null && failure.StatusCode == 401 && failure.HasResponseCode && failure.Code == "UNAUTHORIZED")
+            {
+                owned = await EnsureAccessAsync(scope, true, owned, cancellationToken, automatic: true).ConfigureAwait(false);
+                response = await SendAsync(scope, HttpMethod.Get, "auth/session/watch", null, owned.AccessToken,
+                    cancellationToken, automatic: true).ConfigureAwait(false);
+                RequireScope(scope);
+                cancellationToken.ThrowIfCancellationRequested();
+                failure = ErrorFrom(response, false);
+            }
+            if (failure != null)
+            {
+                if (IsDefinitiveRejection(failure)) RejectCurrent(scope, owned, failure);
+                throw failure;
+            }
+            var result = JsonValue.ParseObject(response.Text);
+            var status = JsonValue.RequiredString(result, "status", 32);
+            if (status == "active") return null;
+            var code = JsonValue.RequiredString(result, "code", 80);
+            if (!(status == "replaced" && code == "SESSION_REPLACED")
+                && !(status == "expired" && code == "UNAUTHORIZED"))
+                throw new ApiException("INVALID_RESPONSE", "会话状态响应无法验证。");
+            var message = JsonValue.RequiredString(result, "message", 1000);
+            // An ordinary refresh preserves generation; its newer token is still the same
+            // login. Explicit login/logout/endpoint changes advance it and reject this reply.
+            lock (gate) { RequireScopeLocked(scope); owned = credentials; }
+            var ended = new ApiException(code, message, 401, hasResponseCode: true);
+            RejectCurrent(scope, owned, ended);
+            return ended;
+        }
+
+        private async Task<string> ReadJsonAsync(HttpMethod method, string relativePath, object body, CancellationToken cancellationToken, string requiredPermission = null, bool automatic = false)
         {
             Scope scope;
             ReadRequest reader;
@@ -228,16 +270,16 @@ namespace Uten.Legacy.Core
                 try
                 {
                     // A reader's retirement/close must not cancel a shared credential refresh.
-                    var owned = await EnsureAccessAsync(scope, false, null, cancellationToken).ConfigureAwait(false);
+                    var owned = await EnsureAccessAsync(scope, false, null, cancellationToken, automatic).ConfigureAwait(false);
                     RequireReader(scope, reader);
-                    var response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true).ConfigureAwait(false);
+                    var response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic).ConfigureAwait(false);
                     RequireReader(scope, reader);
                     var failure = ErrorFrom(response, false);
                     if (failure != null && failure.StatusCode == 401 && failure.HasResponseCode && failure.Code == "UNAUTHORIZED")
                     {
-                        owned = await EnsureAccessAsync(scope, true, owned, cancellationToken).ConfigureAwait(false);
+                        owned = await EnsureAccessAsync(scope, true, owned, cancellationToken, automatic).ConfigureAwait(false);
                         RequireReader(scope, reader);
-                        response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true).ConfigureAwait(false);
+                        response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic).ConfigureAwait(false);
                         RequireReader(scope, reader);
                         failure = ErrorFrom(response, false);
                     }
@@ -245,7 +287,7 @@ namespace Uten.Legacy.Core
                     {
                         if (failure.Code == "READ_SCOPE_CHANGED" && failure.StatusCode == 403 && failure.HasResponseCode)
                             RetireReader(scope, reader);
-                        if (failure.Code != "VALIDATION_FAILED" && IsDefinitiveRejection(failure)) RejectCurrent(scope, owned);
+                        if (failure.Code != "VALIDATION_FAILED" && IsDefinitiveRejection(failure)) RejectCurrent(scope, owned, failure);
                         throw failure;
                     }
                     ObserveReadReply(scope, reader, scope.Endpoint.Resolve(relativePath).AbsolutePath, response);
@@ -301,8 +343,7 @@ namespace Uten.Legacy.Core
         }
         private void RaiseReadScopeChanged()
         {
-            var changed = ReadScopeChanged;
-            if (changed != null) changed(this, EventArgs.Empty);
+            NotifyListeners(ReadScopeChanged, listener => ((EventHandler)listener)(this, EventArgs.Empty), "read_scope");
         }
         private static ApiException ReadScopeChangedError()
         { return new ApiException("READ_SCOPE_CHANGED", "数据访问范围已变化，请重新打开页面后核对。", 403); }
@@ -344,7 +385,7 @@ namespace Uten.Legacy.Core
             catch (OperationCanceledException) { }
         }
 
-        private async Task<Credentials> EnsureAccessAsync(Scope scope, bool force, Credentials used, CancellationToken cancellationToken)
+        private async Task<Credentials> EnsureAccessAsync(Scope scope, bool force, Credentials used, CancellationToken cancellationToken, bool automatic = false)
         {
             lock (gate)
             {
@@ -370,7 +411,7 @@ namespace Uten.Legacy.Core
                 }
                 var response = await SendAsync(scope, HttpMethod.Post, "auth/refresh",
                     new Dictionary<string, object> { { "refreshToken", submitted.Stored.RefreshToken } },
-                    null, CancellationToken.None).ConfigureAwait(false);
+                    null, CancellationToken.None, automatic: automatic).ConfigureAwait(false);
                 if (response.Status < 200 || response.Status > 299) RequireScope(scope);
                 RequireSuccess(response, true);
                 var result = ParseIssuedCredentials(response.Text);
@@ -380,7 +421,7 @@ namespace Uten.Legacy.Core
             }
             catch (ApiException error)
             {
-                if (IsDefinitiveRejection(error)) RejectCurrent(scope, submitted);
+                if (IsDefinitiveRejection(error)) RejectCurrent(scope, submitted, error);
                 throw;
             }
             finally { refreshLock.Release(); }
@@ -457,9 +498,10 @@ namespace Uten.Legacy.Core
                     .SequenceEqual(after.Permissions.OrderBy(value => value, StringComparer.Ordinal));
         }
 
-        private void RejectCurrent(Scope scope, Credentials expected)
+        private void RejectCurrent(Scope scope, Credentials expected, ApiException reason)
         {
             var changed = false;
+            var retiredGeneration = -1L;
             ApiException persistenceFailure = null;
             lock (gate)
             {
@@ -467,6 +509,7 @@ namespace Uten.Legacy.Core
                 // A definitive disabled/replaced/rejected account must disappear from memory
                 // and fence all in-flight readers even when the disk is unavailable.
                 AdvanceGenerationLocked();
+                retiredGeneration = generation;
                 credentials = null;
                 changed = true;
                 try { Persist(() => store.Clear()); }
@@ -481,7 +524,12 @@ namespace Uten.Legacy.Core
                     }
                 }
             }
-            if (changed) RaiseSessionChanged();
+            if (changed)
+            {
+                RaiseSessionChanged();
+                var notice = new SessionEndedEventArgs(reason, retiredGeneration);
+                NotifyListeners(SessionEnded, listener => ((EventHandler<SessionEndedEventArgs>)listener)(this, notice), "ended");
+            }
             if (persistenceFailure != null) throw persistenceFailure;
         }
 
@@ -495,7 +543,7 @@ namespace Uten.Legacy.Core
         }
 
         private async Task<Reply> SendAsync(Scope scope, HttpMethod method, string path, object body, string bearer,
-            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null, bool idempotentRead = false)
+            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null, bool idempotentRead = false, bool automatic = false)
         {
             RequireScope(scope);
             cancellationToken.ThrowIfCancellationRequested();
@@ -505,9 +553,10 @@ namespace Uten.Legacy.Core
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, scope.Cancellation))
             using (var request = new HttpRequestMessage(method, uri))
             {
-                timeout.CancelAfter(configuration.RequestTimeout);
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 if (bearer != null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                if (automatic) request.Headers.Add("X-Uten-Automatic", "1");
+                timeout.CancelAfter(SessionWatchContract.ForRequest(request, configuration.RequestTimeout));
                 if (rawBodyJson != null && mutationPermit == null)
                     throw new ApiException("MUTATION_ACTION_NOT_APPROVED", "原始业务提交必须经过审核的公共入口。");
                 if (body != null || rawBodyJson != null)
@@ -663,8 +712,16 @@ namespace Uten.Legacy.Core
         private static void Persist(Action action) { Persist(() => { action(); return true; }); }
         private void RaiseSessionChanged()
         {
-            var changed = SessionChanged;
-            if (changed != null) changed(this, EventArgs.Empty);
+            NotifyListeners(SessionChanged, listener => ((EventHandler)listener)(this, EventArgs.Empty), "changed");
+        }
+        private static void NotifyListeners(Delegate listeners, Action<Delegate> notify, string eventName)
+        {
+            if (listeners == null) return;
+            foreach (var listener in listeners.GetInvocationList())
+            {
+                try { notify(listener); }
+                catch (Exception error) { DiagnosticsLog.Record("session.listener_failed", eventName + "." + error.GetType().Name); }
+            }
         }
         public void Dispose()
         {
@@ -701,7 +758,6 @@ namespace Uten.Legacy.Core
             private readonly int expiresIn;
             internal Credentials(AuthResult result, StoredSession stored)
             { AccessToken = result.AccessToken; Stored = stored; User = result.User; expiresIn = result.ExpiresIn; issuedAt = Stopwatch.GetTimestamp(); }
-            internal Credentials(StoredSession stored) { Stored = stored; }
             internal bool NearExpiry { get { return AccessToken == null || (Stopwatch.GetTimestamp() - issuedAt) / (double)Stopwatch.Frequency >= Math.Max(0, expiresIn - 30); } }
         }
         private sealed class Reply

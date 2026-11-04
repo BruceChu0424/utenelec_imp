@@ -184,6 +184,32 @@ class ApiClient {
     }
   });
 
+  /// One cancellable session watch. The caller owns reconnect/backoff; it must
+  /// not occupy a page-read slot or extend the session's idle deadline.
+  Future<Map<String, dynamic>> watchSession({
+    required CancelToken cancelToken,
+    bool fallbackProbe = false,
+  }) async {
+    try {
+      final response = await _dio.get<dynamic>(
+        fallbackProbe ? '/auth/me' : '/auth/session/watch',
+        cancelToken: cancelToken,
+        options: Options(
+          receiveTimeout: fallbackProbe
+              ? const Duration(seconds: 10)
+              : const Duration(seconds: 35),
+          extra: const {
+            safeRequestRetryDisabledKey: true,
+            AutomaticRequestInterceptor.forceAutomaticKey: true,
+          },
+        ),
+      );
+      return _objectResponse(response);
+    } on DioException catch (error) {
+      throw _convert(error);
+    }
+  }
+
   /// 用于后端直接返回 JSON 数组的接口（如部门树）。
   Future<List<Map<String, dynamic>>> getList(
     String path, {

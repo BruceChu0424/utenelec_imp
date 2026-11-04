@@ -130,6 +130,14 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource(securityProps)))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
+                        // Only the already-authenticated watch's internal result
+                        // dispatch can pass after its captured session was revoked.
+                        .requestMatchers(request -> request.getDispatcherType() == jakarta.servlet.DispatcherType.ASYNC
+                                && Boolean.TRUE.equals(request.getAttribute(
+                                    com.uten.imp.features.auth.SessionWatchController.AUTHENTICATED_WATCH))
+                                && "GET".equals(request.getMethod())
+                                && "/api/auth/session/watch".equals(
+                                    com.uten.imp.security.SecurityRequestPath.withinApplication(request))).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/platform/branding", "/api/platform/branding/logo", "/api/system/maintenance").permitAll()
                         .requestMatchers(publicPaths).permitAll()

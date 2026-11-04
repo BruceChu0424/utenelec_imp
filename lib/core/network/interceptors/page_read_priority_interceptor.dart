@@ -40,6 +40,7 @@ class PageReadPriorityInterceptor extends Interceptor {
             (options.path.endsWith('/facets') ||
                 isSearchReadPost(options.path)));
     if (!read ||
+        options.path.endsWith('/auth/session/watch') ||
         options.responseType == ResponseType.stream ||
         options.responseType == ResponseType.bytes) {
       handler.next(options);

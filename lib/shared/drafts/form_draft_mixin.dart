@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../components/layout/uten_editable_grid.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/api_client.dart';
+import '../../core/diagnostics/diagnostic_log.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/server_config.dart';
 import '../../core/performance/json_value_snapshot.dart';
@@ -126,7 +127,44 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// draft evidence stays with its owner; this editor cannot start more work.
   void invalidateFormDraftIdentity() {
     if (!mounted || _draftDisposed || _draftIdentityChanged) return;
+    final lease = _draftPreservationLease;
+    Map<String, dynamic>? snapshot;
+    if (_draftReady &&
+        !_draftFinished &&
+        !_draftRestoreBlocked &&
+        lease != null) {
+      try {
+        snapshot = _captureDraftSnapshot();
+      } catch (error) {
+        _draftError = error;
+      }
+    }
+    _draftCaptureDebounce?.cancel();
+    _draftCaptureDebounce = null;
     super.setState(() => _draftIdentityChanged = true);
+    if (snapshot != null &&
+        (_draftWriting != null ||
+            !jsonValuesEqual(snapshot, _draftSavedSnapshot)) &&
+        (_draftWriting != null ||
+            !jsonValuesEqual(snapshot, _draftBaseline) ||
+            _draftRevision != null)) {
+      // Capture happened synchronously before retiring the editor. The lease
+      // owns only the old namespace and never delays server-authoritative exit.
+      unawaited(
+        lease!
+            .preserve(snapshot, pendingWrite: _draftWriting)
+            .then<void>(
+              (_) {},
+              onError: (Object error) {
+                _draftError = error;
+                AppDiagnostics.record(
+                  'draft.retirement_failed',
+                  fields: {'exceptionType': error.runtimeType.toString()},
+                );
+              },
+            ),
+      );
+    }
   }
 
   /// Most editors retire on any permission change. An editor with a separate
@@ -247,6 +285,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   Future<void>? _draftWriting;
   Future<bool>? _draftExitPrompt;
   FormDraftsNotifier? _draftStore;
+  FormDraftPreservationLease? _draftPreservationLease;
   String? _draftOwnerKey;
   AuthenticatedScope? _draftScope;
   String? _draftServer;
@@ -344,6 +383,9 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         _draftId = found.id;
         _draftRevision = found.revision;
         _draftSubmissionPending = found.hasUnknownSubmission;
+        if (found.data[formDraftRetirementConflictKey] == true) {
+          throw StateError('原草稿已在其他页面修改或结束，这份保全副本仅供核对，不能重新提交');
+        }
         await restoreFormDraft(found.data);
         final frozenCommands = unknownFormDraftCommandIdentities(
           found.data,
@@ -377,6 +419,12 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
           ref.read(apiBaseUrlProvider) == _draftServer) {
         // Even failed storage must keep dirty tracking and the leave dialog.
         _draftReady = true;
+        _draftPreservationLease = _draftStore?.capturePreservationLease(
+          draftId: _draftId,
+          spec: formDraftSpec,
+          route: _draftRoute,
+          revision: _draftRevision,
+        );
         FormDraftNavigation.register(
           this,
           _draftRoute,
@@ -426,6 +474,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _draftError = null;
     _draftId = const Uuid().v4();
     _draftRevision = null;
+    _draftPreservationLease = null;
     _draftSavedSnapshot = null;
     _draftPendingSnapshot = null;
     _draftSkipResume = true;
@@ -652,10 +701,15 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
             current = (await _draftStore!.save(
               await _draftOf(snapshot),
               expectedRevision: revision,
+              preservationLease: _draftPreservationLease,
             )).revision;
             _draftRevision = current;
           }
-          await _draftStore!.discardClean(_draftId, expectedRevision: current);
+          await _draftStore!.discardClean(
+            _draftId,
+            expectedRevision: current,
+            preservationLease: _draftPreservationLease,
+          );
         }
         _draftRevision = null;
         _draftSavedSnapshot = snapshot;
@@ -665,6 +719,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       final saved = await _draftStore!.save(
         await _draftOf(snapshot),
         expectedRevision: _draftRevision,
+        preservationLease: _draftPreservationLease,
       );
       _draftRevision = saved.revision;
       _draftSavedSnapshot = snapshot;

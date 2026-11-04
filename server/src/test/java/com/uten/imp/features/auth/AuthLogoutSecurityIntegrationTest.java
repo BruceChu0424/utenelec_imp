@@ -59,6 +59,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         excludeAutoConfiguration = org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration.class,
         controllers = {
                 AuthController.class,
+                SessionWatchController.class,
                 AuthLogoutSecurityProbeController.class
         },
         properties = {
@@ -89,12 +90,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         LocalNetworkGuardFilter.class,
         RemoteAccessPolicy.class,
         RemoteAccessGuardFilter.class,
-        TokenIssuer.class
+        TokenIssuer.class,
+        SessionWatchService.class
 })
 class AuthLogoutSecurityIntegrationTest {
 
     @Autowired
     private MockMvc mvc;
+
+    @Autowired
+    private SessionWatchService watches;
 
     @MockitoBean
     private LoginService loginService;
@@ -130,6 +135,73 @@ class AuthLogoutSecurityIntegrationTest {
     @BeforeEach
     void setUp() {
         when(currentUser.get()).thenReturn(Optional.empty());
+    }
+
+    @Test
+    void sessionWatchRequiresAuthenticationAndKeepsCommittedReplacementOnAsyncDispatch() throws Exception {
+        mvc.perform(get("/api/auth/session/watch")).andExpect(status().isUnauthorized());
+        UUID owner = UUID.randomUUID();
+        UUID sid = UUID.randomUUID();
+        var principal = new com.uten.imp.security.AuthUser(owner, UUID.randomUUID(), "watch-user",
+                java.util.Set.of(), false, true, false, true, null, sid);
+        when(sessions.evaluateStaffWatches(java.util.Map.of(sid, owner))).thenReturn(
+                java.util.Map.of(sid, AuthSessionService.RefreshVerdict.active()));
+        var pending = mvc.perform(get("/api/auth/session/watch")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                .andReturn();
+        watches.replaced(new AuthSessionService.ReplacedSessions(java.util.List.of(sid), "另一台设备"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(pending))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("replaced"))
+                .andExpect(jsonPath("$.code").value("SESSION_REPLACED"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Cache-Control", "no-store"));
+        org.assertj.core.api.Assertions.assertThat(watches.waitingCount()).isZero();
+    }
+
+    @Test
+    void visitorAndUnauthenticatedAsyncDispatchCannotSubscribeToStaffSessionEvents() throws Exception {
+        var visitor = com.uten.imp.security.AuthUser.visitor(UUID.randomUUID(), "visitor", "V001",
+                java.util.Set.of(), UUID.randomUUID());
+        mvc.perform(get("/api/auth/session/watch")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(visitor)))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/auth/session/watch").with(request -> {
+                    request.setDispatcherType(jakarta.servlet.DispatcherType.ASYNC);
+                    return request;
+                }))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void watchTimeoutAndClientErrorReleaseTheWaiter() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID sid = UUID.randomUUID();
+        var principal = new com.uten.imp.security.AuthUser(owner, UUID.randomUUID(), "watch-user",
+                java.util.Set.of(), true, true, false, true, null, sid);
+        when(sessions.evaluateStaffWatches(java.util.Map.of(sid, owner))).thenReturn(
+                java.util.Map.of(sid, AuthSessionService.RefreshVerdict.active()));
+        var pending = mvc.perform(get("/api/auth/session/watch")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                .andReturn();
+        var async = (org.springframework.mock.web.MockAsyncContext) pending.getRequest().getAsyncContext();
+        for (var listener : async.getListeners()) {
+            listener.onTimeout(new jakarta.servlet.AsyncEvent(async));
+        }
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(pending))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("active"));
+        org.assertj.core.api.Assertions.assertThat(watches.waitingCount()).isZero();
+        var interrupted = mvc.perform(get("/api/auth/session/watch")
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(principal)))
+                .andReturn();
+        var interruptedAsync = (org.springframework.mock.web.MockAsyncContext) interrupted.getRequest().getAsyncContext();
+        for (var listener : interruptedAsync.getListeners()) {
+            listener.onError(new jakarta.servlet.AsyncEvent(interruptedAsync, new java.io.IOException("client disconnected")));
+        }
+        org.assertj.core.api.Assertions.assertThat(watches.waitingCount()).isZero();
     }
 
     @Test

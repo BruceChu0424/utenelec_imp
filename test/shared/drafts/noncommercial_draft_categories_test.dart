@@ -31,6 +31,7 @@ FormDraft _draft(
   String route, {
   String? kind,
   Map<String, dynamic> data = const {},
+  DateTime? updatedAt,
 }) => FormDraft(
   id: id,
   title: '填写草稿 $id',
@@ -39,7 +40,7 @@ FormDraft _draft(
   permission: '',
   draftKind: kind,
   data: data,
-  updatedAt: DateTime.utc(2026, 9, 26),
+  updatedAt: updatedAt ?? DateTime.utc(2026, 9, 26),
 );
 
 class _Drafts extends FormDraftsNotifier {
@@ -259,6 +260,7 @@ void main() {
   testWidgets(
     'inbound task input stays in business queues and manual document drafts retain their category',
     (tester) async {
+      final currentInstant = DateTime.now().toUtc();
       await _pump(
         tester,
         const WarehouseInboundTaskCenterPage(),
@@ -269,17 +271,27 @@ void main() {
             BadgeModule.warehouse,
             // ADR-151 §5：登记实际到货只有一个页面，来源走地址里的 id。
             '/warehouse/inbound/arrivals/register?expectationIds=e-1',
+            updatedAt: currentInstant,
           ),
           _draft(
             'outbound-local',
             BadgeModule.warehouse,
             '/warehouse/subcontract-outbound/issue-1',
+            updatedAt: currentInstant,
           ),
           _draft(
             'stock-local',
             BadgeModule.warehouse,
             '/warehouse/OTHER_IN/new',
             kind: 'stockDocument',
+            updatedAt: currentInstant,
+          ),
+          _draft(
+            'expired-stock-local',
+            BadgeModule.warehouse,
+            '/warehouse/OTHER_IN/new',
+            kind: 'stockDocument',
+            updatedAt: currentInstant.subtract(const Duration(days: 90)),
           ),
         ],
       );
@@ -306,6 +318,15 @@ void main() {
         find.byType(MasterDataTableView<WarehouseTaskCenterRecord>),
       );
       final row = [...table.unpagedItems, ...table.items].single;
+      expect(
+        [
+          ...table.unpagedItems,
+          ...table.items,
+        ].any((item) => item.id == 'expired-stock-local'),
+        isFalse,
+        reason:
+            'the default recent-month filter also applies to local document drafts',
+      );
       expect(row.id, 'stock-local');
       expect(row.sourceType, 'OTHER');
       expect(row.status, 'LOCAL_DRAFT');

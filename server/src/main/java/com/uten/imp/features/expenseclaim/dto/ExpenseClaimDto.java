@@ -43,7 +43,8 @@ public record ExpenseClaimDto(
         List<ExpenseClaimInvoiceDto> invoices,
         List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
         String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission,
-        @com.fasterxml.jackson.annotation.JsonUnwrapped com.uten.imp.common.history.DocumentHistoryMetadata history) {
+        @com.fasterxml.jackson.annotation.JsonUnwrapped com.uten.imp.common.history.DocumentHistoryMetadata history,
+        String approvalStage, String approvalStageLabel, boolean canApprove, int approvalRound, String expenseKind,boolean approvalRoutingStale,boolean canPay,boolean abandoned) {
     public ExpenseClaimDto(
         UUID id,
         String claimNo,
@@ -75,6 +76,6 @@ public record ExpenseClaimDto(
         List<ExpenseClaimInvoiceDto> invoices,
         List<ExpenseClaimEventDto> events, long version, UUID approvedBy, List<AttachmentDto> paymentProofs,
         String previousSubmissionSnapshot, String submissionSnapshot, boolean resubmission) {
-        this(id, claimNo, applicantId, applicantName, departmentId, departmentName, title, items, totalAmount, status, createdAt, submittedAt, approvedAt, rejectedAt, paidAt, remark, rejectReason, approvedByName, rejectedByName, paidByName, paymentDate, paymentAccountId, paymentAccountName, paymentExpenseStyleId, paymentExpenseStyleName, financeExpenseId, attachments, invoices, events, version, approvedBy, paymentProofs, previousSubmissionSnapshot, submissionSnapshot, resubmission, new com.uten.imp.common.history.DocumentHistoryMetadata());
+        this(id, claimNo, applicantId, applicantName, departmentId, departmentName, title, items, totalAmount, status, createdAt, submittedAt, approvedAt, rejectedAt, paidAt, remark, rejectReason, approvedByName, rejectedByName, paidByName, paymentDate, paymentAccountId, paymentAccountName, paymentExpenseStyleId, paymentExpenseStyleName, financeExpenseId, attachments, invoices, events, version, approvedBy, paymentProofs, previousSubmissionSnapshot, submissionSnapshot, resubmission, new com.uten.imp.common.history.DocumentHistoryMetadata(), null, null, false, 0, "GENERAL",false,false,false);
     }
 }

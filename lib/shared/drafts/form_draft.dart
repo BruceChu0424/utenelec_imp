@@ -158,6 +158,17 @@ Set<String> unknownFormDraftCommandIdentities(
   Map<String, dynamic> data, {
   required String route,
 }) {
+  if (const {'applicationPayment', 'applicationPrepaymentFinance'}.contains(Uri.tryParse(route)?.queryParameters['draftForm']) &&
+      hasUnknownFormDraftSubmission(data, route: route)) {
+    final command = data['_applicationPaymentCommand'];
+    if (command is Map && command['fields'] is Map) {
+      final fields = command['fields'] as Map;
+      return {
+        'application-payment:${command['action'] ?? 'pay'}:${command['applicationId']}:${command['expectedVersion']}:${fields['financeDocumentType']}:${fields['financeDocumentId']}:${fields['paymentDate']}:${fields['paymentReference']}',
+      };
+    }
+    return {'application-payment:missing-command'};
+  }
   if (Uri.tryParse(route)?.path == '${RouteName.workshopMaterialIssue}/batch') {
     final commands = data['commands'];
     return {

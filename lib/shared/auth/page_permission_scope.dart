@@ -53,6 +53,15 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
     return _warehouseStockCountReviewScope;
   }
 
+  if (path == '/applications/approval') {
+    return _applicationApprovalScope;
+  }
+  if (path == '/applications' || path.startsWith('/applications/')) {
+    return _applicationCommonScope;
+  }
+  if (path.startsWith('/approvals/') || path == '/sales/manager-review') {
+    return _approvalCenterScope;
+  }
   // 人事与组织。
   if (path == '/employee' || _isDescendant(path, '/employee')) {
     return _employeeScope;
@@ -213,6 +222,9 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _departmentScope,
   _payrollScope,
   _expenseApprovalScope,
+  _applicationApprovalScope,
+  _applicationCommonScope,
+  _approvalCenterScope,
   _hrTaskScope,
   _profileReviewScope,
   _noticePublishScope,
@@ -599,6 +611,19 @@ const _payrollScope = PagePermissionScope(
   title: '工资管理',
 );
 
+const _applicationCommonScope = PagePermissionScope(
+  surfaceKey: 'common.applications',
+  title: '我的申请',
+);
+const _applicationApprovalScope = PagePermissionScope(
+  surfaceKey: 'applications.approval',
+  title: '申请审批',
+);
+const _approvalCenterScope = PagePermissionScope(
+  surfaceKey: 'approvals.center',
+  title: '审批中心',
+);
+
 const _expenseApprovalScope = PagePermissionScope(
   surfaceKey: 'hr.expense',
   title: '报销审批',
@@ -891,7 +916,7 @@ const _stockDocumentCodes = <String>{
 
 const _salesManagerReviewScope = PagePermissionScope(
   surfaceKey: 'sales.manager-review',
-  title: '订单审核',
+  title: '审批中心',
 );
 
 const _salesHubScope = PagePermissionScope(

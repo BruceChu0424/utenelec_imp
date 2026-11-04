@@ -7,6 +7,23 @@ import 'expense_claim_event.dart';
 import 'expense_invoice.dart';
 import 'expense_item.dart';
 
+/// 同一份节点契约用于申请人进度、部门/财务/总经办待办及纸面签批。
+enum ExpenseApprovalStage {
+  department('DEPARTMENT', '部门负责人审核'),
+  financeInitial('FINANCE_INITIAL', '财务初核'),
+  financeReview('FINANCE_REVIEW', '财务复核'),
+  executive('EXECUTIVE', '总经办批准');
+
+  const ExpenseApprovalStage(this.apiValue, this.label);
+  final String apiValue;
+  final String label;
+
+  static ExpenseApprovalStage? fromApi(Object? value) {
+    if (value == null || value.toString().isEmpty) return null;
+    return values.where((stage) => stage.apiValue == value).firstOrNull;
+  }
+}
+
 /// 报销单状态
 enum ExpenseClaimStatus {
   /// 草稿
@@ -90,6 +107,14 @@ class ExpenseClaim {
     this.previousSubmissionSnapshot,
     this.submissionSnapshot,
     this.resubmission = false,
+    this.approvalStage,
+    this.approvalStageLabel,
+    this.approvalRound = 0,
+    this.canApprove,
+    this.canPay,
+    this.expenseKind = 'GENERAL',
+    this.approvalRoutingStale = false,
+    this.abandoned = false,
   });
 
   final String id;
@@ -101,6 +126,30 @@ class ExpenseClaim {
   final String? previousSubmissionSnapshot;
   final String? submissionSnapshot;
   final bool resubmission;
+  final ExpenseApprovalStage? approvalStage;
+  final String? approvalStageLabel;
+  final int approvalRound;
+
+  /// 服务端按当前节点、部门、只读身份与经办隔离计算；旧响应缺省为空。
+  final bool? canApprove;
+  final bool? canPay;
+  final String expenseKind;
+  final bool approvalRoutingStale;
+  final bool abandoned;
+  String get expenseKindLabel => expenseKind == 'TRAVEL' ? '出差报销' : '费用报销';
+
+  String? get effectiveStageLabel =>
+      _blankToNull(approvalStageLabel) ?? approvalStage?.label;
+
+  String get progressLabel => abandoned
+      ? '已放弃'
+      : approvalRoutingStale
+      ? '待重新提交'
+      : (status == ExpenseClaimStatus.submitted ||
+                status == ExpenseClaimStatus.reviewing) &&
+            effectiveStageLabel != null
+      ? '待${effectiveStageLabel!}'
+      : status.label;
 
   /// 报销单号（BX + 日期 + 流水；V608 打印与归档编号）
   final String claimNo;
@@ -180,6 +229,14 @@ class ExpenseClaim {
       previousSubmissionSnapshot: json['previousSubmissionSnapshot'] as String?,
       submissionSnapshot: json['submissionSnapshot'] as String?,
       resubmission: json['resubmission'] as bool? ?? false,
+      approvalStage: ExpenseApprovalStage.fromApi(json['approvalStage']),
+      approvalStageLabel: json['approvalStageLabel'] as String?,
+      approvalRound: (json['approvalRound'] as num?)?.toInt() ?? 0,
+      canApprove: json['canApprove'] as bool?,
+      canPay: json['canPay'] as bool?,
+      expenseKind: json['expenseKind'] == 'TRAVEL' ? 'TRAVEL' : 'GENERAL',
+      approvalRoutingStale: json['approvalRoutingStale'] == true,
+      abandoned: json['abandoned'] == true,
       applicantId: json['applicantId'] as String,
       applicantName: json['applicantName'] as String,
       departmentId: json['departmentId'] as String?,
@@ -226,6 +283,7 @@ class ExpenseClaim {
   }
 
   ExpenseClaim copyWith({
+    List<ExpenseItem>? items,
     ExpenseClaimStatus? status,
     DateTime? submittedAt,
     DateTime? approvedAt,
@@ -240,12 +298,20 @@ class ExpenseClaim {
       previousSubmissionSnapshot: previousSubmissionSnapshot,
       submissionSnapshot: submissionSnapshot,
       resubmission: resubmission,
+      approvalStage: approvalStage,
+      approvalStageLabel: approvalStageLabel,
+      approvalRound: approvalRound,
+      canApprove: canApprove,
+      canPay: canPay,
+      expenseKind: expenseKind,
+      approvalRoutingStale: approvalRoutingStale,
+      abandoned: abandoned,
       applicantId: applicantId,
       applicantName: applicantName,
       departmentId: departmentId,
       departmentName: departmentName,
       title: title,
-      items: items,
+      items: items ?? this.items,
       totalAmount: totalAmount,
       status: status ?? this.status,
       createdAt: createdAt,
@@ -276,15 +342,18 @@ class ExpenseClaimCreateInput {
     required this.items,
     this.remark,
     this.expectedVersion,
+    this.expenseKind = 'GENERAL',
   });
 
   final int? expectedVersion;
+  final String expenseKind;
   final String title;
   final String? remark;
   final List<ExpenseItem> items;
 
   Map<String, dynamic> toJson() => {
     'title': title,
+    'expenseKind': expenseKind,
     if (expectedVersion != null) 'expectedVersion': expectedVersion,
     'remark': remark,
     'items': items.map((item) => item.toCreateJson()).toList(),

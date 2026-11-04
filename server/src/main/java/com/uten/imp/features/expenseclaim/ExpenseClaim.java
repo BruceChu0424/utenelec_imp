@@ -43,6 +43,26 @@ public class ExpenseClaim extends SoftDeletableEntity {
     @Column(nullable = false)
     private String status = "DRAFT";
 
+    @Column(name = "expense_kind", nullable = false)
+    private String expenseKind = "GENERAL";
+
+    @Column(name = "approval_stage")
+    private String approvalStage = ExpenseApprovalPolicy.DEPARTMENT;
+
+    @Column(name = "approval_round", nullable = false)
+    private int approvalRound;
+
+    /** Only current-round successful participants; all historical facts stay in events. */
+    @Column(name = "approval_participants", nullable = false)
+    private String approvalParticipants = "";
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "department_approval_snapshot",columnDefinition = "jsonb")
+    private String departmentApprovalSnapshot;
+
+    @Column(name = "abandoned_at")
+    private Instant abandonedAt;
+
     private String remark;
 
     @Column(name = "reject_reason")

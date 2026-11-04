@@ -1,7 +1,6 @@
 import '../../shared/history/record_history_page.dart';
 import '../../shared/history/record_revision_page.dart';
 import '../../shared/history/record_history_area.dart';
-import '../../features/sales/pages/sales_manager_review_page.dart';
 import '../../features/basic_data/models/goods_detail_sequence.dart';
 import '../../shared/windows/business_windows.dart';
 import 'business_window_host.dart';
@@ -76,6 +75,13 @@ import '../../features/employee/pages/employee_offboarding_workflow_page.dart';
 import '../../features/employee/pages/employee_onboarding_page.dart';
 import '../../features/expense/pages/expense_approval_detail_page.dart';
 import '../../features/expense/pages/expense_approval_list_page.dart';
+import '../../features/approvals/pages/approval_center_page.dart';
+import '../../features/approvals/pages/approval_policy_settings_page.dart';
+import '../../features/applications/pages/my_applications_page.dart';
+import '../../features/applications/pages/business_application_edit_page.dart';
+import '../../features/applications/pages/business_application_detail_page.dart';
+import '../../features/applications/pages/business_application_list_page.dart';
+
 import '../../features/expense/providers/expense_providers.dart'
     show expenseApprovalQueueFromRoute;
 import '../../features/expense/pages/expense_detail_page.dart';
@@ -494,7 +500,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
                 );
         case AuthStatus.authenticated:
           if (isLogin) return employeeReturnTo ?? RouteName.dashboard;
-          return employeePermissionRedirect(session.user, loc);
+          return employeePermissionRedirect(session.user, state.uri.toString());
       }
     },
     routes: [
@@ -674,6 +680,65 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             builder: (_, _) => const AccountPage(),
           ),
 
+          DraftAwareGoRoute(
+            path: '/applications',
+            name: 'my-applications',
+            builder: (_, _) => const MyApplicationsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/new',
+            name: 'application-new',
+            builder: (_, s) => BusinessApplicationEditPage(
+              key: editorResourceKey(s.uri),
+              kind: s.uri.queryParameters['kind'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/mine',
+            name: 'application-mine',
+            builder: (_, s) => BusinessApplicationListPage(
+              kind: s.uri.queryParameters['kind'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/approval',
+            name: 'application-approval',
+            builder: (_, s) => BusinessApplicationApprovalListPage(
+              approvalStage: s.uri.queryParameters['stage'],
+              departmentCode: s.uri.queryParameters['departmentCode'],
+              initialHistory: s.uri.queryParameters['queue'] == 'history',
+              initialQueue: s.uri.queryParameters['queue'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/:id/edit',
+            name: 'application-edit',
+            builder: (_, s) => BusinessApplicationEditPage(
+              key: editorResourceKey(s.uri),
+              applicationId: s.pathParameters['id']!,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/applications/:id',
+            name: 'application-detail',
+            builder: (_, s) => BusinessApplicationDetailPage(
+              applicationId: s.pathParameters['id']!,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/approvals/settings',
+            name: 'approval-policy-settings',
+            builder: (_, _) => const ApprovalPolicySettingsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/approvals/:departmentCode',
+            name: 'approval-center',
+            builder: (_, s) => ApprovalCenterPage(
+              departmentCode: s.pathParameters['departmentCode']!,
+              initialGroup: s.uri.queryParameters['group'],
+              initialApplicationQueue: s.uri.queryParameters['queue'],
+            ),
+          ),
           // —— 报销（approval 静态段在 :id 前）——
           DraftAwareGoRoute(
             path: '/expense',
@@ -684,6 +749,13 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             path: '/expense/new',
             name: 'expense-new',
             builder: (_, s) => ExpenseClaimEditPage(
+              key: editorResourceKey(
+                s.uri,
+                sourceIdentity: s.extra is AiGuidedFilePlan
+                    ? (s.extra as AiGuidedFilePlan).result.sha256Hex
+                    : null,
+              ),
+              initialKind: s.uri.queryParameters['kind'],
               initialGuidedPlan: s.extra is AiGuidedFilePlan
                   ? s.extra as AiGuidedFilePlan
                   : null,
@@ -697,13 +769,15 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
           DraftAwareGoRoute(
             path: '/expense/:id/edit',
             name: 'expense-edit',
-            builder: (_, s) =>
-                ExpenseClaimEditPage(claimId: s.pathParameters['id']!),
+            builder: (_, s) => ExpenseClaimEditPage(
+              key: editorResourceKey(s.uri),
+              claimId: s.pathParameters['id']!,
+            ),
           ),
           DraftAwareGoRoute(
             path: '/expense/approval',
             name: 'expense-approval-list',
-            builder: (_, s) => ExpenseApprovalListPage(
+            builder: (_, s) => ExpenseFinanceApprovalPage(
               initialQueue: expenseApprovalQueueFromRoute(
                 s.uri.queryParameters['queue'],
               ),
@@ -718,8 +792,10 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
           DraftAwareGoRoute(
             path: '/expense/:id',
             name: 'expense-detail',
-            builder: (_, s) =>
-                ExpenseDetailPage(claimId: s.pathParameters['id']!),
+            builder: (_, s) => ExpenseDetailPage(
+              claimId: s.pathParameters['id']!,
+              history: s.uri.queryParameters['history'] == '1',
+            ),
           ),
 
           // —— 通知 ——
@@ -1816,8 +1892,9 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
 
           DraftAwareGoRoute(
             path: RouteName.salesManagerReview,
-            builder: (_, s) => SalesManagerReviewPage(
-              initialKind: s.uri.queryParameters['kind'] ?? 'quote',
+            builder: (_, s) => ApprovalCenterPage(
+              departmentCode: 'DEPT_SALES',
+              initialGroup: s.uri.queryParameters['group'] ?? 'order',
             ),
           ),
           DraftAwareGoRoute(

@@ -9,6 +9,7 @@ public interface ReviewTaskTargetLockPort {
     List<Target> resolve(List<String> targetKeys, boolean requireExisting);
     void lockHeader(Target target, boolean requireReviewable);
     void lockTarget(Target target, boolean requireReviewable);
+    default boolean canViewTarget(String targetKey) { return true; }
 
     record Target(String targetKey, String aggregateType, UUID aggregateId, UUID targetId) {}
 }

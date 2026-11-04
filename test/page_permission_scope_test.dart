@@ -242,7 +242,9 @@ void main() {
           '${v455.readAsStringSync()}\n'
           '${v475.readAsStringSync()}\n'
           '${v740.readAsStringSync()}\n'
-          '${v812.readAsStringSync()}';
+          '${v812.readAsStringSync()}\n'
+          '${File('server/src/main/resources/db/migration/V1000__expense_department_finance_executive_workflow.sql').readAsStringSync()}\n'
+          '${File('server/src/main/resources/db/migration/V1001__business_application_workflows.sql').readAsStringSync()}';
       final surfaceKeys = {
         for (final path in _businessPaths())
           pagePermissionScopeFor(path)!.surfaceKey,
@@ -323,6 +325,15 @@ Iterable<String> _businessPaths() sync* {
   yield* const <String>[
     '/payroll/generate',
     '/payroll/review',
+    '/applications',
+    '/applications/new?kind=TRAVEL',
+    '/applications/mine',
+    '/applications/approval',
+    '/approvals/DEPT_SALES',
+    '/approvals/GM',
+    '/approvals/GM_DEPARTMENT',
+    '/approvals/DEPT_FIN',
+    '/approvals/settings',
     '/expense/approval',
     '/expense/approval/claim-1',
     '/notice/publish',

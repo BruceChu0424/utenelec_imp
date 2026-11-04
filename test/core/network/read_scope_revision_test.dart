@@ -179,6 +179,65 @@ void main() {
     await check;
     expect(revision, 1);
   });
+  test(
+    'administrative applications share the employee approval proof and retire late queues',
+    () async {
+      final firstApplication = request(
+        'app-first',
+        path: '/business-applications/mine',
+      );
+      await sent();
+      reply('app-first', 'employee-before');
+      await firstApplication;
+      final claim = request('app-claim', path: '/expense-claims/pending');
+      await sent();
+      reply('app-claim', 'employee-before');
+      await claim;
+      expect(revision, 0);
+      final changed = request(
+        'app-changed',
+        path: '/business-applications/pending',
+      );
+      await sent();
+      final check = expectLater(changed, throwsA(isA<DioException>()));
+      reply('app-changed', 'employee-after');
+      await check;
+      expect(revision, 1);
+    },
+  );
+
+  test(
+    'prepayment candidates use the financial owner proof rather than the application workflow proof',
+    () async {
+      final application = request(
+        'posting-app',
+        path: '/business-applications/mine',
+      );
+      await sent();
+      reply('posting-app', 'expense-A');
+      await application;
+      const candidatePath =
+          '/business-applications/11111111-1111-4111-8111-111111111111/prepayment-finance-candidates';
+      final candidates = request('posting-candidates', path: candidatePath);
+      await sent();
+      reply('posting-candidates', 'finance-A');
+      await candidates;
+      final finance = request(
+        'posting-report',
+        path: '/finance/reports/balance',
+      );
+      await sent();
+      reply('posting-report', 'finance-A');
+      await finance;
+      expect(revision, 0);
+      final revoked = request('posting-revoked', path: candidatePath);
+      await sent();
+      final check = expectLater(revoked, throwsA(isA<DioException>()));
+      reply('posting-revoked', 'finance-B');
+      await check;
+      expect(revision, 1);
+    },
+  );
 
   test(
     'same-role scope change retires derived reads once and old replies cannot roll it back',

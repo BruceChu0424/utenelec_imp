@@ -147,6 +147,10 @@ public final class PermissionDependencyCatalog {
         add(rules, catalog, "finance_asset_period:manage", "finance_asset:view");
         add(rules, catalog, "visitor:check_in", "visitor:verify");
         add(rules, catalog, "expense:view:all", "expense:view");
+        for(String permission:com.uten.imp.application.port.ExpenseApprovalAudiencePort.APPROVAL_PERMISSIONS) {
+            add(rules,catalog,permission,"attachment:view");
+            add(rules,catalog,permission,"attachment:download");
+        }
         return rules;
     }
 

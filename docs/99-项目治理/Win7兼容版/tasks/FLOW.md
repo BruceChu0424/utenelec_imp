@@ -202,9 +202,9 @@
 1. 原附件/金额/发票/组织范围、草稿及未知提交，拒绝/撤回一致。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/employee-applications-20261103.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：2026-11-03 报销/行政财务申请：新四级报销及四类申请、负责人本人回避、独立权限/徽章/付款与打印合同已变更；原生业务仍未迁移，保持原状态及 DoD。仅公共 read-scope 识别完成本机 x86/x64 fixture，不等于业务或目标机验收。合同见 clients/windows_legacy/progress/contracts/employee-applications-workflow.json。。
 
 ## W7-FLOW-013
 

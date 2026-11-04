@@ -111,6 +111,10 @@ public class ExpenseClaimService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private ExpenseClaimReadPolicy readAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ExpenseApprovalPolicy approvalPolicy;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.policy.DepartmentApprovalRouting departmentRouting;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.uten.imp.application.port.TaskAudiencePort taskAudience;
 
@@ -168,11 +172,19 @@ public class ExpenseClaimService {
             String sort,
             String order,
             String claimNo, boolean includeDeleted, boolean onlyDeleted) {
+        return listMine(rawStatuses,year,month,departmentId,rawCategory,page,size,sort,order,claimNo,includeDeleted,onlyDeleted,false);
+    }
+
+    @Transactional(readOnly=true)
+    public PageResponse<ExpenseClaimDto> listMine(String rawStatuses,Integer year,Integer month,UUID departmentId,String rawCategory,
+            int page,int size,String sort,String order,String claimNo,boolean includeDeleted,boolean onlyDeleted,boolean includeAbandoned) {
         AuthUser user = requireStaff();
         require(user, "expense:apply");
+        var statuses=includeAbandoned&&(rawStatuses==null||rawStatuses.isBlank())?Set.of("PAID"):normalizeStatuses(rawStatuses);
+        if(includeAbandoned&&!statuses.equals(Set.of("PAID")))throw new ApiException(ErrorCode.VALIDATION_FAILED,"已放弃报销仅可在历史单据中查看");
         return listClaims(
                 user.getEmployeeId(),
-                normalizeStatuses(rawStatuses),
+                statuses,
                 year,
                 month,
                 departmentId,
@@ -183,7 +195,7 @@ public class ExpenseClaimService {
                 false,
                 sort,
                 order,
-                claimNo, includeDeleted || onlyDeleted, onlyDeleted);
+                claimNo, includeDeleted || onlyDeleted, onlyDeleted,null,null,includeAbandoned);
     }
 
     @Transactional(readOnly = true)
@@ -211,7 +223,7 @@ public class ExpenseClaimService {
             String order,
             String claimNo) {
         AuthUser user = requireStaff();
-        if (!has(user,"expense:view")) require(user, "expense:approve");
+        if (!has(user,"expense:view")) requireApprover(user);
         return listClaims(
                 null,
                 Set.of("SUBMITTED", "REVIEWING"),
@@ -293,8 +305,17 @@ public class ExpenseClaimService {
     public PageResponse<ExpenseClaimDto> listHistory(Integer year,Integer month,UUID departmentId,String rawCategory,int page,int size,
             String sort,String order,String claimNo) {
         AuthUser user=requireStaff();
-        if(!has(user,"expense:view") && !has(user,"expense:approve") && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
-        return listClaims(null,Set.of("APPROVED","REJECTED","PAID"),year,month,departmentId,normalizeCategory(rawCategory),page,size,true,true,sort,order,claimNo);
+        if(!has(user,"expense:view") && !ExpenseApprovalPolicy.hasAny(user) && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
+        return listClaims(null,Set.of("SUBMITTED","REVIEWING","APPROVED","REJECTED","PAID"),year,month,departmentId,normalizeCategory(rawCategory),page,size,true,true,sort,order,claimNo);
+    }
+
+    @Transactional(readOnly=true)
+    public PageResponse<ExpenseClaimDto> listScoped(String queue,Integer year,Integer month,UUID departmentId,String category,
+            int page,int size,String sort,String order,String claimNo,String stage,String departmentCode) {
+        AuthUser user=requireStaff();
+        if(!has(user,"expense:view") && !ExpenseApprovalPolicy.hasAny(user) && !("history".equals(queue)&&has(user,"expense:pay"))) throw new ApiException(ErrorCode.FORBIDDEN);
+        return listClaims(null,"history".equals(queue)?Set.of("SUBMITTED","REVIEWING","APPROVED","REJECTED","PAID"):Set.of("SUBMITTED","REVIEWING"),year,month,departmentId,normalizeCategory(category),
+                page,size,true,"history".equals(queue),sort,order,claimNo,false,false,stage,departmentCode);
     }
 
     private PageResponse<ExpenseClaimDto> listClaims(
@@ -316,37 +337,69 @@ public class ExpenseClaimService {
     private PageResponse<ExpenseClaimDto> listClaims(UUID applicantId,Set<String> statuses,Integer year,Integer month,
             UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history,
             String sort,String order,String claimNo,boolean includeDeleted,boolean onlyDeleted) {
+        return listClaims(applicantId,statuses,year,month,departmentId,category,page,size,newestFirst,history,sort,order,claimNo,includeDeleted,onlyDeleted,null,null);
+    }
+
+    private PageResponse<ExpenseClaimDto> listClaims(UUID applicantId,Set<String> statuses,Integer year,Integer month,
+            UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history,
+            String sort,String order,String claimNo,boolean includeDeleted,boolean onlyDeleted,String stage,String departmentCode) {
+        return listClaims(applicantId,statuses,year,month,departmentId,category,page,size,newestFirst,history,sort,order,claimNo,includeDeleted,onlyDeleted,stage,departmentCode,false);
+    }
+
+    private PageResponse<ExpenseClaimDto> listClaims(UUID applicantId,Set<String> statuses,Integer year,Integer month,
+            UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history,String sort,String order,String claimNo,
+            boolean includeDeleted,boolean onlyDeleted,String stage,String departmentCode,boolean includeAbandoned) {
         DateRange dateRange = createdAtRange(year, month);
         AuthUser reader = requireStaff();
         var observers = applicantId == null ? observerScope(reader) : null;
         Specification<ExpenseClaim> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            Predicate abandoned=cb.and(cb.isTrue(root.get("deleted")),cb.isNotNull(root.get("abandonedAt")),cb.equal(root.get("status"),"REJECTED"));
             if (onlyDeleted) predicates.add(cb.isTrue(root.get("deleted")));
-            else if (!includeDeleted) predicates.add(cb.isFalse(root.get("deleted")));
+            else if (!includeDeleted) predicates.add(includeAbandoned?cb.or(cb.isFalse(root.get("deleted")),abandoned):cb.isFalse(root.get("deleted")));
             if (applicantId == null) {
                 UUID actor=reader.getEmployeeId();
                 List<Predicate> visible=new ArrayList<>();
                 if (observers.seeAll()) visible.add(cb.conjunction());
                 else if (!observers.visibleOwners().isEmpty()) visible.add(root.get("applicantId").in(observers.visibleOwners()));
                 if (history) {
-                    if(has(reader,"expense:approve")) visible.add(cb.or(cb.equal(root.get("approvedBy"),actor),cb.equal(root.get("rejectedBy"),actor)));
+                    if(ExpenseApprovalPolicy.hasAny(reader)) {
+                        var events = query.subquery(UUID.class);
+                        var event = events.from(ExpenseClaimEvent.class);
+                        events.select(event.get("claimId")).where(cb.equal(event.get("actorEmployeeId"),actor),
+                                event.get("eventType").in(Set.of("STAGE_APPROVED","APPROVED","REJECTED")));
+                        visible.add(root.get("id").in(events));
+                    }
                     if(has(reader,"expense:pay")) visible.add(cb.equal(root.get("status"),"PAID"));
-                } else if (statuses.contains("SUBMITTED") && has(reader,"expense:approve")) {
-                    visible.add(cb.notEqual(root.get("applicantId"),actor));
+                } else if (statuses.contains("SUBMITTED") && ExpenseApprovalPolicy.hasAny(reader)) {
+                    visible.add(approvalPolicy.context(reader).predicate(root,cb));
                 } else if (statuses.contains("APPROVED") && has(reader,"expense:pay")) {
-                    visible.add(cb.and(cb.notEqual(root.get("applicantId"),actor),
-                            cb.or(cb.isNull(root.get("approvedBy")),cb.notEqual(root.get("approvedBy"),actor))));
+                    visible.add(approvalPolicy.paymentPredicate(root,cb,reader));
                 }
                 predicates.add(cb.or(visible.toArray(new Predicate[0])));
             }
             if (applicantId != null) {
                 predicates.add(cb.equal(root.get("applicantId"), applicantId));
             }
-            if (!statuses.isEmpty()) {
-                predicates.add(root.get("status").in(statuses));
-            }
+            Predicate routingStale=cb.and(root.get("status").in(Set.of("SUBMITTED","REVIEWING")),cb.equal(root.get("approvalStage"),"DEPARTMENT"),
+                    cb.isTrue(cb.function("fn_department_approval_snapshot_stale",Boolean.class,root.get("applicantId"),root.get("applicantDepartmentId"),root.get("departmentApprovalSnapshot"))));
+            if(statuses.contains("ACTION_REQUIRED"))predicates.add(cb.or(cb.equal(root.get("status"),"REJECTED"),routingStale));
+            else if (!statuses.isEmpty())predicates.add(includeAbandoned?cb.or(root.get("status").in(statuses),abandoned):root.get("status").in(statuses));
+            if(applicantId!=null&&statuses.equals(Set.of("SUBMITTED","REVIEWING","APPROVED")))predicates.add(cb.not(routingStale));
             if (departmentId != null) {
                 predicates.add(cb.equal(root.get("applicantDepartmentId"), departmentId));
+            }
+            if(stage!=null && !stage.isBlank()) {
+                var stages=ExpenseApprovalPolicy.stages(stage);
+                if(history) {
+                    var filtered=query.subquery(UUID.class);var event=filtered.from(ExpenseClaimEvent.class);
+                    filtered.select(event.get("claimId")).where(cb.equal(event.get("actorEmployeeId"),reader.getEmployeeId()),event.get("approvalStage").in(stages));
+                    predicates.add(root.get("id").in(filtered));
+                } else predicates.add(root.get("approvalStage").in(stages));
+            }
+            if(departmentCode!=null && !departmentCode.isBlank()) {
+                var ids=approvalPolicy.context(reader).departmentCodes().entrySet().stream().filter(entry->departmentCode.equals(entry.getValue())).map(Map.Entry::getKey).toList();
+                predicates.add(ids.isEmpty()?cb.disjunction():root.get("applicantDepartmentId").in(ids));
             }
             if (category != null) {
                 jakarta.persistence.criteria.Subquery<UUID> itemIds = query.subquery(UUID.class);
@@ -456,7 +509,7 @@ public class ExpenseClaimService {
                 event.getEventType(),
                 event.getActorNameSnapshot(),
                 event.getRemark(),
-                event.getCreatedAt());
+                event.getCreatedAt(),event.getApprovalStage(),event.getApprovalRound());
     }
 
     /** 详情形态映射上下文：部门名 + 操作人名 + 付款账户/费别名 + 发票 + 事件。 */
@@ -491,46 +544,39 @@ public class ExpenseClaimService {
 
     @Transactional(readOnly = true)
     public ExpenseClaimFacetsDto facets(String queue, boolean includeDeleted, boolean onlyDeleted) {
+        return facets(queue,includeDeleted,onlyDeleted,null,null);
+    }
+    @Transactional(readOnly=true)
+    public ExpenseClaimFacetsDto facets(String queue,boolean includeDeleted,boolean onlyDeleted,String stage,String departmentCode) {
+        return facets(queue,includeDeleted,onlyDeleted,stage,departmentCode,false);
+    }
+    @Transactional(readOnly=true)
+    public ExpenseClaimFacetsDto facets(String queue,boolean includeDeleted,boolean onlyDeleted,String stage,String departmentCode,boolean includeAbandoned) {
         AuthUser user = requireStaff();
-        if (has(user,"expense:view") && Set.of("pending","payable","history","browse").contains(queue)) {
-            return applicantQuery.observerFacets(user, observerScope(user), queue);
+        if(includeAbandoned) {
+            require(user,"expense:apply");
+            if(!"minehistory".equalsIgnoreCase(queue))throw new ApiException(ErrorCode.VALIDATION_FAILED,"已放弃报销仅可在历史单据中查看");
+            return applicantQuery.abandonedHistoryFacets(user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted);
         }
-        Set<String> statuses;
-        String normalizedQueue = queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT);
-        switch (normalizedQueue) {
-            case "pending" -> {
-                require(user, "expense:approve");
-                statuses = Set.of("SUBMITTED", "REVIEWING");
-            }
-            case "payable" -> {
-                require(user, "expense:pay");
-                statuses = Set.of("APPROVED");
-            }
-            case "history" -> {
-                if(!has(user,"expense:approve") && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
-                return applicantQuery.historyFacets(user.getEmployeeId(),has(user,"expense:approve"),has(user,"expense:pay"));
-            }
-            // 2026-09-25 单号列统一：我的报销列表只消费报销单号桶（部门/年月/类别
-            // 桶是审批/打款队列口径，个人列表不需要），其余桶恒空。
+        queue=queue==null?"":queue.trim().toLowerCase(Locale.ROOT);
+        if (Set.of("pending","payable","history","browse").contains(queue)) {
+            if(!has(user,"expense:view") && !("pending".equals(queue)&&ExpenseApprovalPolicy.hasAny(user))
+                    && !("payable".equals(queue)&&has(user,"expense:pay"))
+                    && !("history".equals(queue)&&(ExpenseApprovalPolicy.hasAny(user)||has(user,"expense:pay"))))throw new ApiException(ErrorCode.FORBIDDEN);
+            return applicantQuery.workflowFacets(user,observerScope(user),queue,stage,departmentCode);
+        }
+        switch (queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT)) {
             case "mineactive", "minehistory" -> {
-                require(user, "expense:apply");
-                boolean historyOnly = "minehistory".equals(normalizedQueue);
-                return new ExpenseClaimFacetsDto(List.of(), List.of(), List.of(),
-                        toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId(), includeDeleted || onlyDeleted, onlyDeleted, historyOnly)));
+                require(user,"expense:apply");
+                return new ExpenseClaimFacetsDto(List.of(),List.of(),List.of(),toBuckets(applicantQuery.mineClaimNoFacets(
+                        user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted,"minehistory".equalsIgnoreCase(queue))));
             }
             case "mine" -> {
-                require(user, "expense:apply");
-                return new ExpenseClaimFacetsDto(List.of(), List.of(), List.of(),
-                        toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId(), includeDeleted || onlyDeleted, onlyDeleted)));
+                require(user,"expense:apply");
+                return new ExpenseClaimFacetsDto(List.of(),List.of(),List.of(),toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted)));
             }
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报销队列");
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED,"未知报销队列");
         }
-        return new ExpenseClaimFacetsDto(
-                toBuckets(applicantQuery.departmentFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))),
-                toBuckets(applicantQuery.monthFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))),
-                toBuckets(applicantQuery.categoryFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))),
-                // 2026-09-25 单号列统一：报销单号桶（与列表同一队列口径）。
-                toBuckets(applicantQuery.claimNoFacets(statuses,user.getEmployeeId(),statuses.contains("APPROVED"))));
     }
 
     private static List<ExpenseClaimFacetsDto.Bucket> toBuckets(
@@ -547,31 +593,19 @@ public class ExpenseClaimService {
     @Transactional(readOnly = true)
     public ExpenseClaimSummaryDto summary() {
         AuthUser user = requireStaff();
-        if (!has(user,"expense:view") && !has(user, "expense:approve") && !has(user, "expense:pay")) {
+        if (!has(user,"expense:view") && !ExpenseApprovalPolicy.hasAny(user) && !has(user, "expense:pay")) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
-        Object[] pending=has(user,"expense:approve") ? actionable(user,false) : null;
+        Object[] pending=ExpenseApprovalPolicy.hasAny(user) ? actionable(user,false) : null;
         Object[] payable=has(user,"expense:pay") ? actionable(user,true) : null;
         // Browsing keeps the session's read authority; task counts use the same actual-grant
         // projection as /counts, so administrative capability never becomes a subscription.
         long[] tasks=taskAudience==null?new long[]{count(pending),count(payable)}:taskAudience.read(()->{
             AuthUser participant=requireStaff();
-            var counts=applicantQuery.queueCounts(participant.getEmployeeId(),false,
-                    has(participant,"expense:approve"),has(participant,"expense:pay"));
-            return new long[]{counts.pendingApproval(),counts.pendingPayment()};
+            var counts=applicantQuery.workflowCounts(participant,approvalPolicy.context(participant),false,has(participant,"expense:pay"));
+            return new long[]{counts.pendingApprovalCount(),counts.pendingPaymentCount()};
         });
-        if (has(user,"expense:view")) return applicantQuery.observerSummary(user, observerScope(user))
-                .withActionableCounts(tasks[0],tasks[1]);
-        YearMonth currentMonth = YearMonth.now(BusinessTime.ZONE);
-        Instant monthStart = currentMonth.atDay(1)
-                .atStartOfDay(BusinessTime.ZONE).toInstant();
-        Instant monthEnd = currentMonth.plusMonths(1).atDay(1)
-                .atStartOfDay(BusinessTime.ZONE).toInstant();
-        Object[] submitted=claimRepository.aggregateSubmittedVisible(monthStart,monthEnd,user.getEmployeeId(),
-                has(user,"expense:approve"),has(user,"expense:pay"));
-        Object[] paid=has(user,"expense:pay") ? claimRepository.aggregatePaidBetween(monthStart,monthEnd) : null;
-        return new ExpenseClaimSummaryDto(count(pending),amount(pending),count(payable),amount(payable),
-                count(submitted),amount(submitted),count(paid),amount(paid),tasks[0],tasks[1]);
+        return applicantQuery.observerSummary(user, observerScope(user)).withActionableCounts(tasks[0],tasks[1]);
     }
 
     /**
@@ -584,19 +618,14 @@ public class ExpenseClaimService {
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto counts() {
         AuthUser user=requireStaff();
         boolean apply=has(user,"expense:apply");
-        boolean approve=has(user,"expense:approve");
+        boolean approve=ExpenseApprovalPolicy.hasAny(user);
         boolean pay=has(user,"expense:pay");
         if(!apply && !approve && !pay) throw new ApiException(ErrorCode.FORBIDDEN);
-        ExpenseApplicantQuery.QueueCounts counts=
-                applicantQuery.queueCounts(user.getEmployeeId(),apply,approve,pay);
-        return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimCountsDto(
-                counts.draft(),counts.rejected(),counts.pendingApproval(),
-                counts.pendingPayment(),counts.processing());
+        return applicantQuery.workflowCounts(user,approvalPolicy.context(user),apply,pay);
     }
 
     private Object[] actionable(AuthUser user,boolean payment) {
-        return claimRepository.aggregateActionable(payment?Set.of("APPROVED"):Set.of("SUBMITTED","REVIEWING"),
-                user.getEmployeeId(),payment);
+        return (Object[]) em.createNativeQuery("SELECT COUNT(*),COALESCE(SUM(c.total_amount),0) FROM expense_claims c WHERE NOT c.is_deleted AND "+(payment?ExpenseApprovalPolicy.paymentSql("c",user):approvalPolicy.context(user).sql("c"))).getSingleResult();
     }
     private static Object[] aggregateRow(Object[] aggregate) {
         return aggregate!=null && aggregate.length==1 && aggregate[0] instanceof Object[] nested ? nested : aggregate;
@@ -671,9 +700,12 @@ public class ExpenseClaimService {
 
     @Transactional
     public ExpenseClaimDto verifyInvoice(UUID claimId,UUID invoiceId,com.uten.imp.features.expenseclaim.dto.ExpenseClaimInvoiceVerifyRequest input) {
-        AuthUser user=requireStaff(); require(user,"expense:approve"); require(user,"attachment:view"); require(user,"attachment:download");
+        AuthUser user=requireStaff(); requireApprover(user); require(user,"attachment:view"); require(user,"attachment:download");
         expectedVersion(claimId,input.expectedVersion());
         ExpenseClaim claim=requireClaimForUpdate(claimId);
+        approvalPolicy.requireApprove(user,claim);
+        if(!Set.of(ExpenseApprovalPolicy.FINANCE_INITIAL,ExpenseApprovalPolicy.FINANCE_REVIEW).contains(claim.getApprovalStage()))
+            throw new ApiException(ErrorCode.FORBIDDEN,"票据查验由当前财务初核或复核节点办理");
         if(user.getEmployeeId().equals(claim.getApplicantId())) throw new ApiException(ErrorCode.FORBIDDEN,"不能核验自己的报销票据");
         if(!Set.of("SUBMITTED","REVIEWING").contains(claim.getStatus())) throw stateConflict(claim);
         taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE,claimId.toString());
@@ -722,6 +754,7 @@ public class ExpenseClaimService {
         claim.setApplicantDepartmentId(applicant.departmentId());
         claim.setClaimNo(docNumber.nextNumber(DocNumberPrefix.EXPENSE_CLAIM));
         claim.setTitle(request.title().trim());
+        claim.setExpenseKind(expenseKind(request.expenseKind()));
         claim.setTotalAmount(total);
         claim.setStatus("DRAFT");
         claim.setRemark(trimToNull(request.remark()));
@@ -755,6 +788,7 @@ public class ExpenseClaimService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销合计必须大于零");
         }
         claim.setTitle(request.title().trim());
+        claim.setExpenseKind(request.expenseKind()==null?claim.getExpenseKind():expenseKind(request.expenseKind()));
         claim.setRemark(trimToNull(request.remark()));
         claim.setTotalAmount(total);
         claimRepository.save(claim);
@@ -781,6 +815,30 @@ public class ExpenseClaimService {
                 .setParameter("id",id).executeUpdate();
     }
 
+    /** Abandon a rejected reimbursement without inventing a submission or changing its business status. */
+    @Transactional
+    public ExpenseClaimDto abandon(UUID id,Long version) {
+        tx.bind();AuthUser user=requireStaff();require(user,"expense:apply");
+        if(version==null||version<0)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请刷新报销单后再放弃");
+        ExpenseClaim claim=claimRepository.findByIdForUpdateIncludingDeleted(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND,"报销单不存在"));
+        assertOwner(claim,user);
+        if(claim.isDeleted()&&claim.getAbandonedAt()!=null&&"REJECTED".equals(claim.getStatus()))return readDetail(id,true);
+        if(claim.isDeleted())throw new ApiException(ErrorCode.NOT_FOUND,"报销单不存在");
+        if(claim.getVersion()!=version)throw new ApiException(ErrorCode.CONFLICT,"报销单已更新，请刷新后重新核对");
+        assertStatus(claim,"REJECTED");
+        if(claim.getPaidAt()!=null||claim.getPaidBy()!=null||claim.getFinanceExpenseId()!=null||claim.getPaymentAccountId()!=null||claim.getPaymentDate()!=null)
+            throw new ApiException(ErrorCode.CONFLICT,"报销单存在付款或未知付款事实，不能放弃");
+        if(Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM attachments WHERE owner_type='EXPENSE_PAYMENT_PROOF' AND owner_id=:id)").setParameter("id",id).getSingleResult()))
+            throw new ApiException(ErrorCode.CONFLICT,"报销单存在付款凭据，须先核实付款现状，不能直接放弃");
+        taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
+        Instant now=Instant.now();claim.setAbandonedAt(now);claim.setDeleted(true);claim.setDeletedAt(java.time.OffsetDateTime.now());
+        claimRepository.saveAndFlush(claim);
+        em.createNativeQuery("UPDATE expense_claim_invoices SET is_archived=true WHERE claim_id=:id AND NOT is_archived").setParameter("id",id).executeUpdate();
+        appendEvent(id,"ABANDONED",user,"申请人放弃本次报销，驳回原因、原件及审批历史保留",claim.getApprovalStage(),claim.getApprovalRound());
+        hrNotice.resolveExpenseClaim(id,"ABANDONED");
+        return readDetail(id,true);
+    }
+
     /**
      * 提交审批：DRAFT 首提，或 REJECTED 修订后重提（V608；重提清驳回痕迹并重新通知审批人）。
      */
@@ -795,6 +853,10 @@ public class ExpenseClaimService {
             throw stateConflict(claim);
         }
         validateEvidence(claim, false);
+        var applicant=applicantQuery.findEligible(user.getEmployeeId()).orElseThrow(()->new ApiException(ErrorCode.FORBIDDEN,"当前员工档案不可申请报销"));
+        claim.setApplicantDepartmentId(applicant.departmentId());claim.setApplicantNameSnapshot(applicant.name());
+        claim.setDepartmentApprovalSnapshot(departmentRouting.capture(claim.getApplicantId(),claim.getApplicantDepartmentId()));
+        approvalPolicy.requireNext(claim,ExpenseApprovalPolicy.DEPARTMENT,"");
         boolean rejectedResubmit = "REJECTED".equals(claim.getStatus());
         boolean resubmit = claim.getSubmissionSnapshot() != null || claim.getSubmittedAt() != null
                 || rejectedResubmit
@@ -810,6 +872,11 @@ public class ExpenseClaimService {
         hrNotice.resolveExpenseClaim(id, "RESUBMITTED");
         Instant now = Instant.now();
         claim.setStatus("SUBMITTED");
+        claim.setApprovalStage(ExpenseApprovalPolicy.DEPARTMENT);
+        claim.setApprovalRound(claim.getApprovalRound()+1);
+        claim.setApprovalParticipants("");
+        claim.setApprovedBy(null);
+        claim.setApprovedAt(null);
         claim.setSubmittedBy(user.getEmployeeId());
         claim.setSubmittedAt(now);
         claim.setRejectReason(null);
@@ -819,10 +886,10 @@ public class ExpenseClaimService {
         appendEvent(claim.getId(), "SUBMITTED", user,
                 rejectedResubmit ? "驳回后重新提交" : resubmit ? "撤回后重新提交" : null);
         // 提交 → 通知审批人（弹卡 + 通知；2026-09-09 人事通知接入）
-        hrNotice.notifyExpenseClaimSubmitted(
+        hrNotice.notifyExpenseClaimStage(
                 claim.getId(), claim.getApplicantNameSnapshot(),
                 claim.getTotalAmount().toPlainString() + " 元",
-                claim.getApplicantId());
+                claim.getApplicantId(), claim.getApplicantDepartmentId(), claim.getApprovalStage(), claim.getApprovalParticipants());
         return mapClaimWithItems(claim);
     }
 
@@ -844,8 +911,12 @@ public class ExpenseClaimService {
             invoice.setVerifiedBy(null);invoice.setVerifiedAt(null);invoice.setVerifiedByName(null);invoice.setVerificationRemark(null);
             invoiceRepository.save(invoice);
         }
+        taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
         claim.setStatus("DRAFT");
+        claim.setApprovalStage(ExpenseApprovalPolicy.DEPARTMENT);
+        claim.setApprovalParticipants("");
         claim.setSubmittedBy(null);
+        claim.setDepartmentApprovalSnapshot(null);
         claim.setSubmittedAt(null);
         claimRepository.save(claim);
         appendEvent(claim.getId(), "WITHDRAWN", user, null);
@@ -860,7 +931,7 @@ public class ExpenseClaimService {
     public ExpenseClaimDto approve(UUID id) {
         tx.bind();
         AuthUser user = requireStaff();
-        require(user, "expense:approve");
+        requireApprover(user);
         return decide(user, id, true);
     }
 
@@ -868,7 +939,7 @@ public class ExpenseClaimService {
     public ExpenseClaimDto reject(UUID id, String reason) {
         tx.bind();
         AuthUser user = requireStaff();
-        require(user, "expense:approve");
+        requireApprover(user);
         return decide(user, id, false, reason);
     }
 
@@ -879,7 +950,7 @@ public class ExpenseClaimService {
     @Transactional
     public ExpenseClaimBatchResultDto approveBatch(ExpenseClaimBatchRequest request) {
         AuthUser user = requireStaff();
-        require(user, "expense:approve");
+        requireApprover(user);
         List<UUID> ids = request.ids().stream().distinct().sorted().toList();
         for (UUID id : ids) {
             decide(user, id, true);
@@ -891,7 +962,7 @@ public class ExpenseClaimService {
     @Transactional
     public ExpenseClaimBatchResultDto rejectBatch(ExpenseClaimBatchRequest request) {
         AuthUser user = requireStaff();
-        require(user, "expense:approve");
+        requireApprover(user);
         String reason = request.reason() == null ? "" : request.reason().trim();
         if (reason.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量驳回必须填写原因");
@@ -909,7 +980,7 @@ public class ExpenseClaimService {
 
     private ExpenseClaimDto decide(AuthUser user, UUID id, boolean approved, String reason) {
         tx.bind();
-        require(user, "expense:approve");
+        requireApprover(user);
         // 并发认领守卫（show-as-locked 的服务端兜底）：若他人正认领该报销单审批，拒绝重复操作。
         // 认领只是 UX/防碰撞层，下方 requireClaimForUpdate 的悲观锁 + 状态前置条件仍是正确性底线。
         taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE, id.toString());
@@ -917,6 +988,8 @@ public class ExpenseClaimService {
         if (claim.getApplicantId().equals(user.getEmployeeId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "申请人不能审批自己的报销单");
         }
+        approvalPolicy.requireApprove(user,claim);
+        if(ExpenseApprovalPolicy.DEPARTMENT.equals(claim.getApprovalStage()))departmentRouting.requireReviewForUpdate(user,claim.getApplicantId(),claim.getApplicantDepartmentId(),claim.getDepartmentApprovalSnapshot());
         if (!Set.of("SUBMITTED", "REVIEWING").contains(claim.getStatus())) {
             throw stateConflict(claim);
         }
@@ -924,21 +997,30 @@ public class ExpenseClaimService {
         if (approved) {
             require(user,"attachment:view");
             require(user,"attachment:download");
-            validateEvidence(claim, true);
-            claim.setStatus("APPROVED");
-            claim.setApprovedBy(user.getEmployeeId());
-            claim.setApprovedAt(Instant.now());
+            String stage=claim.getApprovalStage();
+            validateEvidence(claim, !ExpenseApprovalPolicy.DEPARTMENT.equals(stage));
+            String next=ExpenseApprovalPolicy.next(stage);
+            approvalPolicy.requireNext(claim,next,(claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",");
+            if(next==null)approvalPolicy.requirePaymentOperator(claim,(claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",",
+                    !attachmentRepository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(ExpensePaymentProofAttachmentAccessPolicy.OWNER_TYPE,id,AttachmentLifecycleState.CLEAN).isEmpty());
+            claim.setApprovalParticipants((claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",");
+            claim.setApprovalStage(next);
+            claim.setStatus(next==null?"APPROVED":"REVIEWING");
+            if(next==null) {claim.setApprovedBy(user.getEmployeeId());claim.setApprovedAt(Instant.now());}
             claimRepository.save(claim);
-            appendEvent(claim.getId(), "APPROVED", user, null);
+            appendApprovalEvent(claim, next==null?"APPROVED":"STAGE_APPROVED", stage,user,ExpenseApprovalPolicy.label(stage)+"通过");
+            taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
             // 审批通过 → 打款人弹卡接棒 + 申请人回执；办结「待审批」卡
             // 先办结「待审批」卡再发「待打款」卡：两卡同聚合 (EXPENSE_CLAIM, claimId)，
             // 顺序反了会把新卡一起撤掉。
             hrNotice.resolveExpenseClaim(claim.getId(), "APPROVED_TO_PAY");
-            hrNotice.notifyExpenseClaimApproved(
+            if(next==null) hrNotice.notifyExpenseClaimApproved(
                     claim.getId(), claim.getApplicantNameSnapshot(),
                     claim.getTotalAmount().toPlainString() + " 元",
                     userIdOfEmployee(claim.getApplicantId()),
                     claim.getApplicantId(), claim.getApprovedBy());
+            else hrNotice.notifyExpenseClaimStage(claim.getId(),claim.getApplicantNameSnapshot(),
+                    claim.getTotalAmount().toPlainString()+" 元",claim.getApplicantId(),claim.getApplicantDepartmentId(),next,claim.getApprovalParticipants());
         } else {
             String normalized = reason == null ? "" : reason.trim();
             if (normalized.isEmpty()) {
@@ -951,7 +1033,8 @@ public class ExpenseClaimService {
             claim.setApprovedBy(null);
             claim.setApprovedAt(null);
             claimRepository.save(claim);
-            appendEvent(claim.getId(), "REJECTED", user, normalized);
+            appendApprovalEvent(claim,"REJECTED",claim.getApprovalStage(),user,normalized);
+            taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
             hrNotice.resolveExpenseClaim(claim.getId(), "REJECTED");
             hrNotice.notifyExpenseClaimRejected(
                     claim.getId(), normalized, userIdOfEmployee(claim.getApplicantId()));
@@ -979,8 +1062,8 @@ public class ExpenseClaimService {
             throw new ApiException(ErrorCode.CONFLICT, "报销单已使用其他打款参数完成支付");
         }
         assertStatus(claim, "APPROVED");
-        if(user.getEmployeeId().equals(claim.getApprovedBy())) {
-            throw new ApiException(ErrorCode.FORBIDDEN,"审批人与打款人必须分离");
+        if(!approvalPolicy.canPay(user,claim)) {
+            throw new ApiException(ErrorCode.FORBIDDEN,"本轮所有审批人与打款人必须分离，已审核人员不能再登记本单付款");
         }
         if(request.paymentDate()==null || request.paymentDate().isAfter(BusinessTime.today())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"付款日期不能为空或晚于今天");
@@ -1228,17 +1311,29 @@ public class ExpenseClaimService {
 
     // ---- 事件与映射 ------------------------------------------------------------
 
-    private void appendEvent(UUID claimId, String eventType, AuthUser actor, String remark) {
-        String actorName = applicantQuery
-                .employeeNames(List.of(actor.getEmployeeId()))
-                .getOrDefault(actor.getEmployeeId(), actor.getUsername());
-        ExpenseClaimEvent event = new ExpenseClaimEvent();
-        event.setClaimId(claimId);
-        event.setEventType(eventType);
-        event.setActorEmployeeId(actor.getEmployeeId());
-        event.setActorNameSnapshot(actorName);
-        event.setRemark(remark);
-        eventRepository.save(event);
+    private void appendEvent(UUID claimId,String eventType,AuthUser actor,String remark) {
+        appendEvent(claimId,eventType,actor,remark,null,null);
+    }
+
+    private void appendApprovalEvent(ExpenseClaim claim,String eventType,String stage,AuthUser actor,String remark) {
+        appendEvent(claim.getId(),eventType,actor,remark,stage,claim.getApprovalRound());
+    }
+
+    private void appendEvent(UUID claimId,String eventType,AuthUser actor,String remark,String stage,Integer round) {
+        String name=applicantQuery.employeeNames(List.of(actor.getEmployeeId())).getOrDefault(actor.getEmployeeId(),actor.getUsername());
+        ExpenseClaimEvent event=new ExpenseClaimEvent();event.setClaimId(claimId);event.setEventType(eventType);
+        event.setActorEmployeeId(actor.getEmployeeId());event.setActorNameSnapshot(name);event.setRemark(remark);
+        event.setApprovalStage(stage);event.setApprovalRound(round);eventRepository.save(event);
+    }
+
+    private static void requireApprover(AuthUser user) {
+        if(!ExpenseApprovalPolicy.hasAny(user))throw new ApiException(ErrorCode.FORBIDDEN);
+    }
+
+    private static String expenseKind(String kind) {
+        if(kind==null || kind.isBlank())return "GENERAL";
+        if(!Set.of("GENERAL","TRAVEL").contains(kind))throw new ApiException(ErrorCode.VALIDATION_FAILED,"未知报销类型");
+        return kind;
     }
 
     /** 员工档案 id → 登录账号 id（经 HrNoticePort 解析；无账号返回 null，通知侧自行跳过）。 */
@@ -1285,7 +1380,7 @@ public class ExpenseClaimService {
 
     private void assertCanRead(ExpenseClaim claim) {
         AuthUser user = requireStaff();
-        if (!ExpenseClaimReadPolicy.canRead(user,claim,observerScope(user))) {
+        if (!readAccess.canReadWorkflow(user,claim,observerScope(user))) {
             throw new ApiException(ErrorCode.NOT_FOUND, "报销单不存在");
         }
     }
@@ -1453,7 +1548,14 @@ public class ExpenseClaimService {
                 context.attachments(),
                 invoices,
                 events, claim.getVersion(), claim.getApprovedBy(), context.paymentProofs(),
-                visibleSubmissionSnapshot(claim.getPreviousSubmissionSnapshot()), visibleSubmissionSnapshot(claim.getSubmissionSnapshot()), claim.isResubmission());
+                visibleSubmissionSnapshot(claim.getPreviousSubmissionSnapshot()), visibleSubmissionSnapshot(claim.getSubmissionSnapshot()), claim.isResubmission(),
+                new com.uten.imp.common.history.DocumentHistoryMetadata(),claim.getApprovalStage(),ExpenseApprovalPolicy.label(claim.getApprovalStage()),
+                approvalPolicy.canApprove(requireStaff(),claim),claim.getApprovalRound(),claim.getExpenseKind(),approvalRoutingStale(claim),approvalPolicy.canPay(requireStaff(),claim),claim.getAbandonedAt()!=null&&claim.isDeleted());
+    }
+
+    private boolean approvalRoutingStale(ExpenseClaim claim) {
+        return Set.of("SUBMITTED","REVIEWING").contains(claim.getStatus())&&"DEPARTMENT".equals(claim.getApprovalStage())
+                &&departmentRouting.isStale(claim.getApplicantId(),claim.getApplicantDepartmentId(),claim.getDepartmentApprovalSnapshot());
     }
 
     private String submissionSnapshot(ExpenseClaim claim) {
@@ -1493,6 +1595,7 @@ public class ExpenseClaimService {
     }
 
     private static Set<String> normalizeStatuses(String raw) {
+        if(raw!=null&&"ACTION_REQUIRED".equals(raw.trim().toUpperCase(Locale.ROOT)))return Set.of("ACTION_REQUIRED");
         if (raw == null || raw.isBlank()) {
             return Set.of();
         }
@@ -1539,7 +1642,7 @@ public class ExpenseClaimService {
     }
 
     private static boolean has(AuthUser user, String permission) {
-        return user.isSuperAdmin() || user.getPermissions().contains(permission);
+        return user.getPermissions().contains(permission);
     }
 
     private static void require(AuthUser user, String permission) {

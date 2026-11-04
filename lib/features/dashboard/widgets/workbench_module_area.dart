@@ -38,6 +38,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_registry.dart';
 import 'module_badge_sum.dart';
 import '../providers/workbench_layout_provider.dart';
 
@@ -55,14 +56,36 @@ class WorkbenchModuleArea extends ConsumerWidget {
     bool visible(String location) =>
         locationAllowedFor(perms, isSuper, location);
 
+    bool canOpenApproval(_ModuleItem item) {
+      if (!visible(item.location)) return false;
+      if (isSuper) return true;
+      final code = item.approvalDepartment;
+      if (code == null || item.location == '/approvals/GM') return true;
+      final expenseScope = ref.watch(
+        badgeFactProvider('expense.departmentApprovalScopeByCode.$code'),
+      );
+      final applicationScope = ref.watch(
+        badgeFactProvider('application.departmentScopeByCode.$code'),
+      );
+      return expenseScope > 0 ||
+          applicationScope > 0 ||
+          (code == 'DEPT_PMC' &&
+              perms.contains(Perm.applicationApproveProcurement)) ||
+          (code == 'DEPT_SALES' &&
+              const [
+                Perm.salesOrderManagerView,
+                Perm.salesQuoteManagerView,
+              ].any(perms.contains));
+    }
+
     // 每组过滤出可见卡片。comingSoon 占位卡没有路由与守卫（requiredAnyPermFor=null
     // 意味着全员可见），与「无码页面不外露」口径不符——占位仅超管可见，接入真实
     // 路由与守卫后随 visible() 正常放行。
     final itemsOf = {
       for (final g in _allGroups)
         g.key: [
-          for (final it in g.items)
-            if (it.comingSoon ? isSuper : visible(it.location)) it,
+          for (final it in [..._approvalItems(g.key), ...g.items])
+            if (it.comingSoon ? isSuper : canOpenApproval(it)) it,
         ],
     };
 
@@ -73,8 +96,11 @@ class WorkbenchModuleArea extends ConsumerWidget {
       final saved = layout.itemOrders[groupKey];
       if (saved == null || saved.isEmpty) return visibleItems;
       final byLocation = {for (final it in visibleItems) it.location: it};
-      final ordered = <_ModuleItem>[];
-      final placed = <String>{};
+      final ordered = <_ModuleItem>[
+        for (final it in visibleItems)
+          if (it.approvalDepartment != null) it,
+      ];
+      final placed = {for (final it in ordered) it.location};
       for (final loc in saved) {
         final it = byLocation[loc];
         if (it != null && placed.add(loc)) ordered.add(it);
@@ -309,8 +335,8 @@ const _allGroups = <_ModuleGroup>[
       ),
       _ModuleItem(
         icon: Icons.receipt_long_outlined,
-        label: '我的报销',
-        location: RouteName.expense,
+        label: '我的申请',
+        location: RouteName.myApplications,
         badge: WorkbenchBadgeKind.expenseMine,
       ),
       _ModuleItem(
@@ -330,6 +356,12 @@ const _allGroups = <_ModuleGroup>[
         badge: WorkbenchBadgeKind.visitorHost,
       ),
     ],
+  ),
+  _ModuleGroup(
+    key: 'executive',
+    title: '总经办',
+    color: UtenColors.teal800,
+    items: [],
   ),
   _ModuleGroup(
     key: 'hr',
@@ -517,12 +549,6 @@ const _allGroups = <_ModuleGroup>[
     color: UtenColors.teal800,
     items: [
       _ModuleItem(
-        icon: Icons.fact_check_outlined,
-        label: '订单审核',
-        location: RouteName.salesManagerReview,
-        badge: WorkbenchBadgeKind.salesManagerReview,
-      ),
-      _ModuleItem(
         icon: Icons.point_of_sale_outlined,
         label: '销售管理',
         location: RouteName.sales,
@@ -593,6 +619,11 @@ const _allGroups = <_ModuleGroup>[
       // 「服务器更新」卡 2026-10-22 退役：入口在服务器状态页内（按钮带待更新数
       // 徽章），勿再往本组加回——与 AI 服务卡同口径。
       _ModuleItem(
+        icon: Icons.rule_folder_outlined,
+        label: '审批设置',
+        location: '/approvals/settings',
+      ),
+      _ModuleItem(
         icon: Icons.admin_panel_settings_outlined,
         label: '权限管理',
         location: RouteName.adminPermissions,
@@ -612,6 +643,45 @@ const _allGroups = <_ModuleGroup>[
     ],
   ),
 ];
+
+List<_ModuleItem> _approvalItems(String groupKey) {
+  const groups = {
+    'hr': ('DEPT_HR', WorkbenchBadgeKind.approvalHr),
+    'fin': ('DEPT_FIN', WorkbenchBadgeKind.approvalFinanceDepartment),
+    'prod': ('DEPT_PROD', WorkbenchBadgeKind.approvalProduction),
+    'eng': ('DEPT_ENG', WorkbenchBadgeKind.approvalEngineering),
+    'pmc': ('DEPT_PMC', WorkbenchBadgeKind.approvalPmc),
+    'qa': ('DEPT_QA', WorkbenchBadgeKind.approvalQuality),
+    'sales': ('DEPT_SALES', WorkbenchBadgeKind.salesManagerReview),
+    'newmedia': ('DEPT_NEWMEDIA', WorkbenchBadgeKind.approvalNewmedia),
+    'rail': ('DEPT_RAIL', WorkbenchBadgeKind.approvalRail),
+    'security': ('DEPT_SECURITY', WorkbenchBadgeKind.approvalSecurity),
+    'executive': ('GM', WorkbenchBadgeKind.approvalExecutive),
+  };
+  final group = groups[groupKey];
+  if (group == null) return const [];
+  return [
+    if (groupKey == 'executive')
+      const _ModuleItem(
+        icon: Icons.fact_check_outlined,
+        label: '部门审批',
+        location: '/approvals/GM_DEPARTMENT',
+        approvalDepartment: 'GM',
+        badge: WorkbenchBadgeKind.approvalExecutiveDepartment,
+      ),
+    _ModuleItem(
+      icon: Icons.fact_check_outlined,
+      label: groupKey == 'executive'
+          ? '任务中心'
+          : groupKey == 'fin'
+          ? '部门审批'
+          : '审批中心',
+      location: '/approvals/${group.$1}',
+      approvalDepartment: group.$1,
+      badge: group.$2,
+    ),
+  ];
+}
 
 /// 组内卡片可拖动网格：长按卡片拖到另一张卡片上即换位。
 ///
@@ -729,11 +799,13 @@ class _ModuleItem {
     required this.location,
     this.badge = WorkbenchBadgeKind.none,
     this.comingSoon = false,
+    this.approvalDepartment,
   });
 
   final IconData icon;
   final String label;
   final String location;
+  final String? approvalDepartment;
 
   /// 右上角待办徽章种类（由 WorkbenchCardBadge 统一渲染成同一款红色数字药丸；
   /// none = 无角标）。每张卡片都声明一种，样式天然一致；后续接数据只需加枚举值。

@@ -68,7 +68,12 @@ class ReadScopeRevisionInterceptor extends Interceptor {
             : null) ??
         reportDomain ??
         (RegExp(
-              r'^/(?:api/)?(?:expense-claims|platform-columns/expense_claim(?:_item)?)(?:/|$)',
+              r'^/(?:api/)?business-applications/[0-9a-fA-F-]{36}/prepayment-finance-candidates$',
+            ).hasMatch(options.path)
+            ? 'finance'
+            : null) ??
+        (RegExp(
+              r'^/(?:api/)?(?:expense-claims|business-applications|platform-columns/expense_claim(?:_item)?)(?:/|$)',
             ).hasMatch(options.path)
             ? 'expense'
             : null) ??

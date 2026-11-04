@@ -47,6 +47,14 @@ enum BadgeEntry {
 
   /// 我的报销: 红 = 草稿 + 驳回待修订; 黄 = 已提交在审批/待付款。
   expenseMine(BadgeModule.people),
+  expenseDepartmentApproval(BadgeModule.people),
+  expenseExecutiveApproval(BadgeModule.people),
+  applicationMine(BadgeModule.people),
+  applicationDepartmentApproval(BadgeModule.people),
+  applicationExecutiveApproval(BadgeModule.people),
+  applicationFinance(BadgeModule.finance),
+  applicationProcurement(BadgeModule.people),
+  applicationViceExecutive(BadgeModule.people),
 
   // —— 钱流 ——
   /// 业务审核中心(一张卡承载全部审核队列, 页内按队列分段)。

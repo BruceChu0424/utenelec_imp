@@ -329,7 +329,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
 
     private void lockReviewTargets(String targetType,List<String> keys,boolean requireReviewable) {
         TaskClaimPolicy policy=TaskClaimPolicy.of(targetType);
-        if (policy.requiredViewPermission()==null) return;
+        if (policy.requiredViewPermission()==null && !"EXPENSE_APPROVE".equals(targetType)) return;
         ReviewTaskTargetLockPort port=reviewTargetLocks.stream().filter(value -> value.targetType().equals(targetType))
                 .findFirst().orElseThrow(() -> new IllegalStateException("Financial review target lock adapter missing: "+targetType));
         List<ReviewTaskTargetLockPort.Target> targets=port.resolve(keys,requireReviewable).stream()
@@ -352,6 +352,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
         requireReviewView(TaskClaimPolicy.of(targetType));
         return claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType).stream()
                 .filter(TaskClaim::isActive)
+                .filter(claim->visibleClaim(targetType,claim.getTargetKey()))
                 .collect(Collectors.toMap(TaskClaim::getTargetKey, Function.identity(), (a, b) -> a));
     }
 
@@ -362,6 +363,7 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
         UUID me = currentUser.employeeId().orElse(null);
         return claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType).stream()
                 .filter(TaskClaim::isActive)
+                .filter(claim->visibleClaim(targetType,claim.getTargetKey()))
                 .collect(Collectors.toMap(TaskClaim::getTargetKey, c -> toView(c, me), (a, b) -> a));
     }
 
@@ -372,7 +374,14 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
         UUID me = currentUser.employeeId().orElse(null);
         return claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
                 .filter(TaskClaim::isActive)
+                .filter(claim->visibleClaim(targetType,targetKey))
                 .map(c -> toView(c, me));
+    }
+
+    private boolean visibleClaim(String targetType,String key) {
+        if(!"EXPENSE_APPROVE".equals(targetType))return true;
+        return reviewTargetLocks.stream().filter(port->targetType.equals(port.targetType()))
+                .findFirst().map(port->port.canViewTarget(key)).orElse(false);
     }
 
     /** 通用任务认领用户操作显式审计：targetId = targetType/targetKey。 */

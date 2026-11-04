@@ -18,13 +18,14 @@ import '../models/expense_claim.dart';
 import '../models/expense_invoice.dart';
 import '../models/expense_item.dart';
 import '../models/expense_payment.dart';
+import '../../../shared/platform_tables/platform_table_repository.dart';
 import '../repositories/expense_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
 
-enum ExpenseFilter { all, draft, rejected, processing, finished }
+enum ExpenseFilter { draft, all, rejected, processing, finished }
 
 extension ExpenseFilterValue on ExpenseFilter {
   String get label => switch (this) {
@@ -187,14 +188,41 @@ class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
     final reader = ref.watch(_expenseMineReads(_readQuery));
     return reader.read(
       _page,
-      fetchPage: (page) => repository.listMine(
-        statuses: status != null ? [status] : filter.apiStatuses,
-        category: category,
-        page: page,
-        claimNo: claimNo,
-        sort: sortColumn,
-        order: sortColumn == null ? null : (sortAscending ? 'asc' : 'desc'),
-      ),
+      fetchPage: (page) =>
+          filter == ExpenseFilter.rejected &&
+              status == null &&
+              repository is DioExpenseRepository
+          ? repository.listMineActionRequired(
+              page: page,
+              category: category,
+              claimNo: claimNo,
+              sort: sortColumn,
+              order: sortColumn == null
+                  ? null
+                  : (sortAscending ? 'asc' : 'desc'),
+            )
+          : filter == ExpenseFilter.finished &&
+                status == null &&
+                repository is DioExpenseRepository
+          ? repository.listMineIncludingAbandoned(
+              page: page,
+              category: category,
+              claimNo: claimNo,
+              sort: sortColumn,
+              order: sortColumn == null
+                  ? null
+                  : (sortAscending ? 'asc' : 'desc'),
+            )
+          : repository.listMine(
+              statuses: status != null ? [status] : filter.apiStatuses,
+              category: category,
+              page: page,
+              claimNo: claimNo,
+              sort: sortColumn,
+              order: sortColumn == null
+                  ? null
+                  : (sortAscending ? 'asc' : 'desc'),
+            ),
     );
   }
 
@@ -260,6 +288,60 @@ final expenseDetailProvider = FutureProvider.autoDispose
       return ref.watch(expenseRepositoryProvider).getById(id);
     });
 
+final expenseHistoryDetailProvider = FutureProvider.autoDispose
+    .family<ExpenseClaim, String>(
+      (ref, id) async {
+        ref.watch(masterDataSessionKeyProvider);
+        ref.watch(exportContextEpochProvider);
+        final repository = ref.watch(expenseRepositoryProvider);
+        final fields = ref.watch(platformTableRepositoryProvider);
+        final claim = await repository.getHistoryById(id);
+        if (!claim.abandoned) return claim;
+        final items = <ExpenseItem>[];
+        // The native history endpoint freezes definitions and saved values;
+        // keep requests bounded and retire a disposed identity before each wave.
+        for (var offset = 0; offset < claim.items.length; offset += 8) {
+          if (!ref.mounted) throw StateError('历史读取身份已变化');
+          final batch = claim.items.skip(offset).take(8);
+          final loaded = await Future.wait(
+            batch.map((item) async {
+              final snapshot = await fields.latestHistory(
+                'expense_claim_item',
+                item.id,
+              );
+              return item.withPlatformFields(snapshot.toJson());
+            }),
+          );
+          if (!ref.mounted) throw StateError('历史读取身份已变化');
+          items.addAll(loaded);
+        }
+        return claim.copyWith(items: items);
+      },
+      dependencies: [
+        masterDataSessionKeyProvider,
+        exportContextEpochProvider,
+        expenseRepositoryProvider,
+        platformTableRepositoryProvider,
+      ],
+    );
+
+Future<void> abandonExpense(
+  WidgetRef ref,
+  String id, {
+  int? expectedVersion,
+}) async {
+  await ref
+      .read(expenseRepositoryProvider)
+      .abandon(
+        id,
+        expectedVersion:
+            expectedVersion ??
+            ref.read(expenseDetailProvider(id)).requireValue.version,
+      );
+  _invalidateExpense(ref, id);
+  ref.invalidate(expenseHistoryDetailProvider(id));
+}
+
 /// 队列汇总（审批页统计卡：待审批/待打款/本月口径）。
 final expenseQueueSummaryProvider =
     FutureProvider.autoDispose<ExpenseQueueSummary>((ref) {
@@ -322,11 +404,17 @@ Future<ExpenseClaim> createExpense(
   required String title,
   required List<ExpenseItem> items,
   String? remark,
+  String expenseKind = 'GENERAL',
 }) async {
   final claim = await ref
       .read(expenseRepositoryProvider)
       .create(
-        ExpenseClaimCreateInput(title: title, items: items, remark: remark),
+        ExpenseClaimCreateInput(
+          title: title,
+          items: items,
+          remark: remark,
+          expenseKind: expenseKind,
+        ),
       );
   refreshBadges(ref);
   ref.invalidate(expenseListProvider);
@@ -341,6 +429,7 @@ Future<ExpenseClaim> updateExpense(
   required String title,
   required List<ExpenseItem> items,
   String? remark,
+  String expenseKind = 'GENERAL',
 }) async {
   final claim = await ref
       .read(expenseRepositoryProvider)
@@ -351,6 +440,7 @@ Future<ExpenseClaim> updateExpense(
           items: items,
           remark: remark,
           expectedVersion: expectedVersion,
+          expenseKind: expenseKind,
         ),
       );
   refreshBadges(ref);
@@ -392,6 +482,14 @@ Future<void> deleteExpenseInvoice(
   ref.invalidate(expenseDetailProvider(claimId));
 }
 
+final expenseApprovalReadScopeProvider = Provider<ExpenseApprovalReadScope>(
+  (ref) => const ExpenseApprovalReadScope(),
+  dependencies: const [],
+);
+
+bool hasExpenseApprovalPermission(Set<String> permissions) =>
+    Perm.expenseApprovalPermissions.any(permissions.contains);
+
 enum ApprovalQueue { pending, payable, history, browse }
 
 ApprovalQueue? expenseApprovalQueueFromRoute(String? value) => switch (value) {
@@ -409,12 +507,12 @@ ApprovalQueue expenseApprovalInitialQueue(
   if (permissions.contains(Perm.expenseView) ||
       requested == ApprovalQueue.history ||
       (requested == ApprovalQueue.pending &&
-          permissions.contains(Perm.expenseApprove)) ||
+          hasExpenseApprovalPermission(permissions)) ||
       (requested == ApprovalQueue.payable &&
           permissions.contains(Perm.expensePay))) {
     return requested;
   }
-  return permissions.contains(Perm.expenseApprove)
+  return hasExpenseApprovalPermission(permissions)
       ? ApprovalQueue.pending
       : permissions.contains(Perm.expensePay)
       ? ApprovalQueue.payable
@@ -431,13 +529,14 @@ extension ApprovalQueueValue on ApprovalQueue {
 }
 
 final approvalQueueProvider = StateProvider.autoDispose<ApprovalQueue>((ref) {
+  ref.watch(expenseApprovalReadScopeProvider);
   final permissions = ref.watch(currentPermissionsProvider);
-  return permissions.contains(Perm.expenseApprove)
+  return hasExpenseApprovalPermission(permissions)
       ? ApprovalQueue.pending
       : permissions.contains(Perm.expensePay)
       ? ApprovalQueue.payable
       : ApprovalQueue.browse;
-});
+}, dependencies: [expenseApprovalReadScopeProvider]);
 
 /// 审批列表表头筛选（2026-09-10）：部门 id + 年月（yyyy-MM），下推后端
 /// departmentId / year / month 参数（非页内裁剪）。
@@ -516,7 +615,7 @@ final expenseApprovalFiltersProvider =
     StateProvider.autoDispose<ExpenseApprovalFilters>((ref) {
       ref.watch(approvalQueueProvider);
       return const ExpenseApprovalFilters();
-    });
+    }, dependencies: [approvalQueueProvider]);
 
 /// 审批列表表头排序（2026-09-25 单号列统一）：claimNo 白名单；换分段自动复位。
 final expenseApprovalSortColumnProvider = StateProvider.autoDispose<String?>((
@@ -524,22 +623,30 @@ final expenseApprovalSortColumnProvider = StateProvider.autoDispose<String?>((
 ) {
   ref.watch(approvalQueueProvider);
   return null;
-});
-final expenseApprovalSortAscendingProvider = StateProvider.autoDispose<bool>(
-  (ref) => true,
-);
+}, dependencies: [approvalQueueProvider]);
+final expenseApprovalSortAscendingProvider = StateProvider.autoDispose<bool>((
+  ref,
+) {
+  ref.watch(expenseApprovalReadScopeProvider);
+  return true;
+}, dependencies: [expenseApprovalReadScopeProvider]);
 
 /// 审批列表表头筛选桶（部门 / 年月），按分段取后端聚合。
 final expenseApprovalFacetsProvider = FutureProvider.autoDispose
     .family<Map<String, List<MasterFacetBucket>>, ApprovalQueue>((ref, queue) {
       ref.watch(masterDataSessionKeyProvider);
-      return ref.watch(expenseRepositoryProvider).facets(switch (queue) {
+      final scope = ref.watch(expenseApprovalReadScopeProvider);
+      final repository = ref.watch(expenseRepositoryProvider);
+      final facetQueue = switch (queue) {
         ApprovalQueue.pending => ApprovalFacetQueue.pending,
         ApprovalQueue.payable => ApprovalFacetQueue.payable,
         ApprovalQueue.history => ApprovalFacetQueue.history,
         ApprovalQueue.browse => ApprovalFacetQueue.browse,
-      });
-    });
+      };
+      return scope.isScoped && repository is DioExpenseRepository
+          ? repository.facetsScoped(facetQueue, scope)
+          : repository.facets(facetQueue);
+    }, dependencies: [expenseApprovalReadScopeProvider]);
 
 final expenseApprovalListProvider =
     AsyncNotifierProvider.autoDispose<
@@ -550,6 +657,7 @@ final expenseApprovalListProvider =
       retry: pagedReadProviderRetry,
       dependencies: [
         _expenseApprovalReads,
+        expenseApprovalReadScopeProvider,
         expenseRepositoryProvider,
         masterDataSessionKeyProvider,
         approvalQueueProvider,
@@ -560,10 +668,17 @@ final expenseApprovalListProvider =
     );
 
 final _expenseApprovalReads = Provider.autoDispose
-    .family<ScopedPagedReadProviderLease<ExpenseClaim>, Object>((ref, query) {
-      ref.watch(expenseRepositoryProvider);
-      return ScopedPagedReadProviderLease(ref, query: query);
-    }, dependencies: [exportContextEpochProvider, expenseRepositoryProvider]);
+    .family<ScopedPagedReadProviderLease<ExpenseClaim>, Object>(
+      (ref, query) {
+        ref.watch(expenseRepositoryProvider);
+        return ScopedPagedReadProviderLease(ref, query: query);
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        expenseRepositoryProvider,
+        expenseApprovalReadScopeProvider,
+      ],
+    );
 
 class ExpenseApprovalListNotifier
     extends AsyncNotifier<PagedResult<ExpenseClaim>> {
@@ -576,6 +691,7 @@ class ExpenseApprovalListNotifier
     final filters = ref.read(expenseApprovalFiltersProvider);
     return (
       ref.read(approvalQueueProvider),
+      ref.read(expenseApprovalReadScopeProvider),
       filters.departmentId,
       filters.yearMonth,
       filters.category,
@@ -607,6 +723,7 @@ class ExpenseApprovalListNotifier
     ref.onDispose(() => _requestGeneration++);
     // 换分段 / 换表头筛选或排序 → 重建即回第 1 页。
     ref.watch(approvalQueueProvider);
+    ref.watch(expenseApprovalReadScopeProvider);
     ref.watch(expenseApprovalFiltersProvider);
     ref.watch(expenseApprovalSortColumnProvider);
     ref.watch(expenseApprovalSortAscendingProvider);
@@ -670,49 +787,71 @@ class ExpenseApprovalListNotifier
         ? null
         : (ref.read(expenseApprovalSortAscendingProvider) ? 'asc' : 'desc');
     final repository = ref.read(expenseRepositoryProvider);
+    final scope = ref.read(expenseApprovalReadScopeProvider);
     return _reader.read(
       page,
-      fetchPage: (page) => switch (queue) {
-        ApprovalQueue.pending => repository.listPending(
-          page: page,
-          year: filters.year,
-          month: filters.month,
-          departmentId: filters.departmentId,
-          category: filters.category,
-          claimNo: claimNo,
-          sort: sortColumn,
-          order: order,
-        ),
-        ApprovalQueue.history => repository.listHistory(
-          page: page,
-          year: filters.year,
-          month: filters.month,
-          departmentId: filters.departmentId,
-          category: filters.category,
-          claimNo: claimNo,
-          sort: sortColumn,
-          order: order,
-        ),
-        ApprovalQueue.browse => repository.listBrowse(
-          page: page,
-          year: filters.year,
-          month: filters.month,
-          departmentId: filters.departmentId,
-          category: filters.category,
-          claimNo: claimNo,
-          sort: sortColumn,
-          order: order,
-        ),
-        ApprovalQueue.payable => repository.listPayable(
-          page: page,
-          year: filters.year,
-          month: filters.month,
-          departmentId: filters.departmentId,
-          category: filters.category,
-          claimNo: claimNo,
-          sort: sortColumn,
-          order: order,
-        ),
+      fetchPage: (page) {
+        if (scope.isScoped && repository is DioExpenseRepository) {
+          return repository.listApprovalScoped(
+            switch (queue) {
+              ApprovalQueue.pending => ApprovalFacetQueue.pending,
+              ApprovalQueue.payable => ApprovalFacetQueue.payable,
+              ApprovalQueue.history => ApprovalFacetQueue.history,
+              ApprovalQueue.browse => ApprovalFacetQueue.browse,
+            },
+            scope,
+            page: page,
+            year: filters.year,
+            month: filters.month,
+            departmentId: filters.departmentId,
+            category: filters.category,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: order,
+          );
+        }
+        return switch (queue) {
+          ApprovalQueue.pending => repository.listPending(
+            page: page,
+            year: filters.year,
+            month: filters.month,
+            departmentId: filters.departmentId,
+            category: filters.category,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: order,
+          ),
+          ApprovalQueue.history => repository.listHistory(
+            page: page,
+            year: filters.year,
+            month: filters.month,
+            departmentId: filters.departmentId,
+            category: filters.category,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: order,
+          ),
+          ApprovalQueue.browse => repository.listBrowse(
+            page: page,
+            year: filters.year,
+            month: filters.month,
+            departmentId: filters.departmentId,
+            category: filters.category,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: order,
+          ),
+          ApprovalQueue.payable => repository.listPayable(
+            page: page,
+            year: filters.year,
+            month: filters.month,
+            departmentId: filters.departmentId,
+            category: filters.category,
+            claimNo: claimNo,
+            sort: sortColumn,
+            order: order,
+          ),
+        };
       },
     );
   }

@@ -28,6 +28,12 @@ public class ExpenseClaimEvent extends BaseEntity {
     @Column(name = "event_type", nullable = false)
     private String eventType;
 
+    @Column(name = "approval_stage")
+    private String approvalStage;
+
+    @Column(name = "approval_round")
+    private Integer approvalRound;
+
     @Column(name = "actor_employee_id")
     private UUID actorEmployeeId;
 

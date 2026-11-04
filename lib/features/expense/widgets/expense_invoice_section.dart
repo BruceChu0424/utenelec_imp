@@ -12,6 +12,12 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:uten_imp/core/io/guarded_url_launcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import '../../../core/network/api_exception.dart';
+import '../../../shared/auth/sensitive_write.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../providers/expense_action_eligibility.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -86,6 +92,12 @@ class ExpenseInvoiceSection extends ConsumerWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            UtenFieldHintIcon(
+              info: editable
+                  ? '上传发票影像后点「登记发票」，支持图片识别回填票面要素。登记后须核对票面信息和关联原件。'
+                  : '请核对登记要素与附件原件。未登记时请联系申请人补登，必要时驳回并说明原因。',
+              compact: true,
+            ),
             if (invoices.isNotEmpty) ...[
               const SizedBox(width: UtenSpacing.s8),
               Text(
@@ -115,27 +127,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
             stickyHeaderPinned: stickyHeaderPinned,
           )
         else if (invoices.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              vertical: UtenSpacing.s16,
-              horizontal: UtenSpacing.s12,
-            ),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: UtenRadius.lgAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Text(
-              editable
-                  ? '尚未登记发票。上传发票影像后点「登记发票」，支持图片识别自动回填票面要素。'
-                  : '申请人未登记发票要素，请核对附件影像后联系补登。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          )
+          const SizedBox.shrink()
         else
           MasterDataTableView<ExpenseClaimInvoice>(
             tableKey:
@@ -1164,35 +1156,120 @@ class _InvoiceVerifyDialogState extends ConsumerState<_InvoiceVerifyDialog> {
   final _remark = TextEditingController();
   bool _verified = true;
   bool _busy = false;
+  bool _unknown = false;
+  bool _retired = false;
+  bool _openingOfficial = false;
+  String? _readBackState;
+  late ExpenseClaim _latest = widget.claim;
+  late SensitiveReadBoundary _boundary;
+  late int _epoch;
+  bool get _current =>
+      mounted &&
+      !_retired &&
+      ref.read(sensitiveReadBoundaryProvider) == _boundary &&
+      ref.read(exportContextEpochProvider) == _epoch;
+  bool get _allowed =>
+      _current &&
+      ref.read(expenseActionEligibilityProvider).canVerifyInvoice(_latest);
+  @override
+  void initState() {
+    super.initState();
+    _boundary = ref.read(sensitiveReadBoundaryProvider);
+    _epoch = ref.read(exportContextEpochProvider);
+    void retire() {
+      if (mounted && !_retired) setState(() => _retired = true);
+    }
+
+    ref.listenManual(sensitiveReadBoundaryProvider, (_, next) {
+      if (next != _boundary) retire();
+    });
+    ref.listenManual(exportContextEpochProvider, (_, next) {
+      if (next != _epoch) retire();
+    });
+  }
+
   @override
   void dispose() {
     _remark.dispose();
     super.dispose();
   }
 
+  Future<void> _reconcile() async {
+    if (_busy || !_current) return;
+    setState(() => _busy = true);
+    try {
+      final fresh = await ref
+          .read(expenseRepositoryProvider)
+          .getById(widget.claim.id);
+      if (!mounted || !_current) return;
+      final invoice = fresh.invoices
+          .where((value) => value.id == widget.invoice.id)
+          .firstOrNull;
+      if (invoice == null) throw const FormatException('票据已变化，请关闭后重新核对');
+      setState(() {
+        _latest = fresh;
+        _unknown = false;
+        _readBackState = '当前票据：${invoice.checkState.label}';
+      });
+      ref.invalidate(expenseDetailProvider(widget.claim.id));
+    } catch (error) {
+      if (mounted && _current) {
+        setState(() => _busy = false);
+        context.appApiError(error);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _save() async {
-    if (_busy) return;
-    if (_remark.text.trim().isEmpty) {
+    if (_busy || _unknown || !_allowed) return;
+    final remark = _remark.text.trim();
+    if (remark.isEmpty || remark.length > 500) {
       context.appWarning(
-        AppLocalizations.of(context).expenseFlowVerifyRequired,
+        remark.isEmpty
+            ? AppLocalizations.of(context).expenseFlowVerifyRequired
+            : '查验依据最多500字，原输入已保留',
       );
       return;
     }
+    final verified = _verified;
+    final version = _latest.version;
+    var sent = false;
     setState(() => _busy = true);
     try {
-      await ref
-          .read(expenseRepositoryProvider)
-          .verifyInvoice(
-            widget.claim.id,
-            widget.invoice.id,
-            expectedVersion: widget.claim.version,
-            verified: _verified,
-            remark: _remark.text.trim(),
-          );
+      await runSensitiveWrite(
+        ref,
+        isCurrent: () => _allowed,
+        write: () {
+          sent = true;
+          return ref
+              .read(expenseRepositoryProvider)
+              .verifyInvoice(
+                widget.claim.id,
+                widget.invoice.id,
+                expectedVersion: version,
+                verified: verified,
+                remark: remark,
+              );
+        },
+      );
+      if (!mounted || !_current) return;
+      setState(() => _busy = false);
       ref.invalidate(expenseDetailProvider(widget.claim.id));
-      if (mounted) Navigator.of(context).pop(true);
+      Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted && _current) {
+        setState(() {
+          _busy = false;
+          _unknown =
+              sent &&
+              !(error is ApiException &&
+                  error.hasResponseCode &&
+                  const {400, 403, 404, 409, 422}.contains(error.httpStatus));
+        });
+        context.appApiError(error);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1201,78 +1278,138 @@ class _InvoiceVerifyDialogState extends ConsumerState<_InvoiceVerifyDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return UtenAlertDialog(
-      scrollable: false,
-      title: Text(l10n.expenseFlowVerifyTitle),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    if (!_current) {
+      return UtenAlertDialog(
+        title: const Text('授权已变化'),
+        content: const Text('请关闭后重新打开票据查验'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      );
+    }
+    return Stack(
+      children: [
+        UtenAlertDialog(
+          scrollable: false,
+          title: Row(
             children: [
-              Text(
-                '${widget.invoice.invoiceNo} · ${widget.invoice.totalAmount.toStringAsFixed(2)} 元',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(l10n.expenseFlowVerifyGuide),
-              TextButton.icon(
-                icon: const Icon(Icons.open_in_new),
-                label: Text(l10n.expenseFlowVerifyOfficial),
-                onPressed: () async {
-                  final opened = await launchUrl(
-                    Uri.parse('https://inv-veri.chinatax.gov.cn/'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                  if (!opened && context.mounted) {
-                    context.appWarning('https://inv-veri.chinatax.gov.cn/');
-                  }
-                },
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                spacing: UtenSpacing.s8,
+              Expanded(child: Text(l10n.expenseFlowVerifyTitle)),
+              UtenFieldHintIcon(info: l10n.expenseFlowVerifyGuide),
+            ],
+          ),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ChoiceChip(
-                    label: Text(l10n.expenseFlowVerifyPassed),
-                    selected: _verified,
-                    onSelected: _busy
-                        ? null
-                        : (_) => setState(() => _verified = true),
+                  Text(
+                    '${widget.invoice.invoiceNo} · ${widget.invoice.totalAmount.toStringAsFixed(2)} 元',
                   ),
-                  ChoiceChip(
-                    label: Text(l10n.expenseFlowVerifyMismatch),
-                    selected: !_verified,
-                    onSelected: _busy
+                  const SizedBox(height: UtenSpacing.s12),
+                  if (_unknown || _readBackState != null)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(_unknown ? '查验结果待核对' : _readBackState!),
+                        ),
+                        const UtenFieldHintIcon(
+                          info:
+                              '结果未知时先读取当前票据核对，原查验结论与依据保留；读取不会重新提交。保存始终按当前单据版本重新校验。',
+                        ),
+                      ],
+                    ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.open_in_new),
+                    label: Text(l10n.expenseFlowVerifyOfficial),
+                    onPressed: _openingOfficial
                         ? null
-                        : (_) => setState(() => _verified = false),
+                        : () async {
+                            setState(() => _openingOfficial = true);
+                            try {
+                              final opened = await launchUrl(
+                                Uri.parse('https://inv-veri.chinatax.gov.cn/'),
+                                mode: LaunchMode.externalApplication,
+                              );
+                              if (mounted) {
+                                setState(() => _openingOfficial = false);
+                              }
+                              if (!opened && context.mounted) {
+                                context.appWarning(
+                                  'https://inv-veri.chinatax.gov.cn/',
+                                );
+                              }
+                            } catch (error) {
+                              if (context.mounted && _current) {
+                                setState(() => _openingOfficial = false);
+                                context.appApiError(error);
+                              }
+                            } finally {
+                              if (mounted) {
+                                setState(() => _openingOfficial = false);
+                              }
+                            }
+                          },
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Wrap(
+                    spacing: UtenSpacing.s8,
+                    children: [
+                      ChoiceChip(
+                        label: Text(l10n.expenseFlowVerifyPassed),
+                        selected: _verified,
+                        onSelected: _busy || _unknown || !_allowed
+                            ? null
+                            : (_) => setState(() => _verified = true),
+                      ),
+                      ChoiceChip(
+                        label: Text(l10n.expenseFlowVerifyMismatch),
+                        selected: !_verified,
+                        onSelected: _busy || _unknown || !_allowed
+                            ? null
+                            : (_) => setState(() => _verified = false),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    controller: _remark,
+                    maxLines: 3,
+                    maxLength: 500,
+                    maxLengthEnforcement: MaxLengthEnforcement.none,
+                    enabled: !_busy && !_unknown && _allowed,
+                    decoration: UtenInputDecoration(
+                      InputDecoration(labelText: l10n.expenseFlowVerifyRemark),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              TextField(
-                controller: _remark,
-                maxLines: 3,
-                maxLength: 1000,
-                enabled: !_busy,
-                decoration: UtenInputDecoration(
-                  InputDecoration(labelText: l10n.expenseFlowVerifyRemark),
-                ),
-              ),
-            ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: _busy ? null : () => Navigator.of(context).pop(),
+              child: Text(l10n.commonCancel),
+            ),
+            UtenButton(
+              isLoading: _busy,
+              onPressed: _busy
+                  ? null
+                  : _unknown
+                  ? _reconcile
+                  : _allowed
+                  ? _save
+                  : null,
+              child: Text(_unknown ? '核对结果' : l10n.commonSave),
+            ),
+          ],
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: Text(l10n.commonCancel),
-        ),
-        UtenButton(
-          isLoading: _busy,
-          onPressed: _busy ? null : _save,
-          child: Text(l10n.commonSave),
-        ),
+        if (_busy || _openingOfficial)
+          const UtenBusyOverlay(title: '正在处理票据查验', showDoNotLeaveHint: false),
       ],
     );
   }

@@ -1,6 +1,8 @@
 // 报销新建/编辑页（V608）：编辑模式预填 + 驳回横幅 + 保存走 PUT + 大写合计。
 // 页面保存成功后 context.go 跳详情 —— 测试必须包 GoRouter（含 :id/edit 路由）。
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -99,6 +101,7 @@ Widget _app(_FakeExpenseRepository repo, SharedPreferences preferences) {
   return ProviderScope(
     overrides: [
       sessionProvider.overrideWith(_Session.new),
+      apiClientProvider.overrideWithValue(ApiClient(Dio(BaseOptions(baseUrl:'https://expense-test.invalid/api')))),
       apiBaseUrlProvider.overrideWithValue('https://expense-test.invalid/api'),
       formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
       currentPermissionsProvider.overrideWithValue({Perm.expenseApply}),

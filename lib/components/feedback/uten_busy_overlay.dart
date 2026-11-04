@@ -38,6 +38,25 @@ class UtenBusyOverlay extends StatefulWidget {
   /// task lifetime and accessibility progress announcement.
   final bool showDoNotLeaveHint;
 
+  /// Read/compute preparation shared by menu, header and dialog actions.
+  /// End it before asking for input or showing the result dialog.
+  static Future<T> run<T>(
+    BuildContext context, {
+    required String title,
+    required Future<T> Function() action,
+  }) async {
+    final entry = OverlayEntry(
+      builder: (_) => UtenBusyOverlay(title: title, showDoNotLeaveHint: false),
+    );
+    Overlay.of(context, rootOverlay: true).insert(entry);
+    try {
+      return await action();
+    } finally {
+      entry.remove();
+      entry.dispose();
+    }
+  }
+
   /// 全局「让位」计数：大于 0 时所有忙碌遮罩暂不绘制、不挡点击。
   static final ValueNotifier<int> _yielding = ValueNotifier<int>(0);
 

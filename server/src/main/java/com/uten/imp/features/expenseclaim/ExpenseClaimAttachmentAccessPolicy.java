@@ -28,7 +28,11 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
 
     @Override
     public void requireCanView(UUID ownerId, AuthUser user) {
-        readable(requireClaim(ownerId,false),user);
+        ExpenseClaim claim=requireClaim(ownerId,true);
+        boolean ownAbandoned=claim.isDeleted()&&claim.getAbandonedAt()!=null&&"REJECTED".equals(claim.getStatus())
+                &&user!=null&&claim.getApplicantId().equals(user.getEmployeeId())&&has(user,"expense:apply");
+        if(claim.isDeleted()&&!ownAbandoned)throw new ApiException(ErrorCode.NOT_FOUND,"报销单不存在");
+        readable(claim,user);
     }
     @Override public void requireCanViewHistory(UUID ownerId,AuthUser user) {
         readable(requireClaim(ownerId,true),user);
@@ -37,7 +41,7 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
     private void readable(ExpenseClaim claim,AuthUser user) {
         var scope=user.getPermissions().contains("expense:view") ? readAccess.scope(user)
                 : new com.uten.imp.security.OwnerVisibility.OwnerScope(false,Set.of(),Set.of());
-        if (!ExpenseClaimReadPolicy.canRead(user,claim,scope)) {
+        if (!ExpenseClaimReadPolicy.canRead(user,claim,scope) && (readAccess==null || !readAccess.canReadWorkflow(user,claim,scope))) {
             throw new ApiException(ErrorCode.NOT_FOUND,"报销单不存在");
         }
     }
@@ -79,6 +83,6 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
     }
 
     private static boolean has(AuthUser user, String permission) {
-        return user.isSuperAdmin() || user.getPermissions().contains(permission);
+        return user.getPermissions().contains(permission);
     }
 }

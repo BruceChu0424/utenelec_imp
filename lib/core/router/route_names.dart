@@ -487,6 +487,8 @@ abstract final class RouteName {
       '/finance/procurement-arrival-exceptions';
 
   static const salesManagerReview = '/sales/manager-review';
+  static const myApplications = '/applications';
+  static const approvalCenter = '/approvals';
 
   // 销售管理（综合营销部）：hub + 5 单据 + 报表。
   // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
@@ -686,6 +688,7 @@ abstract final class RoutePath {
   static String basicinfoAccountDetail(String id, {bool edit = false}) =>
       edit ? '/basicinfo/account/$id?edit=true' : '/basicinfo/account/$id';
   static String expenseDetail(String id) => '/expense/$id';
+  static String expenseHistoryDetail(String id) => '/expense/$id?history=1';
   static String expenseEdit(String id) => '/expense/$id/edit';
   static String noticeDetail(String id) => '/notice/$id';
   static String suggestionDetail(String id) => '/suggestion/$id';

@@ -7,5 +7,8 @@ public record ExpenseClaimEventDto(
         String eventType,
         String actorName,
         String remark,
-        Instant occurredAt) {
+        Instant occurredAt,String approvalStage,Integer approvalRound) {
+    public ExpenseClaimEventDto(String eventType,String actorName,String remark,Instant occurredAt) {
+        this(eventType,actorName,remark,occurredAt,null,null);
+    }
 }

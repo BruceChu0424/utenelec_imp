@@ -158,6 +158,15 @@ final class MasterReferenceCatalog {
 
     private static List<Reference> buildReferences() {
         List<Reference> out = new ArrayList<>();
+        // Applications retain a relational supplier identity and frozen fields.
+        // Master-data editors may see the existence/count, never a private
+        // application number, title or UUID without its independent object ACL.
+        out.add(new Reference(SUPPLIER,"business_applications","supplier_id",RefKind.BUSINESS_APPLICATION,"""
+                SELECT t.id,'BUSINESS_APPLICATION','private-application-'||a.id::text,
+                    '供应商付款或预付申请',NULL::uuid,'public'
+                FROM targets t JOIN business_applications a ON a.kind IN('SUPPLIER_PAYMENT','PREPAYMENT')
+                    AND a.supplier_id=t.id
+                """));
         // Cost documents retain their root and every frozen component identity; amounts/names are never shown here.
         out.add(new Reference(GOODS,"goods_cost_sheets","goods_id",RefKind.COST_SHEET,"""
                 SELECT t.id,'COST_SHEET',CAST(s.id AS text),'内部成本记录',NULL::uuid,'public'

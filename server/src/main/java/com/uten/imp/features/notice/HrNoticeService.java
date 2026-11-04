@@ -82,6 +82,8 @@ public class HrNoticeService implements HrNoticePort {
     private final UserAccountRepository userRepo;
     private final PermissionResolver permissionResolver;
     private final NoticePermissionCandidateQuery permissionCandidates;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.ExpenseApprovalAudiencePort expenseApprovalAudience;
 
     // ========================= 信息变更（HR 审核） =========================
 
@@ -160,6 +162,26 @@ public class HrNoticeService implements HrNoticePort {
 
     // ========================= 报销（审批 → 打款） =========================
 
+    @Override public void notifyExpenseClaimStage(UUID claimId,String applicantName,String amountLabel,UUID applicantEmployeeId,
+            UUID departmentId,String stage,String participants) {
+        String permission=switch(stage) {
+            case "DEPARTMENT" -> "expense:approve:department";
+            case "FINANCE_INITIAL" -> "expense:approve:finance_initial";
+            case "FINANCE_REVIEW" -> "expense:approve:finance_review";
+            case "EXECUTIVE" -> "expense:approve:executive";
+            default -> throw new IllegalArgumentException("Unknown expense approval stage");
+        };
+        for(UUID target:userIdsWithNoticeAndAnyPermission(permission)) {
+            var account=userRepo.findById(target).orElse(null);
+            if(account==null)continue;
+            var permissions=permissionResolver.grantedPermsOf(target);
+            if(!expenseApprovalAudience.eligible(target,account.getEmployeeId(),permissions,claimId))continue;
+            String route=expenseApprovalAudience.route(target,account.getEmployeeId(),permissions,departmentId,stage);
+            sameTransaction(()->noticeService.publishForUser(target,"报销单待审批",applicantName+" 的报销单（合计 "+amountLabel+"）等待当前节点审批。",
+                    TYPE_TASK,"报销",route,EVENT_EXPENSE_CLAIM_SUBMITTED,"important",claimId));
+        }
+    }
+
     /** 员工提交报销单 → 通知全体持 expense:approve 的审批人（申请人本人除外）。 */
     @Override public void notifyExpenseClaimSubmitted(UUID claimId, String applicantName,
                                             String amountLabel, UUID applicantEmployeeId) {
@@ -184,6 +206,8 @@ public class HrNoticeService implements HrNoticePort {
                     || (approverEmployeeId != null && belongsToEmployee(target, approverEmployeeId))) {
                 continue;    // 申请人不能给自己打款，也不给自己弹卡
             }
+            var account=userRepo.findById(target).orElse(null);
+            if(account==null||expenseApprovalAudience==null||!expenseApprovalAudience.eligiblePayment(target,account.getEmployeeId(),permissionResolver.grantedPermsOf(account),claimId))continue;
             sameTransaction(() -> noticeService.publishForUser(
                     target, "报销单待付款",
                     applicantName + " 的报销单(合计 " + amountLabel + ")已审批通过，请付款后登记凭据。",

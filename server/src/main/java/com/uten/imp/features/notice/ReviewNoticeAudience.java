@@ -268,7 +268,7 @@ public class ReviewNoticeAudience {
             case "PROFILE_CHANGE_SUBMITTED" -> permissions.contains("profile:review");
             case "VISITOR_APPLY_SUBMITTED" -> permissions.contains("visitor:approve");
             case "VISITOR_HOST_CONFIRM_REQUIRED" -> permissions.contains("visitor:host_confirm");
-            case "EXPENSE_CLAIM_SUBMITTED" -> permissions.contains("expense:approve");
+            case "EXPENSE_CLAIM_SUBMITTED" -> permissions.stream().anyMatch(Set.of("expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive")::contains);
             case "EXPENSE_CLAIM_PENDING_PAYMENT" -> permissions.contains("expense:pay");
             case "EXPENSE_CLAIM_REJECTED" -> permissions.contains("expense:apply");
             case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");

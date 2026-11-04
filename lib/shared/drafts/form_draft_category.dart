@@ -149,6 +149,9 @@ String? formDraftBusinessKind(FormDraft draft) =>
 
 bool formDraftHasFormalDraftCounter(FormDraft draft) =>
     formDraftBusinessKind(draft) == 'expense' ||
+    formDraftBusinessKind(draft) == 'business_application' ||
+    formDraftBusinessKind(draft) == 'business_application_payment' ||
+    formDraftBusinessKind(draft) == 'business_application_prepayment_finance' ||
     DraftDocKind.values.any(
       (kind) => kind.name == formDraftBusinessKind(draft),
     );

@@ -19,6 +19,8 @@ namespace Uten.Legacy.Core.Tests
         {
             FirstProofAndChangedProof().GetAwaiter().GetResult();
             FirstProofAndChangedProof("expense-claims/browse").GetAwaiter().GetResult();
+            FirstProofAndChangedProof("business-applications/pending").GetAwaiter().GetResult();
+            FirstProofAndChangedProof("business-applications/11111111-1111-4111-8111-111111111111/prepayment-finance-candidates").GetAwaiter().GetResult();
             FirstProofAndChangedProof("platform-columns/expense_claim/definitions").GetAwaiter().GetResult();
             OlderSequenceCannotRollBackProof().GetAwaiter().GetResult();
             HeaderBodyMismatchRetiresReaders().GetAwaiter().GetResult();

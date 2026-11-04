@@ -795,7 +795,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         if (mismatch == null || mismatch == 'laterRevision') {
-          expect(find.text('订单审核'), findsOneWidget);
+          expect(find.text('订单审批'), findsOneWidget);
           expect(find.textContaining('结果尚未确认'), findsNothing);
         } else {
           expect(find.textContaining('结果尚未确认'), findsWidgets);
@@ -983,7 +983,7 @@ void main() {
           dark: setting.dark,
           textScale: setting.scale,
         );
-        expect(find.text('订单审核'), findsOneWidget);
+        expect(find.text('订单审批'), findsOneWidget);
         expect(find.textContaining('123456.7891'), findsWidgets);
         expect(find.text('报价单'), findsNothing);
         expect(tester.takeException(), isNull);

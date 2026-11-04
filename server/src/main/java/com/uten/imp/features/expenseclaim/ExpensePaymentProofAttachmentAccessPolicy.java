@@ -15,6 +15,8 @@ public class ExpensePaymentProofAttachmentAccessPolicy implements AttachmentOwne
     public static final String OWNER_TYPE="EXPENSE_PAYMENT_PROOF";
     private final ExpenseClaimRepository claims;
     private final ExpenseClaimAttachmentAccessPolicy claimReadPolicy;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ExpenseApprovalPolicy paymentPolicy;
     @Override public String ownerType(){return OWNER_TYPE;}
     @Override public void requireCanView(UUID ownerId,AuthUser user){claimReadPolicy.requireCanView(ownerId,user);}
     @Override public void requireCanManage(UUID ownerId,AuthUser user){
@@ -24,10 +26,8 @@ public class ExpensePaymentProofAttachmentAccessPolicy implements AttachmentOwne
         if(ownerId==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"付款凭据必须绑定报销单");
         requirePayer(claims.findByIdForUpdate(ownerId).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND,"报销单不存在")),user);
     }
-    private static void requirePayer(ExpenseClaim claim,AuthUser user){
-        if(claim.isDeleted() || user.isVisitor() || user.getEmployeeId()==null || (!user.isSuperAdmin() && !user.getPermissions().contains("expense:pay"))
-                || !"APPROVED".equals(claim.getStatus()) || user.getEmployeeId().equals(claim.getApplicantId())
-                || user.getEmployeeId().equals(claim.getApprovedBy()))
+    private void requirePayer(ExpenseClaim claim,AuthUser user){
+        if(!(paymentPolicy==null?ExpenseApprovalPolicy.canPayFacts(user,claim):paymentPolicy.canPay(user,claim)))
             throw new ApiException(ErrorCode.NOT_FOUND,"报销单不存在或当前不可维护付款凭据");
     }
 

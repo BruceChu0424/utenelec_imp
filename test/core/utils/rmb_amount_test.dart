@@ -5,6 +5,24 @@ import 'package:uten_imp/core/utils/rmb_amount.dart';
 
 void main() {
   test(
+    'exact decimal capital preserves cents beyond JavaScript integer precision',
+    () {
+      expect(
+        rmbCapitalExact('99999999999999.99'),
+        '人民币玖拾玖万亿玖仟玖佰玖拾玖亿玖仟玖佰玖拾玖万玖仟玖佰玖拾玖元玖角玖分',
+      );
+      expect(
+        rmbCapitalExact('90071992547409.91'),
+        '人民币玖拾万亿零柒佰壹拾玖亿玖仟贰佰伍拾肆万柒仟肆佰零玖元玖角壹分',
+      );
+      expect(rmbCapitalExact('0.01'), '人民币壹分');
+      expect(rmbCapitalExact('000.50'), '人民币伍角');
+      for (final value in ['1e5', '-1', '1.005', '99999999999999999']) {
+        expect(rmbCapitalExact(value), '');
+      }
+    },
+  );
+  test(
     'currency inputs preserve integer cents and reject rounding or exponents',
     () {
       expect(parseExpenseAmountCents('84.80'), 8480);

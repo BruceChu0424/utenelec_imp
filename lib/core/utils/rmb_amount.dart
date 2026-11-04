@@ -16,14 +16,30 @@ const List<String> _kGroupUnits = ['', '万', '亿', '万亿'];
 String rmbCapital(num amount) {
   if (!amount.isFinite || amount < 0 || amount >= 1e16) return '';
   final int cents = (amount.toDouble() * 100).round();
-  if (cents == 0) return '人民币零元整';
+  return _capitalParts(
+    BigInt.from(cents ~/ 100),
+    (cents % 100) ~/ 10,
+    cents % 10,
+  );
+}
 
-  final int yuan = cents ~/ 100;
-  final int jiao = (cents % 100) ~/ 10;
-  final int fen = cents % 10;
+/// Exact decimal input for server BigDecimal amounts, including Flutter Web.
+/// Do not convert the yuan/cents total through double or a JS-safe int first.
+String rmbCapitalExact(String amount) {
+  final match = RegExp(
+    r'^(\d{1,16})(?:\.(\d{1,2}))?$',
+  ).firstMatch(amount.trim());
+  if (match == null) return '';
+  final yuan = BigInt.parse(match.group(1)!);
+  final fraction = (match.group(2) ?? '').padRight(2, '0');
+  return _capitalParts(yuan, int.parse(fraction[0]), int.parse(fraction[1]));
+}
+
+String _capitalParts(BigInt yuan, int jiao, int fen) {
+  if (yuan == BigInt.zero && jiao == 0 && fen == 0) return '人民币零元整';
 
   final buffer = StringBuffer('人民币');
-  if (yuan > 0) {
+  if (yuan > BigInt.zero) {
     buffer
       ..write(_yuanText(yuan))
       ..write('元');
@@ -35,7 +51,7 @@ String rmbCapital(num amount) {
   }
   if (jiao > 0) {
     buffer.write('${_kDigits[jiao]}角');
-  } else if (fen > 0 && yuan > 0) {
+  } else if (fen > 0 && yuan > BigInt.zero) {
     // 角位为零、分位有数：元与分之间补「零」（壹拾元零伍分）。
     buffer.write('零');
   }
@@ -47,13 +63,14 @@ String rmbCapital(num amount) {
 
 /// 整数元部分（不含「元」字）：万亿以内按四位分段，段内零只补一个，
 /// 段间低位段不足一千或隔了整零段时补一个「零」（壹万零壹 / 壹佰万零壹拾）。
-String _yuanText(int yuan) {
-  if (yuan == 0) return '零';
+String _yuanText(BigInt yuan) {
+  if (yuan == BigInt.zero) return '零';
   final groups = <int>[];
   var rest = yuan;
-  while (rest > 0) {
-    groups.add(rest % 10000);
-    rest ~/= 10000;
+  final groupBase = BigInt.from(10000);
+  while (rest > BigInt.zero) {
+    groups.add((rest % groupBase).toInt());
+    rest ~/= groupBase;
   }
   final buffer = StringBuffer();
   var skippedZeroGroup = false;

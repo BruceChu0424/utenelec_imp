@@ -325,6 +325,64 @@ abstract final class FormDraftCatalog {
     draftKind: 'expense',
   );
 
+  static const businessApplication = FormDraftDescriptor(
+    title: '新建申请',
+    module: BadgeModule.people,
+    route: '/applications/new',
+    permission: Perm.applicationApply,
+    draftKind: 'business_application',
+  );
+  static const businessApplicationPayment = FormDraftDescriptor(
+    title: '申请付款登记',
+    module: BadgeModule.finance,
+    route: '/applications/:id',
+    permission: Perm.applicationPay,
+    dialogKind: 'applicationPayment',
+    draftKind: 'business_application_payment',
+  );
+  static const businessApplicationPrepaymentFinance = FormDraftDescriptor(
+    title: '预付账务关联',
+    module: BadgeModule.finance,
+    route: '/applications/:id',
+    permission: Perm.applicationPrepaymentLinkFinance,
+    dialogKind: 'applicationPrepaymentFinance',
+    draftKind: 'business_application_prepayment_finance',
+  );
+  static const travelApplication = FormDraftDescriptor(
+    title: '出差申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=TRAVEL',
+    permission: Perm.applicationApplyTravel,
+    draftKind: 'business_application',
+  );
+  static const paymentApplication = FormDraftDescriptor(
+    title: '付款申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=PAYMENT',
+    permission: Perm.applicationApplyPayment,
+    draftKind: 'business_application',
+  );
+  static const prepaymentApplication = FormDraftDescriptor(
+    title: '预付申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=PREPAYMENT',
+    permission: Perm.applicationApplyPrepayment,
+    draftKind: 'business_application',
+  );
+  static const supplierPaymentApplication = FormDraftDescriptor(
+    title: '供应商付款申请',
+    module: BadgeModule.people,
+    route: '/applications/new?kind=SUPPLIER_PAYMENT',
+    permission: Perm.applicationApplySupplierPayment,
+    draftKind: 'business_application',
+  );
+  static const applicationKinds = {
+    'TRAVEL': travelApplication,
+    'PAYMENT': paymentApplication,
+    'PREPAYMENT': prepaymentApplication,
+    'SUPPLIER_PAYMENT': supplierPaymentApplication,
+  };
+
   static const asset = FormDraftDescriptor(
     title: '新建资产',
     module: BadgeModule.finance,
@@ -574,6 +632,14 @@ abstract final class FormDraftCatalog {
     'employeeOffboarding': employeeOffboarding,
     'employeeReconcile': employeeReconcile,
     'expense': expense,
+    'businessApplication': businessApplication,
+    'businessApplicationPayment': businessApplicationPayment,
+    'businessApplicationPrepaymentFinance':
+        businessApplicationPrepaymentFinance,
+    'travelApplication': travelApplication,
+    'paymentApplication': paymentApplication,
+    'prepaymentApplication': prepaymentApplication,
+    'supplierPaymentApplication': supplierPaymentApplication,
     'asset': asset,
     'dailyReport': dailyReport,
     'productionDraw': productionDraw,

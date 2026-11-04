@@ -23,7 +23,8 @@ import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
-import 'package:uten_imp/features/expense/models/expense_item.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/features/expense/widgets/expense_editable_items.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 
 import 'memory_form_draft_storage.dart';
@@ -178,13 +179,14 @@ void main() {
         ],
       });
       await tester.pumpAndSettle();
-      final table = tester.widget<MasterDataTableView<ExpenseItem>>(
-        find.byType(MasterDataTableView<ExpenseItem>),
+      final table = tester.widget<UtenEditableGrid<ExpenseGridRow>>(
+        find.byType(UtenEditableGrid<ExpenseGridRow>),
       );
-      expect(table.items.map((item) => item.id).toSet(), hasLength(4));
-      expect(table.items.every((item) => item.id.isNotEmpty), isTrue);
-      expect(table.items[2].id, 'kept');
-      final fields = table.platformBinding!.draftOf!(table.items.first)!;
+      final rows = table.controller.rows;
+      expect(rows.map((item) => item.id).toSet(), hasLength(4));
+      expect(rows.every((item) => item.id.isNotEmpty), isTrue);
+      expect(rows[2].id, 'kept');
+      final fields = table.platformBinding!.draftOf!(rows.first)!;
       fields.setValue(
         const PlatformColumnDefinition(
           id: 'note',
@@ -193,11 +195,8 @@ void main() {
         ),
         '项目A',
       );
-      expect(table.platformBinding!.draftOf!(table.items[1])!.cells, isEmpty);
-      expect(
-        table.items.map(table.platformBinding!.recordIdOf),
-        everyElement(isNull),
-      );
+      expect(table.platformBinding!.draftOf!(rows[1])!.cells, isEmpty);
+      expect(rows.map(table.platformBinding!.recordIdOf), everyElement(isNull));
       await editor.saveFormDraftNow();
       final restoredRows = (editor.captureFormDraft()['items'] as List)
           .cast<Map<String, dynamic>>();
@@ -215,7 +214,20 @@ void main() {
       final storage = MemoryFormDraftStorage();
       var env = await _open(tester, storage, '/expense/new');
       await tester.enterText(find.byType(TextField).first, '九月出差报销');
-      await tester.tap(find.text('添加'));
+      final initialEditor =
+          tester.state(find.byType(ExpenseClaimEditPage))
+              as FormDraftMixin<ExpenseClaimEditPage>;
+      await initialEditor.restoreFormDraft({
+        'title': '九月出差报销',
+        'pendingItem': {
+          'category': 'office',
+          'date': '2026-09-29',
+          'amount': '',
+          'description': '',
+        },
+      });
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('继续未完成明细'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ChoiceChip, '办公用品'));
       final fields = find.descendant(
@@ -275,6 +287,48 @@ void main() {
             as Map<String, dynamic>)['amount'],
         '12.',
       );
+      expect(env.api.writes, 0);
+      expect(tester.takeException(), isNull);
+      await _dispose(tester, env);
+    },
+  );
+
+  testWidgets(
+    'unfinished inline expense rows survive hard disposal without coercing decimal text',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      var env = await _open(tester, storage, '/expense/new');
+      await tester.enterText(
+        find.widgetWithText(TextField, '报销标题 *'),
+        '连续录入费用',
+      );
+      await tester.ensureVisible(find.text('添加费用'));
+      await tester.tap(find.text('添加费用'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, '金额'), '12.');
+      await tester.enterText(
+        find.widgetWithText(TextField, '用途说明'),
+        '  未完成用途  ',
+      );
+      final editor =
+          tester.state(find.byType(ExpenseClaimEditPage))
+              as FormDraftMixin<ExpenseClaimEditPage>;
+      await editor.saveFormDraftNow();
+      final draft = env.container.read(formDraftsProvider).single;
+      final original = (draft.data['items'] as List).single as Map;
+      expect(original['amountText'], '12.');
+      expect(original['description'], '  未完成用途  ');
+      await _dispose(tester, env);
+      env = await _open(tester, storage, draft.resumeLocation);
+      final rows = tester
+          .widget<UtenEditableGrid<ExpenseGridRow>>(
+            find.byType(UtenEditableGrid<ExpenseGridRow>),
+          )
+          .controller
+          .rows;
+      expect(rows.single.id, original['id']);
+      expect(rows.single.amount.text, '12.');
+      expect(rows.single.description.text, '  未完成用途  ');
       expect(env.api.writes, 0);
       expect(tester.takeException(), isNull);
       await _dispose(tester, env);

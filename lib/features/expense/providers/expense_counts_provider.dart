@@ -12,9 +12,12 @@ class ExpenseCounts {
     this.pendingApprovalCount = 0,
     this.pendingPaymentCount = 0,
     this.processingCount = 0,
+    this.mineRoutingStaleCount = 0,
   });
   final int draftCount;
   final int rejectedCount;
+  final int mineRoutingStaleCount;
+  int get actionRequiredCount => rejectedCount + mineRoutingStaleCount;
   final int pendingApprovalCount;
   final int pendingPaymentCount;
 
@@ -26,6 +29,7 @@ class ExpenseCounts {
       other is ExpenseCounts &&
       other.draftCount == draftCount &&
       other.rejectedCount == rejectedCount &&
+      other.mineRoutingStaleCount == mineRoutingStaleCount &&
       other.pendingApprovalCount == pendingApprovalCount &&
       other.pendingPaymentCount == pendingPaymentCount &&
       other.processingCount == processingCount;
@@ -34,6 +38,7 @@ class ExpenseCounts {
   int get hashCode => Object.hash(
     draftCount,
     rejectedCount,
+    mineRoutingStaleCount,
     pendingApprovalCount,
     pendingPaymentCount,
     processingCount,
@@ -47,6 +52,7 @@ final expenseCountsProvider = Provider<ExpenseCounts>((ref) {
   return ExpenseCounts(
     draftCount: fact(BadgeFact.expenseDraft),
     rejectedCount: fact(BadgeFact.expenseRejected),
+    mineRoutingStaleCount: fact('expense.mineRoutingStaleCount'),
     pendingApprovalCount: fact(BadgeFact.expensePendingApproval),
     pendingPaymentCount: fact(BadgeFact.expensePendingPayment),
     processingCount: fact(BadgeFact.expenseProcessing),

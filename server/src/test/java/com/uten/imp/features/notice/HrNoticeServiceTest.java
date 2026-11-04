@@ -41,6 +41,9 @@ class HrNoticeServiceTest {
         users = mock(UserAccountRepository.class);
         permissions = mock(PermissionResolver.class);
         service = new HrNoticeService(notices, users, permissions, null);
+        var audience=mock(com.uten.imp.application.port.ExpenseApprovalAudiencePort.class);
+        when(audience.eligiblePayment(any(),any(),any(),any())).thenReturn(true);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"expenseApprovalAudience",audience);
     }
 
     @Test
@@ -69,6 +72,28 @@ class HrNoticeServiceTest {
         verify(notices).publishForUser(eq(admin.getId()), eq("报销单待审批"), anyString(),
                 eq("task"), eq("财务"), eq("/expense/approval"),
                 eq("EXPENSE_CLAIM_SUBMITTED"), eq("important"), eq(claimId));
+        verifyNoMoreInteractions(notices);
+    }
+
+    @Test void stagedExpenseOnlyNotifiesTheCurrentObjectAudienceAtItsOwnApprovalCenter() {
+        var eligible=account(UUID.randomUUID(),"active",false,"notice:read","expense:approve:department");
+        var outside=account(UUID.randomUUID(),"active",false,"notice:read","expense:approve:department");
+        var later=account(UUID.randomUUID(),"active",false,"notice:read","expense:approve:finance_review");
+        var legacy=account(UUID.randomUUID(),"active",false,"notice:read","expense:approve");
+        when(users.findAll()).thenReturn(List.of(eligible,outside,later,legacy));
+        for(var account:List.of(eligible,outside)) {
+            when(users.findById(account.getId())).thenReturn(Optional.of(account));
+            when(permissions.grantedPermsOf(account.getId())).thenReturn(Set.of("notice:read","expense:approve:department"));
+        }
+        UUID eligibleId=eligible.getId(),eligibleEmployee=eligible.getEmployeeId();
+        var audience=mock(com.uten.imp.application.port.ExpenseApprovalAudiencePort.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"expenseApprovalAudience",audience);
+        UUID claim=UUID.randomUUID(),applicant=UUID.randomUUID(),department=UUID.randomUUID();
+        when(audience.eligible(eq(eligibleId),eq(eligibleEmployee),any(),eq(claim))).thenReturn(true);
+        when(audience.route(eq(eligibleId),eq(eligibleEmployee),any(),eq(department),eq("DEPARTMENT"))).thenReturn("/approvals/DEPT_HR?group=expense");
+        service.notifyExpenseClaimStage(claim,"申请员工","100.00 元",applicant,department,"DEPARTMENT","");
+        verify(notices).publishForUser(eq(eligibleId),eq("报销单待审批"),anyString(),eq("task"),eq("报销"),
+                eq("/approvals/DEPT_HR?group=expense"),eq("EXPENSE_CLAIM_SUBMITTED"),eq("important"),eq(claim));
         verifyNoMoreInteractions(notices);
     }
 

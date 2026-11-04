@@ -19,6 +19,7 @@ import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -31,7 +32,12 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/rmb_amount.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/sensitive_write.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/widgets/sensitive_content_boundary.dart';
+import '../../../core/network/read_scope_revision.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../providers/expense_settings_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -41,13 +47,21 @@ import '../widgets/expense_item_columns.dart';
 import '../providers/expense_providers.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
+import '../widgets/expense_approval_progress.dart';
 import '../widgets/expense_invoice_section.dart';
 import '../widgets/expense_submission_revision.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
+import '../../../shared/platform_tables/platform_table_models.dart';
 
 class ExpenseDetailPage extends ConsumerStatefulWidget {
-  const ExpenseDetailPage({super.key, required this.claimId});
+  const ExpenseDetailPage({
+    super.key,
+    required this.claimId,
+    this.history = false,
+  });
 
   final String claimId;
+  final bool history;
 
   @override
   ConsumerState<ExpenseDetailPage> createState() => _ExpenseDetailPageState();
@@ -55,6 +69,60 @@ class ExpenseDetailPage extends ConsumerStatefulWidget {
 
 class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   bool _acting = false;
+  bool _networkBusy = false;
+  String _busyTitle = '正在处理报销';
+  int _operation = 0;
+  bool Function()? _actionCurrent;
+  bool get _canPublishAction => mounted && (_actionCurrent?.call() ?? false);
+
+  void _invalidateDetail() => ref.invalidate(
+    widget.history
+        ? expenseHistoryDetailProvider(widget.claimId)
+        : expenseDetailProvider(widget.claimId),
+  );
+
+  Future<void> _reloadDetail() async {
+    if (_acting) return;
+    final recordId = widget.claimId;
+    final history = widget.history;
+    final operation = ++_operation;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool current() =>
+        mounted &&
+        operation == _operation &&
+        widget.claimId == recordId &&
+        widget.history == history &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary;
+    setState(() {
+      _acting = true;
+      _networkBusy = true;
+      _busyTitle = '正在读取报销资料';
+    });
+    try {
+      _invalidateDetail();
+      await ref.read(
+        (history
+                ? expenseHistoryDetailProvider(recordId)
+                : expenseDetailProvider(recordId))
+            .future,
+      );
+    } catch (error) {
+      if (mounted && current()) {
+        setState(() => _networkBusy = false);
+        context.appApiError(error);
+      }
+    } finally {
+      if (mounted &&
+          operation == _operation &&
+          widget.claimId == recordId &&
+          widget.history == history) {
+        setState(() {
+          _acting = false;
+          _networkBusy = false;
+        });
+      }
+    }
+  }
 
   // 2026-09-22 全站表格滚动口径：明细表/发票表表头吸顶（stickyHeaderPinned），
   // 任一张表置顶后页面滚动条才显示（UtenGridPageScrollbar 门控）——
@@ -64,6 +132,18 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   final ValueNotifier<bool> _invoicePinned = ValueNotifier<bool>(false);
 
   @override
+  void didUpdateWidget(covariant ExpenseDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.claimId != widget.claimId ||
+        oldWidget.history != widget.history) {
+      _operation++;
+      _acting = false;
+      _networkBusy = false;
+      _actionCurrent = null;
+    }
+  }
+
+  @override
   void dispose() {
     _pageScroll.dispose();
     _itemsPinned.dispose();
@@ -71,13 +151,21 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
     super.dispose();
   }
 
-  ExpenseClaim? get _claim =>
-      ref.read(expenseDetailProvider(widget.claimId)).value;
+  ExpenseClaim? get _claim => ref
+      .read(
+        widget.history
+            ? expenseHistoryDetailProvider(widget.claimId)
+            : expenseDetailProvider(widget.claimId),
+      )
+      .value;
 
   bool get _isOwner {
     final claim = _claim;
     final me = ref.read(sessionProvider).user?.employeeId;
     return claim != null &&
+        !widget.history &&
+        !claim.abandoned &&
+        ref.read(authenticatedScopeProvider)?.readOnly == false &&
         me != null &&
         claim.applicantId == me &&
         ref.read(currentPermissionsProvider).contains(Perm.expenseApply);
@@ -85,20 +173,68 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
 
   Future<void> _run(
     String Function(ExpenseClaim claim) busyTitle,
-    Future<void> Function() action,
-  ) async {
-    if (_acting) return;
+    Future<void> Function() action, {
+    Future<bool?> Function()? confirm,
+  }) async {
+    if (_acting || !_isOwner) return;
     final claim = _claim;
     if (claim == null) return;
-    setState(() => _acting = true);
+    final recordId = widget.claimId;
+    final history = widget.history;
+    final operation = ++_operation;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final revision = ref.read(readScopeRevisionProvider);
+    var invalidated = false;
+    final subscription = ref.listenManual(sensitiveReadBoundaryProvider, (
+      _,
+      next,
+    ) {
+      if (next != boundary) invalidated = true;
+    });
+    bool current() =>
+        mounted &&
+        widget.claimId == recordId &&
+        widget.history == history &&
+        !invalidated &&
+        operation == _operation &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary &&
+        ref.read(readScopeRevisionProvider) == revision;
+    _actionCurrent = current;
+    setState(() {
+      _acting = true;
+      _networkBusy = true;
+      _busyTitle = busyTitle(claim);
+    });
     try {
-      await action();
+      await runSensitiveWrite<void>(
+        ref,
+        isCurrent: current,
+        write: () async {
+          if (confirm != null) {
+            setState(() => _networkBusy = false);
+            await WidgetsBinding.instance.endOfFrame;
+            if (!current()) return;
+            final accepted = await confirm();
+            if (accepted != true || !current()) return;
+            setState(() => _networkBusy = true);
+          }
+          if (current()) await action();
+        },
+      );
     } catch (error) {
-      if (mounted) {
+      if (mounted && current()) {
+        setState(() => _networkBusy = false);
         context.appApiError(error);
       }
     } finally {
-      if (mounted) setState(() => _acting = false);
+      subscription.close();
+      if (mounted && operation == _operation) {
+        setState(() {
+          _acting = false;
+          _networkBusy = false;
+          _actionCurrent = null;
+        });
+      }
     }
   }
 
@@ -121,7 +257,8 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
       return;
     }
     await submitExpense(ref, claim.id, expectedVersion: claim.version);
-    if (mounted) {
+    if (mounted && _canPublishAction) {
+      setState(() => _networkBusy = false);
       context.appSuccess(
         claim.status == ExpenseClaimStatus.rejected ? '已重新提交，等待审批' : '已提交，等待审批',
       );
@@ -130,11 +267,15 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final detail = ref.watch(expenseDetailProvider(widget.claimId));
+    final detail = ref.watch(
+      widget.history
+          ? expenseHistoryDetailProvider(widget.claimId)
+          : expenseDetailProvider(widget.claimId),
+    );
 
     return Scaffold(
       appBar: UtenAppBar(
-        title: '报销详情',
+        title: widget.history ? '报销归档详情' : '报销详情',
         showBackButton: true,
         actions: [
           detail.maybeWhen(
@@ -150,101 +291,112 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
           ),
         ],
       ),
-      body: detail.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator.adaptive()),
-        error: (e, _) => UtenEmpty.error(
-          error: e,
-          message: '加载失败，请重试',
-          onAction: () => ref.invalidate(expenseDetailProvider(widget.claimId)),
-        ),
-        data: (claim) => Stack(
-          children: [
-            Positioned.fill(
-              child: UtenGridPageScrollbar(
-                pinned: _itemsPinned,
-                extraPinned: [_invoicePinned],
-                controller: _pageScroll,
-                child: UtenContentContainer(
-                  child: ListView(
-                    controller: _pageScroll,
-                    padding: const EdgeInsets.fromLTRB(
-                      0,
-                      UtenSpacing.s16,
-                      0,
-                      UtenFloatingActionGroup.scrollClearance,
-                    ),
-                    children: [
-                      _HeroCard(claim: claim),
-                      if (claim.status == ExpenseClaimStatus.draft ||
-                          claim.status == ExpenseClaimStatus.rejected)
-                        Padding(
-                          padding: const EdgeInsets.only(top: UtenSpacing.s12),
-                          child: Text(
-                            AppLocalizations.of(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: detail.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator.adaptive()),
+              error: (e, _) => UtenEmpty.error(
+                error: e,
+                message: '加载失败，请重试',
+                onAction: _reloadDetail,
+              ),
+              data: (claim) => Stack(
+                children: [
+                  Positioned.fill(
+                    child: UtenGridPageScrollbar(
+                      pinned: _itemsPinned,
+                      extraPinned: [_invoicePinned],
+                      controller: _pageScroll,
+                      child: UtenContentContainer(
+                        child: ListView(
+                          controller: _pageScroll,
+                          padding: const EdgeInsets.fromLTRB(
+                            0,
+                            UtenSpacing.s16,
+                            0,
+                            UtenFloatingActionGroup.scrollClearance,
+                          ),
+                          children: [
+                            _HeroCard(claim: claim),
+                            const SizedBox(height: UtenSpacing.s16),
+                            ExpenseApprovalProgress(claim: claim),
+                            const SizedBox(height: UtenSpacing.s16),
+                            ExpenseSubmissionChangeSummary(claim: claim),
+                            _itemsSection(context, claim),
+                            const SizedBox(height: UtenSpacing.s16),
+                            _section(
                               context,
-                            ).expenseFlowInvoiceGuide,
-                          ),
-                        ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      ExpenseSubmissionChangeSummary(claim: claim),
-                      _itemsSection(context, claim),
-                      const SizedBox(height: UtenSpacing.s16),
-                      _section(
-                        context,
-                        '发票登记',
-                        ExpenseInvoiceSection(
-                          claim: claim,
-                          editable:
-                              _isOwner &&
-                              (claim.status == ExpenseClaimStatus.draft ||
-                                  claim.status == ExpenseClaimStatus.rejected),
-                          stickyHeaderPinned: _invoicePinned,
+                              '发票登记',
+                              ExpenseInvoiceSection(
+                                claim: claim,
+                                editable:
+                                    _isOwner &&
+                                    (claim.status == ExpenseClaimStatus.draft ||
+                                        claim.status ==
+                                            ExpenseClaimStatus.rejected),
+                                stickyHeaderPinned: _invoicePinned,
+                              ),
+                            ),
+                            const SizedBox(height: UtenSpacing.s16),
+                            _attachments(claim),
+                            if (claim.status == ExpenseClaimStatus.paid) ...[
+                              const SizedBox(height: UtenSpacing.s16),
+                              AttachmentSection(
+                                ownerType: 'EXPENSE_PAYMENT_PROOF',
+                                ownerId: claim.id,
+                                title: AppLocalizations.of(
+                                  context,
+                                ).expenseFlowPaymentProofs,
+                                attachments: claim.paymentProofs,
+                                ownerCanUpload: false,
+                                ownerCanDelete: false,
+                                onChanged: () => ref.invalidate(
+                                  expenseDetailProvider(claim.id),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: UtenSpacing.s16),
+                            _section(
+                              context,
+                              '审批轨迹',
+                              Card(
+                                margin: EdgeInsets.zero,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(
+                                    UtenSpacing.s16,
+                                  ),
+                                  child: ExpenseClaimTimeline(claim: claim),
+                                ),
+                              ),
+                            ),
+                            if (claim.remark != null &&
+                                claim.remark!.trim().isNotEmpty) ...[
+                              const SizedBox(height: UtenSpacing.s16),
+                              _section(
+                                context,
+                                '备注',
+                                _remarkCard(context, claim),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      _attachments(claim),
-                      if (claim.status == ExpenseClaimStatus.paid) ...[
-                        const SizedBox(height: UtenSpacing.s16),
-                        AttachmentSection(
-                          ownerType: 'EXPENSE_PAYMENT_PROOF',
-                          ownerId: claim.id,
-                          title: AppLocalizations.of(
-                            context,
-                          ).expenseFlowPaymentProofs,
-                          attachments: claim.paymentProofs,
-                          ownerCanUpload: false,
-                          ownerCanDelete: false,
-                          onChanged: () =>
-                              ref.invalidate(expenseDetailProvider(claim.id)),
-                        ),
-                      ],
-                      const SizedBox(height: UtenSpacing.s16),
-                      _section(
-                        context,
-                        '审批轨迹',
-                        Card(
-                          margin: EdgeInsets.zero,
-                          child: Padding(
-                            padding: const EdgeInsets.all(UtenSpacing.s16),
-                            child: ExpenseClaimTimeline(claim: claim),
-                          ),
-                        ),
-                      ),
-                      if (claim.remark != null &&
-                          claim.remark!.trim().isNotEmpty) ...[
-                        const SizedBox(height: UtenSpacing.s16),
-                        _section(context, '备注', _remarkCard(context, claim)),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
-            if (_acting)
-              const Positioned.fill(child: UtenBusyOverlay(title: '正在处理…')),
-          ],
-        ),
+          ),
+          if (_networkBusy)
+            Positioned.fill(
+              child: UtenBusyOverlay(
+                title: _busyTitle,
+                showDoNotLeaveHint: false,
+              ),
+            ),
+        ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
@@ -271,9 +423,15 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
             type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.delete_outline_rounded,
-            isLoading: _acting,
+            isLoading: _networkBusy,
             onPressed: _acting ? null : () => _confirmDelete(claim),
             child: const Text('删除'),
+          ),
+        if (isRejected)
+          UtenButton(
+            type: UtenButtonType.danger,
+            onPressed: _acting ? null : () => _confirmAbandon(claim),
+            child: const Text('放弃报销'),
           ),
         if (isDraft || isRejected)
           UtenButton(
@@ -290,7 +448,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
             key: const Key('expense-detail-submit'),
             size: UtenButtonSize.large,
             icon: isRejected ? Icons.replay_rounded : Icons.send_rounded,
-            isLoading: _acting,
+            isLoading: _networkBusy,
             onPressed: _acting
                 ? null
                 : () => _run((c) => '正在提交…', () => _submitForApproval(claim)),
@@ -301,7 +459,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
             type: UtenButtonType.secondary,
             size: UtenButtonSize.large,
             icon: Icons.undo_rounded,
-            isLoading: _acting,
+            isLoading: _networkBusy,
             onPressed: _acting
                 ? null
                 : () => _run((c) => '正在撤回…', () async {
@@ -310,7 +468,10 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
                       claim.id,
                       expectedVersion: claim.version,
                     );
-                    if (mounted) context.appSuccess('已撤回');
+                    if (mounted && _canPublishAction) {
+                      setState(() => _networkBusy = false);
+                      context.appSuccess('已撤回');
+                    }
                   }),
             child: const Text('撤回'),
           ),
@@ -319,34 +480,69 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   }
 
   Future<void> _confirmDelete(ExpenseClaim claim) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => UtenAlertDialog(
-        title: const Text('删除报销草稿？'),
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    await _run(
+      (c) => '正在删除…',
+      () async {
+        await deleteExpense(ref, claim.id, expectedVersion: claim.version);
+        if (mounted && _canPublishAction) {
+          setState(() => _networkBusy = false);
+          context.appSuccess('已删除');
+          // 返回列表（pop 优先保住栈下来源；深链无栈才归位报销列表）。
+          backTo(context, defaultPath: RouteName.expense);
+        }
+      },
+      confirm: () => UtenDialog.show(
+        context,
+        title: '删除报销草稿？',
         content: const Text('删除后无法恢复，请确认该草稿不再需要。'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('删除'),
-          ),
-        ],
+        confirmLabel: '删除',
+        danger: true,
+        waitForExit: true,
+        scopeBuilder: (_, child) => _protect(boundary, child),
       ),
     );
-    if (confirmed != true) return;
-    await _run((c) => '正在删除…', () async {
-      await deleteExpense(ref, claim.id, expectedVersion: claim.version);
-      if (mounted) {
-        context.appSuccess('已删除');
-        // 返回列表（pop 优先保住栈下来源；深链无栈才归位报销列表）。
-        backTo(context, defaultPath: RouteName.expense);
-      }
-    });
   }
+
+  Future<void> _confirmAbandon(ExpenseClaim claim) async {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    await _run(
+      (_) => '正在归档报销',
+      () async {
+        await abandonExpense(ref, claim.id, expectedVersion: claim.version);
+        if (!mounted || !_canPublishAction) return;
+        setState(() => _networkBusy = false);
+        context.replace('${RoutePath.expenseDetail(claim.id)}?history=1');
+        context.appSuccess('报销已放弃，原单号与历史记录已保留');
+      },
+      confirm: () => UtenDialog.show(
+        context,
+        title: '放弃这笔报销？',
+        content: const Text(
+          '此操作仅适用于已驳回且不再继续的本人申请。放弃后原单只读归档，原单号、票据和审批历史保留，不能再次提交。',
+        ),
+        confirmLabel: '放弃并归档',
+        danger: true,
+        waitForExit: true,
+        scopeBuilder: (_, child) => _protect(boundary, child),
+      ),
+    );
+  }
+
+  Widget _protect(SensitiveReadBoundary boundary, Widget child) =>
+      SensitiveContentBoundary(
+        boundary: boundary,
+        child: child,
+        invalidatedBuilder: (dialogContext) => UtenAlertDialog(
+          title: const Text('登录身份或权限已变化'),
+          actions: [
+            UtenButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
 
   // ---- 区块 -----------------------------------------------------------------
 
@@ -355,11 +551,20 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (title == '发票登记')
+              UtenFieldHintIcon(
+                info: AppLocalizations.of(context).expenseFlowInvoiceGuide,
+                compact: true,
+              ),
+          ],
         ),
         const SizedBox(height: UtenSpacing.s8),
         child,
@@ -394,6 +599,16 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
                 'features.expense.pages.expense_detail_page.ExpenseDetailPageState._itemsSection.1',
             key: const Key('expense-detail-items'),
             columns: _itemColumns,
+            platformBinding: claim.abandoned
+                ? PlatformTableBinding<ExpenseItem>(
+                    tableKey: 'expense.claim.items',
+                    scope: 'expense_claim_item',
+                    recordIdOf: (item) => item.id,
+                    snapshotOf: (item) => PlatformRowValues.fromJson(
+                      item.platformFields ?? {'recordId': item.id},
+                    ),
+                  )
+                : null,
             items: claim.items,
             facets: const {},
             nullCounts: const {},
@@ -494,8 +709,12 @@ class _HeroCard extends StatelessWidget {
         ],
       ),
       status: UtenStatusBadge(
-        label: claim.status.label,
-        type: _statusBadgeType(claim.status),
+        label: claim.progressLabel,
+        type: claim.abandoned
+            ? UtenStatusBadgeType.neutral
+            : claim.approvalRoutingStale
+            ? UtenStatusBadgeType.danger
+            : _statusBadgeType(claim.status),
       ),
       primary: [
         UtenSummaryField(

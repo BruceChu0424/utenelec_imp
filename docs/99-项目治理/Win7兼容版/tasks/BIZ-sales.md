@@ -118,9 +118,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`；`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`；`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`；`clients/windows_legacy/progress/evidence/employee-applications-20261103.json`。
 
-接续/限制：2026-10-31 新增销售负责人订单审核，原生 WPF 尚未迁移，不开放占位写入口。共享契约 contracts/sales-manager-review/v1.json；八个独立权限、两类认领、版本校验、驳回/反审核/批量/未知提交恢复均须迁移。详见 docs/99-项目治理/2026-10-31-销售负责人前置审核.md。；2026-11-01 审核队列新增 kind=all / HISTORY 与分页前全列表头筛选；UI 仅待审核/历史记录、首列状态，搜索与分类同高。合同见 sales-manager-review/v1.json queue。WPF 仍未迁移，不开放写入口。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-01 补充：Flutter/Web 订单审核队列接入 UtenCollapsingHeaderScrollView + primary 表格，流程提示及分类搜索先收起、表格置顶后内滚，未知提交提示保持常驻。手机公共触摸协调由独立任务处理；WPF 仍未迁移，不开放写入口。范围及回归见 docs/99-项目治理/2026-11-01-订单审核表格置顶接入.md；源码指纹由最终集成任务基于 canonical 源统一刷新。。
+接续/限制：2026-10-31 新增销售负责人订单审核，原生 WPF 尚未迁移，不开放占位写入口。共享契约 contracts/sales-manager-review/v1.json；八个独立权限、两类认领、版本校验、驳回/反审核/批量/未知提交恢复均须迁移。详见 docs/99-项目治理/2026-10-31-销售负责人前置审核.md。；2026-11-01 审核队列新增 kind=all / HISTORY 与分页前全列表头筛选；UI 仅待审核/历史记录、首列状态，搜索与分类同高。合同见 sales-manager-review/v1.json queue。WPF 仍未迁移，不开放写入口。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-01 补充：Flutter/Web 订单审核队列接入 UtenCollapsingHeaderScrollView + primary 表格，流程提示及分类搜索先收起、表格置顶后内滚，未知提交提示保持常驻。手机公共触摸协调由独立任务处理；WPF 仍未迁移，不开放写入口。范围及回归见 docs/99-项目治理/2026-11-01-订单审核表格置顶接入.md；源码指纹由最终集成任务基于 canonical 源统一刷新。；2026-11-03 报销/行政财务申请：新四级报销及四类申请、负责人本人回避、独立权限/徽章/付款与打印合同已变更；原生业务仍未迁移，保持原状态及 DoD。仅公共 read-scope 识别完成本机 x86/x64 fixture，不等于业务或目标机验收。合同见 clients/windows_legacy/progress/contracts/employee-applications-workflow.json。。
 
 ## W7-BIZ-139
 

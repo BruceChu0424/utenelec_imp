@@ -325,8 +325,9 @@ void main() {
     expect(find.textContaining('电子文件'), findsNWidgets(2));
     expect(find.text('报销人'), findsWidgets);
     expect(find.text('部门负责人'), findsOneWidget);
-    expect(find.text('财务审核'), findsOneWidget);
-    expect(find.text('批准人'), findsOneWidget);
+    expect(find.text('财务初核'), findsOneWidget);
+    expect(find.text('财务复核'), findsOneWidget);
+    expect(find.text('总经办批准'), findsOneWidget);
     expect(find.text('出纳'), findsOneWidget);
   });
 }

@@ -15,13 +15,9 @@
 //     顶栏「草稿」按钮进入单表，首列类别统一筛选五类钱流单据与资料草稿。
 //   · 报表区 10 张卡是浏览型入口，不挂任何计数。
 //   · 顶栏右上角挂本模块累计（业务审核、报销审批与钱流草稿之和）。
-//   · **本 hub 刻意一枚黄色「进行中」徽章都不挂, 顶栏也没有黄药丸**(ADR-100 §2.4):
-//     财务的活清一色是审批队列, 一张单要么还在等财务动手(红, 已经数了), 要么财务
-//     已经放行 / 已经退回 —— 球落到采购、仓库、销售那几张卡上, 由它们的在办数报出来。
-//     在钱流再数一遍就是跨卡双计。想给这里补黄色之前, 先回答「这批单在别的模块的
-//     黄数里出现过吗」; 答案是会, 所以不补。
-//     页**内**分段是另一回事: 分段计数永不进徽章入口, 销售订单确认页的「已驳回」段
-//     就挂黄色, 那是本页自己的进度指示, 不上卷。
+//   · 财务审批队列仍只计红色待办。供应商预付已登记真实付款、尚无合法入账记录时，
+//     applicationFinance 单一入口计黄色跟进；有合法记录且有独立关联权时转红。
+//     该跟进属于财务待入账，不把采购、销售等业务在途重复累计到财务。
 // 支票管理 = 账户 account_type=CHECK/FOREIGN_CHECK 的过滤视图（不单独模块），
 // 入口指向 /finance/checks（由用户在 app_router 接到 AccountPage(initialAccountTypeFilter:'CHECK')）。
 import 'dart:math' as math;
@@ -76,7 +72,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
     final canOpenExpenseConfirmation = canOpen(
       RoutePath.financeExpenseConfirmation,
     );
-    final canHandleExpense = canOpen('/expense/approval');
+    final canHandleExpense = canOpen('/approvals/FINANCE');
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) => canOpen(entry.location))
         .toList(growable: false);
@@ -166,13 +162,15 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                       ),
                     ),
                   if (canHandleExpense)
-                    _Entry(
+                    const _Entry(
                       icon: Icons.receipt_long_outlined,
-                      label: l10n.expenseFlowApprovalTitle,
-                      description: l10n.expenseFlowApprovalEntryDescription,
-                      location: '/expense/approval',
-                      badgeScope: const BadgeScope.entry(
-                        BadgeEntry.expenseFinance,
+                      label: '申请审批中心',
+                      description: '报销与付款申请按初核、复核、保管和支付权限分别办理。',
+                      location: '/approvals/FINANCE',
+                      badgeScope: BadgeScope.entries(
+                        todo: BadgeEntry.expenseFinance,
+                        inProgress: BadgeEntry.applicationFinance,
+                        additionalTodoEntries: {BadgeEntry.applicationFinance},
                       ),
                     ),
                 ]),

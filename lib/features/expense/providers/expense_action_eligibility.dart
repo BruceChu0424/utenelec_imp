@@ -19,8 +19,19 @@ final class ExpenseActionEligibility {
       employeeId != null &&
       employeeId!.trim().isNotEmpty;
   bool get canReview =>
-      resolved && boundary.permissions.contains(Perm.expenseApprove);
+      resolved &&
+      Perm.expenseApprovalPermissions.any(boundary.permissions.contains);
   bool get canPay => resolved && boundary.permissions.contains(Perm.expensePay);
+
+  bool _hasStagePermission(ExpenseClaim claim) => boundary.permissions.contains(
+    switch (claim.approvalStage) {
+      ExpenseApprovalStage.department => Perm.expenseApproveDepartment,
+      ExpenseApprovalStage.financeInitial => Perm.expenseApproveFinanceInitial,
+      ExpenseApprovalStage.financeReview => Perm.expenseApproveFinanceReview,
+      ExpenseApprovalStage.executive => Perm.expenseApproveExecutive,
+      null => Perm.expenseApprove,
+    },
+  );
 
   bool canReviewClaim(ExpenseClaim? claim) =>
       canReview &&
@@ -28,6 +39,10 @@ final class ExpenseActionEligibility {
       claim.id.isNotEmpty &&
       claim.applicantId.isNotEmpty &&
       claim.applicantId != employeeId &&
+      _hasStagePermission(claim) &&
+      (claim.canApprove ??
+          (claim.approvalStage == null &&
+              boundary.permissions.contains(Perm.expenseApprove))) &&
       (claim.status == ExpenseClaimStatus.submitted ||
           claim.status == ExpenseClaimStatus.reviewing);
 
@@ -36,6 +51,24 @@ final class ExpenseActionEligibility {
       boundary.permissions.contains(Perm.attachmentView) &&
       boundary.permissions.contains(Perm.attachmentDownload);
 
+  bool requiresVerifiedInvoices(ExpenseClaim claim) =>
+      claim.approvalStage != ExpenseApprovalStage.department;
+
+  bool canVerifyInvoice(ExpenseClaim? claim) =>
+      canInspectClaim(claim) &&
+      (claim!.approvalStage == null ||
+          claim.approvalStage == ExpenseApprovalStage.financeInitial ||
+          claim.approvalStage == ExpenseApprovalStage.financeReview);
+
+  bool _legacyPaymentClaim(ExpenseClaim claim) =>
+      claim.approvalRound == 0 &&
+      claim.approvalStage == null &&
+      !claim.events.any(
+        (event) =>
+            event.approvalRound > 0 ||
+            (event.approvalStage?.trim().isNotEmpty ?? false),
+      );
+
   /// Payment has its own authority and separation-of-duties contract.
   bool canPayClaim(ExpenseClaim? claim) =>
       canPay &&
@@ -43,7 +76,8 @@ final class ExpenseActionEligibility {
       claim.status == ExpenseClaimStatus.approved &&
       claim.applicantId.isNotEmpty &&
       claim.applicantId != employeeId &&
-      claim.approvedBy != employeeId;
+      claim.approvedBy != employeeId &&
+      (claim.canPay ?? _legacyPaymentClaim(claim));
 
   @override
   bool operator ==(Object other) =>

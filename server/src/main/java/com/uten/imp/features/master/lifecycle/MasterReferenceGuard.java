@@ -94,6 +94,7 @@ public class MasterReferenceGuard {
         STOCK_COUNT_REQUEST("还有待审核的库存盘点申请", "请先完成审核、驳回或取消盘点申请"),
         FINANCE_RECEIPT("还有未审核的收款单", "请先处理完这些收款单"),
         FINANCE_PAYMENT("还有未审核的付款单", "请先处理完这些付款单"),
+        BUSINESS_APPLICATION("存在供应商付款或预付申请", "请保留原供应商及申请关联"),
         RECEIVABLE("还有没收完的应收款", "请先收完或核销这些应收款"),
         PAYABLE("还有没结清的应付款", "请先付清或核销这些应付款"),
         SUPPLIER_CLAIM("还有没收回的供应商索赔款", "请先收回或核销这些索赔款"),

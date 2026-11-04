@@ -259,6 +259,7 @@ void main() {
       );
       expect(input.toJson(), {
         'title': '客户拜访',
+        'expenseKind': 'GENERAL',
         'remark': '上海',
         'items': [
           {

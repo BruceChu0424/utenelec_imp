@@ -41,7 +41,7 @@ class TaskClaimServiceTest {
     private com.uten.imp.application.port.ReviewTaskTargetLockPort procurementTargets;
     private TaskClaimService service;
 
-    private static final String TYPE = "EXPENSE_APPROVE";
+    private static final String TYPE = "PURCHASE_DECOMPOSE";
     private static final String KEY = "claim-uuid-1";
     private final UUID me = UUID.randomUUID();
     private final UUID other = UUID.randomUUID();
@@ -153,7 +153,7 @@ class TaskClaimServiceTest {
 
     @Test
     void oldWindowCannotRenewOrReleaseANewerClaimByTheSameEmployee() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         when(currentUser.requireEmployeeId()).thenReturn(me);
         TaskClaim replacement=activeClaim(me);
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE,KEY)).thenReturn(Optional.of(replacement));
@@ -226,7 +226,7 @@ class TaskClaimServiceTest {
 
     @Test
     void firstClaimSucceeds() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
                 .thenReturn(Optional.empty());
         TaskClaimService.TaskClaimView view = service.claim(TYPE, KEY);
@@ -239,7 +239,7 @@ class TaskClaimServiceTest {
 
     @Test
     void claimByOtherIsRejected() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
                 .thenReturn(Optional.of(activeClaim(other)));
         ApiException ex = assertThrows(ApiException.class, () -> service.claim(TYPE, KEY));
@@ -248,7 +248,7 @@ class TaskClaimServiceTest {
 
     @Test
     void claimingOwnActiveLeaseIsRecordedAsRenewNotNewClaim() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
                 .thenReturn(Optional.of(activeClaim(me)));
 
@@ -263,7 +263,7 @@ class TaskClaimServiceTest {
 
     @Test
     void heartbeatBeforeRenewalThresholdDoesNotWriteOrAudit() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         TaskClaim claim = activeClaim(me);
         claim.setLeaseUntil(OffsetDateTime.now().plusMinutes(20));
         when(currentUser.requireEmployeeId()).thenReturn(me);
@@ -279,7 +279,7 @@ class TaskClaimServiceTest {
 
     @Test
     void heartbeatInsideRenewalThresholdExtendsLeaseOnceWithoutExplicitAudit() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         TaskClaim claim = activeClaim(me);
         OffsetDateTime oldLease = OffsetDateTime.now().plusMinutes(5);
         claim.setLeaseUntil(oldLease);
@@ -301,7 +301,7 @@ class TaskClaimServiceTest {
         claim.setLeaseUntil(OffsetDateTime.now().plusMinutes(1));
         OffsetDateTime lease = claim.getLeaseUntil();
         OffsetDateTime heartbeat = claim.getLastHeartbeat();
-        for (String targetType : java.util.List.of("EXPENSE_APPROVE", "PURCHASE_DECOMPOSE",
+        for (String targetType : java.util.List.of("PURCHASE_DECOMPOSE", "PURCHASE_DECOMPOSE",
                 "SALES_ORDER_APPROVE", "FULFILLMENT_TASK_EDIT", "FULFILLMENT_TASK_APPROVE",
                 "SALES_ORDER_FINANCE_CONFIRM", "PROCUREMENT_FINANCE_APPROVE", "IQC_INSPECT")) {
             when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, KEY))
@@ -318,7 +318,7 @@ class TaskClaimServiceTest {
 
     @Test
     void havingPermissionDoesNotAllowRenewingAnotherEmployeesClaim() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         TaskClaim claim = activeClaim(other);
         claim.setLeaseUntil(OffsetDateTime.now().plusMinutes(1));
         OffsetDateTime lease = claim.getLeaseUntil();
@@ -423,7 +423,7 @@ class TaskClaimServiceTest {
 
     @Test
     void takeoverByCurrentOwnerIsRecordedAsManualRenewNotTakeover() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         TaskClaim mine = activeClaim(me);
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
                 .thenReturn(Optional.of(mine)).thenReturn(Optional.of(mine));
@@ -438,7 +438,7 @@ class TaskClaimServiceTest {
 
     @Test
     void takeoverIsAuditedOnlyWhenItActuallyReplacesAnotherOwner() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         TaskClaim theirs = activeClaim(other);
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
                 .thenReturn(Optional.of(theirs)).thenReturn(Optional.empty());
@@ -453,7 +453,7 @@ class TaskClaimServiceTest {
 
     @Test
     void takeoverWithoutActiveOwnerIsRecordedAsClaim() {
-        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(meUser.getPermissions()).thenReturn(Set.of("purchase_order:decompose"));
         when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
                 .thenReturn(Optional.empty()).thenReturn(Optional.empty());
 

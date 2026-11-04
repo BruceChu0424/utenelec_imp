@@ -5,6 +5,13 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BusinessMasterReferenceAccessTest {
+    @Test void supplierApplicationsSelectOnlyTheirRequiredReadOnlySupplierReferences(){
+        for(String permission:Set.of("application:apply:prepayment","application:apply:supplier_payment","application:apply")){
+            assertTrue(BusinessMasterReferenceAccess.allowed("supplier",Set.of(permission)));
+            for(String resource:Set.of("client","goods","account"))assertFalse(BusinessMasterReferenceAccess.allowed(resource,Set.of(permission)),resource);
+        }
+        assertFalse(BusinessMasterReferenceAccess.allowed("supplier",Set.of("application:apply:travel")));
+    }
     @Test void aReceiptOperationIncludesItsReadOnlyChoicesButNotFinanceAccounts() {
         var permissions = Set.of("warehouse_inbound:view", "warehouse_inbound:stock_in");
         for (String resource : Set.of("supplier", "goods", "warehouse", "unit", "department")) {

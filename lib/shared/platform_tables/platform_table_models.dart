@@ -163,6 +163,14 @@ class PlatformColumnCell {
     'columnId': columnId,
     'value': masked ? null : value,
   };
+  Map<String, dynamic> toJson() => {
+    'columnId': columnId,
+    'value': masked ? null : value,
+    'definition': definition.toJson(),
+    'masked': masked,
+    'persisted': persisted,
+    if (error != null) 'error': error,
+  };
 }
 
 class PlatformRowValues {
@@ -176,6 +184,12 @@ class PlatformRowValues {
   final int version;
   final bool canWrite;
   final List<PlatformColumnCell> cells;
+  Map<String, dynamic> toJson() => {
+    'recordId': recordId,
+    'version': version,
+    'canWrite': canWrite,
+    'cells': [for (final cell in cells) cell.toJson()],
+  };
   factory PlatformRowValues.fromJson(Map<String, dynamic> json) =>
       PlatformRowValues(
         recordId: json['recordId']?.toString() ?? '',

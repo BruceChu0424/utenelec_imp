@@ -144,7 +144,12 @@ namespace Uten.Legacy.Desktop.Features.Units
                     Snapshot(window, "unit-record-history-fixture.png");
                     var search = Field<TextBox>(window, "keyword"); search.Text = "保留的查询";
                     var dateEntry = Field<Button>(window, "dateRange");
-                    check(dateEntry.Content.ToString().StartsWith("选择日期 ", StringComparison.Ordinal), "history has a single date selection entry with selected range");
+                    check(Equals(dateEntry.Content, "近1个月"), "history shows compact recent calendar month label");
+                    check(dateEntry.ActualHeight == Field<Button>(window, "previous").ActualHeight,
+                        "date selection has the same measured height as ordinary buttons");
+                    check(ToolTipService.GetInitialShowDelay(dateEntry) == 0
+                        && System.Windows.Automation.AutomationProperties.GetHelpText(dateEntry).Contains("-"),
+                        "precise range has immediate hover and accessible disclosure without an icon");
                     var defaultQuery = (UnitHistoryQuery)typeof(UnitRecordHistoryWindow).GetMethod("Query", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(window, null);
                     var chinaToday = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).Date;
                     check(defaultQuery.DateFrom == chinaToday.AddMonths(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) && defaultQuery.DateTo == chinaToday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), "history defaults to recent calendar month in China wall time");
@@ -156,10 +161,13 @@ namespace Uten.Legacy.Desktop.Features.Units
                     }));
                     dateEntry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     check(rows.ItemsSource == null && search.Text == "保留的查询", "date selection invalidates old rows while retaining other filters");
+                    check(Equals(dateEntry.Content, "共2天") && Equals(((ToolTip)dateEntry.ToolTip).Content, "2026.10.01-2026.10.02"),
+                        "confirmed historical range shows compact duration and exact dates on hover");
                     Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); PumpUntil(() => rows.Items.Count == 1);
                     check(fixture.Handler.LastPath.Contains("dateFrom=2026-10-01") && fixture.Handler.LastPath.Contains("dateTo=2026-10-02"), "confirmed range uses unchanged server date filter keys");
                     var clearDate = Field<Button>(window, "clearDate");
-                    check(clearDate.Style == Application.Current.FindResource("Uten.CaptionButton") && clearDate.Visibility == Visibility.Visible, "date card uses the shared red circular clear button");
+                    check(Equals(clearDate.Content, "清除") && clearDate.Visibility == Visibility.Visible
+                        && clearDate.MinHeight == dateEntry.MinHeight, "date range clear is text-only and uses the ordinary button height");
                     clearDate.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     check(clearDate.Visibility == Visibility.Collapsed && Equals(dateEntry.Content, "选择日期") && rows.ItemsSource == null && search.Text == "保留的查询", "date clear removes both bounds and preserves unrelated filters");
                     Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); PumpUntil(() => rows.Items.Count == 1);

@@ -3,7 +3,7 @@
 // 2026-09-03 起全平台「历史记录/历史单据」范式：分类分段末尾的历史段被选中后，
 // 内容区顶部渲染本组件——
 //
-// - 两个矩形分段：「时间段」（点开居中的紧凑日期范围弹窗，选中后显示起止日期，
+// - 两个矩形分段：「时间段」（点开居中的紧凑日期范围弹窗，选中后显示折合时间，
 //   可反复点按调整范围）与「全部」（不限时间全量加载）；
 // - 默认近一个月（2026-11-03 用户口径；2026-10-04 曾改为默认「全部」，更早为
 //   默认不选）：页面进入历史段时以 [UtenHistoryTimeValue.lastMonth()]
@@ -19,10 +19,12 @@
 import 'package:flutter/material.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import '../../core/utils/date_range_defaults.dart';
+import '../../core/utils/date_range_display.dart';
 import 'uten_app_bar_action_scope.dart';
 import 'uten_segment_row.dart';
 
 import '../feedback/uten_date_range_picker.dart';
+import '../feedback/uten_date_range_tooltip.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 
@@ -87,7 +89,7 @@ class UtenHistoryTimeFilter extends StatelessWidget {
   /// 日期范围选择器标题。
   final String helpText;
 
-  /// 时间段胶囊未选时的文字（选中后显示起止日期）。
+  /// 时间段胶囊未选时的文字（选中后显示折合时间，悬停显示起止日期）。
   final String rangeLabel;
 
   /// 「全部」胶囊文字。
@@ -118,26 +120,39 @@ class UtenHistoryTimeFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final range = value.range;
+    final languageCode = Localizations.localeOf(context).languageCode;
     final rangeText = range == null
         ? rangeLabel
-        : '${ChinaDateTime.formatDate(range.start)} ~ '
-              '${ChinaDateTime.formatDate(range.end)}';
+        : compactDateRangeLabel(
+            from: range.start,
+            to: range.end,
+            languageCode: languageCode,
+          );
+    Widget withRangeTooltip(Widget child) => range == null
+        ? child
+        : UtenDateRangeTooltip(
+            message: dateRangeTooltip(
+              from: range.start,
+              to: range.end,
+              languageCode: languageCode,
+            ),
+            child: child,
+          );
     return UtenSegmentRow<_HistoryTimeAction>(
       showSelectedIcon: false,
+      showCompactIcon: false,
+      compactLabel: value.all ? allLabel : rangeText,
+      compactWrapper: value.all ? null : withRangeTooltip,
+      segmentWrapper: (segment, child) =>
+          segment.value == _HistoryTimeAction.range
+          ? withRangeTooltip(child)
+          : child,
       // Empty callback selection means re-tapping a selected action; the value
       // still never goes back to none, and an existing range opens for editing.
       emptySelectionAllowed: true,
       segments: [
-        ButtonSegment(
-          value: _HistoryTimeAction.range,
-          icon: const Icon(Icons.date_range_outlined, size: 16),
-          label: Text(rangeText),
-        ),
-        ButtonSegment(
-          value: _HistoryTimeAction.all,
-          icon: const Icon(Icons.all_inclusive_rounded, size: 16),
-          label: Text(allLabel),
-        ),
+        ButtonSegment(value: _HistoryTimeAction.range, label: Text(rangeText)),
+        ButtonSegment(value: _HistoryTimeAction.all, label: Text(allLabel)),
       ],
       selected: {
         if (range != null) _HistoryTimeAction.range,

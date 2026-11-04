@@ -295,7 +295,7 @@ void main() {
       expect(find.text('查询'), findsNothing);
       expect(find.text('清除'), findsOneWidget);
       expect(find.byType(UtenDateRangeSelectionButton), findsOneWidget);
-      expect(find.text('选择日期'), findsOneWidget);
+      expect(find.text('近1个月'), findsOneWidget);
       final expected = recentMonthDateRange();
       expect(
         repository.statementDateFrom,

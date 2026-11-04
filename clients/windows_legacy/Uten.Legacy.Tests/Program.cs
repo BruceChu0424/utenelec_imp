@@ -19,6 +19,16 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--session-lifecycle-contracts")
+                {
+                    var sessionChecks = typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "CoreContractChecks");
+                    sessionChecks.GetMethod("RunSessionLifecycle", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+                    RunUi(UiContractChecks.RunSessionLifecycle);
+                    int publishRetirement = PublishContractChecks.Run();
+                    Console.WriteLine("PASS session lifecycle: startup retirement, issuer logout, delayed/cancelled watch, automatic refresh, recent owned-input renewal, native close/minimize; process="
+                        + (Environment.Is64BitProcess ? "x64" : "x86") + "; publish=" + publishRetirement);
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--date-range-contracts")
                 {
                     int dates = RunUi(DateRangeDialogChecks.Run);

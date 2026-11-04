@@ -38,7 +38,8 @@ import java.util.UUID;
  * server-side session named by the token {@code sid} (ADR-110): a revoked session,
  * an idle session (longer than {@code session_idle_timeout_minutes} since the last
  * human request) or a session past its absolute lifetime is a 401. Human requests
- * refresh {@code last_seen_at} at most once per minute; requests the client sends
+ * refresh {@code last_seen_at} at most once per minute for normal idle limits,
+ * with a shorter throttle for very short configured limits; requests the client sends
  * while its user is idle (polling, timed refreshes, heartbeats; declared by the
  * {@link AutomaticRequestPolicy#HEADER} header) never extend a session.
  *
@@ -256,12 +257,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                 String idleTimeoutRaw,
                                 boolean automatic) {
         Instant now = sessions.now();
+        long idleMinutes = AuthSessionService.idleTimeoutMinutes(idleTimeoutRaw);
         AuthSessionService.Verdict verdict = AuthSessionService.evaluate(
-                session, AuthSessionService.idleTimeoutMinutes(idleTimeoutRaw), now);
+                session, idleMinutes, now);
         switch (verdict) {
             case ACTIVE -> {
                 if (!automatic) {
-                    sessions.touchIfDue(sessionId, session.lastSeenAt(), now);
+                    sessions.touchIfDue(sessionId, session.lastSeenAt(), now, idleMinutes);
                 }
                 return null;
             }

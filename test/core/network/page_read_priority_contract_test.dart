@@ -5,6 +5,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/interceptors/page_read_priority_interceptor.dart';
 
 void main() {
+  test('session wait cannot occupy the only foreground read slot', () async {
+    final adapter = _GatedAdapter();
+    final scheduler = PageReadPriorityInterceptor(maximumReads: 1);
+    final dio = Dio()..httpClientAdapter = adapter;
+    dio.interceptors.add(scheduler);
+    addTearDown(() {
+      scheduler.close();
+      dio.close(force: true);
+    });
+    final watch = dio.get<dynamic>('/auth/session/watch');
+    await _until(() => adapter.requests.length == 1);
+    final rows = dio.get<dynamic>('/warehouse/tasks');
+    await _until(() => adapter.requests.length == 2);
+    adapter.release('/warehouse/tasks');
+    await rows;
+    adapter.release('/auth/session/watch');
+    await watch;
+    expect(scheduler.timings, hasLength(1));
+  });
+
   test(
     'slow optional reads leave capacity for rows and counts, preserving queries',
     () async {

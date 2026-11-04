@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -17,6 +18,7 @@ using Uten.Legacy.Desktop;
 using Uten.Legacy.Desktop.Controls;
 using Uten.Legacy.Desktop.Features.Units;
 using Uten.Legacy.Desktop.Features.Goods;
+using Uten.Legacy.Desktop.Features.Publish;
 using Uten.Legacy.Core.Tests;
 
 namespace Uten.Legacy.Tests
@@ -59,7 +61,7 @@ namespace Uten.Legacy.Tests
             pendingStore.EnqueueRevocation(new StoredSession("refresh.fixture", "https://first.company.test/api", "first", "fixture-user"));
             using (var session = new SessionCoordinator(configuration, new NoNetworkHandler(), pendingStore))
             {
-                session.RestoreAsync(CancellationToken.None, waitForPendingRevocations: false).GetAwaiter().GetResult();
+                session.StartApplicationAsync(CancellationToken.None, waitForPendingRevocations: false).GetAwaiter().GetResult();
                 if (pendingStore.PendingRevocations().Count != 1 || session.IsAuthenticated)
                     throw new InvalidOperationException("Nonblocking startup must keep queued logout without restoring an identity.");
             }
@@ -127,7 +129,246 @@ namespace Uten.Legacy.Tests
             }
             UnitDraftAndMutationUi(configuration);
             OwnerCloseWaitsForDraft(configuration);
+            WindowCloseRetiresSession(configuration);
+            SessionWatchShowsOnlyForTheActiveOwner(configuration);
+            PublishRetirementPreservesLatestInput(configuration);
             GoodsCurrencyUi(configuration);
+        }
+
+        internal static void RunSessionLifecycle()
+        {
+            if (Application.Current == null)
+            {
+                var application = new App(); application.InitializeComponent();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            }
+            WindowCloseRetiresSession(new ClientConfiguration(new[] {
+                new ServerEndpoint("first", "第一测试服务器", "https://first.company.test/api") }, "first"));
+            SessionWatchShowsOnlyForTheActiveOwner(new ClientConfiguration(new[] {
+                new ServerEndpoint("first", "第一测试服务器", "https://first.company.test/api") }, "first"));
+            PublishRetirementPreservesLatestInput(new ClientConfiguration(new[] {
+                new ServerEndpoint("first", "第一测试服务器", "https://first.company.test/api") }, "first"));
+        }
+
+        private static void PublishRetirementPreservesLatestInput(ClientConfiguration configuration)
+        {
+            foreach (var blocked in new[] { false, true })
+            using (var state = new BusinessStateTestFixture())
+            {
+                var handler = new WatchUiHandler();
+                var store = new DpapiPublishDraftStore(System.IO.Path.Combine(state.RootDirectory, "publish"));
+                using (var session = new SessionCoordinator(configuration, handler, new MemoryStore()))
+                {
+                    session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                    var main = new MainWindow(session, configuration, true) { Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                    var view = new ClientReleasePublishView(session, store);
+                    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                    System.IO.FileStream locked = null; bool closed = false; main.Closed += (sender, args) => closed = true;
+                    try
+                    {
+                        main.Show(); Pump(main);
+                        typeof(MainWindow).GetMethod("ApplySession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly).Invoke(main, null);
+                        Pump(main);
+                        ((ContentControl)main.FindName("WorkspaceContent")).Content = view;
+                        PumpUntil(() => (bool)typeof(ClientReleasePublishView).GetField("ready", flags).GetValue(view), "Private native publish view must initialize its original-owner lease.");
+                        var notes = (TextBox)typeof(ClientReleasePublishView).GetField("releaseNotes", flags).GetValue(view);
+                        var save = typeof(ClientReleasePublishView).GetMethod("SaveDraft", flags);
+                        var lease = (ClientReleasePublishDraftLease)typeof(ClientReleasePublishView).GetField("lease", flags).GetValue(view);
+                        notes.Text = "previously saved"; save.Invoke(view, null);
+                        var path = System.IO.Path.Combine(state.RootDirectory, "publish", lease.NamespaceHash, lease.DraftId + ".dpapi");
+                        if (blocked) locked = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None);
+                        notes.Text = "  最新尚未经过防抖的发布说明  ";
+                        var watched = Task.Run(() => session.WatchSessionAsync(CancellationToken.None));
+                        PumpUntil(() => handler.Watches == 1, "Background watch must subscribe before replacement.");
+                        handler.WatchReply.SetResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                            "{\"status\":\"replaced\",\"code\":\"SESSION_REPLACED\",\"message\":\"fixture replacement\"}", Encoding.UTF8, "application/json") });
+                        PumpUntil(() => watched.IsCompleted && (bool)typeof(ClientReleasePublishView).GetField("disposed", flags).GetValue(view), "Background replacement must retire and dispose the original publish workspace on its dispatcher.");
+                        watched.GetAwaiter().GetResult();
+                        if (blocked)
+                        {
+                            main.Close();
+                            if (closed) throw new InvalidOperationException("Publish preservation failure must retain a global owner-close guard and the last input.");
+                            locked.Dispose(); locked = null;
+                            var guard = Application.Current.Windows.OfType<Window>().Single(item => item.Title == "发布草稿保全");
+                            var retry = FindVisual<Button>(guard, item => Equals(item.Content, "重试保全并关闭"));
+                            retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            for (int repeat = 0; repeat < 20; repeat++) retry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            if (retry.IsEnabled || !Application.Current.Windows.OfType<Window>().Any(item => item.Title == "正在保全发布草稿"))
+                                throw new InvalidOperationException("Native preservation retry must show its owned waiting dialog and guard repeat clicks while disk IO runs off the dispatcher.");
+                            PumpUntil(() => !Application.Current.Windows.OfType<Window>().Any(item => item.Title == "发布草稿保全"), "Retry must preserve the original lease before releasing its owner guard.");
+                        }
+                        var raw = store.Read(lease.NamespaceHash + "/" + lease.DraftId);
+                        var snapshot = ClientReleasePublishContract.ValidateAndRestore(raw);
+                        if ((string)snapshot.Context["releaseNotes"] != "  最新尚未经过防抖的发布说明  ")
+                            throw new InvalidOperationException("Real-time native retirement must retain the latest undebounced original-owner publish input.");
+                        handler.UserId = "different-publisher";
+                        session.LoginAsync("next", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                        var nextNamespace = ClientReleasePublishDraftLease.ComputeNamespaceHash(session.CurrentEndpoint.ApiBaseUrl, session.CurrentUser);
+                        if (store.List(nextNamespace).Count != 0 || store.Read(lease.NamespaceHash + "/" + lease.DraftId) != raw)
+                            throw new InvalidOperationException("Retired publish metadata must never migrate into or overwrite a new account namespace.");
+                    }
+                    finally
+                    {
+                        locked?.Dispose();
+                        typeof(ClientReleasePublishView).GetMethod("SaveDraft", flags).Invoke(view, null);
+                        Pump(main); if (!closed) main.Close(); view.Dispose();
+                    }
+                }
+            }
+        }
+
+        private static void SessionWatchShowsOnlyForTheActiveOwner(ClientConfiguration configuration)
+        {
+            var handler = new WatchUiHandler();
+            using (var session = new SessionCoordinator(configuration, handler, new MemoryStore()))
+            {
+                var window = new MainWindow(session, configuration) { Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                // Exercise the actual loaded native owner and its watch. Skip only the
+                // production update-outcome/profile startup reads in this private fixture.
+                window.Loaded -= (RoutedEventHandler)Delegate.CreateDelegate(typeof(RoutedEventHandler), window,
+                    typeof(MainWindow).GetMethod("OnLoaded", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly));
+                bool popupObserved = false;
+                var dismiss = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+                dismiss.Tick += (sender, args) =>
+                {
+                    var popup = Application.Current.Windows.OfType<Window>().FirstOrDefault(value => value.Title == "当前设备已下线");
+                    if (popup == null) return;
+                    popupObserved = true;
+                    var reason = FindVisual<TextBlock>(popup, value => value.Text.Contains("Android 测试设备"));
+                    if (reason == null) throw new InvalidOperationException("Native replacement popup must preserve the authoritative device name.");
+                    popup.Close();
+                };
+                try
+                {
+                    window.Show(); Pump(window);
+                    if (handler.Watches != 0 || session.IsAuthenticated)
+                        throw new InvalidOperationException("An untouched native login window must never start an authenticated watch or popup.");
+                    session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                    PumpUntil(() => handler.Watches == 1, "The native owner must start one watch after login without a manual refresh.");
+                    HumanActivityPulsesOnlyForRecentOwnedInput(window, handler);
+                    dismiss.Start();
+                    handler.WatchReply.SetResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                        "{\"status\":\"replaced\",\"code\":\"SESSION_REPLACED\",\"message\":\"账号已在 Android 测试设备登录，本设备已自动下线\"}", Encoding.UTF8, "application/json") });
+                    PumpUntil(() => popupObserved && !session.IsAuthenticated, "A server replacement must retire and notify the active native owner without a manual refresh.");
+                    if (((FrameworkElement)window.FindName("WorkspacePanel")).Visibility != Visibility.Collapsed)
+                        throw new InvalidOperationException("Native replacement must retire the previous workspace before displaying the notice.");
+                }
+                finally { dismiss.Stop(); window.Close(); }
+            }
+        }
+
+        private static void HumanActivityPulsesOnlyForRecentOwnedInput(MainWindow window, WatchUiHandler handler)
+        {
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+            var inputTime = typeof(MainWindow).GetField("lastHumanInput", flags);
+            var pulseMethod = typeof(MainWindow).GetMethod("PulseHumanActivityAsync", flags);
+            var recordMethod = typeof(MainWindow).GetMethod("RecordHumanInput", flags);
+            Func<Task> pulse = () => (Task)pulseMethod.Invoke(window, null);
+            Action<DependencyObject> wheelInput = target => InputManager.Current.ProcessInput(new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, 120)
+                { RoutedEvent = Mouse.PreviewMouseWheelEvent, Source = target });
+            var timer = (DispatcherTimer)typeof(MainWindow).GetField("activityPulse", flags).GetValue(window);
+            if (timer.Interval != TimeSpan.FromSeconds(30)) throw new InvalidOperationException("Native activity renewal must retain its 30-second cadence.");
+            inputTime.SetValue(window, 0L);
+            pulse().GetAwaiter().GetResult();
+            if (handler.ActivityPulses != 0) throw new InvalidOperationException("An idle native watch must never renew human activity.");
+            wheelInput(window);
+            pulse().GetAwaiter().GetResult();
+            if (handler.ActivityPulses != 1) throw new InvalidOperationException("Real InputManager mouse input in the owner must permit one human activity pulse.");
+            inputTime.SetValue(window, System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency * 31L);
+            pulse().GetAwaiter().GetResult();
+            if (handler.ActivityPulses != 1) throw new InvalidOperationException("Expired local input must never extend the server idle lifetime.");
+            var child = new Window { Owner = window, Content = new TextBox(), Width = 160, Height = 80, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+            var unrelated = new Window { Content = new TextBox(), Width = 160, Height = 80, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+            try
+            {
+                child.Show(); unrelated.Show();
+                inputTime.SetValue(window, 0L);
+                // A synthetic mouse report is retargeted to the physical pointer by WPF's
+                // input manager. Check explicit source ownership at the shared handler
+                // boundary, while the owner case above exercises actual ProcessInput.
+                recordMethod.Invoke(window, new object[] { new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, 120)
+                    { RoutedEvent = Mouse.PreviewMouseWheelEvent, Source = (DependencyObject)unrelated.Content } });
+                pulse().GetAwaiter().GetResult();
+                if (handler.ActivityPulses != 1) throw new InvalidOperationException("An unrelated native window must not renew this login.");
+                wheelInput((DependencyObject)child.Content);
+                handler.ActivityReply = new TaskCompletionSource<HttpResponseMessage>();
+                var pending = pulse();
+                for (int repeat = 0; repeat < 30; repeat++) pulse().GetAwaiter().GetResult();
+                if (handler.ActivityPulses != 2 || pending.IsCompleted)
+                    throw new InvalidOperationException("Owned-dialog input must renew once while rapid duplicate activity ticks remain single-flight.");
+                handler.ActivityReply.SetResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") });
+                PumpUntil(() => pending.IsCompleted, "The owned activity pulse must finish without losing its login scope.");
+                pending.GetAwaiter().GetResult(); handler.ActivityReply = null;
+            }
+            finally { child.Close(); unrelated.Close(); }
+        }
+
+        private sealed class WatchUiHandler : HttpMessageHandler
+        {
+            internal int Watches;
+            internal int ActivityPulses;
+            internal string UserId = "fixture-user";
+            internal TaskCompletionSource<HttpResponseMessage> ActivityReply;
+            internal readonly TaskCompletionSource<HttpResponseMessage> WatchReply = new TaskCompletionSource<HttpResponseMessage>();
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                var path = request.RequestUri.AbsolutePath;
+                if (path.EndsWith("/auth/session/watch")) { Interlocked.Increment(ref Watches); return WatchReply.Task; }
+                if (path.EndsWith("/auth/me"))
+                {
+                    if (request.Headers.Contains("X-Uten-Automatic") || request.Headers.Authorization?.Parameter != "access-watch-ui")
+                        throw new InvalidOperationException("A recent human activity pulse must use the current staff bearer without the automatic header.");
+                    Interlocked.Increment(ref ActivityPulses);
+                    if (ActivityReply != null) return ActivityReply.Task;
+                }
+                var body = path.EndsWith("/auth/login")
+                    ? "{\"accessToken\":\"access-watch-ui\",\"refreshToken\":\"refresh-watch-ui\",\"expiresIn\":900,\"user\":{\"id\":\"" + UserId + "\",\"loginAccount\":\"fixture\",\"superAdmin\":false,\"businessDatasetId\":\"11111111-1111-1111-1111-111111111111\",\"businessResetGeneration\":0,\"permissions\":[\"client_release:publish\"]}}"
+                    : path.EndsWith("/auth/logout") ? "{}" : path.EndsWith("/admin/client-releases") ? "[]" : "{\"metrics\":[],\"todos\":[]}";
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+            }
+        }
+
+        private static void WindowCloseRetiresSession(ClientConfiguration configuration)
+        {
+            var store = new MemoryStore();
+            var handler = new WindowSessionHandler();
+            using (var session = new SessionCoordinator(configuration, handler, store))
+            {
+                // Construct the real owner, but do not run startup/update-outcome disk reads.
+                var window = new MainWindow(session, configuration);
+                session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                window.WindowState = WindowState.Minimized;
+                if (!session.IsAuthenticated || store.Load() == null || handler.Logouts != 0)
+                    throw new InvalidOperationException("Minimizing the native owner must preserve its live login.");
+                window.Close();
+                if (session.IsAuthenticated || store.Load() != null || store.PendingRevocations().Count != 1)
+                    throw new InvalidOperationException("Closing the native owner must retire local login before the server reply.");
+                if (handler.Logouts != 1 || window.CloseSessionTask.IsCompleted)
+                    throw new InvalidOperationException("Normal native close must begin one issuer-bound revocation attempt.");
+                handler.LogoutReply.SetResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+                PumpUntil(() => window.CloseSessionTask.IsCompleted, "Closing must finish its acknowledged revocation.");
+                window.CloseSessionTask.GetAwaiter().GetResult();
+                if (store.PendingRevocations().Count != 0)
+                    throw new InvalidOperationException("Acknowledged native close must clear its exact queued revocation.");
+            }
+        }
+
+        private sealed class WindowSessionHandler : HttpMessageHandler
+        {
+            internal int Logouts;
+            internal readonly TaskCompletionSource<HttpResponseMessage> LogoutReply = new TaskCompletionSource<HttpResponseMessage>();
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                if (request.RequestUri.AbsolutePath.EndsWith("/auth/login"))
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                        "{\"accessToken\":\"access-window\",\"refreshToken\":\"refresh-window\",\"expiresIn\":900,"
+                        + "\"user\":{\"id\":\"fixture-user\",\"loginAccount\":\"fixture\",\"superAdmin\":false,\"permissions\":[]}}",
+                        Encoding.UTF8, "application/json") });
+                if (!request.RequestUri.AbsolutePath.EndsWith("/auth/logout") || request.Headers.Authorization != null)
+                    throw new InvalidOperationException("Native window close must send only its issuer-bound logout without bearer.");
+                Interlocked.Increment(ref Logouts);
+                return LogoutReply.Task;
+            }
         }
 
         private static void GoodsCurrencyUi(ClientConfiguration configuration)
@@ -248,6 +489,8 @@ namespace Uten.Legacy.Tests
                         if (intermediateClosed) throw new InvalidOperationException("An intermediate owned dialog must not bypass a preserving descendant.");
                         main.Close();
                         if (mainClosed) throw new InvalidOperationException("The real owner must not close while its editor is preserving a draft.");
+                        Task.Run(() => session.WatchSessionAsync(CancellationToken.None)).GetAwaiter().GetResult();
+                        if (session.IsAuthenticated) throw new InvalidOperationException("The background replacement watch must retire the draft owner's login.");
                         handler.UserId = "fixture-new-owner";
                         session.LoginAsync("fixture-new", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
                         Pump(main);
@@ -493,6 +736,7 @@ namespace Uten.Legacy.Tests
                         + "\",\"loginAccount\":\"fixture\",\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":[\"unit:view\",\"unit:create\",\"unit:edit\",\"unit:status\"],"
                         + "\"businessDatasetId\":\"00000000-0000-0000-0000-000000000001\",\"businessResetGeneration\":0}}";
                 else if (path.EndsWith("/auth/logout")) body = "{}";
+                else if (path.EndsWith("/auth/session/watch")) body = "{\"status\":\"replaced\",\"code\":\"SESSION_REPLACED\",\"message\":\"fixture replacement\"}";
                 else if (path == "/api/fixture-refresh" && RefreshOnce)
                 {
                     RefreshOnce = false;

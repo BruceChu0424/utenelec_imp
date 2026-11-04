@@ -10,6 +10,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
@@ -95,6 +96,70 @@ class SessionIdleEnforcementPostgresTest extends AuthSessionPostgresTestSupport 
 
         MvcResult afterLogout = me(employee.accessToken());
         assertEquals(401, afterLogout.getResponse().getStatus(), "未过期的访问令牌登出后立即失效");
+    }
+
+    @Test
+    void replacementReturnsOnExistingWatchWithoutAnotherOldDeviceRequestAndNeverRenewsIdle() throws Exception {
+        Employee employee = newEmployee(adminToken());
+        OffsetDateTime before = jdbc.queryForObject("""
+                SELECT s.last_seen_at FROM auth_sessions s JOIN users u ON u.id=s.user_id
+                WHERE u.login_account=? AND s.revoked_at IS NULL
+                """, OffsetDateTime.class, employee.loginAccount());
+        clock.advance(Duration.ofMinutes(2));
+        MvcResult waiting = mvc.perform(get("/api/auth/session/watch")
+                        .header("Authorization", "Bearer " + employee.accessToken()))
+                .andReturn();
+        assertTrue(waiting.getRequest().isAsyncStarted());
+        OffsetDateTime after = jdbc.queryForObject("""
+                SELECT s.last_seen_at FROM auth_sessions s JOIN users u ON u.id=s.user_id
+                WHERE u.login_account=? AND s.revoked_at IS NULL
+                """, OffsetDateTime.class, employee.loginAccount());
+        assertEquals(before, after, "被动监听即使不带Automatic头也不续期");
+
+        JsonNode next = login(employee.loginAccount(), EMPLOYEE_PASSWORD);
+
+        // No refresh, /me, click, or other request is sent by the old device.
+        waiting.getAsyncResult(2000);
+        MvcResult replaced = mvc.perform(asyncDispatch(waiting)).andReturn();
+        assertEquals(200, replaced.getResponse().getStatus(), body(replaced));
+        assertEquals("SESSION_REPLACED", json(replaced).path("code").asText());
+        assertEquals(200, me(next.path("accessToken").asText()).getResponse().getStatus());
+        assertEquals(401, me(employee.accessToken()).getResponse().getStatus());
+    }
+
+    @Test
+    void logoutUsingPreRotationRefreshClosesTheOriginalSessionAndCannotCloseTheNextLogin() throws Exception {
+        Employee employee = newEmployee(adminToken());
+        MvcResult rotated = mvc.perform(json(post("/api/auth/refresh"),
+                Map.of("refreshToken", employee.refreshToken()), null)).andReturn();
+        assertEquals(200, rotated.getResponse().getStatus(), body(rotated));
+        MvcResult closed = mvc.perform(json(post("/api/auth/logout"),
+                Map.of("refreshToken", employee.refreshToken()), null)).andReturn();
+        assertEquals(200, closed.getResponse().getStatus());
+        assertEquals(401, me(json(rotated).path("accessToken").asText()).getResponse().getStatus());
+        JsonNode next = login(employee.loginAccount(), EMPLOYEE_PASSWORD);
+        mvc.perform(json(post("/api/auth/logout"), Map.of("refreshToken", employee.refreshToken()), null));
+        assertEquals(200, me(next.path("accessToken").asText()).getResponse().getStatus());
+    }
+
+    @Test
+    void oneMinuteIdleLimitKeepsRepeatedHumanActivityAliveWithHeartbeatJitterThenStillExpires() throws Exception {
+        Employee employee = newEmployee(adminToken());
+        jdbc.update("UPDATE system_settings SET value='1' WHERE key='session_idle_timeout_minutes'");
+        try {
+            for (int round = 0; round < 12; round++) {
+                // A fixed 60s write throttle skips the first human heartbeat and
+                // makes a slightly late second heartbeat expire an active user.
+                clock.advance(Duration.ofMillis(round % 2 == 0 ? 29_900 : 30_200));
+                assertEquals(200, automaticMe(employee).getResponse().getStatus(), "watch-like automatic check " + round);
+                MvcResult human = me(employee.accessToken());
+                assertEquals(200, human.getResponse().getStatus(), "human activity round " + round + ": " + body(human));
+            }
+            clock.advance(Duration.ofSeconds(61));
+            assertEquals(401, automaticMe(employee).getResponse().getStatus(), "没有真人活动仍按1分钟退出");
+        } finally {
+            jdbc.update("UPDATE system_settings SET value='30' WHERE key='session_idle_timeout_minutes'");
+        }
     }
 
     @Test

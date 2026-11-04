@@ -1,17 +1,17 @@
-// 登录在线心跳（不渲染，app 根常驻）。
-//
-// 单设备顶号天然是「懒感知」：被顶设备要等下一次人为请求才会撞上 401，人不在场时
-// 界面就一直停在原地。本心跳在员工登录期间每 [interval] 轻探一次 /auth/me——请求
-// 经 AutomaticRequestInterceptor 打标（用户不在场时为自动请求，不续期服务端会话，
-// ADR-110），因此不会把空闲超时变成摆设。被顶/空闲超时/改密吊销都在一个心跳周期内
-// 被 401 → 刷新拒绝 → SessionEventBus.expire 的既有链路送回登录页，无需新增协议。
+// One cancellable long-poll per visible session. A committed replacement wakes
+// the old device immediately; legacy servers retain a short automatic probe.
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
-import '../../core/network/api_endpoints.dart';
+import '../../core/network/api_exception.dart';
+import '../../core/network/connection_recovery.dart';
+import '../../core/network/server_config.dart';
+import '../../core/network/user_activity.dart';
+import '../../core/security/secure_storage.dart';
 import 'session_provider.dart';
 
 class SessionKeepaliveHost extends ConsumerStatefulWidget {
@@ -22,47 +22,159 @@ class SessionKeepaliveHost extends ConsumerStatefulWidget {
       _SessionKeepaliveHostState();
 }
 
-class _SessionKeepaliveHostState extends ConsumerState<SessionKeepaliveHost> {
-  static const interval = Duration(seconds: 30);
-
-  Timer? _timer;
+class _SessionKeepaliveHostState extends ConsumerState<SessionKeepaliveHost>
+    with WidgetsBindingObserver {
+  Timer? _retry;
+  Timer? _activityTimer;
+  bool _probingActivity = false;
+  CancelToken? _cancellation;
+  int _run = 0;
+  DateTime? _legacyUntil;
 
   @override
   void initState() {
     super.initState();
-    ref.listenManual(sessionProvider.select((s) => s.isLoggedIn), (
-      previous,
-      next,
-    ) {
-      _sync(next);
+    WidgetsBinding.instance.addObserver(this);
+    ref.listenManual(sessionProvider, (previous, next) {
+      if (previous == null || !next.isSameIdentity(previous)) _restart();
     });
-    _sync(ref.read(sessionProvider).isLoggedIn);
+    ref.listenManual(apiBaseUrlProvider, (_, next) {
+      _legacyUntil = null;
+      _restart();
+    });
+    ref.listenManual(
+      connectionRecoveryProvider.select((value) => value.recoveryEpoch),
+      (previous, next) {
+        if (next > (previous ?? 0)) _restart();
+      },
+    );
+    _restart();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Minimize/background never logs out. Resume reconnects immediately instead
+    // of waiting for a suspended socket or retry timer to expire.
+    if (state == AppLifecycleState.resumed) _restart();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    ++_run;
+    _retry?.cancel();
+    _activityTimer?.cancel();
+    _cancellation?.cancel('Session observer disposed');
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  void _sync(bool loggedIn) {
-    if (loggedIn) {
-      // 登录刚成功不必立即探测，从第一个完整周期开始。
-      _timer ??= Timer.periodic(interval, (_) => _probe());
-    } else {
-      _timer?.cancel();
-      _timer = null;
+  void _restart() {
+    final run = ++_run;
+    _retry?.cancel();
+    _activityTimer?.cancel();
+    _cancellation?.cancel('Session observer restarted');
+    if (ref.read(sessionProvider).status != AuthStatus.unauthenticated) {
+      // Keep the existing human-activity lease: typing locally still counts as
+      // use, while passive session observation must never keep an idle user in.
+      _activityTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (!UserActivity.userIsIdle) unawaited(_recordActivity(run));
+      });
+      unawaited(_watch(run));
     }
   }
 
-  Future<void> _probe() async {
-    if (!mounted) return;
+  Future<void> _recordActivity(int run) async {
+    if (_probingActivity || !mounted || run != _run) return;
+    _probingActivity = true;
     try {
-      // 401 时 AuthInterceptor 会走刷新 → 明确拒绝 → expire 登出链路；探测本身的
-      // 结果不需要，网络故障静默放过（连接横幅自有其机制）。
-      await ref.read(apiClientProvider).get(ApiEndpoints.authMe);
+      final client = ref.read(apiClientProvider);
+      final scope = await client.captureRequestScope(
+        isCurrent: () =>
+            mounted &&
+            run == _run &&
+            ref.read(sessionProvider).status != AuthStatus.unauthenticated,
+      );
+      await scope.run(() => client.get('/auth/me'));
     } catch (_) {
-      // 心跳只负责触发感知，不承担错误呈现。
+      // Definitive rejection follows the ordinary auth interceptor; unavailable
+      // networking is never a reason to discard the current form/session.
+    } finally {
+      _probingActivity = false;
+    }
+  }
+
+  Future<void> _watch(int run) async {
+    if (!mounted || run != _run) return;
+    final owner = ref.read(sessionProvider.notifier);
+    final epoch = owner.requestIntentEpoch;
+    bool current() =>
+        mounted &&
+        run == _run &&
+        identical(owner, ref.read(sessionProvider.notifier)) &&
+        owner.requestIntentEpoch == epoch &&
+        ref.read(sessionProvider).status != AuthStatus.unauthenticated;
+    final cancellation = CancelToken();
+    _cancellation = cancellation;
+    var retryAfter = const Duration(milliseconds: 250);
+    try {
+      final client = ref.read(apiClientProvider);
+      final scope = await client.captureRequestScope(isCurrent: current);
+      final observed = await ref
+          .read(secureStorageProvider)
+          .getAuthTokenSnapshot();
+      if (!current() || !observed.hasTokens) return;
+      final legacy = _legacyUntil?.isAfter(DateTime.now()) == true;
+      final reply = await scope.run(
+        () => client.watchSession(
+          cancelToken: cancellation,
+          fallbackProbe: legacy,
+        ),
+      );
+      if (!current()) return;
+      if (legacy) {
+        retryAfter = const Duration(seconds: 3);
+      } else {
+        final status = reply['status'];
+        if (status != 'active' && status != 'replaced' && status != 'expired') {
+          throw const FormatException('Invalid session watch response');
+        }
+        if (status != 'active') {
+          final code = reply['code'];
+          if (status == 'replaced' && code != 'SESSION_REPLACED' ||
+              status == 'expired' && code != 'UNAUTHORIZED') {
+            throw const FormatException('Inconsistent session watch response');
+          }
+          final message = reply['message'];
+          await owner.acceptSessionWatchResult(
+            observed: observed,
+            observedIntentEpoch: epoch,
+            status: status as String,
+            message: message is String ? message : null,
+          );
+        }
+      }
+    } on ApiException catch (error) {
+      if (error.httpStatus == 404 || error.httpStatus == 405) {
+        _legacyUntil = DateTime.now().add(const Duration(minutes: 1));
+        retryAfter = Duration.zero;
+      } else {
+        retryAfter = const Duration(seconds: 3);
+      }
+    } catch (_) {
+      // Network failures cannot revoke a session. Reconnect without replaying
+      // business writes or presenting a false replacement notice.
+      retryAfter = const Duration(seconds: 3);
+    } finally {
+      if (identical(_cancellation, cancellation)) _cancellation = null;
+      if (current()) {
+        _retry = Timer(retryAfter, () => unawaited(_watch(run)));
+      } else if (mounted &&
+          run == _run &&
+          ref.read(sessionProvider).status != AuthStatus.unauthenticated) {
+        // An intent can advance without changing the visible user (for example
+        // entering impersonation mode or a failed password change).
+        _retry = Timer(Duration.zero, _restart);
+      }
     }
   }
 

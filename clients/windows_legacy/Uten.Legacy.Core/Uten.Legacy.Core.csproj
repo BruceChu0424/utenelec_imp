@@ -37,6 +37,7 @@
     <Compile Include="CompanyCertificatePolicy.cs" />
     <Compile Include="SessionStore.cs" />
     <Compile Include="SessionCoordinator.cs" />
+    <Compile Include="SessionWatchContract.cs" />
     <Compile Include="MutationModels.cs" />
     <Compile Include="MutationCoordinator.cs" />
     <Compile Include="MutationWirePermit.cs" />

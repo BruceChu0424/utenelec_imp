@@ -37,6 +37,7 @@ class PageReadPriorityInterceptor extends Interceptor {
         options.method == 'GET' ||
         (options.method == 'POST' && options.path.endsWith('/facets'));
     if (!read ||
+        options.path.endsWith('/auth/session/watch') ||
         options.responseType == ResponseType.stream ||
         options.responseType == ResponseType.bytes) {
       handler.next(options);

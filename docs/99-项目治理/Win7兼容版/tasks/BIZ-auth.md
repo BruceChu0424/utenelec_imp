@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/login-session-lifecycle-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 登录会话生命周期局部修复：新进程不再用旧 refresh 自动恢复登录；正常主窗关闭先经草稿保护并立即退役本机会话，原 issuer 注销有界等待及持久重试，最小化保留登录；已登录窗口新增自动 session/watch 与缺接口时的 3 秒 me 回退，权威替换统一按登录代次清理并显示设备原因，不等人工刷新。x86/x64 Debug 零警告及完整离线 Core/业务/实际 WPF UI/Updater runner 通过；Win7 真机、完整 ERP、正式交付未验，原状态保留。W7-BIZ-016 仍未完整迁移；存量原生登录壳提示/等待按钮全面整改不在本证据完成范围。见 E-LOGIN-SESSION-LIFECYCLE-WPF-20261103。；2026-11-03 真人活动续期补齐：主窗口生命周期订阅 InputManager.PreProcessInput 并在退出时解除；仅本窗口及 owned dialogs 的键盘/IME/鼠标/触摸/笔输入记录时间，最近 30 秒有输入才按 30 秒节拍以当前 staff /auth/me 续期，复用同一认证入口并保持单飞；空闲时 watch 和兼容探测不续期。不保存输入内容。双架构定向合同覆盖实际 InputManager、所属/非所属窗口、过期输入和快速重复 tick；完整回归准确结果见同一回执，原工作包状态不变。；2026-11-03 最终原生局部回归：双架构 /warnaserror 构建、定向合同和完整离线 runner 均通过（Publish113，含 prepare/upload/publish 晚成功/失败六组）。实际发布页后台 watch 下线仍保全防抖间隙最新输入，存储锁定时阻止主窗口关闭，重试使用自有等待窗/防重复/后台 I/O；原 lease 不串新 owner，已发单位写的 Unknown 原编号/正文及草稿保留；会话监听异常隔离不阻断其他清理和 SessionEnded。单位/导出/草稿/inline/发布与更新完整既有套件通过；Win7 真机与完整 ERP 未验，原状态保留。。
 
 ## W7-BIZ-017
 

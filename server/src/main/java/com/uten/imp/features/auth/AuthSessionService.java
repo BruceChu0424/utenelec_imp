@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -17,6 +19,8 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -24,14 +28,14 @@ import java.util.UUID;
  * 服务端会话 (auth_sessions) 的唯一读写入口 (ADR-110)。
  *
  * <p>会话在登录时开启, 绝对期限从登录时刻起算 (系统设置「登录保持时长」), 刷新轮换不延长;
- * 最后活动时间只由人为请求更新且最多 60 秒一次; 登出、改密、重置密码、账号状态变动 (锁定/停用/启用/
+ * 最后活动时间只由人为请求更新, 常规每 60 秒至多一次, 短空闲阈值相应缩短; 登出、改密、重置密码、账号状态变动 (锁定/停用/启用/
  * 解锁/离职/复职)、改登录手机号、远程访问变动、刷新令牌被重放、再认证锁定时吊销。访问令牌的 sid 指向本表, 过滤器每个请求按同一条 SQL 核对账号与会话。</p>
  */
 @Slf4j
 @Service
 public class AuthSessionService {
 
-    /** last_seen_at 的最小更新间隔: 把「每个请求一次写」压到「每分钟至多一次写」。 */
+    /** 常规 last_seen_at 更新间隔; 短空闲阈值时按其三分之一缩短, 给心跳调度留余量。 */
     public static final Duration TOUCH_INTERVAL = Duration.ofSeconds(60);
 
     public static final String REASON_LOGOUT = "logout";
@@ -48,6 +52,15 @@ public class AuthSessionService {
     private final NamedParameterJdbcTemplate jdbc;
     private final SystemSettingsService settings;
     private final Clock clock;
+    private ApplicationEventPublisher events = event -> { };
+
+    @Autowired
+    void setEvents(ApplicationEventPublisher events) {
+        this.events = events;
+    }
+
+    /** Delivered only after the login transaction commits; contains no credentials. */
+    public record ReplacedSessions(List<UUID> sessionIds, String device) { }
 
     public AuthSessionService(NamedParameterJdbcTemplate jdbc, SystemSettingsService settings, Clock clock) {
         this.jdbc = jdbc;
@@ -111,17 +124,51 @@ public class AuthSessionService {
 
     /** 单设备顶号：撤销同一主体的其余会话，保留刚开的这台，并记录顶号来源设备。 */
     private void revokeOthers(String subjectColumn, UUID subjectId, UUID keepSid, String reason, String device) {
-        jdbc.update("""
+        List<UUID> replaced = jdbc.query("""
                 UPDATE auth_sessions SET revoked_at = :now, revoked_reason = :reason,
                        replaced_by_device = :device
                 WHERE %s = :subject AND sid <> :keep AND revoked_at IS NULL
+                RETURNING sid
                 """.formatted(subjectColumn),
                 new MapSqlParameterSource()
                         .addValue("subject", subjectId)
                         .addValue("keep", keepSid)
                         .addValue("now", ts(now()))
                         .addValue("reason", reason)
-                        .addValue("device", device));
+                        .addValue("device", device),
+                (rs, rowNum) -> rs.getObject("sid", UUID.class));
+        if (!replaced.isEmpty()) {
+            try {
+                events.publishEvent(new ReplacedSessions(List.copyOf(replaced), device));
+            } catch (RuntimeException failure) {
+                // Notification availability cannot roll back a valid login. The
+                // authoritative revoked rows are also reconciled by the watcher.
+                log.warn("Session replacement notification unavailable: {}", failure.getClass().getSimpleName());
+            }
+        }
+    }
+
+    /** Bounded, read-only watch reconciliation. A sid is valid only for its captured owner. */
+    public Map<UUID, RefreshVerdict> evaluateStaffWatches(Map<UUID, UUID> owners) {
+        if (owners.isEmpty()) return Map.of();
+        Map<UUID, RefreshVerdict> results = new HashMap<>();
+        Instant checkedAt = now();
+        long idle = idleTimeoutMinutes();
+        jdbc.query("""
+                SELECT sid, user_id, last_seen_at, absolute_expires_at, revoked_at,
+                       revoked_reason, replaced_by_device
+                FROM auth_sessions WHERE sid IN (:ids)
+                """, new MapSqlParameterSource("ids", owners.keySet()), rs -> {
+            UUID sid = rs.getObject("sid", UUID.class);
+            if (!java.util.Objects.equals(owners.get(sid), rs.getObject("user_id", UUID.class))) return;
+            results.put(sid, new RefreshVerdict(
+                    evaluate(new SessionFacts(
+                            instant(rs.getObject("last_seen_at", OffsetDateTime.class)),
+                            instant(rs.getObject("absolute_expires_at", OffsetDateTime.class)),
+                            instant(rs.getObject("revoked_at", OffsetDateTime.class))), idle, checkedAt),
+                    rs.getString("revoked_reason"), rs.getString("replaced_by_device")));
+        });
+        return results;
     }
 
     private OpenedSession open(String subjectColumn, UUID subjectId, String deviceInfo) {
@@ -299,11 +346,14 @@ public class AuthSessionService {
     }
 
     /**
-     * 人为请求续期: 距上次记录已满 {@link #TOUCH_INTERVAL} 才写。条件更新保证并发请求只写一次。
+     * 人为请求续期: 常规满 {@link #TOUCH_INTERVAL} 才写; 最短空闲配置为 1 分钟时每 20 秒可写,
+     * 避免 30 秒活动心跳在第 60 秒因调度抖动先撞上过期。条件更新保证并发请求只写一次。
      * 失败只记日志 (例如云端主库暂不可写), 不影响本次请求。
      */
-    public void touchIfDue(UUID sid, Instant lastSeenAt, Instant now) {
-        if (lastSeenAt != null && lastSeenAt.plus(TOUCH_INTERVAL).isAfter(now)) {
+    public void touchIfDue(UUID sid, Instant lastSeenAt, Instant now, long idleMinutes) {
+        Duration idleFraction = Duration.ofMinutes(Math.max(1, idleMinutes)).dividedBy(3);
+        Duration interval = idleFraction.compareTo(TOUCH_INTERVAL) < 0 ? idleFraction : TOUCH_INTERVAL;
+        if (lastSeenAt != null && lastSeenAt.plus(interval).isAfter(now)) {
             return;
         }
         try {
@@ -317,7 +367,7 @@ public class AuthSessionService {
                     new MapSqlParameterSource()
                             .addValue("sid", sid)
                             .addValue("now", ts(now))
-                            .addValue("due", ts(now.minus(TOUCH_INTERVAL))));
+                            .addValue("due", ts(now.minus(interval))));
         } catch (RuntimeException unavailable) {
             log.warn("会话最后活动时间更新失败 sid={}: {}", sid, unavailable.getMessage());
         }

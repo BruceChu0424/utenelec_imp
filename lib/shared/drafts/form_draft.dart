@@ -60,6 +60,7 @@ const dailyReportCreateReceiptKey = '_dailyReportCreateReceipt';
 const dailyReportCreateStateKey = '_dailyReportCreateState';
 const dailyReportReadRecoveryOnlyKey = '_dailyReportReadRecoveryOnly';
 const formDraftUnknownSubmissionKey = '_formDraftHasUnknownSubmission';
+const formDraftRetirementConflictKey = '_formDraftRetirementConflict';
 const formDraftUnknownSubmissionMessage = '提交结果待核对，请先核对提交，原记录不能删除';
 
 bool _isFqcDraftRoute(String route) {

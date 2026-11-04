@@ -373,14 +373,15 @@ class JwtAuthorizationVersionTest {
         verify(sessions, never()).touchIfDue(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyLong());
 
         SecurityContextHolder.clearContext();
         MockHttpServletRequest human = bearerRequest("current-token");
         human.setMethod("GET");
         human.setRequestURI("/api/admin/server-status");
         filter.doFilter(human, new MockHttpServletResponse(), mock(FilterChain.class));
-        verify(sessions).touchIfDue(SESSION, NOW.minusSeconds(120), NOW);
+        verify(sessions).touchIfDue(SESSION, NOW.minusSeconds(120), NOW, 30);
     }
 
     private void assertStructuredServiceUnavailable(MockHttpServletResponse response)

@@ -11,6 +11,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/interceptors/step_up_interceptor.dart';
 import 'package:uten_imp/core/network/step_up_coordinator.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 
 void main() {
   void Function()? unregister;
@@ -241,6 +242,119 @@ void main() {
     await expectation;
     expect(adapter.sent, hasLength(1));
   });
+
+  test('模拟身份中的被动watch保留已缓存再认证且不携带凭证', () async {
+    final coordinator = StepUpCoordinator();
+    var prompts = 0;
+    coordinator.register(() async {
+      prompts++;
+      return 'target-proof';
+    });
+    final adapter = _Adapter((options) {
+      if (options.path == '/auth/session/watch') {
+        return _json(200, {'status': 'active'});
+      }
+      return options.headers[StepUpInterceptor.header] == 'target-proof'
+          ? _json(200, {'ok': true})
+          : _json(403, {'code': 'REAUTH_REQUIRED'});
+    });
+    final dio = _impersonatedDio(adapter, coordinator);
+    await dio.put<dynamic>('/admin/system-settings');
+    for (var index = 0; index < 3; index++) {
+      await dio.get<dynamic>(
+        '/auth/session/watch',
+        options: Options(headers: {StepUpInterceptor.header: 'target-proof'}),
+      );
+    }
+    expect(coordinator.cachedToken, 'target-proof');
+    expect(
+      adapter.sent
+          .where((item) => item.path == '/auth/session/watch')
+          .every((item) => item.headers[StepUpInterceptor.header] == null),
+      isTrue,
+    );
+    await dio.put<dynamic>('/admin/system-settings');
+    expect(prompts, 1);
+    expect(adapter.sent, hasLength(6));
+    dio.close(force: true);
+  });
+
+  test('模拟身份正在再认证时watch不作废等待中的密码结果', () async {
+    final coordinator = StepUpCoordinator();
+    final promptStarted = Completer<void>();
+    final passwordResult = Completer<String?>();
+    var prompts = 0;
+    coordinator.register(() {
+      prompts++;
+      promptStarted.complete();
+      return passwordResult.future;
+    });
+    final adapter = _Adapter((options) {
+      if (options.path == '/auth/session/watch') {
+        return _json(200, {'status': 'active'});
+      }
+      return options.headers[StepUpInterceptor.header] == 'accepted-proof'
+          ? _json(200, {'ok': true})
+          : _json(403, {'code': 'REAUTH_REQUIRED'});
+    });
+    final dio = _impersonatedDio(adapter, coordinator);
+    final write = dio.put<dynamic>('/admin/system-settings');
+    await promptStarted.future;
+    await dio.get<dynamic>('/auth/session/watch');
+    passwordResult.complete('accepted-proof');
+    expect((await write).statusCode, 200);
+    expect(coordinator.cachedToken, 'accepted-proof');
+    expect(prompts, 1);
+    expect(
+      adapter.sent.where((item) => item.path != '/auth/session/watch'),
+      hasLength(2),
+    );
+    dio.close(force: true);
+  });
+
+  test('watch误返回再认证错误也不弹框、不重发、不清业务凭证', () async {
+    final coordinator = StepUpCoordinator();
+    var prompts = 0;
+    coordinator.register(() async {
+      prompts++;
+      return 'business-proof';
+    });
+    coordinator.bindIdentity(_identity('/business'));
+    await coordinator.obtain();
+    final adapter = _Adapter((_) => _json(403, {'code': 'REAUTH_REQUIRED'}));
+    final dio = _impersonatedDio(adapter, coordinator);
+    await expectLater(
+      dio.get<dynamic>('/auth/session/watch'),
+      throwsA(isA<DioException>()),
+    );
+    expect(prompts, 1);
+    expect(coordinator.cachedToken, 'business-proof');
+    expect(adapter.sent, hasLength(1));
+    dio.close(force: true);
+  });
+}
+
+AuthenticatedRequestIdentity _identity(String path) =>
+    AuthenticatedRequestIdentity(
+      baseUrl: 'https://erp.example.test/api',
+      lineage: 'staff-session',
+      intent: 4,
+      impersonationLineage: path == '/auth/session/watch'
+          ? null
+          : 'target-lineage',
+    );
+
+Dio _impersonatedDio(_Adapter adapter, StepUpCoordinator coordinator) {
+  final dio = Dio(BaseOptions(baseUrl: 'https://erp.example.test/api'));
+  dio.httpClientAdapter = adapter;
+  dio.interceptors.add(
+    StepUpInterceptor(
+      dio,
+      coordinator: coordinator,
+      identity: (options) => _identity(options.path),
+    ),
+  );
+  return dio;
 }
 
 Dio _dio(_Adapter adapter) {

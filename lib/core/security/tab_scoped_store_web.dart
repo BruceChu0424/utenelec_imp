@@ -35,6 +35,8 @@ class _SessionStorageTabScopedStore implements TabScopedStore {
 TabScopedStore? createBrowserTabScopedStore() =>
     const _SessionStorageTabScopedStore();
 
+bool isProcessSessionScope(TabScopedStore store) => false;
+
 /// Web 端会话记录一律走 sessionStorage；[storage] 参数仅为与非 Web 工厂
 /// 签名一致（Web 上不参与会话记录落盘，仍承载账号历史/撤销队列等共享键）。
 TabScopedStore defaultSessionScopeStore(FlutterSecureStorage storage) =>

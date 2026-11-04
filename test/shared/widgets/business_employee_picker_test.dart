@@ -291,22 +291,18 @@ void main() {
         find.byKey(const Key('uten-employee-picker-candidates')),
       );
       expect(table.items, hasLength(101));
-      expect(table.columns.map((column) => column.label), [
-        '工号',
-        '姓名',
-        '部门',
-        '职位',
-      ]);
+      expect(table.columns.map((column) => column.label), ['工号', '姓名', '部门']);
+      expect(find.text('职位'), findsNothing);
       expect(find.text('账号状态'), findsNothing);
       expect(find.text('在职状态'), findsNothing);
       final search = find.descendant(
         of: find.byKey(const Key('uten-employee-picker-search')),
         matching: find.byType(TextField),
       );
-      await tester.enterText(search, '后页职位');
+      await tester.enterText(search, '测试人员101');
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
-      expect(api.queries.last['search'], '后页职位');
+      expect(api.queries.last['search'], '测试人员101');
       expect(api.queries.last.containsKey('departmentId'), false);
       await tester.tap(find.byKey(const ValueKey('employee-picker-item-e101')));
       await tester.pumpAndSettle();

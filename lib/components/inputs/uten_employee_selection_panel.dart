@@ -579,7 +579,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
       hint:
           widget.presentation ==
               UtenEmployeePickerPresentation.businessReference
-          ? '搜索工号 / 姓名 / 部门 / 职位'
+          ? '搜索工号 / 姓名 / 部门'
           : !widget.showDepartmentFilter &&
                 widget.searchHint == '搜索部门 / 姓名 / 工号'
           ? '搜索姓名 / 工号'
@@ -788,14 +788,6 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
               message: directory.pathOf(item) ?? item.departmentName ?? '未提供部门',
               child: Text(item.departmentName ?? '未提供部门'),
             ),
-          ),
-        if (businessReference)
-          MasterColumnDef(
-            key: 'position',
-            label: '职位',
-            width: 160,
-            value: (item) => item.positionName,
-            columnSearchEnabled: false,
           ),
         if (widget.showDepartmentFilter && !businessReference) ...[
           MasterColumnDef(

@@ -17,6 +17,7 @@ import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../support/table_read_status.dart';
 
 late SharedPreferences _preferences;
 
@@ -131,7 +132,7 @@ void main() {
     final l10n = AppLocalizations.of(
       tester.element(find.byType(FinanceReportTablePage)),
     );
-    expect(find.text(l10n.financeReportLoadFailed), findsOneWidget);
+    await expectTableReadFailureDetails(tester, l10n.financeReportLoadFailed);
     expect(find.text('重试'), findsOneWidget);
     api.fail = false;
     await tester.tap(find.text('重试'));
@@ -152,7 +153,7 @@ void main() {
     final l10n = AppLocalizations.of(
       tester.element(find.byType(FinanceReportTablePage)),
     );
-    expect(find.text(message), findsOneWidget);
+    await expectTableReadFailureDetails(tester, message);
     expect(find.text(l10n.financeReportLoadFailed), findsNothing);
     expect(find.text('重试'), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_table_action_scope.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -158,7 +159,9 @@ void main() {
         findsOneWidget,
       );
       await tester.ensureVisible(date);
-      await tester.tap(find.text('选择日期').hitTestable());
+      await tester.tap(
+        find.descendant(of: date, matching: find.byType(UtenButton)).first,
+      );
       await tester.pumpAndSettle();
       Navigator.of(
         tester.element(find.byType(UtenDateRangePickerDialog)),
@@ -173,7 +176,7 @@ void main() {
   }
 
   testWidgets(
-    'report preset and search update same request and preserve fixed direction',
+    'report calendar and search update same request and preserve fixed direction',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1920, 945));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -185,22 +188,32 @@ void main() {
       );
       final initial = api.requests.last;
       expect(initial.$2['direction'], 'AR');
+      final requestsBefore = api.requests.length;
       await tester.tap(find.byType(FinanceDateRangeFilter));
       await tester.pumpAndSettle();
       final today = ChinaDateTime.today();
-      Navigator.of(tester.element(find.byType(UtenDateRangePickerDialog))).pop((
-        start: DateTime(today.year, today.month - 1),
-        end: DateTime(today.year, today.month, 0),
-      ));
+      final start = DateTime.utc(today.year, today.month - 1);
+      final end = DateTime.utc(today.year, today.month, 0);
+      await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
       await tester.pumpAndSettle();
-      expect(
-        api.requests.last.$2['dateFrom'],
-        ChinaDateTime.formatDate(DateTime.utc(today.year, today.month - 1)),
+      await tester.tap(find.byKey(ValueKey<int>(start.year)));
+      await tester.pumpAndSettle();
+      final month = find.byKey(ValueKey('uten-calendar-month-${start.month}'));
+      await tester.ensureVisible(month);
+      await tester.tap(month.hitTestable());
+      await tester.pumpAndSettle();
+      final calendar = find.byType(UtenDateRangePickerDialog);
+      await tester.tap(find.descendant(of: calendar, matching: find.text('1')));
+      await tester.tap(
+        find.descendant(of: calendar, matching: find.text('${end.day}')),
       );
-      expect(
-        api.requests.last.$2['dateTo'],
-        ChinaDateTime.formatDate(DateTime.utc(today.year, today.month, 0)),
+      expect(api.requests.length, requestsBefore);
+      await tester.tap(
+        find.descendant(of: calendar, matching: find.text('确定')),
       );
+      await tester.pumpAndSettle();
+      expect(api.requests.last.$2['dateFrom'], ChinaDateTime.formatDate(start));
+      expect(api.requests.last.$2['dateTo'], ChinaDateTime.formatDate(end));
       expect(api.requests.last.$2['direction'], 'AR');
       expect(api.requests.last.$2['page'], 1);
       await tester.enterText(
@@ -213,10 +226,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
       expect(api.requests.last.$2['keyword'], '客户 01');
-      expect(
-        api.requests.last.$2['dateFrom'],
-        ChinaDateTime.formatDate(DateTime.utc(today.year, today.month - 1)),
-      );
+      expect(api.requests.last.$2['dateFrom'], ChinaDateTime.formatDate(start));
       expect(tester.takeException(), isNull);
     },
   );

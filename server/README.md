@@ -37,9 +37,17 @@ CI 返回 HTTP 401。将这个已知仓库 ID 单独映射到 Central，避免�
 ## 快速开始
 ```bash
 cd server
-cp .env.example .env            # 仅首次且.env不存在时执行；禁止覆盖已有私有配置，模板宿主端口5433
+cp -n .env.example .env         # -n拒绝覆盖；已有.env保持原样，模板宿主端口5433
 docker compose up -d --wait --wait-timeout 600 postgres # 起开发用 Postgres，并等健康检查通过
 mvn -Pdev-run spring-boot:run    # 读取 .env，编译主代码，Flyway 自动建表 + 种子
+```
+
+Windows PowerShell 首次配置在 `server/` 中使用真正不覆盖的文件复制；目标 `.env` 已存在时直接拒绝，保留原文件：
+
+```powershell
+[System.IO.File]::Copy((Join-Path (Get-Location) '.env.example'), (Join-Path (Get-Location) '.env'), $false)
+docker compose up -d --wait --wait-timeout 600 postgres
+.\dev.ps1
 ```
 
 PowerShell 可直接运行 `server/dev.ps1`：在 `server/` 中执行 `.\dev.ps1`，在仓库根目录执行
@@ -440,6 +448,19 @@ mvn verify                              # 快道: 单元 + 架构 + 契约, 真�
 UTEN_RUN_DB_TESTS=true mvn verify       # 全量: 含 Testcontainers 真库与 FullChainEndToEndTest(= CI backend-db)
 UTEN_RUN_DB_TESTS=true mvn test -Dtest=FullChainEndToEndTest   # 只跑全链路
 ```
+
+Windows PowerShell 对应入口如下；每个任务使用独立构建目录，完整分片另见[测试规范](../docs/00-项目准则/15-全量测试分片与耗时核对.md)：
+
+```powershell
+# 快道：在未设置UTEN_RUN_DB_TESTS的干净终端执行
+mvn "-Duten.build.directory=target-fast" verify
+
+# 真库：在本次测试终端显式开启，Docker须已就绪
+$env:UTEN_RUN_DB_TESTS = 'true'
+mvn "-Duten.build.directory=target-tests" verify
+```
+
+上述环境变量只作用于当前终端；需要恢复默认快道时关闭该测试终端，或按自己的原设置恢复，勿改写共享私有 `.env`。
 
 **与 CI 同口径**: CI 上没有 `.env`, 未设 `UTEN_PROFILE` 时按 `prod` 启动(fail-closed, 例如要求显式内网网段)。
 本机优先在不复制 `.env` 的隔离冻结 worktree 中跑门禁；不移动、覆盖或输出运行服务的私有配置，避免 dev profile 掩盖 CI 差异。

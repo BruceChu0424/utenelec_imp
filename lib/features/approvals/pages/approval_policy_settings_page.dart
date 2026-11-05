@@ -70,9 +70,11 @@ class _ApprovalPolicySettingsPageState
         invalidatedBuilder: (dialogContext) => Scaffold(
           appBar: UtenAppBar(
             title: '审批设置',
-            leading: UtenCloseButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-            ),
+            actions: [
+              UtenCloseButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+              ),
+            ],
           ),
           body: const UtenEmpty(message: '授权已变化，请关闭后重新打开'),
         ),
@@ -328,9 +330,11 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor> {
         appBar: UtenAppBar(
           title: '部门审批回避',
           info: _policyHint,
-          leading: UtenCloseButton(
-            onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          ),
+          actions: [
+            UtenCloseButton(
+              onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            ),
+          ],
           showPagePermissionAction: false,
         ),
         body: Stack(

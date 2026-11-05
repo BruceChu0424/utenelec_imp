@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Real PostgreSQL proof for the payment-style hierarchy/reference lock protocol.
  *
  * <p>Hierarchy writes take the production advisory lock explicitly. Reference writes execute only
- * the real {@code finance_expense_items} insert; V265's BEFORE trigger must take that same lock and
+ * the real {@code finance_expense_items} insert; the shared BEFORE protocol must take that same lock and
  * revalidate the referenced node. The two tests exercise both acquisition orders against a schema
  * built by the complete Flyway chain.
  */
@@ -105,8 +105,10 @@ class PaymentStyleHierarchyConcurrencyPostgresTest {
                 assertFalse(attempt.inserted());
                 assertEquals("23514", attempt.sqlState());
                 assertTrue(
-                        attempt.message().contains("只能引用无子类别的叶子节点"),
-                        "after the lock is released, V265 must reject the now non-leaf reference");
+                        attempt.message().contains("普通费用/制造成本支出科目与明确用途不一致或科目未核验")
+                                && attempt.message().contains("fn_guard_typed_expense_posting_style"),
+                        "after the lock is released, the current typed expense guard must reject the now non-leaf reference: "
+                                + attempt.message());
             } finally {
                 releaseHierarchy.countDown();
             }

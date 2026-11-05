@@ -1007,7 +1007,7 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
               }}',
             ),
             showCloseButton: true,
-            onClose: _close,
+            onClose: _saving ? null : _close,
           ),
           Expanded(
             child: _loading
@@ -1118,10 +1118,6 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                UtenButton(
-                  onPressed: _saving ? null : _close,
-                  child: const Text('关闭'),
-                ),
                 const SizedBox(width: 12),
                 UtenButton(
                   onPressed: _saving || _loading || _error != null

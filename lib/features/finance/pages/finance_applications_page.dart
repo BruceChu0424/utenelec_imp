@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -465,11 +466,7 @@ class _ApplicationSourcePickerState
                   const Expanded(child: Text('选择原始来源')),
                   if (_more)
                     const UtenFieldHintIcon(info: '结果超过100条，请填写单号或名称缩小范围。'),
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('关闭'),
-                  ),
+                  UtenCloseButton(onPressed: () => Navigator.pop(context)),
                 ],
               ),
               const SizedBox(height: 12),

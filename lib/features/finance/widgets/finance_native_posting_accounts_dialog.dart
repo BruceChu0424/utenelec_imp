@@ -397,14 +397,11 @@ class _EditorState extends ConsumerState<_Editor> {
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != widget.epoch) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('访问范围已变化'),
         content: const Text('请重新打开对应目录核对原提交。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final editable = _editable;

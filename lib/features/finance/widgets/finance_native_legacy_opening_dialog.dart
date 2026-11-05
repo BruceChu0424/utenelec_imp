@@ -620,6 +620,9 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
     if (!_current) {
       return withFormDraft(
         UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
+
           title: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -627,12 +630,6 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
               UtenFieldHintIcon(info: '身份、权限或公司数据范围已变化。原私有草稿保留，请重新进入。'),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     }
@@ -856,10 +853,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
                           : () => _load(_page),
                       child: const Text('刷新核对'),
                     ),
-                    TextButton(
-                      onPressed: _busy ? null : _close,
-                      child: const Text('关闭'),
-                    ),
+
                     if (_frozen)
                       UtenButton(
                         onPressed: _busy ? null : _readReceipt,

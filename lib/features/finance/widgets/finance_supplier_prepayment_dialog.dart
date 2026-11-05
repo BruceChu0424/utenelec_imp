@@ -117,16 +117,13 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
         await showDialog<void>(
           context: context,
           builder: (_) => UtenAlertDialog(
+            showCloseButton: true,
+            onClose: () => Navigator.pop(context),
+
             title: const Text('原处理记录'),
             content: SelectableText(
               '状态：$status\n原币：${_exact(row, 'amount_original')}\n账面本币：${_exact(row, 'source_local')}\n来源依据：${row['source_reference'] ?? ''}',
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
-            ],
           ),
         );
       } else {
@@ -369,14 +366,6 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
                     ),
                   ],
                 ),
-              ),
-              UtenDialogActions(
-                children: [
-                  TextButton(
-                    onPressed: _busy ? null : () => Navigator.pop(context),
-                    child: const Text('关闭'),
-                  ),
-                ],
               ),
             ],
           ),
@@ -828,11 +817,8 @@ bool _rejected(Object error) =>
     (error.httpStatus ?? 0) < 500 &&
     error.httpStatus != 408;
 Widget _lost(BuildContext context) => UtenAlertDialog(
+  showCloseButton: true,
+  onClose: () => Navigator.pop(context),
+
   title: const Text('访问范围已变化'),
-  actions: [
-    TextButton(
-      onPressed: () => Navigator.pop(context),
-      child: const Text('关闭'),
-    ),
-  ],
 );

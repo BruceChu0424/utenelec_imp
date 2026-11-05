@@ -1,11 +1,14 @@
 package com.uten.imp.features.master.paymentstyle;
 
 import org.junit.jupiter.api.Test;
+import org.flywaydb.core.api.MigrationVersion;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
@@ -61,28 +64,38 @@ class PaymentStyleReferenceGuardMigrationContractTest {
             "fixed_assets.expense_style_id",
             "fixed_assets.expense_style_snapshot_id",
             "gl_entries.style_id",
-            "system_posting_style_roles.style_id");
+            "system_posting_style_roles.style_id",
+            "finance_asset_opening_members.accumulated_style_id",
+            "finance_asset_opening_members.cost_style_id",
+            "finance_chart_code_styles.style_id",
+            "finance_chart_codes.native_style_id",
+            "finance_chart_owned_bindings.style_id",
+            "finance_gl_settlement_scopes.style_id",
+            "finance_native_posting_configurations.style_id",
+            "finance_payable_statement_adjustment_lines.counterpart_style_id",
+            "finance_payroll_accrual_lines.expense_style_id",
+            "finance_payroll_accruals.wage_style_id",
+            "finance_payroll_payment_attempts.fee_style_id",
+            "finance_procurement_payable_candidates.inventory_style_id",
+            "finance_procurement_payable_candidates.pending_style_id",
+            "finance_supplier_advance_refunds.bank_style_id",
+            "finance_supplier_advance_refunds.fee_style_id",
+            "finance_supplier_advance_refunds.fx_style_id",
+            "finance_supplier_advances.style_id");
 
     private static final Pattern CREATE_TABLE = Pattern.compile(
-            "^CREATE\\s+TABLE(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+([a-z_][a-z0-9_]*)",
+            "^CREATE\\s+TABLE(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+(?:public\\.)?([a-z_][a-z0-9_]*)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern ALTER_TABLE = Pattern.compile(
-            "^ALTER\\s+TABLE(?:\\s+IF\\s+EXISTS)?\\s+([a-z_][a-z0-9_]*)",
+            "^ALTER\\s+TABLE(?:\\s+IF\\s+EXISTS)?\\s+(?:public\\.)?([a-z_][a-z0-9_]*)",
             Pattern.CASE_INSENSITIVE);
-    private static final Pattern REFERENCE_COLUMN = Pattern.compile(
-            "^(?:ADD\\s+COLUMN(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+)?"
-                    + "([a-z_][a-z0-9_]*)\\s+.*REFERENCES\\s+payment_styles\\s*\\(",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern INLINE_ALTER_REFERENCE = Pattern.compile(
-            "^ALTER\\s+TABLE(?:\\s+IF\\s+EXISTS)?\\s+([a-z_][a-z0-9_]*)\\s+"
-                    + "ADD\\s+COLUMN(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+"
-                    + "([a-z_][a-z0-9_]*)\\s+.*REFERENCES\\s+payment_styles\\s*\\(",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern TABLE_LEVEL_FOREIGN_KEY_REFERENCE = Pattern.compile(
-            "^(?:ADD\\s+CONSTRAINT\\s+[a-z_][a-z0-9_]*\\s+)?"
-                    + "FOREIGN\\s+KEY\\s*\\(\\s*([a-z_][a-z0-9_]*)\\s*\\)"
-                    + "\\s+REFERENCES\\s+payment_styles\\s*\\(",
-            Pattern.CASE_INSENSITIVE);
+    private static final Pattern STYLE_UUID_REFERENCE = Pattern.compile(
+            "(?i)\\bREFERENCES\\s+(?:public\\.)?payment_styles\\s*\\(\\s*id\\s*\\)");
+    private static final Pattern FOREIGN_KEY_COLUMN = Pattern.compile(
+            "(?i)^(?:ADD\\s+)?(?:CONSTRAINT\\s+\\w+\\s+)?FOREIGN\\s+KEY\\s*\\(\\s*(\\w+)\\s*\\)");
+    private static final Pattern INLINE_COLUMN_NAME = Pattern.compile(
+            "(?i)^(?:ADD\\s+(?:COLUMN\\s+)?(?:IF\\s+NOT\\s+EXISTS\\s+)?)?([a-z_][a-z0-9_]*)\\s+");
+    private static final Pattern DOLLAR_QUOTE = Pattern.compile("\\$[a-zA-Z_0-9]*\\$");
     private static final Pattern V265_GUARD = Pattern.compile(
             "\\('trg_psref_[^']+'\\s*,\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*"
                     + "'([a-z_][a-z0-9_]*)'",
@@ -165,6 +178,13 @@ class PaymentStyleReferenceGuardMigrationContractTest {
         guardedReferences.addAll(Set.of(
                 "finance_payments.gl_account_style_id", "finance_payments.gl_ap_style_id",
                 "finance_payments.gl_bank_fee_style_id", "finance_payments.gl_fx_style_id"));
+
+        for (Path migration : migrationPaths()) {
+            Matcher actualGuard = EXPLICIT_GUARD.matcher(Files.readString(migration));
+            while (actualGuard.find()) {
+                guardedReferences.add(actualGuard.group(1) + "." + actualGuard.group(2));
+            }
+        }
 
         Set<String> expectedGuards = new TreeSet<>(EXPECTED_UUID_REFERENCES);
         expectedGuards.add("accounts.style_legacy_id");
@@ -256,68 +276,140 @@ class PaymentStyleReferenceGuardMigrationContractTest {
                 "the wrapper may only COMMIT after the structural reconciliation marks the run SUCCESS");
     }
 
-    private static Set<String> findPaymentStyleUuidReferences() throws IOException {
-        Path migrationDirectory = serverPath("src/main/resources/db/migration");
-        List<Path> migrations;
-        try (var paths = Files.list(migrationDirectory)) {
-            migrations = paths
-                    .filter(path -> path.getFileName().toString().matches("V\\d+__.*\\.sql"))
-                    .sorted()
+    static List<Path> migrationPaths() throws IOException {
+        try (var paths = Files.list(serverPath("src/main/resources/db/migration"))) {
+            return paths.filter(path -> path.getFileName().toString().matches("V\\d+(?:_\\d+)*__.*\\.sql"))
+                    .sorted(Comparator.comparing(path -> MigrationVersion.fromVersion(
+                            path.getFileName().toString().substring(1,
+                                    path.getFileName().toString().indexOf("__")))))
                     .toList();
         }
+    }
 
+    static Set<String> findPaymentStyleUuidReferences() throws IOException {
         Set<String> references = new TreeSet<>();
-        for (Path migration : migrations) {
-            collectPaymentStyleUuidReferences(Files.readAllLines(migration), references);
+        for (Path migration : migrationPaths()) {
+            collectPaymentStyleUuidReferences(Files.readString(migration), references);
         }
         return references;
     }
 
-    private static void collectPaymentStyleUuidReferences(
-            List<String> lines,
-            Set<String> references) {
-        String createTable = null;
-        String alterTable = null;
-        for (String rawLine : lines) {
-            String line = rawLine.strip();
-            if (line.isEmpty() || line.startsWith("--")) continue;
+    private static void collectPaymentStyleUuidReferences(String source, Set<String> references) {
+        for (String statement : ddlOnly(source).split(";")) {
+            String sql = statement.strip();
+            Matcher create = CREATE_TABLE.matcher(sql);
+            Matcher alter = ALTER_TABLE.matcher(sql);
+            String table;
+            String columns;
+            if (create.find()) {
+                table = create.group(1).toLowerCase(Locale.ROOT);
+                int open = sql.indexOf('(', create.end());
+                if (open < 0) continue;
+                int close = matchingParenthesis(sql, open);
+                columns = sql.substring(open + 1, close);
+            } else if (alter.find()) {
+                table = alter.group(1).toLowerCase(Locale.ROOT);
+                columns = sql.substring(alter.end());
+            } else {
+                continue;
+            }
+            if ("payment_styles".equals(table)) continue;
+            for (String column : commaParts(columns)) {
+                if (!STYLE_UUID_REFERENCE.matcher(column).find()) continue;
+                Matcher foreignKey = FOREIGN_KEY_COLUMN.matcher(column);
+                Matcher inline = INLINE_COLUMN_NAME.matcher(column);
+                String name;
+                if (foreignKey.find()) name = foreignKey.group(1);
+                else {
+                    assertTrue(inline.find(), () -> "Unrecognized payment-style FK: " + column);
+                    name = inline.group(1);
+                }
+                references.add(table + "." + name.toLowerCase(Locale.ROOT));
+            }
+        }
+    }
 
-            Matcher create = CREATE_TABLE.matcher(line);
-            if (create.find()) createTable = create.group(1).toLowerCase(Locale.ROOT);
-
-            Matcher alter = ALTER_TABLE.matcher(line);
-            if (alter.find()) alterTable = alter.group(1).toLowerCase(Locale.ROOT);
-
-            if (line.toLowerCase(Locale.ROOT).contains("references payment_styles")) {
-                Matcher inlineAlter = INLINE_ALTER_REFERENCE.matcher(line);
-                String table;
-                String column;
-                if (inlineAlter.find()) {
-                    table = inlineAlter.group(1).toLowerCase(Locale.ROOT);
-                    column = inlineAlter.group(2).toLowerCase(Locale.ROOT);
-                } else {
-                    Matcher tableLevelForeignKey = TABLE_LEVEL_FOREIGN_KEY_REFERENCE.matcher(line);
-                    if (tableLevelForeignKey.find()) {
-                        table = alterTable;
-                        column = tableLevelForeignKey.group(1).toLowerCase(Locale.ROOT);
-                    } else {
-                        Matcher referenceColumn = REFERENCE_COLUMN.matcher(line);
-                        assertTrue(referenceColumn.find(),
-                                () -> "cannot determine payment_styles reference column from: " + line);
-                        table = createTable != null ? createTable : alterTable;
-                        column = referenceColumn.group(1).toLowerCase(Locale.ROOT);
+    /** SQL strings, comments and dollar-quoted function bodies are not schema declarations. */
+    private static String ddlOnly(String source) {
+        StringBuilder result = new StringBuilder(source.length());
+        for (int index = 0; index < source.length();) {
+            if (source.startsWith("--", index)) {
+                int end = source.indexOf('\n', index);
+                index = end < 0 ? source.length() : end;
+                result.append(' ');
+            } else if (source.startsWith("/*", index)) {
+                int end = source.indexOf("*/", index + 2);
+                assertTrue(end >= 0, "Unterminated SQL comment");
+                index = end + 2;
+                result.append(' ');
+            } else if (source.charAt(index) == '\'') {
+                index++;
+                boolean closed = false;
+                while (index < source.length()) {
+                    if (source.charAt(index++) == '\'') {
+                        if (index < source.length() && source.charAt(index) == '\'') index++;
+                        else { closed = true; break; }
                     }
                 }
-                assertTrue(table != null,
-                        () -> "cannot determine payment_styles reference table from: " + line);
-                if (!"payment_styles".equals(table)) {
-                    references.add(table + "." + column);
+                assertTrue(closed, "Unterminated SQL string");
+                result.append(' ');
+            } else {
+                Matcher tag = source.charAt(index) == '$'
+                        ? DOLLAR_QUOTE.matcher(source).region(index, source.length()) : null;
+                if (tag != null && tag.lookingAt()) {
+                    int end = source.indexOf(tag.group(), tag.end());
+                    assertTrue(end >= 0, "Unterminated SQL dollar quote");
+                    index = end + tag.group().length();
+                    result.append(' ');
+                } else {
+                    result.append(source.charAt(index++));
                 }
             }
-
-            if (createTable != null && line.matches("^\\);.*")) createTable = null;
-            if (alterTable != null && line.contains(";")) alterTable = null;
         }
+        return result.toString();
+    }
+
+    private static int matchingParenthesis(String sql, int open) {
+        int depth = 1;
+        for (int index = open + 1; index < sql.length(); index++) {
+            if (sql.charAt(index) == '(') depth++;
+            else if (sql.charAt(index) == ')' && --depth == 0) return index;
+        }
+        throw new AssertionError("Unterminated CREATE TABLE body");
+    }
+
+    private static List<String> commaParts(String sql) {
+        List<String> parts = new ArrayList<>();
+        int depth = 0, start = 0;
+        for (int index = 0; index < sql.length(); index++) {
+            char character = sql.charAt(index);
+            if (character == '(' || character == '[') depth++;
+            else if (character == ')' || character == ']') depth--;
+            else if (character == ',' && depth == 0) {
+                parts.add(sql.substring(start, index).strip());
+                start = index + 1;
+            }
+        }
+        parts.add(sql.substring(start).strip());
+        return parts;
+    }
+
+    @Test
+    void referenceInventoryParsesCompactColumnsAndIgnoresSqlBodies() {
+        Set<String> references = new TreeSet<>();
+        collectPaymentStyleUuidReferences("""
+                -- CREATE TABLE fake_comment(style uuid REFERENCES payment_styles(id));
+                DO $body$ BEGIN RAISE NOTICE 'CREATE TABLE fake_body(style uuid REFERENCES payment_styles(id));'; END $body$;
+                CREATE TABLE compact_probe(id uuid, enabled boolean,
+                    first_style uuid REFERENCES payment_styles(id), second_style uuid REFERENCES payment_styles(id),
+                    CHECK (1 IN (1,2)));
+                ALTER TABLE compact_probe ADD COLUMN third_style uuid REFERENCES payment_styles(id),
+                    ADD COLUMN unrelated uuid REFERENCES other_table(id);
+                ALTER TABLE compact_probe ADD CONSTRAINT style_check
+                    FOREIGN KEY(fourth_style) REFERENCES payment_styles(id);
+                """, references);
+        assertEquals(Set.of("compact_probe.first_style", "compact_probe.second_style",
+                "compact_probe.third_style", "compact_probe.fourth_style"), references);
     }
 
     private static void assertLegacyReconciliation(

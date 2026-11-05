@@ -1929,7 +1929,7 @@ class _FinanceAccountingImportSurfaceState
                     FinanceRequirementNames.accountingContinuation,
                   ),
                   showCloseButton: true,
-                  onClose: _close,
+                  onClose: _busy ? null : _close,
                 ),
               ),
               Expanded(
@@ -2160,11 +2160,6 @@ class _FinanceAccountingImportSurfaceState
                   runSpacing: UtenSpacing.s8,
                   alignment: WrapAlignment.end,
                   children: [
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: _busy ? null : _close,
-                      child: const Text('关闭'),
-                    ),
                     if (_pending != null)
                       UtenButton(
                         onPressed: _busy || !_canMutate

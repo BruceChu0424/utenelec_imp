@@ -1132,12 +1132,9 @@ String _status(Object? value) => switch (value) {
   _ => value?.toString() ?? '加载中',
 };
 Widget _lost(BuildContext context) => UtenAlertDialog(
+  showCloseButton: true,
+  onClose: () => Navigator.pop(context),
+
   title: const Text('财务身份已变化'),
   content: const Text('请重新打开当前入口，原身份的结果不会继续发布。'),
-  actions: [
-    TextButton(
-      onPressed: () => Navigator.pop(context),
-      child: const Text('关闭'),
-    ),
-  ],
 );

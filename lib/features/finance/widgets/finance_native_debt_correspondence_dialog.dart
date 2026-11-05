@@ -241,14 +241,11 @@ class _CorrespondenceState extends ConsumerState<_Correspondence> {
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != _epoch) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('访问范围已变化'),
         content: const Text('请重新打开原往来核对提交结果。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final approved = _reviews.any((r) => r['status'] == 'APPROVED');
@@ -383,10 +380,7 @@ class _CorrespondenceState extends ConsumerState<_Correspondence> {
                   onPressed: _busy || _unknown ? null : _load,
                   child: const Text('刷新核对'),
                 ),
-                TextButton(
-                  onPressed: _editable ? _close : null,
-                  child: const Text('关闭'),
-                ),
+
                 if (!approved)
                   UtenButton(
                     onPressed:

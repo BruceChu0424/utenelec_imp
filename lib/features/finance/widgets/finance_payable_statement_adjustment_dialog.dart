@@ -567,6 +567,9 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
     if (!_current) {
       return withFormDraft(
         UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
+
           title: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -574,12 +577,6 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
               UtenFieldHintIcon(info: '身份、权限或原件范围已变化。原私有草稿保留，请重新进入。'),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     }
@@ -952,10 +949,7 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
                       onPressed: _editable ? _calculate : null,
                       child: const Text('预览逐笔金额'),
                     ),
-                    TextButton(
-                      onPressed: _busy ? null : _close,
-                      child: const Text('关闭'),
-                    ),
+
                     if (_write)
                       UtenButton(
                         onPressed: _busy ? null : _submit,

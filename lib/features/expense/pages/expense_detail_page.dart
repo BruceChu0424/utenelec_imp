@@ -550,13 +550,10 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
         boundary: boundary,
         child: child,
         invalidatedBuilder: (dialogContext) => UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.of(dialogContext).pop(),
+
           title: const Text('登录身份或权限已变化'),
-          actions: [
-            UtenButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
 

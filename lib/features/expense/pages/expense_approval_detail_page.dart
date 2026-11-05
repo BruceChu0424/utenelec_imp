@@ -24,6 +24,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -161,12 +162,35 @@ class _ExpenseApprovalDetailPageState
     }
     await _runAction(
       (current) async {
-        if (!current() || !_canInspect) return false;
+        bool decisionCurrent() {
+          if (!current() || !_canInspect) return false;
+          final detail = ref.read(expenseDetailProvider(id));
+          final latest = detail.value;
+          return !detail.isLoading &&
+              !detail.hasError &&
+              latest?.id == claim.id &&
+              latest?.version == claim.version;
+        }
+
+        if (!decisionCurrent()) return false;
+        setState(() => _networkBusy = false);
+        final confirmed = await UtenBusyOverlay.yieldWhile(() async {
+          if (!decisionCurrent()) return false;
+          return showUtenReviewerConfirmDialog(
+            context,
+            title: '确认审批',
+            message: '确认通过当前报销审批节点？',
+            confirmLabel: '确认通过',
+            actionLabel: '报销审批',
+          );
+        });
+        if (!confirmed || !decisionCurrent()) return false;
+        setState(() => _networkBusy = true);
         await approveExpense(
           ref,
           id,
           expectedVersion: claim.version,
-          stillCurrent: current,
+          stillCurrent: decisionCurrent,
         );
         return true;
       },
@@ -228,14 +252,16 @@ class _ExpenseApprovalDetailPageState
             boundary: boundary,
             isCurrent: current,
             invalidatedBuilder: (dialogContext) => UtenAlertDialog(
-              title: const Text('授权已变化'),
-              content: const Text('请关闭后重新打开付款登记'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('关闭'),
-                ),
-              ],
+              title: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('授权已变化'),
+                  SizedBox(width: UtenSpacing.s8),
+                  UtenFieldHintIcon(info: '请关闭后重新打开付款登记', dense: true),
+                ],
+              ),
+              showCloseButton: true,
+              onClose: () => Navigator.of(dialogContext).pop(),
             ),
             child: const _ExpensePaymentDialog(),
           ),
@@ -363,7 +389,7 @@ class _ExpenseApprovalDetailPageState
                         UtenButton(
                           type: UtenButtonType.danger,
                           size: UtenButtonSize.large,
-                          isLoading: _acting,
+                          isLoading: _networkBusy,
                           icon: Icons.close_rounded,
                           onPressed: (_acting || blocked) ? null : _reject,
                           child: const Text('驳回'),
@@ -372,7 +398,7 @@ class _ExpenseApprovalDetailPageState
                           UtenButton(
                             type: UtenButtonType.success,
                             size: UtenButtonSize.large,
-                            isLoading: _acting,
+                            isLoading: _networkBusy,
                             icon: Icons.check_rounded,
                             onPressed: (_acting || blocked) ? null : _approve,
                             child: const Text('通过'),
@@ -395,7 +421,7 @@ class _ExpenseApprovalDetailPageState
                     UtenButton(
                       type: UtenButtonType.success,
                       size: UtenButtonSize.large,
-                      isLoading: _acting,
+                      isLoading: _networkBusy,
                       icon: Icons.account_balance_wallet_outlined,
                       onPressed: _acting ? null : _pay,
                       child: Text(

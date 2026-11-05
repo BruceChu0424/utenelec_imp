@@ -104,13 +104,10 @@ class _MaterialContextPickerState
     ref.watch(exportContextEpochProvider);
     if (!_current) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('访问范围已变化'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     return UtenDialogFrame(

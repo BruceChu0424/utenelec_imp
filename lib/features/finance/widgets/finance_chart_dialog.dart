@@ -596,15 +596,11 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != _ownerEpoch) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context, _changed),
+
         title: const Text('访问范围已变化'),
         content: const Text('请关闭后以当前账号重新打开科目对应。原导入批次保留在所属账号。'),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(context, _changed),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final sourceRows = _maps(_preview?['rows']),
@@ -612,6 +608,12 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
     return PopScope(
       canPop: !_busy && !_unknown,
       child: UtenAlertDialog(
+        showCloseButton: true,
+        onClose: _busy || _unknown
+            ? null
+            : () => Navigator.pop(context, _changed),
+        closeEnabled: !(_busy || _unknown),
+
         maxWidth: 1140,
         scrollable: false,
         title: const Row(
@@ -723,15 +725,6 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
             ],
           ),
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _busy || _unknown
-                ? null
-                : () => Navigator.pop(context, _changed),
-            child: const Text('关闭'),
-          ),
-        ],
       ),
     );
   }
@@ -1024,13 +1017,10 @@ class _ChartMappingDialogState extends ConsumerState<_ChartMappingDialog> {
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != widget.ownerEpoch) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('访问范围已变化'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     return UtenAlertDialog(

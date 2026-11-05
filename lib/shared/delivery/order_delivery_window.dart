@@ -680,11 +680,12 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: _confirming ? null : widget.onClose,
-              child: Text(widget.readOnly ? '关闭' : '取消'),
-            ),
+            if (!widget.readOnly)
+              UtenButton(
+                type: UtenButtonType.secondary,
+                onPressed: _confirming ? null : widget.onClose,
+                child: const Text('取消'),
+              ),
             if (!widget.readOnly) ...[
               const SizedBox(width: UtenSpacing.s8),
               UtenButton(

@@ -226,13 +226,10 @@ Future<void> showBusinessApplicationPrintPreview(
           isCurrent: () => currentRevision == revision,
           child: _ApplicationPrintDialog(application: application),
           invalidatedBuilder: (context) => UtenAlertDialog(
+            showCloseButton: true,
+            onClose: () => Navigator.of(context).pop(),
+
             title: const Text('登录身份或权限已变化'),
-            actions: [
-              UtenButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
-              ),
-            ],
           ),
         );
       },

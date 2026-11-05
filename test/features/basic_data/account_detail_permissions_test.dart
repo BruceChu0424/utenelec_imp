@@ -120,6 +120,7 @@ void main() {
         ) {
           await tester.pump(const Duration(milliseconds: 20));
         }
+        await tester.pump();
         expect(
           find.text(action == '删除账户' ? '正在删除账户' : '正在停用账户'),
           findsOneWidget,
@@ -214,6 +215,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
       await tester.pump();
       expect(repository.statementCalls, 1);
       expect(statement.isCompleted, isFalse);

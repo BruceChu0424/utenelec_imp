@@ -1,6 +1,7 @@
 package com.uten.imp.migration;
 
 import org.junit.jupiter.api.Test;
+import org.flywaydb.core.api.MigrationVersion;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -48,7 +49,7 @@ class AuditTriggerCoverageMigrationContractTest {
     static final int POLICY_BASELINE_VERSION = 670;
     static final Path POLICY_BASELINE =
             MIGRATION_ROOT.resolve("V670__audit_three_list_policy_change_only_rows.sql");
-    private static final Pattern MIGRATION_FILE = Pattern.compile("^V(\\d+)__.+\\.sql$");
+    private static final Pattern MIGRATION_FILE = Pattern.compile("^V(\\d+)(?:_\\d+)*__.+\\.sql$");
     private static final String IDENT =
             "(?:\"?public\"?\\s*\\.\\s*)?\"?([a-z_][a-z0-9_]*)\"?";
     static final Pattern CREATE_TABLE = Pattern.compile(
@@ -83,8 +84,8 @@ class AuditTriggerCoverageMigrationContractTest {
     /**
      * V1006 以同一个动态 EXECUTE format 模板给工资/总账清偿十张表绑 fn_audit()
      * （两个 DO 块各引用一次模板，运行时表名来自数组，静态不可枚举）。
-     * 模板原文与出现次数在此钉死，文件字节由 {@link #FORWARD_AUDIT_REPAIRS} 的
-     * V1006 条目按 sha256 锁定；十张表已由 V1042 按同一列清单显式重登记为
+     * 模板原文与出现次数在此钉死，文件字节由 {@link #DYNAMIC_LEGACY_AUDIT_FILE}
+     * 按 sha256 锁定；十张表已由 V1042 按同一列清单显式重登记为
      * COLUMN_SCOPED（由「基线之后登记」用例逐表核对），模板本身仅此一处合法。
      */
     private static final String DYNAMIC_LEGACY_AUDIT_TEMPLATE =
@@ -173,6 +174,35 @@ class AuditTriggerCoverageMigrationContractTest {
                             "create trigger trg_audit_payable_statement_adjustment_line after insert or update or delete"
                                     + " on finance_payable_statement_adjustment_lines for each row execute function fn_audit();")));
 
+    /** Previously applied financial subversions were missed by the integer-only scanner.
+     * Every allowance pins the complete source bytes and exact trigger count, and is
+     * conditional on its table's explicit metadata-only registration in V1059. */
+    private record PinnedSubversionAudit(String file, String sha256, int staticTriggerCount) { }
+    private static final List<PinnedSubversionAudit> PINNED_SUBVERSION_AUDITS = List.of(
+            new PinnedSubversionAudit("V999_10__procurement_reconciliation_first_payables.sql",
+                    "eebc2f9643998323d87a86b5422a38587ea0cfa3eb1a592f748ac5a6b8567723", 5),
+            new PinnedSubversionAudit("V999_13__finance_open_item_classification_allocations.sql",
+                    "6137d5044dcb1ae0b5432c257c7b8ed951e4f55f4f1cc9fe14cae573adeadf85", 1),
+            new PinnedSubversionAudit("V999_1__finance_chart_code_imports.sql",
+                    "3668d1c45796ff017baf2cf302c17c5c01815be372f47125e1d0e4914195b5dd", 2),
+            new PinnedSubversionAudit("V999_2__financial_voucher_evidence_and_auxiliary_allocations.sql",
+                    "d077b5f8ee5c91e860d1a79245b49ae517fe810ccf9628379386766e2e0f2663", 3),
+            new PinnedSubversionAudit("V999_3__finance_accounting_source_continuation.sql",
+                    "376947bd9e26f69affca209629834d85ee8ff96a8ad88550a389473d2e8003f9", 2),
+            new PinnedSubversionAudit("V999_4__finance_auxiliary_items.sql",
+                    "2e4b5b28309bf51edc45499a0d956d7721af3db6f4980bdac903201cda884879", 4),
+            new PinnedSubversionAudit("V999_5__finance_statement_source_reviews.sql",
+                    "e453b84f637b07cab7d50efe0ff1665e9309942e7e1bcc754d5493e63b46e2d1", 1),
+            new PinnedSubversionAudit("V999_6__finance_cost_template_inputs.sql",
+                    "4a2531b6e1c6ed26d875c5706e340f1716dfb23aa9c285dbca18a809ffbbcb18", 4),
+            new PinnedSubversionAudit("V999_7__finance_asset_template_facts.sql",
+                    "ab59e77ae658abf4960370270bddb7a1a036e81c4b8050d9c2f08770d192cc42", 4));
+    private static final Pattern LEGACY_SUBVERSION_AUDIT = Pattern.compile(
+            "create trigger ([a-z_][a-z0-9_]*) after (?:insert(?: or update)?(?: or delete)?)"
+                    + " on ([a-z_][a-z0-9_]*) for each row execute function (?:public\\.)?fn_audit\\(\\);");
+    private static final String SUBVERSION_AUDIT_FORWARD =
+            "V1059__financial_subversion_audit_policy_registration.sql";
+
     record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
                        String reason, String updateFn, String rowFn) {
         ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
@@ -191,6 +221,11 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
+            new FullGroup("physical_delivery_decisions", "data_change", false,
+                    "V1049/V1056 原始BOM交付策略与原订单库存认领保留既定FULL审计，认领请求、事件和行事件按迁移的同一公共登记执行",
+                    Set.of("goods_bom_delivery_rules", "sales_delivery_order_claims",
+                            "sales_delivery_order_claim_requests", "sales_delivery_order_claim_events",
+                            "sales_delivery_order_claim_row_events")),
             new FullGroup("employee_identity_aliases", "authorization", false,
                     "V937 经人工证据核实的员工身份合并关系决定跨档案历史的查询范围；身份授权决定须完整审计，不能因只追加而豁免",
                     Set.of("employee_identity_aliases")),
@@ -628,10 +663,257 @@ class AuditTriggerCoverageMigrationContractTest {
                     "V1015 客户抵销分类更正批次按登记列留请求、版本与目标分类"),
             new ScopedTable("finance_customer_offset_classification_parts", "data_change", true,
                     List.of("batch_id","source_category","target_category"),
-                    "V1015 客户抵销分类更正明细只留批次与前后类别"));
+                    "V1015 客户抵销分类更正明细只留批次与前后类别"),
+            new ScopedTable("finance_chart_imports", "data_change", true,
+                    List.of("id","actor_id","sha256","applied_at","created_at"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_chart_codes", "data_change", true,
+                    List.of("code","native_style_id","source_import_id","source_kind","classification","currency_id",
+                            "row_version","mapping_fingerprint","updated_by"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_chart_manual_operations", "data_change", true,
+                    List.of("request_id","actor_id","fingerprint","created_at"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_chart_code_styles", "data_change", true,
+                    List.of("code","style_id","created_at","created_by"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_chart_owned_bindings", "data_change", true,
+                    List.of("code","style_id","line_key"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_accounting_import_batches", "data_change", true,
+                    List.of("id","actor_id","sha256","status","row_version","submitted_by",
+                            "submitted_at","approved_by","approved_at","paired_import_id","created_at"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_gl_voucher_evidence", "data_change", true,
+                    List.of("voucher_id","import_batch_id","purpose","source_sha256","submitted_by","approved_by",
+                            "approved_at","reversed_voucher_id"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_gl_entry_allocations", "data_change", true,
+                    List.of("entry_id","allocation_no","account_code","currency_id","original_currency_id","auxiliary_id",
+                            "auxiliary_role","party_id_snapshot","created_at","created_by"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_accounting_period_coverage", "data_change", true,
+                    List.of("period","entries_revision","source_kind","import_batch_id","source_sha256","verified_by",
+                            "verified_at"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_gl_auxiliary_opening_evidence", "data_change", true,
+                    List.of("id","import_batch_id","account_code","auxiliary_id","currency_id","original_currency_id",
+                            "effective_from","entry_id","auxiliary_role","party_id_snapshot","source_sha256","submitted_by",
+                            "approved_by","approved_at"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_accounting_review_operations", "data_change", true,
+                    List.of("request_id","actor_id","import_id","action","fingerprint","created_at"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_gl_opening_baselines", "data_change", true,
+                    List.of("effective_from","import_batch_id","source_sha256","verified_by","verified_at"),
+                    "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
+            new ScopedTable("finance_auxiliary_parties", "data_change", true,
+                    List.of("id","row_version","created_at","created_by","updated_by",
+                            "source_system","source_code","source_name"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_auxiliary_items", "data_change", true,
+                    List.of("id","role","party_id","client_id","supplier_id","employee_id",
+                            "financial_party_id","status","row_version","created_at","created_by","updated_by",
+                            "source_system","source_code","source_name","source_reference"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_account_auxiliary_rules", "data_change", true,
+                    List.of("account_code","required","allowed_roles","row_version","updated_by",
+                            "source_reference"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_account_auxiliary_bindings", "data_change", true,
+                    List.of("account_code","auxiliary_id","created_at","created_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_statement_source_reviews", "data_change", true,
+                    List.of("id","actor_id","kind","currency_id","date_from","date_to",
+                            "sha256","currency_mapping_fingerprint","created_at","directory_applied_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_sales_cost_inputs", "data_change", true,
+                    List.of("period","client_id","channel","confirmed","row_version","updated_by",
+                            "tax_rate","freight_local","exchange_rate","source_reference","client_name_snapshot","seller_name_snapshot","region_snapshot","director_snapshot"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_plastic_template_inputs", "data_change", true,
+                    List.of("period_line_id","source_close_id","source_unit_id","template_row","confirmed","row_version",
+                            "updated_by",
+                            "weight_kg_per_unit","material_name","reject_return_qty","reject_issue_qty","reason","source_reference"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_material_order_references", "data_change", true,
+                    List.of("requisition_id","confirmed","row_version","updated_by",
+                            "order_no","source_reference"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_copper_template_inputs", "data_change", true,
+                    List.of("source_line_id","supplier_id","goods_id","section_key","confirmed","row_version",
+                            "updated_by",
+                            "source_reference"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_template_sources", "data_change", true,
+                    List.of("id","actor_id","template_key","period","sha256","source_selection"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_asset_template_metadata", "data_change", true,
+                    List.of("id","object_type","object_id","valid_from","document_date","confirmed",
+                            "row_version","created_at","created_by","updated_by",
+                            "party_name","unit_specification","location_caption","category_caption","usage_caption","source_month","first_level_caption","second_level_caption","acceptance_caption","source_reference"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_asset_opening_groups", "data_change", true,
+                    List.of("id","actor_id","source_import_id","source_voucher_id","as_of","source_voucher_ids",
+                            "fingerprint","status","approved_by","approved_at","revoke_actor_id","revoke_approved_by",
+                            "revoked_at","row_version","created_at",
+                            "zero_balance_evidence","source_entry_snapshot","member_snapshot","reason","revoke_reason"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_asset_opening_members", "data_change", true,
+                    List.of("group_id","object_type","object_id","source_row","source_sha256","cost_style_id",
+                            "accumulated_style_id","active",
+                            "source_sheet","original_amount","accumulated_amount","remaining_months","nominal_monthly_amount"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_asset_opening_entry_claims", "data_change", true,
+                    List.of("entry_id","group_id"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_asset_template_history", "data_change", true,
+                    List.of("id","group_id","object_type","object_id","period_from","period_to",
+                            "source_import_id","source_row","source_column"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_sales_expense_groups", "data_change", true,
+                    List.of("id","period","employee_id","channel","sales_confirmed","reviewed",
+                            "sort_order","request_fingerprint","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_sales_expense_assignments", "data_change", true,
+                    List.of("entry_id","period","source_fingerprint","request_fingerprint","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_expense_analysis_periods", "data_change", true,
+                    List.of("period","policy_confirmed","locked","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_operating_report_notes", "data_change", true,
+                    List.of("period","line_key","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_expense_note_imports", "data_change", true,
+                    List.of("id","actor_id","period","sha256","applied_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_manufacturing_labor_splits", "data_change", true,
+                    List.of("period","source_fingerprint","request_fingerprint","reviewed","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_procurement_ap_policy", "data_change", true,
+                    List.of("singleton","enabled","effective_from","row_version","updated_by",
+                            "source_reference"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_procurement_payable_routes", "data_change", true,
+                    List.of("source_type","source_id","policy_version","approved_on","created_by","created_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_procurement_payable_candidates", "data_change", true,
+                    List.of("id","source_type","source_id","commercial_date","accrual_date","due_date",
+                            "supplier_id","currency_id","settlement_method_id","inventory_style_id","pending_style_id","pending_account_code",
+                            "pending_accounting_currency_id","auxiliary_id","source_fingerprint","pending_voucher_id","pending_reversal_voucher_id","status",
+                            "ledger_id","recognition_id","created_by","created_at","source_reversed_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_procurement_ap_recognitions", "data_change", true,
+                    List.of("id","request_id","payload_hash","supplier_id","currency_id","effective_date",
+                            "counterpart_confirmed_date","file_sha256","submitted_by","created_at","status","approved_by",
+                            "approved_at","reversed_by","reversed_at",
+                            "source_reference","counterpart_confirmed_by","file_provider","file_key","file_version","file_size","file_name","file_content_type","reverse_reason"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_procurement_ap_recognition_lines", "data_change", true,
+                    List.of("recognition_id","candidate_id","ledger_id","voucher_id","reversal_voucher_id","source_fingerprint"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_application_settings", "authorization", true,
+                    List.of("id","enabled","enabled_at","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_application_enable_periods", "authorization", true,
+                    List.of("id","enabled_at","disabled_at","actor_id"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_application_role_bindings", "authorization", true,
+                    List.of("id","role_key","department_id","employee_id","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_applications", "data_change", true,
+                    List.of("id","application_no","kind","source_kind","source_id","status",
+                            "current_step","submission_round","source_fingerprint","payroll_instruction_fingerprint","submitted_at","approved_at",
+                            "approved_by","created_by","updated_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_application_nodes", "data_change", true,
+                    List.of("application_id","submission_round","step_no","role_key","action","status",
+                            "decided_by","decided_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_application_events", "data_change", true,
+                    List.of("id","application_id","submission_round","event_type","step_no","actor_id",
+                            "actor_employee_id","occurred_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_application_operations", "data_change", true,
+                    List.of("request_id","application_id","actor_id","operation","payload_hash","created_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_application_executions", "data_change", true,
+                    List.of("id","application_id","submission_round","request_id","doc_type","doc_id",
+                            "state","paid_by","paid_at","confirmed_by","confirmed_at","reversed_by",
+                            "reversed_at"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_expense_application_links", "data_change", true,
+                    List.of("claim_id","kind","travel_application_id","application_id","created_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_supplier_settlement_dependencies", "data_change", true,
+                    List.of("payment_line_id","offset_id","ledger_id","relation","created_at","created_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_open_item_classification_batches", "data_change", true,
+                    List.of("id","request_id","ledger_id","revision","direction","party_id",
+                            "currency_id","effective_from","fingerprint","created_at","created_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_open_item_classification_parts", "data_change", true,
+                    List.of("batch_id","category"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_payment_classification_batches", "data_change", true,
+                    List.of("id","request_id","payment_line_id","revision","source_classification_id","currency_id",
+                            "fingerprint","created_at","created_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_payment_classification_parts", "data_change", true,
+                    List.of("batch_id","category"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_supplier_offset_classification_batches", "data_change", true,
+                    List.of("id","request_id","offset_id","revision","source_classification_id","target_classification_id",
+                            "fingerprint","created_at","created_by"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("finance_supplier_offset_classification_parts", "data_change", true,
+                    List.of("batch_id","source_category","target_category"),
+                    "V1059 财务原件与人工决定保留身份、状态及操作者定位，金额、姓名和说明由原生权限入口读取"),
+            new ScopedTable("sales_shipment_delivery_components", "data_change", true,
+                    List.of("id","shipment_id","shipment_item_id","order_item_id","bom_path","bom_fingerprint",
+                            "goods_id","color_id","unit_id","required_qty","required_operations","warehouse_id",
+                            "stock_place","processing_completed_qty","processing_completed_by","processing_completed_at","movement_id","reversal_movement_id",
+                            "revision"),
+                    "V1051 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_processing_events", "data_change", true,
+                    List.of("id","component_id","request_id","quantity","operation","actor_employee_id",
+                            "occurred_at"),
+                    "V1051 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_processing_actions", "data_change", true,
+                    List.of("request_id","component_id","action_type","request_hash","actor_employee_id","resulting_version",
+                            "occurred_at"),
+                    "V1052 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_warehouse_actions", "data_change", true,
+                    List.of("request_id","shipment_id","component_id","action_type","workshop_id","responsible_id",
+                            "request_hash","actor_employee_id","occurred_at"),
+                    "V1053 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_fulfillment_groups", "data_change", true,
+                    List.of("id","shipment_item_id","shipment_id","order_item_id","order_qty","state",
+                            "created_by","created_at","updated_at"),
+                    "V1054 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_fulfillment_allocations", "data_change", true,
+                    List.of("id","shipment_item_id","analysis_id","analysis_item_id","position","order_qty",
+                            "created_by","created_at"),
+                    "V1054 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_entitlement_handoffs", "data_change", true,
+                    List.of("id","component_id","allocation_id","source_analysis_id","source_material_id","entitlement_analysis_id",
+                            "entitlement_material_id","aggregate_alias_id","source_entitlement_event_id","source_reservation_id","target_reservation_id","release_event_id",
+                            "quantity","created_by","created_at"),
+                    "V1054 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_entitlement_restores", "data_change", true,
+                    List.of("id","handoff_id","restore_event_id","reason","created_by","created_at"),
+                    "V1054 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"),
+            new ScopedTable("sales_delivery_fulfillment_events", "data_change", true,
+                    List.of("id","allocation_id","event_type","order_qty","counter_event_id","created_by",
+                            "created_at"),
+                    "V1054 实际交付、加工与归属恢复按既定登记列保留数量、身份及动作，不改变迁移中的业务口径"));
 
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
+            new NoneGroup("financial_source_coordination",
+                    "V999 子版本财务来源的期间修订计数与结果回执属于技术协调态；原始证据和实际人工决定由各自入口及元数据审计保留",
+                    Set.of("finance_gl_period_versions", "finance_cost_input_operations",
+                            "finance_asset_template_operations")),
             new NoneGroup("finance_batch_entry_receipts",
                     "V991 按账号和幂等键保存原子钱流批次的请求摘要与既定回执；实际单据和钱流仍按各自业务审计，重试只读取原回执，不把协调结果复制成第二份行审计",
                     Set.of("finance_batch_entry_commands")),
@@ -1145,6 +1427,7 @@ class AuditTriggerCoverageMigrationContractTest {
             while (registration.find()) {
                 registered.put(registration.group(1), registration.group(2));
             }
+            registered.putAll(literalFullAuditLoopRegistrations(sql));
             Matcher scoped = SCOPED_CALL.matcher(sql);
             while (scoped.find()) {
                 List<String> columns = new ArrayList<>();
@@ -1242,8 +1525,7 @@ class AuditTriggerCoverageMigrationContractTest {
 
     private static String removeExactlyForwardRepairedAuditTrigger(MigrationSource migration, String sql) throws Exception {
         List<ForwardAuditRepair> repairs = FORWARD_AUDIT_REPAIRS.get(migration.version());
-        if (repairs == null) return sql;
-        for (ForwardAuditRepair repair : repairs) {
+        for (ForwardAuditRepair repair : repairs == null ? List.<ForwardAuditRepair>of() : repairs) {
             assertEquals(repair.file(), migration.path().getFileName().toString());
             assertEquals(repair.sha256(), HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(Files.readAllBytes(migration.path()))), "Applied audit migration bytes must remain immutable");
@@ -1271,6 +1553,45 @@ class AuditTriggerCoverageMigrationContractTest {
             assertEquals(DYNAMIC_LEGACY_AUDIT_TEMPLATE_OCCURRENCES, occurrences,
                     "the dynamic legacy audit template is pinned to its reviewed count");
             sql = sql.replace(DYNAMIC_LEGACY_AUDIT_TEMPLATE, "");
+        }
+        return removePinnedSubversionAuditTriggers(migration, sql);
+    }
+
+    private static String removePinnedSubversionAuditTriggers(MigrationSource migration, String sql)
+            throws Exception {
+        String filename = migration.path().getFileName().toString();
+        PinnedSubversionAudit pinned = PINNED_SUBVERSION_AUDITS.stream()
+                .filter(item -> item.file().equals(filename)).findFirst().orElse(null);
+        if (pinned == null) return sql;
+        assertEquals(pinned.sha256(), HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(Files.readAllBytes(migration.path()))),
+                "Applied financial subversion bytes must remain immutable");
+        String forward = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve(SUBVERSION_AUDIT_FORWARD), StandardCharsets.UTF_8))
+                .replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        Matcher legacy = LEGACY_SUBVERSION_AUDIT.matcher(sql);
+        int count = 0;
+        while (legacy.find()) {
+            count++;
+            assertTrue(scopedTables().containsKey(legacy.group(2)),
+                    "Every pinned private financial table needs a reviewed metadata-only policy");
+            assertTrue(forward.contains("select public.fn_audit_track_table('" + legacy.group(2)
+                            + "', 'column_scoped',"),
+                    "The exact pinned historical trigger requires its V1059 forward registration");
+        }
+        assertEquals(pinned.staticTriggerCount(), count,
+                "The allowance covers exactly the reviewed static audit triggers");
+        sql = legacy.replaceAll("");
+        if (filename.equals("V999_13__finance_open_item_classification_allocations.sql")) {
+            String dynamic = "execute format('create trigger %i after insert on %i for each row execute function fn_audit()',table_name||'_audit',table_name);";
+            assertEquals(sql.indexOf(dynamic), sql.lastIndexOf(dynamic));
+            assertTrue(sql.contains(dynamic), "Only the pinned classification template is allowed");
+            for (String table : List.of("finance_open_item_classification_batches", "finance_open_item_classification_parts",
+                    "finance_payment_classification_batches", "finance_payment_classification_parts",
+                    "finance_supplier_offset_classification_batches", "finance_supplier_offset_classification_parts")) {
+                assertTrue(forward.contains("select public.fn_audit_track_table('" + table + "', 'column_scoped',"));
+            }
+            sql = sql.replace(dynamic, "");
         }
         return sql;
     }
@@ -1388,6 +1709,34 @@ class AuditTriggerCoverageMigrationContractTest {
         return matcher.find() ? matcher.group(1) : "";
     }
 
+    private static Map<String, String> literalFullAuditLoopRegistrations(String sql) {
+        Pattern loopPattern = Pattern.compile("(?is)\\bFOREACH\\s+([a-z_][a-z0-9_]*)\\s+IN\\s+ARRAY\\s+ARRAY\\["
+                + "((?:\\s*'[a-z_][a-z0-9_]*'\\s*,)*\\s*'[a-z_][a-z0-9_]*'\\s*)]\\s+LOOP\\b(.*?)\\bEND\\s+LOOP\\s*;");
+        Map<String, String> registered = new LinkedHashMap<>();
+        Matcher loop = loopPattern.matcher(sql);
+        while (loop.find()) {
+            String variable = Pattern.quote(loop.group(1));
+            Pattern callPattern = Pattern.compile("(?i)\\bPERFORM\\s+(?:public\\.)?fn_audit_track_table\\(\\s*"
+                    + variable + "\\s*,\\s*'FULL'\\s*,\\s*'(data_change|authorization|system)'\\s*,\\s*false"
+                    + "\\s*,\\s*NULL\\s*,\\s*true\\s*,\\s*NULL\\s*\\)\\s*;");
+            if (!callPattern.matcher(loop.group(3)).find()) continue;
+            assertFalse(Pattern.compile("(?i)\\b" + variable + "\\s*:=").matcher(loop.group(3)).find(),
+                    "A literal audit loop must not replace its table identity before registering it");
+            Matcher table = QUOTED.matcher(loop.group(2));
+            while (table.find()) registered.put(table.group(1), "FULL");
+        }
+        return registered;
+    }
+
+    @Test
+    void literalFullAuditLoopsDoNotInferDynamicTableExpressions() {
+        String body = " LOOP PERFORM fn_audit_track_table(t,'FULL','data_change',false,NULL,true,NULL); END LOOP;";
+        assertEquals(Map.of("audit_probe_one", "FULL", "audit_probe_two", "FULL"),
+                literalFullAuditLoopRegistrations("FOREACH t IN ARRAY ARRAY['audit_probe_one','audit_probe_two']" + body));
+        assertEquals(Map.of(), literalFullAuditLoopRegistrations("FOREACH t IN ARRAY tables" + body));
+        assertEquals(Map.of(), literalFullAuditLoopRegistrations("FOREACH t IN ARRAY ARRAY[table_name]" + body));
+    }
+
     /** 迁移链结束时存在的表 -> 首次创建的版本(按建表/删表/改名依次回放)。 */
     static Map<String, Integer> liveTableVersions() throws IOException {
         Map<String, Integer> live = new LinkedHashMap<>();
@@ -1442,8 +1791,48 @@ class AuditTriggerCoverageMigrationContractTest {
                 }
             }
         }
-        result.sort(Comparator.comparingInt(MigrationSource::version));
+        result.sort(Comparator.comparing(migration -> MigrationVersion.fromVersion(
+                migration.path().getFileName().toString().substring(1,
+                        migration.path().getFileName().toString().indexOf("__")))));
         return result;
+    }
+
+    @Test
+    void migrationScannerIncludesSubversionsInFlywayOrder() throws IOException {
+        List<String> names = migrations().stream()
+                .map(migration -> migration.path().getFileName().toString()).toList();
+        int second = names.indexOf("V999_2__financial_voucher_evidence_and_auxiliary_allocations.sql");
+        int tenth = names.indexOf("V999_10__procurement_reconciliation_first_payables.sql");
+        int nextMajor = names.indexOf("V1001__business_application_workflows.sql");
+        assertTrue(second >= 0 && second < tenth && tenth < nextMajor,
+                "Subversions must participate in the policy replay in Flyway numeric order");
+        assertEquals(999, liveTableVersions().get("finance_template_sources"));
+    }
+
+    @Test
+    void financialSubversionCorrectionOnlyChangesSharedAuditPoliciesAndMinimization() throws IOException {
+        String sql = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve(SUBVERSION_AUDIT_FORWARD), StandardCharsets.UTF_8));
+        Matcher minimizer = Pattern.compile("(?s)DO \\$financial_subversion_private_changes\\$.*?"
+                + "\\$financial_subversion_private_changes\\$;").matcher(sql);
+        assertTrue(minimizer.find(), "The reviewed shared minimizer must retain redacted private-value changes");
+        String body = minimizer.group();
+        assertTrue(body.contains("pg_get_functiondef('public.fn_audit_redact_row(text,jsonb)'::regprocedure)")
+                        && body.contains("finance_source_payload_guard_v1")
+                        && body.contains("EXECUTE replace(definition,anchor,projection);"));
+        assertEquals(1, Pattern.compile("(?i)\\bEXECUTE\\b").matcher(body).results().count());
+        assertFalse(Pattern.compile("(?i)\\b(?:INSERT|UPDATE|DELETE|TRUNCATE|ALTER|DROP)\\b").matcher(body).find(),
+                "Only the canonical audit minimizer can be changed; business facts, guards and audit history stay intact");
+        assertFalse(minimizer.find(), "The private-value minimizer has one reviewed writer");
+        sql = Pattern.compile("(?s)DO \\$financial_subversion_private_changes\\$.*?"
+                + "\\$financial_subversion_private_changes\\$;").matcher(sql).replaceAll("");
+        for (String statement : sql.split(";")) {
+            String normalized = statement.replaceAll("\\s+", " ").trim().toLowerCase(Locale.ROOT);
+            if (normalized.isEmpty()) continue;
+            assertTrue(normalized.startsWith("select public.fn_audit_track_table('")
+                            || normalized.equals("select public.fn_refresh_finance_audit_metadata_projection()"),
+                    "The forward correction must not alter business data, schema, guards or retained audit history");
+        }
     }
 
     /** Removes SQL comments so documentation examples cannot look like DDL. */

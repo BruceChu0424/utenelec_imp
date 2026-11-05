@@ -60,7 +60,7 @@ class SystemPostingStyleUuidRoleContractTest {
         // （下一用例钉住），GL 删除重建前仅在条件角色清单中登记 inventory_asset，
         // 与其它条件角色一起经 system_posting_style_id(required.role_key) 统一校验。
         assertThat(java)
-                .contains("UNION SELECT 'INVENTORY_ASSET' WHERE EXISTS")
+                .contains("union select 'inventory_asset' where exists")
                 .contains("system_posting_style_id(required.role_key)");
         assertThat(java)
                 .contains("assertrequiredsystempostingroles(period)")

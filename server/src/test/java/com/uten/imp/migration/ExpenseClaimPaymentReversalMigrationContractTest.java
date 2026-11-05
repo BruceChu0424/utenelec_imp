@@ -19,7 +19,7 @@ class ExpenseClaimPaymentReversalMigrationContractTest {
         assertThat(sha(nativeStage)).isEqualTo("1826c869dbf9e306c25458ec689d8c8cf09b5bb4316e97c3946b6f89b15b786e");
         assertThat(sha(nativeAbandonment)).isEqualTo("b8c390e8969153bb65ab05c956cc61cc36886bdd3baf80f47d2ee1fa13758f26");
         String forward=AuditTriggerCoverageMigrationContractTest.stripSqlComments(Files.readString(
-                directory.resolve("V1068__expense_claim_payment_reversal_event_contract.sql"),StandardCharsets.UTF_8));
+                directory.resolve("V1069__expense_claim_payment_reversal_event_contract.sql"),StandardCharsets.UTF_8));
         var existing=eventTypes(Files.readString(nativeAbandonment,StandardCharsets.UTF_8));
         var expected=new HashSet<>(existing);expected.add("PAYMENT_REVERSED");
         assertThat(existing).contains("STAGE_APPROVED","ABANDONED").hasSize(9);

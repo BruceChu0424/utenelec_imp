@@ -108,9 +108,9 @@ CREATE TRIGGER trg_party_summary_supplier_advance_application AFTER INSERT OR UP
 CREATE TRIGGER trg_party_summary_supplier_advance_refund AFTER INSERT OR UPDATE OR DELETE ON finance_supplier_advance_refunds
  FOR EACH ROW EXECUTE FUNCTION fn_touch_party_summary_from_supplier_advance();
 INSERT INTO party_month_dirty(side,party_id,month_start,reason)
- SELECT DISTINCT 'AP',supplier_id,DATE '1900-01-01','NATIVE_SUPPLIER_CASH_REPLAY_V1077' FROM finance_supplier_advances
+ SELECT DISTINCT 'AP',supplier_id,DATE '1900-01-01','NATIVE_SUPPLIER_CASH_REPLAY_V1078' FROM finance_supplier_advances
  UNION
- SELECT DISTINCT 'AP',supplier_id,DATE '1900-01-01','NATIVE_SUPPLIER_CASH_REPLAY_V1077' FROM finance_payments
+ SELECT DISTINCT 'AP',supplier_id,DATE '1900-01-01','NATIVE_SUPPLIER_CASH_REPLAY_V1078' FROM finance_payments
  WHERE supplier_id IS NOT NULL AND status IN(1,-1) AND NOT is_deleted AND legacy_id IS NULL AND legacy_import_run_id IS NULL
    AND amount_authority_version IN(0,1)
  ON CONFLICT(side,party_id,month_start) DO UPDATE SET touched_at=clock_timestamp(),reason=EXCLUDED.reason;

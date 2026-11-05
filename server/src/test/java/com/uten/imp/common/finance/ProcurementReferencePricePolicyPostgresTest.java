@@ -51,7 +51,12 @@ class ProcurementReferencePricePolicyPostgresTest {
         DATABASE.start(); source = new SingleConnectionDataSource(DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword(), true);
         jdbc = new JdbcTemplate(source);
     }
-    @AfterAll static void close() { if (source != null) source.destroy(); DATABASE.stop(); }
+    @AfterAll static void close() {
+        if (source != null) {
+            source.destroy();
+        }
+        DATABASE.stop();
+    }
 
     @BeforeEach void originalSchemaAndProofs() throws Exception {
         jdbc.execute("DROP SCHEMA IF EXISTS reference_price CASCADE; CREATE SCHEMA reference_price; SET search_path TO reference_price");

@@ -1,5 +1,6 @@
 import 'dart:ui' show PointerDeviceKind, SemanticsAction;
-import '../../support/finance_command_test_support.dart';
+import '../../support/finance_command_test_support.dart'
+    show tapFinanceOriginalAction;
 import '../../support/finance_document_command_fixture.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -1693,18 +1694,55 @@ class _Api extends ApiClient {
     expect(document['expectedVersion'], command['expectedVersion']);
     putCommands.add(command);
     putBodies.add(document);
-    final result = {...legacyReceipt, ...document, 'version': 1}
-      ..remove('expectedVersion');
-    return {
-      ...financeCommandTestReceipt(
-        operation: 'FINANCE_DOCUMENT_UPDATE',
-        method: 'PUT',
-        path: path,
-        body: command,
-        result: result,
-      ),
-      'actorId': 'fixture',
-    };
+    // The request uses decimal text. The real typed response exposes exact
+    // fields alongside numeric compatibility values; raw request strings are
+    // never valid values for those numeric response properties.
+    Map<String, dynamic> responseValues(Map<String, dynamic> values) {
+      final result = Map<String, dynamic>.from(values);
+      for (final key in [
+        'exchangeRate',
+        'amountOriginal',
+        'amountLocal',
+        'qty',
+        'price',
+        'bankFee',
+        'otherFee',
+        'writeOffAmount',
+        'writeOffLocal',
+        'appliedAmountLocal',
+      ]) {
+        if (result[key] is String) {
+          result['${key}Exact'] = result.remove(key);
+        }
+      }
+      return result;
+    }
+
+    final result = responseValues({
+      ...legacyReceipt,
+      ...document,
+      'version': 1,
+      'items': [
+        for (final (index, item) in (document['items'] as List).indexed)
+          responseValues({
+            ...Map<String, dynamic>.from(item as Map),
+            'id': 'saved-line-$index',
+          }),
+      ],
+    })..remove('expectedVersion');
+    for (final key in [
+      'approvalVersion',
+      'approvalSnapshot',
+      'approvalPlatformFields',
+    ]) {
+      result.remove(key);
+    }
+    return financeReviewReceiptFixture(
+      path: path,
+      command: command,
+      result: result,
+      actorId: 'fixture',
+    );
   }
 
   final bodies = <Map<String, dynamic>>[];

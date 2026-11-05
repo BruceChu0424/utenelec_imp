@@ -32,7 +32,7 @@ class ExpenseEventMigrationCompatibilityTest {
     @Test void callbackSupportsOnlyTheThreeRequiredLifecycleEventsOnTheTwoVersions() {
         var callback=new AppliedMigrationCompatibilityCallback();var context=mock(Context.class);var migration=mock(MigrationInfo.class);
         when(context.getMigrationInfo()).thenReturn(migration);
-        for(String version:new String[]{"999.12","1000","1001","1002","1003","1051","1068"}) {
+        for(String version:new String[]{"999.12","1000","1001","1002","1003","1051","1068","1069"}) {
             when(migration.getVersion()).thenReturn(MigrationVersion.fromVersion(version));
             for(Event event:new Event[]{Event.BEFORE_EACH_MIGRATE,Event.BEFORE_EACH_MIGRATE_STATEMENT,Event.AFTER_EACH_MIGRATE})
                 assertThat(callback.supports(event,context)).as(version+":"+event).isEqualTo(version.equals("1000")||version.equals("1002"));

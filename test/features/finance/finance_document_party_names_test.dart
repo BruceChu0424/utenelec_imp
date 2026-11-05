@@ -13,7 +13,10 @@ import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_list_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../support/finance_document_command_fixture.dart';
 import '../../support/native_detail_reader_overrides.dart';
 import '../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -128,6 +131,7 @@ Future<_Api> _open(
       sharedPreferencesProvider.overrideWithValue(
         await SharedPreferences.getInstance(),
       ),
+      formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
     ],
   );
   final router = GoRouter(
@@ -180,7 +184,7 @@ class _Api extends ApiClient {
   int writes = 0;
   int forbiddenPartyReads = 0;
   Future<void> Function()? closeFixture;
-  Map<String, dynamic> get document => {
+  Map<String, dynamic> get document => financeReviewedDetailFixture({
     'id': 'test-document',
     'billNo': 'FIN-EXAMPLE',
     'version': 0,
@@ -218,7 +222,7 @@ class _Api extends ApiClient {
         'amountLocal': 2800,
       },
     ],
-  };
+  }, type);
   @override
   Future<Map<String, dynamic>> get(
     String path, {

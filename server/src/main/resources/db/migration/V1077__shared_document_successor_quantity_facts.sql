@@ -152,19 +152,19 @@ BEGIN
     SELECT pg_get_functiondef('fn_guard_document_quantity_adoption()'::regprocedure) INTO definition;
     needle:='IF TG_OP=''INSERT'' AND TG_TABLE_NAME=''purchase_receipt_items''';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1062 original receipt successor dispatch differs';END IF;
+        RAISE EXCEPTION 'V1077 original receipt successor dispatch differs';END IF;
     definition:=replace(definition,needle,'IF TG_OP=''INSERT'' AND TG_TABLE_NAME IN(''purchase_order_items'',''purchase_receipt_items'',''purchase_return_items'',''subcontract_receipt_items'',''subcontract_material_return_items'')');
     definition:=replace(definition,'to_jsonb(NEW)->>''quantity_successor_source_id'' IS NOT NULL',
         'fn_document_successor_source_id(TG_TABLE_NAME,to_jsonb(NEW)) IS NOT NULL');
     needle:='PERFORM fn_assert_purchase_receipt_quantity_successor(to_jsonb(NEW));';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1062 original receipt successor proof differs';END IF;
+        RAISE EXCEPTION 'V1077 original receipt successor proof differs';END IF;
     EXECUTE replace(definition,needle,'IF NEW.successor_copy_txid IS DISTINCT FROM txid_current() THEN RAISE EXCEPTION ''Initial quantity successor assembly is unproved'' USING ERRCODE=''23514'';END IF;');
 
     SELECT pg_get_functiondef('fn_guard_sales_return_quantity_adoption()'::regprocedure) INTO definition;
     needle:='IF TG_OP=''INSERT'' THEN';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1062 original sales return quantity adoption differs';END IF;
+        RAISE EXCEPTION 'V1077 original sales return quantity adoption differs';END IF;
     EXECUTE replace(definition,needle,'IF TG_OP=''INSERT'' AND NEW.quantity_successor_source_id IS NOT NULL THEN
         IF NEW.successor_copy_txid IS DISTINCT FROM txid_current() THEN RAISE EXCEPTION ''Initial quantity successor assembly is unproved'' USING ERRCODE=''23514'';END IF;
         RETURN NEW;
@@ -174,11 +174,11 @@ BEGIN
     SELECT pg_get_functiondef('fn_guard_procurement_reference_price_policy()'::regprocedure) INTO definition;
     start_at:=position('IF NEW.reference_price_successor_source_id IS DISTINCT FROM OLD.reference_price_successor_source_id' IN definition);
     end_at:=position('changed:=' IN definition);
-    IF start_at=0 OR end_at<=start_at THEN RAISE EXCEPTION 'V1062 original money successor identity block differs';END IF;
+    IF start_at=0 OR end_at<=start_at THEN RAISE EXCEPTION 'V1077 original money successor identity block differs';END IF;
     old_block:=substring(definition FROM start_at FOR end_at-start_at);definition:=replace(definition,old_block,'');
     start_at:=position('IF TG_OP=''INSERT'' AND NEW.reference_price_successor_source_id IS NOT NULL THEN' IN definition);
     end_at:=position('-- Genuine imported historical rows' IN definition);
-    IF start_at=0 OR end_at<=start_at THEN RAISE EXCEPTION 'V1062 original money successor input block differs';END IF;
+    IF start_at=0 OR end_at<=start_at THEN RAISE EXCEPTION 'V1077 original money successor input block differs';END IF;
     old_block:=substring(definition FROM start_at FOR end_at-start_at);
     EXECUTE replace(definition,old_block,'IF TG_OP=''INSERT'' AND NEW.reference_price_successor_source_id IS NOT NULL THEN
         IF NEW.successor_copy_txid IS DISTINCT FROM txid_current() THEN RAISE EXCEPTION ''Initial reference successor assembly is unproved'' USING ERRCODE=''23514'';END IF;

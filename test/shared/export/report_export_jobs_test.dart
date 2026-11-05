@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -586,7 +587,13 @@ void main() {
         containsPair('selectedIds', '["mould-a","mould-b"]'),
       );
       expect(find.text('下载文件'), findsNothing);
-      expect(find.text('上次创建结果尚未确认，请先核查原任务。'), findsOneWidget);
+      expect(find.text('上次创建结果尚未确认'), findsOneWidget);
+      expect(
+        tester
+            .widgetList<UtenFieldHintIcon>(find.byType(UtenFieldHintIcon))
+            .map((hint) => hint.info),
+        contains(contains('上次创建结果尚未确认，请先核查原任务。')),
+      );
       expect(store.read()!.id, newRequest['id']);
       await tester.tap(find.text('核查任务'));
       await tester.pumpAndSettle();

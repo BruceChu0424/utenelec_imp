@@ -39,7 +39,7 @@ BEGIN
     SELECT pg_get_functiondef('fn_guard_document_quantity_adoption()'::regprocedure) INTO definition;
     needle:='IF TG_OP=''INSERT'' THEN';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1057 quantity adoption insert anchor differs';
+        RAISE EXCEPTION 'V1072 quantity adoption insert anchor differs';
     END IF;
     definition:=replace(definition,needle,
         'IF TG_OP=''INSERT'' AND TG_TABLE_NAME=''purchase_receipt_items''

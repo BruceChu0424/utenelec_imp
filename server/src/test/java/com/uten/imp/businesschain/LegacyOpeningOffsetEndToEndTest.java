@@ -74,6 +74,7 @@ class LegacyOpeningOffsetEndToEndTest {
         @Override public void afterTestClass(TestContext ignored) throws Exception {if(database!=null)database.close();}
     }
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.beans.factory.BeanFactory testServices;
     @Autowired PlatformTransactionManager transactions;
     @Autowired PermissionResolver permissions;
     @Autowired FinancePaymentService payments;
@@ -272,6 +273,7 @@ class LegacyOpeningOffsetEndToEndTest {
         UUID target=opening("AR","25","8","17",true,"2025-01-31T15:59:59Z");
         FinanceReceiptSaveRequest request=ReflectionTestUtils.invokeMethod(fixture,"receiptRequest",world,null,account,null,"4","4","0","0",BigDecimal.ONE,BusinessTime.today());
         request.setReceiptKind("CUSTOMER_PREPAYMENT");request.setItems(List.of());request.setCurrencyId(currency);
+        request.setSalesOrderId(com.uten.imp.support.SalesPrepaymentOrderFixture.createApproved(testServices,jdbc,client,currency,BusinessTime.today()));
         request.setExchangeRate(BigDecimal.ONE);request.setAmountOriginal(new BigDecimal("4"));
         UUID receipt=receipts.create(request).getId();fixture.loginAs(reviewer);receipts.approve(receipt);fixture.loginAs(maker);
         UUID source=jdbc.queryForObject("SELECT id FROM ar_ap_ledger WHERE source_doc_type='DIRECT_RECEIPT' AND source_doc_id=?",UUID.class,receipt);

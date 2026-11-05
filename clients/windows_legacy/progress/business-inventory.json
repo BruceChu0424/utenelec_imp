@@ -594,7 +594,7 @@
       "id": "page:admin/pages/admin_ai_settings_page.dart",
       "feature": "admin",
       "source": "lib/features/admin/pages/admin_ai_settings_page.dart",
-      "sha256": "0ed93de0be0d5dfa9596efa1725da7e420bacfdc349311e1bbfacfdfce5b603c",
+      "sha256": "837310b1d73e6e56ac10b951c1e1c7c676ef10ce740c1601993ce5dea3e60422",
       "lineCount": 867,
       "classes": [
         {
@@ -783,7 +783,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -1095,7 +1095,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e27f14142ab002ccdc6beb883451c161ef39b233a862a3d61b77ce5b423605a0"
+          "targetSha256": "342c93acf29a98cb6278a343f82d29427000ae41109a1ec875a90810f8c15442"
         },
         {
           "directive": "import",
@@ -1107,7 +1107,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "0633085d153f1061473e70c8976eafe9b9595047f1f8617ee1b27a3564a3dd12"
+          "targetSha256": "8e6f578856793a1ac1a82a582d4b0a1580ac7d5af23e304ddb7c39f987a7dcf6"
         },
         {
           "directive": "import",
@@ -2086,7 +2086,7 @@
       "id": "page:admin/pages/admin_ai_usage_page.dart",
       "feature": "admin",
       "source": "lib/features/admin/pages/admin_ai_usage_page.dart",
-      "sha256": "7386d703db992b56c8403de04b87732e9fb865dc3bbda437b213924dc595d3c7",
+      "sha256": "3f7c00e21acc9430b085bbb0c1f79ea8d4ece121e7fb5b8f3350e501206eb063",
       "lineCount": 937,
       "classes": [
         {
@@ -3712,7 +3712,7 @@
       "id": "page:admin/pages/admin_ai_usage_records_page.dart",
       "feature": "admin",
       "source": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
-      "sha256": "0aeedcdb3aed881294a1dcf41a76eadffc4caa01be856d95ebecb5a276c9d2d8",
+      "sha256": "684ee19a08104015e13d59eed0574cf3935a19d241b8d001926946a3d443e380",
       "lineCount": 1471,
       "classes": [
         {
@@ -3731,7 +3731,7 @@
           "name": "_AdminAiUsageRecordsPageState",
           "line": 116,
           "role": "state-class",
-          "extends": "ConsumerState<_AdminAiUsageRecordsSession>\r\n    with ScopedPagedReadViewMixin<_AdminAiUsageRecordsSession>"
+          "extends": "ConsumerState<_AdminAiUsageRecordsSession>\n    with ScopedPagedReadViewMixin<_AdminAiUsageRecordsSession>"
         },
         {
           "name": "_SummaryRow",
@@ -5626,7 +5626,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "30bd4f3c487d56d4903e29c342607e404fa7180ed3ca1254afb78fdbf823f780"
+          "targetSha256": "bed5d35cfbcadd5db7b8bdd1b5a22dbce1a38c0b10f7f52b0fe59fa36edf32f9"
         },
         {
           "directive": "import",
@@ -5986,7 +5986,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c88a3e8b4f792af9134a519d5c52ab278b718692cfe4421ef30a3ec8362b5fbc"
+          "targetSha256": "9fbbe737c54a68307d587d8462f1e69e86a58d7375fdf9c0c4088b0e36726654"
         },
         {
           "directive": "import",
@@ -6082,7 +6082,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4a30a6b48fc16122b92bd4ef7802c358b6b342fb3345e4fcdf738007491493d1"
+          "targetSha256": "eff8062929ff4f5b51a262ed7beac2ec490aef6c81891ff577397cecbee6d62f"
         }
       ],
       "partUnits": [
@@ -7841,7 +7841,7 @@
         },
         {
           "source": "lib/features/admin/pages/audit_device_evidence.dart",
-          "sha256": "4a30a6b48fc16122b92bd4ef7802c358b6b342fb3345e4fcdf738007491493d1",
+          "sha256": "eff8062929ff4f5b51a262ed7beac2ec490aef6c81891ff577397cecbee6d62f",
           "lineCount": 1287,
           "classes": [
             {
@@ -9631,7 +9631,7 @@
       "id": "page:admin/pages/admin_audit_session_detail_page.dart",
       "feature": "admin",
       "source": "lib/features/admin/pages/admin_audit_session_detail_page.dart",
-      "sha256": "30bd4f3c487d56d4903e29c342607e404fa7180ed3ca1254afb78fdbf823f780",
+      "sha256": "bed5d35cfbcadd5db7b8bdd1b5a22dbce1a38c0b10f7f52b0fe59fa36edf32f9",
       "lineCount": 278,
       "classes": [
         {
@@ -10730,7 +10730,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b994b9f7c3ede34ea2915695cd8dbe7332ccb54d25725e45793270710bfaa4fe"
+          "targetSha256": "02ddf85c839debf9ffb8c2c30d1f7130945eadf56f4bed78761297fec977b801"
         },
         {
           "directive": "import",
@@ -12336,7 +12336,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "388d0b1f8f65527a6669d969f42db8eefef0d544ea5e5ea8e659aefab15a66fc"
+          "targetSha256": "7f80324e24f5366a754624788e9d003575eb026307647dfb5c82a421dcd79af5"
         }
       ],
       "partUnits": [],
@@ -12726,7 +12726,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -13124,7 +13124,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -13484,7 +13484,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ed27d7494f765e75a1253925a4451b13ca2199e4f75877534fe32b16f0014302"
+          "targetSha256": "1d21553744ba7806616e8b6d808a763934d7be48bd916eecdecbb2cbd05f613d"
         },
         {
           "directive": "import",
@@ -13496,7 +13496,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2a39c96621287fb7ada1abb88220f6e19375adf75d217baae78f484900f08c79"
+          "targetSha256": "92a89fb2acabbfe20a537387fd9f11c42f76b19495a3224ec30e98667e560c68"
         },
         {
           "directive": "import",
@@ -13508,7 +13508,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1ead3b165766d60296fa737944b0c48c2d92b221b1819c15b3ee4fea5fc9e3c6"
+          "targetSha256": "d86be7896def1a8f5da0acbeecfd3c303b1b0842c5fb54fac9d6a65ef9691b75"
         },
         {
           "directive": "import",
@@ -13520,7 +13520,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8b28ea785e4ee94943f8125fdc58ea7196af0a5bbc358cb4080a2768e48e7f01"
+          "targetSha256": "1d329343507d9ccccf6983e2ddc709d12ff0347f182eeba139346b9414e14e1f"
         }
       ],
       "partUnits": [],
@@ -13873,7 +13873,7 @@
       "id": "page:admin/pages/server_operations_page.dart",
       "feature": "admin",
       "source": "lib/features/admin/pages/server_operations_page.dart",
-      "sha256": "a93997f9ff6ce28be37b209c19fb12e52105f945c1ebe307c73ccbc849025a06",
+      "sha256": "a4a8dd88dc641604b7b3bfc91be33c96f9b46401987eae45e1353676e3a9c550",
       "lineCount": 580,
       "classes": [
         {
@@ -14014,7 +14014,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -14206,7 +14206,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "d6f3dce9351b0690159423a53bc676d6769138f363fda5fd2f08cea4057f8c05"
+          "targetSha256": "c97ba57ec4c47021c600fd9bba55256e1556f3ab733a31aed326989380bad8df"
         },
         {
           "directive": "import",
@@ -15516,7 +15516,7 @@
       "id": "page:admin/pages/server_storage_page.dart",
       "feature": "admin",
       "source": "lib/features/admin/pages/server_storage_page.dart",
-      "sha256": "627c75d16323599b2ceef4d487981392415460f21128d9d8f2d86fc225ee6b8c",
+      "sha256": "cc323451c9abe712c09925e780e25fe9d721e889968dcd0bc5c35b947eca35ec",
       "lineCount": 702,
       "classes": [
         {
@@ -15657,7 +15657,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -16117,7 +16117,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -22321,7 +22321,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -22693,7 +22693,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "975a3d4b495a5a177799add252a27cd0bd040e2fceaca6588ce506750abfe511"
+          "targetSha256": "6d5b9aaaec056e14f942974daa6f63a2a5819397b36c7039e426cc4baa3f101c"
         },
         {
           "directive": "import",
@@ -23686,7 +23686,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -24286,7 +24286,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c37c5b07c9b69e1b807edfa5386958371137966a18d6ce80fc74c165911cb49e"
+          "targetSha256": "044010814e63e9ee263ef8a91dccb168bc26c56164663ac1e2420657218d1c5c"
         },
         {
           "directive": "import",
@@ -25691,7 +25691,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "82282449e6ef06535b66440cdad129ba62a1fa57ac7b7946cc7605caba2df3bd"
+          "targetSha256": "8f1a4c6cd92fdfae688beb0b409f39c4b90d8e8bb57b64e83b539678b4fb1cd8"
         },
         {
           "directive": "import",
@@ -25907,7 +25907,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c37c5b07c9b69e1b807edfa5386958371137966a18d6ce80fc74c165911cb49e"
+          "targetSha256": "044010814e63e9ee263ef8a91dccb168bc26c56164663ac1e2420657218d1c5c"
         },
         {
           "directive": "import",
@@ -28136,7 +28136,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -29446,7 +29446,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -30769,7 +30769,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -31970,7 +31970,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -34524,7 +34524,7 @@
       "id": "page:basic_data/pages/mould_category_page.dart",
       "feature": "basic_data",
       "source": "lib/features/basic_data/pages/mould_category_page.dart",
-      "sha256": "af29c8992c7bcb6fceb9fe29d9b22b59a4d31549261af8b2c1a5c2354718a313",
+      "sha256": "0e15129d516e442b1ff2069066a02bedfadd2203c1597c0138ca34916871a073",
       "lineCount": 1044,
       "classes": [
         {
@@ -34537,7 +34537,7 @@
           "name": "_MouldCategoryPageState",
           "line": 64,
           "role": "state-class",
-          "extends": "ConsumerState<MouldCategoryPage>\r\n    with CategoryPageShell<MouldCategoryPage>"
+          "extends": "ConsumerState<MouldCategoryPage>\n    with CategoryPageShell<MouldCategoryPage>"
         }
       ],
       "directImports": [
@@ -34575,7 +34575,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -36431,7 +36431,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -36899,7 +36899,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "0f4850a87116975e96486c4044972ef934c07d58526e3e70e6d86c0db29fa972"
+          "targetSha256": "7a6dcd2148eb156ef05f3156ecbac1933eecb583e0537496003f860025477845"
         },
         {
           "directive": "import",
@@ -37055,7 +37055,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2fa1750339d3758df14c80e09a3af98a7c51a66668a17af3a18f0d1accbb565b"
+          "targetSha256": "d0712ffd6b1f5a7f9cd9bff9b5cffccb2419e614b409c4fc38c86b4310342325"
         },
         {
           "directive": "import",
@@ -39435,7 +39435,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -40023,7 +40023,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3b67f637321599adb93608a11ac283e42ce9fa7f2a7e41db16737367147f9ad6"
+          "targetSha256": "e8ce6107d737db78b4906091a73459160f6cda829b95a62d12ade158a144f56e"
         },
         {
           "directive": "import",
@@ -41553,7 +41553,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c37c5b07c9b69e1b807edfa5386958371137966a18d6ce80fc74c165911cb49e"
+          "targetSha256": "044010814e63e9ee263ef8a91dccb168bc26c56164663ac1e2420657218d1c5c"
         },
         {
           "directive": "import",
@@ -41637,7 +41637,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -44632,7 +44632,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -45762,7 +45762,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c37c5b07c9b69e1b807edfa5386958371137966a18d6ce80fc74c165911cb49e"
+          "targetSha256": "044010814e63e9ee263ef8a91dccb168bc26c56164663ac1e2420657218d1c5c"
         },
         {
           "directive": "import",
@@ -45846,7 +45846,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2fa1750339d3758df14c80e09a3af98a7c51a66668a17af3a18f0d1accbb565b"
+          "targetSha256": "d0712ffd6b1f5a7f9cd9bff9b5cffccb2419e614b409c4fc38c86b4310342325"
         },
         {
           "directive": "import",
@@ -47509,7 +47509,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -48933,7 +48933,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -51279,7 +51279,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -53339,7 +53339,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -53603,7 +53603,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4049eefc9148901572057342e79d294f76c6ca6cb90a8d344b9d116652228837"
+          "targetSha256": "5815fd2dd57e02f32006724a6c7be6db4f1e26e8bb8022b8501d551b1c2b7fea"
         },
         {
           "directive": "import",
@@ -54565,7 +54565,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a15e2b17f147014f76b8946d4116a17a2bfe3a4960c0381f88a309990b017b26"
+          "targetSha256": "0302fca0af0b8570edd23eb840fcf505c02fc51f989f00f27d10cd855737a177"
         },
         {
           "directive": "import",
@@ -54787,7 +54787,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -55027,7 +55027,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f48d15fde545ba11a38a3e9f0f0ead147ead99118c3b254372bf8671b01ed54b"
+          "targetSha256": "66303fbda78807852ff362e7deac07d0df02ac1c9ffea325536a93300bdb29da"
         },
         {
           "directive": "import",
@@ -56167,7 +56167,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -56929,7 +56929,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -57505,7 +57505,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4212129c60e5f6323e1dee948abe8ca4978aeea774e24515af36974856c18581"
+          "targetSha256": "a043fec7316ff12d4418ad80626aab695a2fe54f3103113a3589a8baa17c702c"
         },
         {
           "directive": "import",
@@ -57577,7 +57577,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "72ab687008e482cb45780c1dbcf7fade04a07a0dc535907972c7258d1502ff3a"
+          "targetSha256": "50e6c1836c33c40c26834d06fe5840ad922686d1ddee3c8b3bec94b369ca0cc0"
         }
       ],
       "partUnits": [],
@@ -58841,7 +58841,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4212129c60e5f6323e1dee948abe8ca4978aeea774e24515af36974856c18581"
+          "targetSha256": "a043fec7316ff12d4418ad80626aab695a2fe54f3103113a3589a8baa17c702c"
         }
       ],
       "partUnits": [],
@@ -60453,7 +60453,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -62734,7 +62734,7 @@
       "id": "page:expense/pages/expense_approval_detail_page.dart",
       "feature": "expense",
       "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
-      "sha256": "c52dcffcc4d68eef1dca102cb98118bf7b4c528f586bcc58911a9f5d17bfe0f0",
+      "sha256": "1367a96548623fd03b84d35a612359cb84eb09fa931c0faf40015f952a08b447",
       "lineCount": 964,
       "classes": [
         {
@@ -62827,7 +62827,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -63673,7 +63673,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -65418,7 +65418,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -66795,7 +66795,7 @@
       "id": "page:expense/pages/expense_settings_page.dart",
       "feature": "expense",
       "source": "lib/features/expense/pages/expense_settings_page.dart",
-      "sha256": "52ce06ed66c0020894cf68ea5a50e4c4a08499427bd1ca6dcda299acd697dc69",
+      "sha256": "c1fafc1a71f695bb0cd2b2b5e9eb75916c4c0f0e58c6773dcb564f97373301f2",
       "lineCount": 260,
       "classes": [
         {
@@ -67229,7 +67229,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "70df85fc8fecd7e6aecef29a00d42110bb1331ba1c9fdd81f35f35ab9dab98f6"
+          "targetSha256": "9e18fd2d7e38c2cca2f6d4eefad6cf75cab5ed40e132a5a714ec3879d1227cda"
         },
         {
           "directive": "import",
@@ -67529,7 +67529,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -68663,7 +68663,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -69070,7 +69070,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -69862,7 +69862,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -71181,7 +71181,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1a5256712524ed42409d8399bff7a430135a12d32e1a6bb7c131389fb2e0bd7c"
+          "targetSha256": "3438dcc62d55b7c9ff154582f8c099fc89861e5a161e05711ad2bdc67daa7038"
         },
         {
           "directive": "import",
@@ -74471,7 +74471,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -77204,7 +77204,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -77996,7 +77996,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "67d750f7ed97c9ba67331f93091e97f24a88c18d56cc058b995f68668e1abc9c"
+          "targetSha256": "87122283a30deaadccef7de8b4c401ad4a135f4c58fc79248d88b0b246ad43cd"
         },
         {
           "directive": "import",
@@ -78200,7 +78200,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1892f7ab7a8627a2fa48635dfd808c42bf7a46b06f9cb9cb4e2f9c4627b6a38c"
+          "targetSha256": "8fcd19e67ffc108c45975aba7c85426709a6e0b7cb17cec066f53e7a6a62037c"
         },
         {
           "directive": "import",
@@ -82182,7 +82182,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1a5256712524ed42409d8399bff7a430135a12d32e1a6bb7c131389fb2e0bd7c"
+          "targetSha256": "3438dcc62d55b7c9ff154582f8c099fc89861e5a161e05711ad2bdc67daa7038"
         }
       ],
       "partUnits": [],
@@ -84787,7 +84787,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -86229,7 +86229,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -88448,7 +88448,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -89760,7 +89760,7 @@
       "id": "page:finance/pages/finance_reconciliation_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
-      "sha256": "5082e9157cd727343bba9b131ce190e0c528931e3df7494939b5b18848ca338e",
+      "sha256": "fb1d532e8a633182d028af2f662a354058ccfc069d32971551da2233ede95dbe",
       "lineCount": 498,
       "classes": [
         {
@@ -89773,7 +89773,7 @@
           "name": "_FinanceReconciliationPageState",
           "line": 70,
           "role": "state-class",
-          "extends": "ConsumerState<FinanceReconciliationPage>\r\n    with ScopedPagedReadViewMixin<FinanceReconciliationPage>"
+          "extends": "ConsumerState<FinanceReconciliationPage>\n    with ScopedPagedReadViewMixin<FinanceReconciliationPage>"
         }
       ],
       "directImports": [
@@ -89991,7 +89991,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "975a3d4b495a5a177799add252a27cd0bd040e2fceaca6588ce506750abfe511"
+          "targetSha256": "6d5b9aaaec056e14f942974daa6f63a2a5819397b36c7039e426cc4baa3f101c"
         },
         {
           "directive": "import",
@@ -90135,7 +90135,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1a5256712524ed42409d8399bff7a430135a12d32e1a6bb7c131389fb2e0bd7c"
+          "targetSha256": "3438dcc62d55b7c9ff154582f8c099fc89861e5a161e05711ad2bdc67daa7038"
         }
       ],
       "partUnits": [],
@@ -92300,7 +92300,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -92684,7 +92684,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -94320,7 +94320,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -95579,7 +95579,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -97212,7 +97212,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -99349,7 +99349,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -100065,7 +100065,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1a5256712524ed42409d8399bff7a430135a12d32e1a6bb7c131389fb2e0bd7c"
+          "targetSha256": "3438dcc62d55b7c9ff154582f8c099fc89861e5a161e05711ad2bdc67daa7038"
         },
         {
           "directive": "import",
@@ -100113,7 +100113,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "774eabbe4f9a8d24aa5dea7ef734a1fb90a779f0307c0b3708992121f9937656"
+          "targetSha256": "84aba22b5077704614798e5f16bdea9c987536dcf0173475aefed22e8bd886a7"
         },
         {
           "directive": "import",
@@ -100125,7 +100125,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "d023c3529e3aced3d7a0940dd3ee78e426a1fa8d9cc92ccb906c042b4ed0249b"
+          "targetSha256": "b59b71b217aa017885f1d4ffb1607a24f0c9d7139d90057a348d17986777ebf2"
         },
         {
           "directive": "import",
@@ -100686,7 +100686,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -102097,7 +102097,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -103316,7 +103316,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -105066,7 +105066,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -105421,7 +105421,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -105875,7 +105875,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -108051,7 +108051,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -109166,7 +109166,7 @@
       "id": "page:procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart",
       "feature": "procurement_iqc_rejection",
       "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart",
-      "sha256": "94efae5219ec2ade9d151fcf3ff1f1c37d69f9948a67b2a94ae68ba1557243da",
+      "sha256": "4102a1357259ef8eaea1af2ae155def49f3dbab54245ca38241df6f915009b2f",
       "lineCount": 872,
       "classes": [
         {
@@ -113452,7 +113452,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -117143,7 +117143,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -119052,7 +119052,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -123751,7 +123751,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -127268,7 +127268,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -128300,7 +128300,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9cbd9542d95932cb9fb35c5621f6826cff2ee78a8ddff6e3bec5a0d7e3cd634c"
+          "targetSha256": "b7f327d1207fafee2bc92a448e284be1362b7d322b7542fad6849db4ca2ff46a"
         },
         {
           "directive": "import",
@@ -128324,7 +128324,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "7c0fc1aabd6dabeb4ce0fb38ce6712aa9a892d61c1ce99fd0443323f5048cae4"
+          "targetSha256": "59f1c0caf9ccf3e1f78b2f67b708f981f293d2a5f2cba149af720a4cfb8969a0"
         },
         {
           "directive": "import",
@@ -128336,7 +128336,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5599ef87e7515224efc3f16bebc58acd3b0124e12ed27f7744833b59e25b6f7c"
+          "targetSha256": "1601ef5bcedccafaf746566563e30de8b288627d0aaca87dc373cdf5009dd565"
         },
         {
           "directive": "import",
@@ -137786,7 +137786,7 @@
       "id": "page:production/pages/production_over_limit_pages.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_over_limit_pages.dart",
-      "sha256": "c0eed8611f6db99f0b386e6629d358c6fb63eaf6cc7407207d469b4b1be868d0",
+      "sha256": "fa1b4ee2575dbcb5b9cfc0ec995c2a3477a81b48b4c125fa16d27f11a3094afb",
       "lineCount": 697,
       "classes": [
         {
@@ -137799,7 +137799,7 @@
           "name": "_OverLimitListState",
           "line": 56,
           "role": "state-class",
-          "extends": "ConsumerState<ProductionOverLimitListPage>\r\n    with ScopedPagedReadViewMixin<ProductionOverLimitListPage>"
+          "extends": "ConsumerState<ProductionOverLimitListPage>\n    with ScopedPagedReadViewMixin<ProductionOverLimitListPage>"
         },
         {
           "name": "ProductionOverLimitDetailPage",
@@ -138929,7 +138929,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -139433,7 +139433,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5599ef87e7515224efc3f16bebc58acd3b0124e12ed27f7744833b59e25b6f7c"
+          "targetSha256": "1601ef5bcedccafaf746566563e30de8b288627d0aaca87dc373cdf5009dd565"
         },
         {
           "directive": "import",
@@ -143033,7 +143033,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -146286,7 +146286,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -146632,7 +146632,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -147448,7 +147448,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e26d667eba4a1660324249d15ba7506af34f47fa759b70229cf3d633eae00b9f"
+          "targetSha256": "d288fd7b1b65bac5598138617cf9f466d92f0eb1a56999c66a582cc0b254159b"
         },
         {
           "directive": "import",
@@ -149737,7 +149737,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -150183,7 +150183,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -150823,7 +150823,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -152295,7 +152295,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -152780,7 +152780,7 @@
       "id": "page:profile/pages/profile_edit_page.dart",
       "feature": "profile",
       "source": "lib/features/profile/pages/profile_edit_page.dart",
-      "sha256": "a0675de721eae5a8aaeb29782f080d091b12bd91dea0c4a75c1c77fe74dd4384",
+      "sha256": "7cbebe650708b44ce4747a5c3c4b84adc7b7d13510672e3c80f7b24f4936f0bb",
       "lineCount": 641,
       "classes": [
         {
@@ -153852,7 +153852,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c565dd66babc53df9fe17a565aae527c9e0151045c27bac3704b2977bd4245ba"
+          "targetSha256": "d1eb6287d9184462863bcc51f0be48355d5e4b1fcd1b190559772a74490b96cb"
         },
         {
           "directive": "import",
@@ -153864,7 +153864,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f28aa727da96e5d93161cdba36dde19403416f93f33d334485fc3a5f36deee93"
+          "targetSha256": "e4d62bb68ae3c9f9f4c7398546e181863e09bd90cdd38805bb45210d2d3360a5"
         }
       ],
       "partUnits": [],
@@ -154155,7 +154155,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -159328,7 +159328,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -162038,7 +162038,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -162322,7 +162322,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -163473,7 +163473,7 @@
       "id": "page:quality/pages/production_fqc_inspections_page.dart",
       "feature": "quality",
       "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
-      "sha256": "0c3b878c126bf686fb702475f42cc1448e076d3a6b37f1ffb50a53ce1587c686",
+      "sha256": "b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e",
       "lineCount": 697,
       "classes": [
         {
@@ -163486,7 +163486,7 @@
           "name": "_ProductionFqcInspectionsPageState",
           "line": 53,
           "role": "state-class",
-          "extends": "ConsumerState<ProductionFqcInspectionsPage>\r\n    with ScopedPagedReadViewMixin<ProductionFqcInspectionsPage>"
+          "extends": "ConsumerState<ProductionFqcInspectionsPage>\n    with ScopedPagedReadViewMixin<ProductionFqcInspectionsPage>"
         }
       ],
       "directImports": [
@@ -165792,7 +165792,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2987f40a20c7cb95bfade713f739ac07c0b69a3ef34d48f62411ecde3760bb94"
+          "targetSha256": "84059715adba74cbdb0a9ad85bc4cb939a998906d1fdb2373c9eb968c4985950"
         }
       ],
       "partUnits": [],
@@ -165816,7 +165816,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/quality/repositories/quality_inspection_record_repository.dart",
-          "sha256": "2987f40a20c7cb95bfade713f739ac07c0b69a3ef34d48f62411ecde3760bb94",
+          "sha256": "84059715adba74cbdb0a9ad85bc4cb939a998906d1fdb2373c9eb968c4985950",
           "lineCount": 163,
           "apiEndpointReferences": [
             {
@@ -167839,7 +167839,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -168982,7 +168982,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -171000,7 +171000,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -174553,7 +174553,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -176465,7 +176465,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -177308,7 +177308,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -178499,7 +178499,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -178895,7 +178895,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -179241,7 +179241,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -180355,7 +180355,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -180778,7 +180778,7 @@
       "id": "page:security/pages/security_scan_page.dart",
       "feature": "security",
       "source": "lib/features/security/pages/security_scan_page.dart",
-      "sha256": "9ae75fc2ccb93887665c42f14c17d6b2139ae89b8d259d08323d9abde0e9b853",
+      "sha256": "7dfcb1488b079bbcf9b30684cac265825438056be3328324d71e2fe3eed2bcad",
       "lineCount": 202,
       "classes": [
         {
@@ -181132,7 +181132,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -182453,7 +182453,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "eb7fc73d00840214ecd4d81d536319e35de9b16995a15a53377d14ab4ac8334c"
+          "targetSha256": "bb745bcc28b0e096d21bec026a8096d147e12eb24bfb17d4a90366ee19fe6e92"
         },
         {
           "directive": "import",
@@ -183046,7 +183046,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -184079,7 +184079,7 @@
       "id": "page:stock/counts/pages/stock_count_session_page.dart",
       "feature": "stock",
       "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
-      "sha256": "7107a1f2ff0582b27ee83b4bf7b5f6aea6c6d1cf1e59e581531ba12917c31598",
+      "sha256": "ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4",
       "lineCount": 1070,
       "classes": [
         {
@@ -184104,7 +184104,7 @@
           "name": "_StockCountSessionPageState",
           "line": 75,
           "role": "state-class",
-          "extends": "ConsumerState<StockCountSessionPage>\r\n    with\r\n        FormDraftMixin<StockCountSessionPage>,\r\n        ScopedPagedReadViewMixin<StockCountSessionPage>"
+          "extends": "ConsumerState<StockCountSessionPage>\n    with\n        FormDraftMixin<StockCountSessionPage>,\n        ScopedPagedReadViewMixin<StockCountSessionPage>"
         }
       ],
       "directImports": [
@@ -184202,7 +184202,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -188904,7 +188904,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "d0ce8e1dd009647efe9311b0d579f466a5a2c89c21a07550932dfe6a9b29e358"
+          "targetSha256": "7e3e588830f014912f57a4aaebea5c92212467c376ad6fb708e3aff061755f70"
         },
         {
           "directive": "import",
@@ -189678,7 +189678,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -193174,7 +193174,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -193820,7 +193820,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "03d593c62b199d6caf867922ffa5b0048eebe363b478f070051c340ff0d72e42"
+          "targetSha256": "a9b6a7c6290fe154af6d0409b89afe7bfa03672700bff6b356ef206ad0753c75"
         },
         {
           "directive": "import",
@@ -194201,7 +194201,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -196020,7 +196020,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e601799e472d827aed48863c0f36d433e3f991b11d1c0f0f041732349ce7c49e"
+          "targetSha256": "c45afaa47dfea49645bdbbd9d4b67fa3118563625ac1737b01c4d09ab395cd7f"
         },
         {
           "directive": "import",
@@ -196356,7 +196356,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -196440,7 +196440,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "03d593c62b199d6caf867922ffa5b0048eebe363b478f070051c340ff0d72e42"
+          "targetSha256": "a9b6a7c6290fe154af6d0409b89afe7bfa03672700bff6b356ef206ad0753c75"
         }
       ],
       "partUnits": [],
@@ -196634,7 +196634,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -197964,7 +197964,7 @@
       "id": "page:suggestion/pages/suggestion_new_page.dart",
       "feature": "suggestion",
       "source": "lib/features/suggestion/pages/suggestion_new_page.dart",
-      "sha256": "1b4c5685b298e6d56bfcfff1e2296bd27db40b5dc0deacd89e6065bc635a5390",
+      "sha256": "3fa186f9bc3c968815a9b2fecc08e63912117ff390fc5597410cbd8933523a89",
       "lineCount": 238,
       "classes": [
         {
@@ -197977,7 +197977,7 @@
           "name": "_SuggestionNewPageState",
           "line": 31,
           "role": "state-class",
-          "extends": "ConsumerState<SuggestionNewPage>\r\n    with FormDraftMixin<SuggestionNewPage>"
+          "extends": "ConsumerState<SuggestionNewPage>\n    with FormDraftMixin<SuggestionNewPage>"
         }
       ],
       "directImports": [
@@ -200249,7 +200249,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "eb7fc73d00840214ecd4d81d536319e35de9b16995a15a53377d14ab4ac8334c"
+          "targetSha256": "bb745bcc28b0e096d21bec026a8096d147e12eb24bfb17d4a90366ee19fe6e92"
         },
         {
           "directive": "import",
@@ -200375,7 +200375,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -201206,7 +201206,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -202400,7 +202400,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -202940,7 +202940,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6e8205ff30aa5e2b89a99ccfb5a25d986b8855b84d8ffb15ff93828bcbb12c45"
+          "targetSha256": "0634068318ab9fd58f9798e8a8da95dd982edc24dfa6cbc18f8e692c270c6e9c"
         },
         {
           "directive": "import",
@@ -205638,7 +205638,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -208794,7 +208794,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -211616,7 +211616,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -214685,7 +214685,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -217046,7 +217046,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -218143,7 +218143,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -218431,7 +218431,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -219893,7 +219893,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -222351,7 +222351,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -222723,7 +222723,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -223405,7 +223405,7 @@
       "id": "page:warehouse/pages/production_finished_batch_stock_in_page.dart",
       "feature": "warehouse",
       "source": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
-      "sha256": "253c713ba1064218cd1509063ceb910147220032d86198b11be1c6524a41db01",
+      "sha256": "04c5ec81cc8179d58cf3b703198dc450eaae3299a79df576d37cb9d3ab990183",
       "lineCount": 652,
       "classes": [
         {
@@ -223418,7 +223418,7 @@
           "name": "_ProductionFinishedBatchStockInPageState",
           "line": 59,
           "role": "state-class",
-          "extends": "ConsumerState<ProductionFinishedBatchStockInPage>\r\n    with FormDraftMixin<ProductionFinishedBatchStockInPage>"
+          "extends": "ConsumerState<ProductionFinishedBatchStockInPage>\n    with FormDraftMixin<ProductionFinishedBatchStockInPage>"
         }
       ],
       "directImports": [
@@ -223516,7 +223516,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -224797,7 +224797,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -226012,7 +226012,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -226432,7 +226432,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -227739,7 +227739,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -231763,7 +231763,7 @@
       "id": "page:warehouse/pages/warehouse_insight_page.dart",
       "feature": "warehouse",
       "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
-      "sha256": "a3f67499af60c0c3bd161d4fc1ad6f1b7612781444e6ef9dada551583c6c29e6",
+      "sha256": "5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8",
       "lineCount": 1315,
       "classes": [
         {
@@ -231776,7 +231776,7 @@
           "name": "_WarehouseInsightPageState",
           "line": 77,
           "role": "state-class",
-          "extends": "ConsumerState<WarehouseInsightPage>\r\n    with ScopedPagedReadViewMixin<WarehouseInsightPage>"
+          "extends": "ConsumerState<WarehouseInsightPage>\n    with ScopedPagedReadViewMixin<WarehouseInsightPage>"
         }
       ],
       "directImports": [
@@ -231838,7 +231838,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -233796,7 +233796,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -235343,7 +235343,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -237553,7 +237553,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f"
+          "targetSha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c"
         },
         {
           "directive": "import",
@@ -237801,7 +237801,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -238209,7 +238209,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -238659,7 +238659,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -238971,7 +238971,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -239465,7 +239465,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -241833,7 +241833,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8"
+          "targetSha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485"
         },
         {
           "directive": "import",
@@ -251903,7 +251903,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/admin/PermissionTemplateController.java",
-      "sha256": "08dc61f452738111fc5c248a7f6a1e7eb5063ae053ac67399bd4af4073295558",
+      "sha256": "fdeb2c5f71e2c9b5805c8eb6fced197daeb9a2f941ae6a55107338a9f51561c0",
       "lineCount": 47,
       "class": "PermissionTemplateController",
       "declaredBasePaths": [
@@ -256744,7 +256744,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayablesController.java",
-      "sha256": "57d11f5bc6dd681163adcead9eb618e831cab7ed7353bedce477aa261caeefda",
+      "sha256": "e2916f42710031ad09c1a1c1dec50930f813838be68546897f244b86ca4b4444",
       "lineCount": 96,
       "class": "ProcurementPayablesController",
       "declaredBasePaths": [
@@ -256785,7 +256785,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimController.java",
-      "sha256": "914326e2a47839ecaf477f68dead595861abd78b731b5f9defe50eeeb617df5e",
+      "sha256": "059e53a96ec541110882647b96a10f6621169b0528b6364b77eedee53f766b2f",
       "lineCount": 98,
       "class": "SubcontractLossClaimController",
       "declaredBasePaths": [
@@ -265010,7 +265010,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchController.java",
-      "sha256": "589e272ed618dec918594f1e6daa5882cb82c457b5e5e66c29fdecd1bf738c56",
+      "sha256": "aff393209f5aec27253505a934d1ab97d5510a9ecbdd36433e781622d16064c6",
       "lineCount": 96,
       "class": "ProductionExecutionWorkbenchController",
       "declaredBasePaths": [
@@ -265185,7 +265185,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskController.java",
-      "sha256": "54502ca17e8b74fa1267145f77d7fc6fc864922c8015253db1dd43da26716866",
+      "sha256": "b720f1aaec9d57d89ab05560d34a005a03b67703119b0a91589c0b5c08087b79",
       "lineCount": 101,
       "class": "ProductionWorkshopTaskController",
       "declaredBasePaths": [
@@ -265838,7 +265838,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordController.java",
-      "sha256": "0046f1f547f58fb1311c15741d335dd812e3393e7db5107aae8d164437189b1e",
+      "sha256": "977dff363f99ccf08176f0fe831e2c3ed1f3505d52f68582e245127459f33419",
       "lineCount": 99,
       "class": "ProductionFqcRecordController",
       "declaredBasePaths": [
@@ -266089,7 +266089,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/schedule/ProductionScheduleController.java",
-      "sha256": "ad60adc3b63c9957cb9ead2c4f4367155f71e6a1c5e4ba0e490975b60eb28547",
+      "sha256": "f7fb6794575e834d970388be3a2d5f7d59503df06b4a63ecefdfac8746989042",
       "lineCount": 151,
       "class": "ProductionScheduleController",
       "declaredBasePaths": [
@@ -266243,7 +266243,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderController.java",
-      "sha256": "94d498045b470279c53edf40749b980dce88f6a9db6a4bddc054236e36e503a8",
+      "sha256": "4582f5ab8ce5a9b75879a07cfbd7688ab0af5fb5de7956e1ec0bbbbadf7fb170",
       "lineCount": 219,
       "class": "PurchaseOrderController",
       "declaredBasePaths": [
@@ -267067,7 +267067,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderController.java",
-      "sha256": "77953f12ab470accbc97b0f4fd62cb0b6ff7c7d00d51b6781d3a2bc7808eb818",
+      "sha256": "403bb082f97dc10183ed73fba639d31dac89bf43729e3ef555b25410218a6c0f",
       "lineCount": 300,
       "class": "SalesOrderController",
       "declaredBasePaths": [
@@ -267389,7 +267389,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmController.java",
-      "sha256": "5a2c5361685c5c6662fb3d79228fab95fd2deda8438416183f99f0c4ec0472bf",
+      "sha256": "f04bf29decca88ca92ff2de618e871cf91e7c7e4509686947faf262ce5011e43",
       "lineCount": 121,
       "class": "SalesOrderFinanceConfirmController",
       "declaredBasePaths": [
@@ -270573,7 +270573,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryController.java",
-      "sha256": "14b120b9a95507f110072eb68755b20a6a7a4dbc72c0c7b8f9724a2fc6996c5e",
+      "sha256": "7e8f226f4883334bbed8efd2abb7bf55d26e9f012caf9460f893f70db056d277",
       "lineCount": 114,
       "class": "SubcontractShortDeliveryController",
       "declaredBasePaths": [
@@ -271198,7 +271198,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryController.java",
-      "sha256": "03ee7ab2650af52ea6afcb5532a5926d07bb21426fa21aac5c88f2096ebf662b",
+      "sha256": "de7a9d90b0d70a1fde29a83613e0861ed52c481f4adaf91575e0ac71f380e1a5",
       "lineCount": 309,
       "class": "WarehouseHistoryController",
       "declaredBasePaths": [
@@ -271558,7 +271558,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordController.java",
-      "sha256": "3e460fdc74609040b9b73445c55a4b00a3c9e8661dd8c37f40add0e1c1297011",
+      "sha256": "076390a6054b1dd0e9b3ace14bd09a41afd08ad0bca402f0c6f38cb479afea42",
       "lineCount": 96,
       "class": "ProcurementInspectionRecordController",
       "declaredBasePaths": [
@@ -273039,7 +273039,7 @@
     },
     {
       "source": "lib/components/feedback/uten_dialog.dart",
-      "sha256": "a5807234df64e14931e925fec69b97fe32980cb62f8692598e99665ae48e9cf8",
+      "sha256": "d33c1e5d58bbec1e343b7faf5309a1e6c2ae1facfcccf1327edf24e3de32c485",
       "lineCount": 505
     },
     {
@@ -273969,7 +273969,7 @@
     },
     {
       "source": "lib/features/admin/models/audit_field_labels.dart",
-      "sha256": "c88a3e8b4f792af9134a519d5c52ab278b718692cfe4421ef30a3ec8362b5fbc",
+      "sha256": "9fbbe737c54a68307d587d8462f1e69e86a58d7375fdf9c0c4088b0e36726654",
       "lineCount": 463
     },
     {
@@ -274024,12 +274024,12 @@
     },
     {
       "source": "lib/features/admin/pages/admin_ai_settings_page.dart",
-      "sha256": "0ed93de0be0d5dfa9596efa1725da7e420bacfdc349311e1bbfacfdfce5b603c",
+      "sha256": "837310b1d73e6e56ac10b951c1e1c7c676ef10ce740c1601993ce5dea3e60422",
       "lineCount": 867
     },
     {
       "source": "lib/features/admin/pages/admin_ai_usage_page.dart",
-      "sha256": "7386d703db992b56c8403de04b87732e9fb865dc3bbda437b213924dc595d3c7",
+      "sha256": "3f7c00e21acc9430b085bbb0c1f79ea8d4ece121e7fb5b8f3350e501206eb063",
       "lineCount": 937
     },
     {
@@ -274039,7 +274039,7 @@
     },
     {
       "source": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
-      "sha256": "0aeedcdb3aed881294a1dcf41a76eadffc4caa01be856d95ebecb5a276c9d2d8",
+      "sha256": "684ee19a08104015e13d59eed0574cf3935a19d241b8d001926946a3d443e380",
       "lineCount": 1471
     },
     {
@@ -274049,7 +274049,7 @@
     },
     {
       "source": "lib/features/admin/pages/admin_audit_session_detail_page.dart",
-      "sha256": "30bd4f3c487d56d4903e29c342607e404fa7180ed3ca1254afb78fdbf823f780",
+      "sha256": "bed5d35cfbcadd5db7b8bdd1b5a22dbce1a38c0b10f7f52b0fe59fa36edf32f9",
       "lineCount": 278
     },
     {
@@ -274079,7 +274079,7 @@
     },
     {
       "source": "lib/features/admin/pages/audit_device_evidence.dart",
-      "sha256": "4a30a6b48fc16122b92bd4ef7802c358b6b342fb3345e4fcdf738007491493d1",
+      "sha256": "eff8062929ff4f5b51a262ed7beac2ec490aef6c81891ff577397cecbee6d62f",
       "lineCount": 1287
     },
     {
@@ -274089,7 +274089,7 @@
     },
     {
       "source": "lib/features/admin/pages/server_operations_page.dart",
-      "sha256": "a93997f9ff6ce28be37b209c19fb12e52105f945c1ebe307c73ccbc849025a06",
+      "sha256": "a4a8dd88dc641604b7b3bfc91be33c96f9b46401987eae45e1353676e3a9c550",
       "lineCount": 580
     },
     {
@@ -274099,7 +274099,7 @@
     },
     {
       "source": "lib/features/admin/pages/server_storage_page.dart",
-      "sha256": "627c75d16323599b2ceef4d487981392415460f21128d9d8f2d86fc225ee6b8c",
+      "sha256": "cc323451c9abe712c09925e780e25fe9d721e889968dcd0bc5c35b947eca35ec",
       "lineCount": 702
     },
     {
@@ -274204,7 +274204,7 @@
     },
     {
       "source": "lib/features/admin/widgets/admin_permission_workspace.dart",
-      "sha256": "b994b9f7c3ede34ea2915695cd8dbe7332ccb54d25725e45793270710bfaa4fe",
+      "sha256": "02ddf85c839debf9ffb8c2c30d1f7130945eadf56f4bed78761297fec977b801",
       "lineCount": 77
     },
     {
@@ -274219,17 +274219,17 @@
     },
     {
       "source": "lib/features/admin/widgets/ai_provider_card.dart",
-      "sha256": "e27f14142ab002ccdc6beb883451c161ef39b233a862a3d61b77ce5b423605a0",
+      "sha256": "342c93acf29a98cb6278a343f82d29427000ae41109a1ec875a90810f8c15442",
       "lineCount": 556
     },
     {
       "source": "lib/features/admin/widgets/ai_provider_editor.dart",
-      "sha256": "0633085d153f1061473e70c8976eafe9b9595047f1f8617ee1b27a3564a3dd12",
+      "sha256": "8e6f578856793a1ac1a82a582d4b0a1580ac7d5af23e304ddb7c39f987a7dcf6",
       "lineCount": 1293
     },
     {
       "source": "lib/features/admin/widgets/ai_settings_entry_card.dart",
-      "sha256": "ed27d7494f765e75a1253925a4451b13ca2199e4f75877534fe32b16f0014302",
+      "sha256": "1d21553744ba7806616e8b6d808a763934d7be48bd916eecdecbb2cbd05f613d",
       "lineCount": 63
     },
     {
@@ -274259,12 +274259,12 @@
     },
     {
       "source": "lib/features/admin/widgets/impersonation_actions.dart",
-      "sha256": "a15e2b17f147014f76b8946d4116a17a2bfe3a4960c0381f88a309990b017b26",
+      "sha256": "0302fca0af0b8570edd23eb840fcf505c02fc51f989f00f27d10cd855737a177",
       "lineCount": 115
     },
     {
       "source": "lib/features/admin/widgets/material_forecast_runtime_status_card.dart",
-      "sha256": "8b28ea785e4ee94943f8125fdc58ea7196af0a5bbc358cb4080a2768e48e7f01",
+      "sha256": "1d329343507d9ccccf6983e2ddc709d12ff0347f182eeba139346b9414e14e1f",
       "lineCount": 393
     },
     {
@@ -274274,12 +274274,12 @@
     },
     {
       "source": "lib/features/admin/widgets/platform_color_picker_dialog.dart",
-      "sha256": "388d0b1f8f65527a6669d969f42db8eefef0d544ea5e5ea8e659aefab15a66fc",
+      "sha256": "7f80324e24f5366a754624788e9d003575eb026307647dfb5c82a421dcd79af5",
       "lineCount": 98
     },
     {
       "source": "lib/features/admin/widgets/platform_settings_entry_card.dart",
-      "sha256": "2a39c96621287fb7ada1abb88220f6e19375adf75d217baae78f484900f08c79",
+      "sha256": "92a89fb2acabbfe20a537387fd9f11c42f76b19495a3224ec30e98667e560c68",
       "lineCount": 76
     },
     {
@@ -274304,12 +274304,12 @@
     },
     {
       "source": "lib/features/admin/widgets/server_update_source_editor.dart",
-      "sha256": "d6f3dce9351b0690159423a53bc676d6769138f363fda5fd2f08cea4057f8c05",
+      "sha256": "c97ba57ec4c47021c600fd9bba55256e1556f3ab733a31aed326989380bad8df",
       "lineCount": 535
     },
     {
       "source": "lib/features/admin/widgets/system_updater_status_card.dart",
-      "sha256": "1ead3b165766d60296fa737944b0c48c2d92b221b1819c15b3ee4fea5fc9e3c6",
+      "sha256": "d86be7896def1a8f5da0acbeecfd3c303b1b0842c5fb54fac9d6a65ef9691b75",
       "lineCount": 132
     },
     {
@@ -274414,7 +274414,7 @@
     },
     {
       "source": "lib/features/basic_data/models/client_access_models.dart",
-      "sha256": "82282449e6ef06535b66440cdad129ba62a1fa57ac7b7946cc7605caba2df3bd",
+      "sha256": "8f1a4c6cd92fdfae688beb0b409f39c4b90d8e8bb57b64e83b539678b4fb1cd8",
       "lineCount": 166
     },
     {
@@ -274584,7 +274584,7 @@
     },
     {
       "source": "lib/features/basic_data/pages/mould_category_page.dart",
-      "sha256": "af29c8992c7bcb6fceb9fe29d9b22b59a4d31549261af8b2c1a5c2354718a313",
+      "sha256": "0e15129d516e442b1ff2069066a02bedfadd2203c1597c0138ca34916871a073",
       "lineCount": 1044
     },
     {
@@ -274839,7 +274839,7 @@
     },
     {
       "source": "lib/features/basic_data/widgets/client_goods_alias_tab.dart",
-      "sha256": "0f4850a87116975e96486c4044972ef934c07d58526e3e70e6d86c0db29fa972",
+      "sha256": "7a6dcd2148eb156ef05f3156ecbac1933eecb583e0537496003f860025477845",
       "lineCount": 440
     },
     {
@@ -274964,7 +274964,7 @@
     },
     {
       "source": "lib/features/basic_data/widgets/master_inline_create_fields.dart",
-      "sha256": "c37c5b07c9b69e1b807edfa5386958371137966a18d6ce80fc74c165911cb49e",
+      "sha256": "044010814e63e9ee263ef8a91dccb168bc26c56164663ac1e2420657218d1c5c",
       "lineCount": 27
     },
     {
@@ -275044,7 +275044,7 @@
     },
     {
       "source": "lib/features/basic_data/widgets/posting_style_role_panel.dart",
-      "sha256": "3b67f637321599adb93608a11ac283e42ce9fa7f2a7e41db16737367147f9ad6",
+      "sha256": "e8ce6107d737db78b4906091a73459160f6cda829b95a62d12ade158a144f56e",
       "lineCount": 299
     },
     {
@@ -275054,7 +275054,7 @@
     },
     {
       "source": "lib/features/basic_data/widgets/supplier_master_edit.dart",
-      "sha256": "2fa1750339d3758df14c80e09a3af98a7c51a66668a17af3a18f0d1accbb565b",
+      "sha256": "d0712ffd6b1f5a7f9cd9bff9b5cffccb2419e614b409c4fc38c86b4310342325",
       "lineCount": 288
     },
     {
@@ -275259,7 +275259,7 @@
     },
     {
       "source": "lib/features/department/widgets/department_edit_dialog.dart",
-      "sha256": "f48d15fde545ba11a38a3e9f0f0ead147ead99118c3b254372bf8671b01ed54b",
+      "sha256": "66303fbda78807852ff362e7deac07d0df02ac1c9ffea325536a93300bdb29da",
       "lineCount": 516
     },
     {
@@ -275364,7 +275364,7 @@
     },
     {
       "source": "lib/features/employee/widgets/employee_contact_edit_dialog.dart",
-      "sha256": "72ab687008e482cb45780c1dbcf7fade04a07a0dc535907972c7258d1502ff3a",
+      "sha256": "50e6c1836c33c40c26834d06fe5840ad922686d1ddee3c8b3bec94b369ca0cc0",
       "lineCount": 456
     },
     {
@@ -275379,7 +275379,7 @@
     },
     {
       "source": "lib/features/employee/widgets/employee_identity_correction_dialog.dart",
-      "sha256": "4212129c60e5f6323e1dee948abe8ca4978aeea774e24515af36974856c18581",
+      "sha256": "a043fec7316ff12d4418ad80626aab695a2fe54f3103113a3589a8baa17c702c",
       "lineCount": 355
     },
     {
@@ -275444,7 +275444,7 @@
     },
     {
       "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
-      "sha256": "c52dcffcc4d68eef1dca102cb98118bf7b4c528f586bcc58911a9f5d17bfe0f0",
+      "sha256": "1367a96548623fd03b84d35a612359cb84eb09fa931c0faf40015f952a08b447",
       "lineCount": 964
     },
     {
@@ -275474,7 +275474,7 @@
     },
     {
       "source": "lib/features/expense/pages/expense_settings_page.dart",
-      "sha256": "52ce06ed66c0020894cf68ea5a50e4c4a08499427bd1ca6dcda299acd697dc69",
+      "sha256": "c1fafc1a71f695bb0cd2b2b5e9eb75916c4c0f0e58c6773dcb564f97373301f2",
       "lineCount": 260
     },
     {
@@ -275574,7 +275574,7 @@
     },
     {
       "source": "lib/features/finance/intake/finance_intake_launcher.dart",
-      "sha256": "67d750f7ed97c9ba67331f93091e97f24a88c18d56cc058b995f68668e1abc9c",
+      "sha256": "87122283a30deaadccef7de8b4c401ad4a135f4c58fc79248d88b0b246ad43cd",
       "lineCount": 283
     },
     {
@@ -275734,7 +275734,7 @@
     },
     {
       "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
-      "sha256": "5082e9157cd727343bba9b131ce190e0c528931e3df7494939b5b18848ca338e",
+      "sha256": "fb1d532e8a633182d028af2f662a354058ccfc069d32971551da2233ede95dbe",
       "lineCount": 498
     },
     {
@@ -275784,12 +275784,12 @@
     },
     {
       "source": "lib/features/finance/payables/widgets/finance_payables_kpi_strip.dart",
-      "sha256": "774eabbe4f9a8d24aa5dea7ef734a1fb90a779f0307c0b3708992121f9937656",
+      "sha256": "84aba22b5077704614798e5f16bdea9c987536dcf0173475aefed22e8bd886a7",
       "lineCount": 364
     },
     {
       "source": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
-      "sha256": "d023c3529e3aced3d7a0940dd3ee78e426a1fa8d9cc92ccb906c042b4ed0249b",
+      "sha256": "b59b71b217aa017885f1d4ffb1607a24f0c9d7139d90057a348d17986777ebf2",
       "lineCount": 404
     },
     {
@@ -276069,7 +276069,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_table_facets.dart",
-      "sha256": "1a5256712524ed42409d8399bff7a430135a12d32e1a6bb7c131389fb2e0bd7c",
+      "sha256": "3438dcc62d55b7c9ff154582f8c099fc89861e5a161e05711ad2bdc67daa7038",
       "lineCount": 72
     },
     {
@@ -276094,7 +276094,7 @@
     },
     {
       "source": "lib/features/finance/widgets/receipt_order_collection_panel.dart",
-      "sha256": "1892f7ab7a8627a2fa48635dfd808c42bf7a46b06f9cb9cb4e2f9c4627b6a38c",
+      "sha256": "8fcd19e67ffc108c45975aba7c85426709a6e0b7cb17cec066f53e7a6a62037c",
       "lineCount": 300
     },
     {
@@ -276334,7 +276334,7 @@
     },
     {
       "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart",
-      "sha256": "94efae5219ec2ade9d151fcf3ff1f1c37d69f9948a67b2a94ae68ba1557243da",
+      "sha256": "4102a1357259ef8eaea1af2ae155def49f3dbab54245ca38241df6f915009b2f",
       "lineCount": 872
     },
     {
@@ -276724,7 +276724,7 @@
     },
     {
       "source": "lib/features/production/pages/production_over_limit_pages.dart",
-      "sha256": "c0eed8611f6db99f0b386e6629d358c6fb63eaf6cc7407207d469b4b1be868d0",
+      "sha256": "fa1b4ee2575dbcb5b9cfc0ec995c2a3477a81b48b4c125fa16d27f11a3094afb",
       "lineCount": 697
     },
     {
@@ -276904,7 +276904,7 @@
     },
     {
       "source": "lib/features/production/widgets/material_future_transfer_history.dart",
-      "sha256": "7c0fc1aabd6dabeb4ce0fb38ce6712aa9a892d61c1ce99fd0443323f5048cae4",
+      "sha256": "59f1c0caf9ccf3e1f78b2f67b708f981f293d2a5f2cba149af720a4cfb8969a0",
       "lineCount": 549
     },
     {
@@ -276924,7 +276924,7 @@
     },
     {
       "source": "lib/features/production/widgets/material_priority_replenishment_dialog.dart",
-      "sha256": "9cbd9542d95932cb9fb35c5621f6826cff2ee78a8ddff6e3bec5a0d7e3cd634c",
+      "sha256": "b7f327d1207fafee2bc92a448e284be1362b7d322b7542fad6849db4ca2ff46a",
       "lineCount": 735
     },
     {
@@ -276974,7 +276974,7 @@
     },
     {
       "source": "lib/features/production/widgets/production_execution_card_print_preview.dart",
-      "sha256": "5599ef87e7515224efc3f16bebc58acd3b0124e12ed27f7744833b59e25b6f7c",
+      "sha256": "1601ef5bcedccafaf746566563e30de8b288627d0aaca87dc373cdf5009dd565",
       "lineCount": 1229
     },
     {
@@ -277084,7 +277084,7 @@
     },
     {
       "source": "lib/features/production/widgets/workshop_task_material_bin_panel.dart",
-      "sha256": "e26d667eba4a1660324249d15ba7506af34f47fa759b70229cf3d633eae00b9f",
+      "sha256": "d288fd7b1b65bac5598138617cf9f466d92f0eb1a56999c66a582cc0b254159b",
       "lineCount": 197
     },
     {
@@ -277114,7 +277114,7 @@
     },
     {
       "source": "lib/features/profile/pages/profile_edit_page.dart",
-      "sha256": "a0675de721eae5a8aaeb29782f080d091b12bd91dea0c4a75c1c77fe74dd4384",
+      "sha256": "7cbebe650708b44ce4747a5c3c4b84adc7b7d13510672e3c80f7b24f4936f0bb",
       "lineCount": 641
     },
     {
@@ -277139,12 +277139,12 @@
     },
     {
       "source": "lib/features/profile/widgets/my_documents_section.dart",
-      "sha256": "c565dd66babc53df9fe17a565aae527c9e0151045c27bac3704b2977bd4245ba",
+      "sha256": "d1eb6287d9184462863bcc51f0be48355d5e4b1fcd1b190559772a74490b96cb",
       "lineCount": 50
     },
     {
       "source": "lib/features/profile/widgets/my_vehicle_phone_cards.dart",
-      "sha256": "f28aa727da96e5d93161cdba36dde19403416f93f33d334485fc3a5f36deee93",
+      "sha256": "e4d62bb68ae3c9f9f4c7398546e181863e09bd90cdd38805bb45210d2d3360a5",
       "lineCount": 178
     },
     {
@@ -277269,7 +277269,7 @@
     },
     {
       "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
-      "sha256": "0c3b878c126bf686fb702475f42cc1448e076d3a6b37f1ffb50a53ce1587c686",
+      "sha256": "b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e",
       "lineCount": 697
     },
     {
@@ -277309,7 +277309,7 @@
     },
     {
       "source": "lib/features/quality/repositories/quality_inspection_record_repository.dart",
-      "sha256": "2987f40a20c7cb95bfade713f739ac07c0b69a3ef34d48f62411ecde3760bb94",
+      "sha256": "84059715adba74cbdb0a9ad85bc4cb939a998906d1fdb2373c9eb968c4985950",
       "lineCount": 163
     },
     {
@@ -277359,7 +277359,7 @@
     },
     {
       "source": "lib/features/report/shared/account_statement_column_query.dart",
-      "sha256": "70df85fc8fecd7e6aecef29a00d42110bb1331ba1c9fdd81f35f35ab9dab98f6",
+      "sha256": "9e18fd2d7e38c2cca2f6d4eefad6cf75cab5ed40e132a5a714ec3879d1227cda",
       "lineCount": 22
     },
     {
@@ -277394,7 +277394,7 @@
     },
     {
       "source": "lib/features/report/shared/report_paged_read.dart",
-      "sha256": "9598f0f90681d61084bc5f2351cb637149b5942a0e5b92a6f3d31727384eaa2f",
+      "sha256": "289e5f31bfa3eb18fd9bcf3626bdf915c906840f48a404857609dd88bf58ab5c",
       "lineCount": 254
     },
     {
@@ -277614,7 +277614,7 @@
     },
     {
       "source": "lib/features/security/pages/security_scan_page.dart",
-      "sha256": "9ae75fc2ccb93887665c42f14c17d6b2139ae89b8d259d08323d9abde0e9b853",
+      "sha256": "7dfcb1488b079bbcf9b30684cac265825438056be3328324d71e2fe3eed2bcad",
       "lineCount": 202
     },
     {
@@ -277634,7 +277634,7 @@
     },
     {
       "source": "lib/features/settings/widgets/app_version_tile.dart",
-      "sha256": "eb7fc73d00840214ecd4d81d536319e35de9b16995a15a53377d14ab4ac8334c",
+      "sha256": "bb745bcc28b0e096d21bec026a8096d147e12eb24bfb17d4a90366ee19fe6e92",
       "lineCount": 361
     },
     {
@@ -277679,7 +277679,7 @@
     },
     {
       "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
-      "sha256": "7107a1f2ff0582b27ee83b4bf7b5f6aea6c6d1cf1e59e581531ba12917c31598",
+      "sha256": "ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4",
       "lineCount": 1070
     },
     {
@@ -277774,7 +277774,7 @@
     },
     {
       "source": "lib/features/subcontract/config/subcontract_report_config.dart",
-      "sha256": "03d593c62b199d6caf867922ffa5b0048eebe363b478f070051c340ff0d72e42",
+      "sha256": "a9b6a7c6290fe154af6d0409b89afe7bfa03672700bff6b356ef206ad0753c75",
       "lineCount": 57
     },
     {
@@ -277879,7 +277879,7 @@
     },
     {
       "source": "lib/features/subcontract/widgets/subcontract_application_kit_dialog.dart",
-      "sha256": "d0ce8e1dd009647efe9311b0d579f466a5a2c89c21a07550932dfe6a9b29e358",
+      "sha256": "7e3e588830f014912f57a4aaebea5c92212467c376ad6fb708e3aff061755f70",
       "lineCount": 307
     },
     {
@@ -277954,7 +277954,7 @@
     },
     {
       "source": "lib/features/suggestion/pages/suggestion_new_page.dart",
-      "sha256": "1b4c5685b298e6d56bfcfff1e2296bd27db40b5dc0deacd89e6065bc635a5390",
+      "sha256": "3fa186f9bc3c968815a9b2fecc08e63912117ff390fc5597410cbd8933523a89",
       "lineCount": 238
     },
     {
@@ -278164,7 +278164,7 @@
     },
     {
       "source": "lib/features/warehouse/materialbin/widgets/workshop_material_other_issue_dialog.dart",
-      "sha256": "6e8205ff30aa5e2b89a99ccfb5a25d986b8855b84d8ffb15ff93828bcbb12c45",
+      "sha256": "0634068318ab9fd58f9798e8a8da95dd982edc24dfa6cbc18f8e692c270c6e9c",
       "lineCount": 280
     },
     {
@@ -278344,7 +278344,7 @@
     },
     {
       "source": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
-      "sha256": "253c713ba1064218cd1509063ceb910147220032d86198b11be1c6524a41db01",
+      "sha256": "04c5ec81cc8179d58cf3b703198dc450eaae3299a79df576d37cb9d3ab990183",
       "lineCount": 652
     },
     {
@@ -278414,7 +278414,7 @@
     },
     {
       "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
-      "sha256": "a3f67499af60c0c3bd161d4fc1ad6f1b7612781444e6ef9dada551583c6c29e6",
+      "sha256": "5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8",
       "lineCount": 1315
     },
     {
@@ -278869,7 +278869,7 @@
     },
     {
       "source": "lib/shared/attachments/attachment_preview_dialog.dart",
-      "sha256": "4049eefc9148901572057342e79d294f76c6ca6cb90a8d344b9d116652228837",
+      "sha256": "5815fd2dd57e02f32006724a6c7be6db4f1e26e8bb8022b8501d551b1c2b7fea",
       "lineCount": 876
     },
     {
@@ -279314,7 +279314,7 @@
     },
     {
       "source": "lib/shared/measurement/widgets/weight_grid_column.dart",
-      "sha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d",
+      "sha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444",
       "lineCount": 1231
     },
     {
@@ -279569,7 +279569,7 @@
     },
     {
       "source": "lib/shared/presentation/procurement_delivery_difference_l10n.dart",
-      "sha256": "e601799e472d827aed48863c0f36d433e3f991b11d1c0f0f041732349ce7c49e",
+      "sha256": "c45afaa47dfea49645bdbbd9d4b67fa3118563625ac1737b01c4d09ab395cd7f",
       "lineCount": 95
     },
     {
@@ -279699,7 +279699,7 @@
     },
     {
       "source": "lib/shared/report/account_statement_column_query.dart",
-      "sha256": "975a3d4b495a5a177799add252a27cd0bd040e2fceaca6588ce506750abfe511",
+      "sha256": "6d5b9aaaec056e14f942974daa6f63a2a5819397b36c7039e426cc4baa3f101c",
       "lineCount": 57
     },
     {
@@ -280109,7 +280109,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/admin/PermissionTemplateController.java",
-      "sha256": "08dc61f452738111fc5c248a7f6a1e7eb5063ae053ac67399bd4af4073295558",
+      "sha256": "fdeb2c5f71e2c9b5805c8eb6fced197daeb9a2f941ae6a55107338a9f51561c0",
       "lineCount": 47
     },
     {
@@ -280419,12 +280419,12 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayablesController.java",
-      "sha256": "57d11f5bc6dd681163adcead9eb618e831cab7ed7353bedce477aa261caeefda",
+      "sha256": "e2916f42710031ad09c1a1c1dec50930f813838be68546897f244b86ca4b4444",
       "lineCount": 96
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimController.java",
-      "sha256": "914326e2a47839ecaf477f68dead595861abd78b731b5f9defe50eeeb617df5e",
+      "sha256": "059e53a96ec541110882647b96a10f6621169b0528b6364b77eedee53f766b2f",
       "lineCount": 98
     },
     {
@@ -280979,7 +280979,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchController.java",
-      "sha256": "589e272ed618dec918594f1e6daa5882cb82c457b5e5e66c29fdecd1bf738c56",
+      "sha256": "aff393209f5aec27253505a934d1ab97d5510a9ecbdd36433e781622d16064c6",
       "lineCount": 96
     },
     {
@@ -280994,7 +280994,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskController.java",
-      "sha256": "54502ca17e8b74fa1267145f77d7fc6fc864922c8015253db1dd43da26716866",
+      "sha256": "b720f1aaec9d57d89ab05560d34a005a03b67703119b0a91589c0b5c08087b79",
       "lineCount": 101
     },
     {
@@ -281029,7 +281029,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordController.java",
-      "sha256": "0046f1f547f58fb1311c15741d335dd812e3393e7db5107aae8d164437189b1e",
+      "sha256": "977dff363f99ccf08176f0fe831e2c3ed1f3505d52f68582e245127459f33419",
       "lineCount": 99
     },
     {
@@ -281054,7 +281054,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/schedule/ProductionScheduleController.java",
-      "sha256": "ad60adc3b63c9957cb9ead2c4f4367155f71e6a1c5e4ba0e490975b60eb28547",
+      "sha256": "f7fb6794575e834d970388be3a2d5f7d59503df06b4a63ecefdfac8746989042",
       "lineCount": 151
     },
     {
@@ -281064,7 +281064,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderController.java",
-      "sha256": "94d498045b470279c53edf40749b980dce88f6a9db6a4bddc054236e36e503a8",
+      "sha256": "4582f5ab8ce5a9b75879a07cfbd7688ab0af5fb5de7956e1ec0bbbbadf7fb170",
       "lineCount": 219
     },
     {
@@ -281119,7 +281119,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderController.java",
-      "sha256": "77953f12ab470accbc97b0f4fd62cb0b6ff7c7d00d51b6781d3a2bc7808eb818",
+      "sha256": "403bb082f97dc10183ed73fba639d31dac89bf43729e3ef555b25410218a6c0f",
       "lineCount": 300
     },
     {
@@ -281129,7 +281129,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmController.java",
-      "sha256": "5a2c5361685c5c6662fb3d79228fab95fd2deda8438416183f99f0c4ec0472bf",
+      "sha256": "f04bf29decca88ca92ff2de618e871cf91e7c7e4509686947faf262ce5011e43",
       "lineCount": 121
     },
     {
@@ -281304,7 +281304,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryController.java",
-      "sha256": "14b120b9a95507f110072eb68755b20a6a7a4dbc72c0c7b8f9724a2fc6996c5e",
+      "sha256": "7e8f226f4883334bbed8efd2abb7bf55d26e9f012caf9460f893f70db056d277",
       "lineCount": 114
     },
     {
@@ -281359,7 +281359,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryController.java",
-      "sha256": "03ee7ab2650af52ea6afcb5532a5926d07bb21426fa21aac5c88f2096ebf662b",
+      "sha256": "de7a9d90b0d70a1fde29a83613e0861ed52c481f4adaf91575e0ac71f380e1a5",
       "lineCount": 309
     },
     {
@@ -281379,7 +281379,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordController.java",
-      "sha256": "3e460fdc74609040b9b73445c55a4b00a3c9e8661dd8c37f40add0e1c1297011",
+      "sha256": "076390a6054b1dd0e9b3ace14bd09a41afd08ad0bca402f0c6f38cb479afea42",
       "lineCount": 96
     },
     {

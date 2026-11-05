@@ -28,7 +28,9 @@ class ReceiptSourcePermissionContractTest {
     }
     @Test void createOnlyMayPrepareSourcesButCannotUpdateAnExistingReceipt(){
         actor("finance_receipt:create","sales_order:view");read();
-        assertThatThrownBy(()->receipts.update(UUID.randomUUID(),new com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest())).isInstanceOf(AccessDeniedException.class);
+        var command=new com.uten.imp.features.finance.FinanceDocumentActions.UpdateCommand(UUID.randomUUID(),1L,"a".repeat(64),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
+        assertThatThrownBy(()->receipts.update(UUID.randomUUID(),command)).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(beans.commands);
     }
     @Test void fullFinanceDoesNotNeedAnAdditionalSalesViewForItsAuthorizedReceiptSources(){
         actor("finance_receipt:edit","finance:view:all");read();sources.choices(null,null,null,1,20,null,null);
@@ -44,6 +46,8 @@ class ReceiptSourcePermissionContractTest {
         final ReceiptOrderSourceAccess orderSources=mock(ReceiptOrderSourceAccess.class);
         final ReceiptLedgerSourceAccess ledgerSources=mock(ReceiptLedgerSourceAccess.class);
         final FinanceReceiptService receiptService=mock(FinanceReceiptService.class);
+        final com.uten.imp.features.finance.FinanceDocumentActions commands=mock(com.uten.imp.features.finance.FinanceDocumentActions.class);
+        @Bean com.uten.imp.features.finance.FinanceDocumentActions commands(){return commands;}
         @Bean ReceiptOrderCollectionController sources(){return new ReceiptOrderCollectionController(preview,orderSources,ledgerSources);}
         @Bean FinanceReceiptController receipts(){return new FinanceReceiptController(receiptService,mock(com.uten.imp.audit.AuditService.class),
                 mock(com.uten.imp.security.SecurityContextCurrentUser.class),mock(com.uten.imp.audit.AuditDetailViewRecorder.class));}

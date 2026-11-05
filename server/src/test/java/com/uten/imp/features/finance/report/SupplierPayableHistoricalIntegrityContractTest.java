@@ -45,7 +45,7 @@ class SupplierPayableHistoricalIntegrityContractTest {
     void nativeAdvanceReversalDelegatesToTheActualAssetBankAndGlFacts() throws IOException {
         String payment = source("features/finance/payment/FinancePaymentService.java");
         String advance = source("features/finance/payables/SupplierPrepaymentService.java");
-        String replay = Files.readString(Path.of("src/main/resources/db/migration/V1077__supplier_advance_statement_replay.sql"));
+        String replay = Files.readString(Path.of("src/main/resources/db/migration/V1078__supplier_advance_statement_replay.sql"));
         assertThat(payment).doesNotContain("ledgerRepo.delete(ledger)")
                 .contains("glPostingService.reverseActualBankPayment(p.getId(),reversedAt)")
                 .contains("p.setStatus(STATUS_REVERSED);p.setReversedAt(reversedAt)")

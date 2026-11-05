@@ -61,7 +61,7 @@ class ExpensePaymentReversalUpgradePostgresTest {
     void alreadyAppliedOriginalMigrationHistoryIsNotReexecutedOrRepaired(String installed)throws Exception {
         String database=cloneDatabase("installed_"+installed);
         // No reversal exists yet: this reproduces an installation that legitimately
-        // passed the original restrictive CHECK before the forward V1068 repair.
+        // passed the original restrictive CHECK before the forward V1069 repair.
         flyway(database,installed,false,null).migrate();Snapshot before;
         try(var connection=connection(database)){seed(connection,false);before=snapshot(connection,installed);}
         flyway(database,null,true,null).migrate();

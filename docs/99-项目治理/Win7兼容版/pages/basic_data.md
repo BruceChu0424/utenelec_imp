@@ -238,7 +238,7 @@
 
 ## W7-BIZ-031 · lib/features/basic_data/pages/mould_category_page.dart
 
-模块 `basic_data`；1044 行；SHA256 `af29c8992c7bcb6fceb9fe29d9b22b59a4d31549261af8b2c1a5c2354718a313`。
+模块 `basic_data`；1044 行；SHA256 `0e15129d516e442b1ff2069066a02bedfadd2203c1597c0138ca34916871a073`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

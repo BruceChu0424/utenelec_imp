@@ -83,7 +83,7 @@ class FinanceApplicationSettingsReceiptPostgresTest {
         immutableTriggersBeforeMigration=immutableTriggerCount();
         assertThatThrownBy(()->db.update("INSERT INTO finance_application_operations(request_id,application_id,actor_id,operation,payload_hash,result) VALUES(?,NULL,?,'SETTINGS_SAVE',repeat('0',64),'{}')",UUID.randomUUID(),ACTOR_A))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        db.execute(resource("/db/migration/V1066__finance_application_settings_operation_receipts.sql"));
+        db.execute(resource("/db/migration/V1067__finance_application_settings_operation_receipts.sql"));
         assertThat(legacyRow()).isEqualTo(legacyBeforeMigration);
     }
     @AfterAll static void stop(){PG.stop();}

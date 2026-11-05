@@ -21,7 +21,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import com.uten.imp.support.MigratedSchemaBaseline;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -57,6 +57,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
                 "uten.bootstrap.admin-login=finance-lock-bootstrap-admin-test",
                 "uten.bootstrap.admin-password=FinanceLockHarnessAdminPass-1!"
         })
+@org.springframework.test.annotation.DirtiesContext(classMode=org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
+@org.springframework.test.context.TestExecutionListeners(
+        listeners=FinanceDocumentMutationConcurrencyPostgresTest.Cleanup.class,
+        mergeMode=org.springframework.test.context.TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class FinanceDocumentMutationConcurrencyPostgresTest {
 
     private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
@@ -64,20 +68,26 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
     private static final java.util.concurrent.atomic.AtomicInteger ACTOR_SEQUENCE =
             new java.util.concurrent.atomic.AtomicInteger();
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase database;
 
     @DynamicPropertySource
-    static void registerDataSource(DynamicPropertyRegistry registry) {
-        POSTGRES.start();
-        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
-                POSTGRES::getUsername, POSTGRES::getPassword);
+    static void registerDataSource(DynamicPropertyRegistry registry) throws Exception {
+        database=MigratedSchemaBaseline.openDatabase("finance_document_mutation");
+        FixtureDatabaseProperties.bindSameRole(registry, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
+    }
+
+    static class Cleanup extends org.springframework.test.context.support.AbstractTestExecutionListener {
+        @Override public int getOrder() {
+            return new org.springframework.test.context.support.DirtiesContextTestExecutionListener().getOrder()-1;
+        }
+        @Override public void afterTestClass(org.springframework.test.context.TestContext ignored) throws Exception {
+            if(database!=null)database.close();
+        }
     }
 
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private org.springframework.beans.factory.BeanFactory testServices;
     @Autowired private FinanceReceiptService receiptService;
     @Autowired private FinanceOtherIncomeService incomeService;
     @Autowired private FinanceBankTransferService transferService;
@@ -446,12 +456,13 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         request.setClientId(clientId);
         request.setAccountId(accountId);
         request.setCurrencyId(usdId);
+        request.setSalesOrderId(com.uten.imp.support.SalesPrepaymentOrderFixture.createApproved(testServices,jdbc,clientId,usdId,BusinessTime.today()));
         request.setExchangeRate(new BigDecimal("7.200000"));
         request.setAmountOriginal(new BigDecimal("1000.0000"));
         request.setSettlementChannel("DIRECT_ACCOUNT");
         request.setExchangeRateSource("BANK_STATEMENT");
-        request.setExchangeRateEffectiveAt(BusinessTime.startOfDay(BusinessTime.today()).plusHours(9));
-        request.setBankBookedAt(BusinessTime.startOfDay(BusinessTime.today()).plusHours(10));
+        request.setExchangeRateEffectiveAt(BusinessTime.startOfDay(BusinessTime.today()));
+        request.setBankBookedAt(BusinessTime.startOfDay(BusinessTime.today()));
         request.setBankReference("BANK-FX-"+suffix);
         request.setAccountCurrencyId(baseCurrencyId);
         request.setAccountAmount(new BigDecimal("7128.0000"));
@@ -599,6 +610,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         receiptReq.setClientId(clientId);
         receiptReq.setAccountId(receiptAccount);
         receiptReq.setCurrencyId(currencyId);
+        receiptReq.setSalesOrderId(com.uten.imp.support.SalesPrepaymentOrderFixture.createApproved(testServices,jdbc,clientId,currencyId,billDate));
         receiptReq.setExchangeRate(BigDecimal.ONE);
         receiptReq.setAmountOriginal(new BigDecimal("10"));
         // V2 records the actual same-currency bank credit, independently of the quote.
@@ -610,9 +622,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         receiptReq.setSettlementChannel("DIRECT_ACCOUNT");
         receiptReq.setExchangeRateSource("BANK_STATEMENT");
         receiptReq.setExchangeRateEffectiveAt(
-                BusinessTime.startOfDay(billDate).plusHours(9));
+                BusinessTime.startOfDay(billDate));
         receiptReq.setBankBookedAt(
-                BusinessTime.startOfDay(billDate).plusHours(10));
+                BusinessTime.startOfDay(billDate));
         receiptReq.setBankReference("BANK-CONCURRENCY-" + suffix);
         receiptReq.setAccountCurrencyId(currencyId);
         receiptReq.setCreateIdempotencyKey("receipt-concurrency-" + suffix);

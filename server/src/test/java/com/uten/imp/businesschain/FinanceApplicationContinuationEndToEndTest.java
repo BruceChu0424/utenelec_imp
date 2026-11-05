@@ -6,9 +6,9 @@ import java.math.BigDecimal;
 import java.util.Map;
 import java.util.List;
 import java.util.UUID;
-import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationVersion;
+import com.uten.imp.testsupport.TestFlyway;
+import com.uten.imp.testsupport.HistoricalJdbcNativeSql;
+import com.uten.imp.features.expenseclaim.HistoricalExpenseSourceJdbc;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,14 +32,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
-import com.uten.imp.security.TxSessionVars;
 
 /** Real pre-upgrade originals continue through current native HTTP APIs. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureMockMvc(print=MockMvcPrint.NONE)
 @TestExecutionListeners(listeners=FinanceApplicationContinuationEndToEndTest.Cleanup.class,mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
-@SpringBootTest(properties={"spring.profiles.active=dev","spring.flyway.target=1039",
+@SpringBootTest(properties={"spring.profiles.active=dev",
         "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false","uten.inventory.value-work.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true",
@@ -50,18 +49,53 @@ import com.uten.imp.security.TxSessionVars;
 class FinanceApplicationContinuationEndToEndTest {
     private static final String MIGRATIONS=snapshotMigrations();
     private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
+    private static Originals original;
+    private record Originals(FullChainEndToEndTest.World world,List<Actor> reviewers,UUID active,UUID draft,UUID activeReview,
+            UUID knownZero,UUID missingCurrencyZero,UUID claim,UUID expenseApp,UUID oldClaim,UUID oldExpenseApp,
+            UUID attachment,String originalItems,String originalInvoices,String oldHeader) { }
     public static class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
         @Override public void afterTestClass(TestContext ignored){PG.stop();}
     }
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){PG.start();FixtureDatabaseProperties.bindSameRole(registry,PG::getJdbcUrl,PG::getUsername,PG::getPassword);registry.add("spring.flyway.locations",()->MIGRATIONS);}
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry)throws Exception {
+        PG.start();
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
+        TestFlyway.configure().dataSource(source).locations(MIGRATIONS).target("1039").load().migrate();
+        var fixture=new FinanceApplicationContinuationEndToEndTest();fixture.db=new JdbcTemplate(source);
+        fixture.json=com.uten.imp.config.Jackson2ObjectMapperAutoConfiguration.domainObjectMapper();
+        fixture.transactions=new org.springframework.jdbc.datasource.DataSourceTransactionManager(source);
+        fixture.numbers=new com.uten.imp.common.docnumber.DocNumberService(HistoricalJdbcNativeSql.statements(fixture.db));
+        var worldFixture=new FullChainEndToEndTest();ReflectionTestUtils.setField(worldFixture,"jdbc",fixture.db);
+        var world=worldFixture.seedWorld("application-continuation");
+        UUID owner=fixture.db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,world.superAdminUserId());
+        fixture.reviewers=fixture.seedReviewers(world.departmentId(),world.superAdminUserId());
+        fixture.db.update("UPDATE departments SET manager_id=? WHERE id=?",fixture.reviewers.getFirst().employee(),world.departmentId());
+        UUID active=fixture.seedTravel(owner,world.superAdminUserId(),true),draft=fixture.seedTravel(owner,world.superAdminUserId(),false);
+        UUID activeReview=fixture.seedTravel(owner,world.superAdminUserId(),true);
+        UUID knownZero=fixture.seedTravel(owner,world.superAdminUserId(),false),missingCurrencyZero=fixture.seedTravel(owner,world.superAdminUserId(),false);
+        fixture.db.update("UPDATE finance_applications SET amount_original=0,currency_id=? WHERE id=?",world.currencyId(),knownZero);
+        fixture.db.update("UPDATE finance_applications SET amount_original=0,currency_id=NULL WHERE id=?",missingCurrencyZero);
+        UUID claim=fixture.seedExpense(owner,world.departmentId());
+        UUID expenseApp=fixture.seedExpenseApplication(claim,owner,world.superAdminUserId(),world.departmentId());
+        UUID oldClaim=fixture.seedExpense(owner,world.departmentId());
+        UUID oldExpenseApp=fixture.seedActiveExpenseApplication(oldClaim,owner,world.superAdminUserId(),world.departmentId());
+        String originalItems=fixture.db.queryForObject("SELECT jsonb_agg(to_jsonb(item) ORDER BY id)::text FROM expense_claim_items item WHERE claim_id=?",String.class,claim);
+        String originalInvoices=fixture.db.queryForObject("SELECT jsonb_agg(to_jsonb(invoice) ORDER BY id)::text FROM expense_claim_invoices invoice WHERE claim_id=?",String.class,claim);
+        UUID attachment=fixture.proof(draft,"FINANCE_APPLICATION");
+        String oldHeader=fixture.db.queryForObject("SELECT to_jsonb(app)::text FROM finance_applications app WHERE id=?",String.class,draft);
+        TestFlyway.configure().dataSource(source).locations(MIGRATIONS).target("1040").load().migrate();
+        assertThat(fixture.db.queryForObject("SELECT to_jsonb(app)::text FROM finance_applications app WHERE id=?",String.class,draft)).isEqualTo(oldHeader);
+        TestFlyway.configure().dataSource(source).locations(MIGRATIONS).load().migrate();
+        original=new Originals(world,fixture.reviewers,active,draft,activeReview,knownZero,missingCurrencyZero,claim,expenseApp,oldClaim,
+                oldExpenseApp,attachment,originalItems,originalInvoices,oldHeader);
+        FixtureDatabaseProperties.bindSameRole(registry,PG::getJdbcUrl,PG::getUsername,PG::getPassword);
+        registry.add("spring.flyway.locations",()->MIGRATIONS);
+    }
     @Autowired AutowireCapableBeanFactory beans;
-    @Autowired DataSource data;
     @Autowired JdbcTemplate db;
     @Autowired MockMvc http;
     @Autowired ObjectMapper json;
     @Autowired PlatformTransactionManager transactions;
-    @Autowired TxSessionVars tx;
     @Autowired com.uten.imp.common.docnumber.DocNumberService numbers;
     @Autowired com.uten.imp.features.finance.application.FinanceApplicationService originals;
     @Autowired com.uten.imp.features.finance.application.FinanceApplicationLegacyPolicy legacy;
@@ -70,29 +104,15 @@ class FinanceApplicationContinuationEndToEndTest {
     @Autowired com.uten.imp.application.port.AttachmentEvidencePort evidence;
     @Autowired com.uten.imp.application.port.NativeApplicationOriginPort origins;
     @Autowired com.uten.imp.features.common.taskclaim.TaskClaimService tasks;
-    @Autowired com.uten.imp.application.port.FinanceApplicationExpensePort expenseSources;
     private List<Actor> reviewers=List.of();
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
     @Test void actualUpgradeFencesNewOldWorkflowAndReviewsOriginalsWithoutCashOrGl()throws Exception {
-        var harness=new FullChainEndToEndTest();beans.autowireBean(harness);var world=harness.seedWorld("application-continuation");harness.loginAs(world.superAdminUserId());
-        UUID owner=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,world.superAdminUserId());
-        reviewers=seedReviewers(world.departmentId(),world.superAdminUserId());
-        db.update("UPDATE departments SET manager_id=? WHERE id=?",reviewers.getFirst().employee(),world.departmentId());
-        UUID active=seedTravel(owner,world.superAdminUserId(),true),draft=seedTravel(owner,world.superAdminUserId(),false);
-        UUID activeReview=seedTravel(owner,world.superAdminUserId(),true);
-        UUID knownZero=seedTravel(owner,world.superAdminUserId(),false),missingCurrencyZero=seedTravel(owner,world.superAdminUserId(),false);
-        db.update("UPDATE finance_applications SET amount_original=0,currency_id=? WHERE id=?",world.currencyId(),knownZero);
-        db.update("UPDATE finance_applications SET amount_original=0,currency_id=NULL WHERE id=?",missingCurrencyZero);
-        UUID claim=seedExpense(owner,world.departmentId());
-        UUID expenseApp=seedExpenseApplication(claim,owner,world.superAdminUserId(),world.departmentId());
-        UUID oldClaim=seedExpense(owner,world.departmentId());
-        UUID oldExpenseApp=seedActiveExpenseApplication(oldClaim,owner,world.superAdminUserId(),world.departmentId());
-        String originalItems=db.queryForObject("SELECT jsonb_agg(to_jsonb(item) ORDER BY id)::text FROM expense_claim_items item WHERE claim_id=?",String.class,claim);
-        String originalInvoices=db.queryForObject("SELECT jsonb_agg(to_jsonb(invoice) ORDER BY id)::text FROM expense_claim_invoices invoice WHERE claim_id=?",String.class,claim);
-        UUID attachment=proof(draft,"FINANCE_APPLICATION");
-        String oldHeader=db.queryForObject("SELECT to_jsonb(app)::text FROM finance_applications app WHERE id=?",String.class,draft);
-        Flyway.configure().dataSource(data).locations(MIGRATIONS).target(MigrationVersion.fromVersion("1040")).load().migrate();
-        assertThat(db.queryForObject("SELECT to_jsonb(app)::text FROM finance_applications app WHERE id=?",String.class,draft)).isEqualTo(oldHeader);
+        var harness=new FullChainEndToEndTest();beans.autowireBean(harness);var world=original.world();harness.loginAs(world.superAdminUserId());
+        reviewers=original.reviewers();
+        UUID active=original.active(),draft=original.draft(),activeReview=original.activeReview();
+        UUID knownZero=original.knownZero(),missingCurrencyZero=original.missingCurrencyZero();
+        UUID claim=original.claim(),expenseApp=original.expenseApp(),oldClaim=original.oldClaim(),oldExpenseApp=original.oldExpenseApp();
+        UUID attachment=original.attachment();String originalItems=original.originalItems(),originalInvoices=original.originalInvoices(),oldHeader=original.oldHeader();
         assertThat(legacy.allowed(active)).isTrue();assertThat(legacy.allowed(draft)).isFalse();
         var auth=SecurityContextHolder.getContext().getAuthentication();
         // A newly arrived old SAVE cannot allocate a second approval tree.
@@ -251,7 +271,7 @@ class FinanceApplicationContinuationEndToEndTest {
     }
     private UUID seedActiveExpenseApplication(UUID claim,UUID owner,UUID user,UUID department){
         db.update("UPDATE expense_claims SET status='SUBMITTED',approval_stage=NULL WHERE id=?",claim);
-        var source=expenseSources.source(claim,false);
+        var source=HistoricalExpenseSourceJdbc.source(db,json,claim);
         UUID app=seedExpenseApplication(claim,owner,user,department);
         db.update("UPDATE finance_applications SET status='SUBMITTED',submission_round=1,current_step=1,source_snapshot=?::jsonb,source_fingerprint=?,amount_original=?,currency_id=? WHERE id=?",encode(source.facts()),source.fingerprint(),source.amount(),source.currencyId(),app);
         int step=0;for(String role:List.of("DEPARTMENT_REVIEW","FINANCE_REVIEW_1","FINANCE_REVIEW_2","MANAGEMENT_PAYMENT")){

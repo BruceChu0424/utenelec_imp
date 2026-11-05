@@ -11,7 +11,7 @@ BEGIN
         normalized:=replace(replace(replace(regexp_replace(definition,'[[:space:]()]','','g'),'::numeric',''),'::bigint',''),'''','');
         expected:='CHECK'||column_name||'ISNULLORabs'||column_name||'<100000000000000ANDscaletrim_scale'||column_name||'<=10';
         IF normalized IS DISTINCT FROM expected THEN
-            RAISE EXCEPTION 'V1059 original learned price domain differs for %: %',column_name,definition;
+            RAISE EXCEPTION 'V1074 original learned price domain differs for %: %',column_name,definition;
         END IF;
         EXECUTE format('ALTER TABLE goods DROP CONSTRAINT %I',constraint_name);
         EXECUTE format('ALTER TABLE goods ADD CONSTRAINT %I CHECK(%I IS NULL OR fn_financial_amount_is_exact(%I))',

@@ -60,6 +60,7 @@ class ProcurementReferenceProofIntegrationUpgradePostgresTest {
                     // Only genuinely new technical source/copy columns may appear.
                     for(var field:before.properties())assertThat(actual.get(field.getKey())).as(row.kind()+" retained "+field.getKey()).isEqualTo(field.getValue());
                     assertThat(actual.path("reference_price_successor_source_id").isNull()).isTrue();
+                    assertThat(actual.path("successor_copy_txid").isNull()).isTrue();
                     for(String choices:List.of("{\"version\":1,\"choices\":{}}",UP)) {
                         policy(connection,master.actor(),choices,false);
                         assertThat(value(connection,"SELECT fn_procurement_reference_price_matches(to_jsonb(i)) FROM "+row.table()+" i WHERE id=?",row.item())).isEqualTo("t");

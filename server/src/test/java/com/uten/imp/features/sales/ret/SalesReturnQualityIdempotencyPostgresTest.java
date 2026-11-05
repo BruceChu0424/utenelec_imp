@@ -701,7 +701,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                     id, bill_no, bill_date, client_id, warehouse_id,
                     total_original, total_local, status
                 ) VALUES (
-                    ?, ?, CURRENT_DATE, ?, ?, 10, 10, 1
+                    ?, ?, CURRENT_DATE, ?, ?, 10, 10, 0
                 )
                 """,
                 returnId,
@@ -725,21 +725,22 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 shipmentNo,
                 clientId,
                 sourceWarehouseId);
-        jdbc.queryForObject("SELECT set_config('uten.legacy_reference_import','',true)", String.class);
         jdbc.update("""
                 INSERT INTO sales_shipment_items (
                     id, shipment_id, bill_no, bill_date, line_no,
-                    goods_id, unit_id, unit_rate, qty, price, amount_original, amount_local
+                    goods_id, unit_id, unit_rate, qty, price, amount_original, amount_local,
+                    goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at
                 ) VALUES (
                     ?, ?, ?, CURRENT_DATE, 1,
-                    ?, ?, 1, 10, 10, 100, 100
+                    ?, ?, 1, 10, 10, 100, 100,?,?,'LEGACY_IMPORT',now()
                 )
                 """,
                 shipmentItemId,
                 shipmentId,
                 shipmentNo,
                 goodsId,
-                unitId);
+                unitId,"QG-"+suffix,"Quality test goods "+suffix);
+        jdbc.queryForObject("SELECT set_config('uten.legacy_reference_import','',true)", String.class);
         // The returned line carries its actual shipped source and its unit basis (V1038).
         jdbc.update("""
                 INSERT INTO sales_return_items (
@@ -776,6 +777,7 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 unitId);
         // V1038 sanctioned adoption: the return line freezes its actually shipped tranche.
         jdbc.queryForObject("SELECT fn_sales_return_adopt_base(?)", BigDecimal.class, returnItemId);
+        jdbc.update("UPDATE sales_returns SET status=1 WHERE id=?",returnId);
         jdbc.update("""
                 INSERT INTO sales_return_quality_items (
                     id, return_id, return_item_id, warehouse_id, goods_id,

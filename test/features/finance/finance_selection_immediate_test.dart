@@ -13,6 +13,7 @@ import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/accounting_expense_purpose.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
@@ -24,6 +25,7 @@ import '../../shared/drafts/memory_form_draft_storage.dart';
 import '../../support/native_detail_reader_overrides.dart';
 
 class _Names extends ChangeNotifier implements FinanceNameService {
+  final expensePurposeReads = <AccountingExpensePurpose>[];
   @override
   List<FinanceStyleOption> stylesFor(String category) => const [
     FinanceStyleOption(id: 'first', name: '办公费用'),
@@ -31,6 +33,19 @@ class _Names extends ChangeNotifier implements FinanceNameService {
   ];
   @override
   String styleName(String? id, String category) => '—';
+  @override
+  List<FinanceStyleOption> expenseStylesFor(AccountingExpensePurpose purpose) {
+    expensePurposeReads.add(purpose);
+    return purpose == AccountingExpensePurpose.ordinaryExpense
+        ? stylesFor('EXPENSE')
+        : const [];
+  }
+
+  @override
+  String expenseStyleName(String? id, AccountingExpensePurpose purpose) =>
+      purpose == AccountingExpensePurpose.ordinaryExpense
+      ? styleName(id, 'EXPENSE')
+      : '—';
   @override
   Map<String, String> get accountEntries => const {
     'first': '基本户',
@@ -133,6 +148,14 @@ void main() {
           expect(find.text(label), findsOneWidget);
           expect(hostBuilds, initialBuilds);
         }
+        expect(
+          names.expensePurposeReads,
+          type == FinanceDocType.expense ? isNotEmpty : isEmpty,
+        );
+        expect(
+          names.expensePurposeReads,
+          everyElement(AccountingExpensePurpose.ordinaryExpense),
+        );
         expect(tester.takeException(), isNull);
       },
     );

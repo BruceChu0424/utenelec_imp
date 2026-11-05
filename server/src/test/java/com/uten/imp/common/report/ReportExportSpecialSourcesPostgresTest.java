@@ -45,7 +45,8 @@ class ReportExportSpecialSourcesPostgresTest {
             "warehouses","warehouse_goods_place_preferences","finance_reconciliations","account_flow_monthly_summaries",
             "finance_receipts","finance_receipt_lines","finance_payments","finance_payment_lines","ar_ap_ledger",
             "legacy_finance_import_sources","customer_open_item_offsets","customer_open_item_offset_batches",
-            "party_monthly_summaries","party_month_dirty",
+            "party_monthly_summaries","party_month_dirty","gl_vouchers","finance_chart_codes","finance_chart_code_styles",
+            "finance_gl_opening_baselines","finance_accounting_import_batches",
             "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","v_stock_actual_finished_receipts"};
     private static final UUID CURRENCY=UUID.randomUUID(),CLIENT=UUID.randomUUID(),SUPPLIER=UUID.randomUUID(),
             ACCOUNT=UUID.randomUUID(),UNIT=UUID.randomUUID();
@@ -55,6 +56,8 @@ class ReportExportSpecialSourcesPostgresTest {
     @BeforeAll static void start() {
         PG.start();db=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
         MigratedProjectionSchema.createCurrentTables(db,TABLES);
+        MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer",
+                "fn_business_exact_divide_with_policy","fn_business_exact_divide","fn_finance_gl_voucher_is_booked");
     }
     @AfterAll static void stop() { PG.stop(); }
     @BeforeEach void facts() {
@@ -93,6 +96,10 @@ class ReportExportSpecialSourcesPostgresTest {
                 """,CLIENT,CURRENCY,DATE);
         db.execute("INSERT INTO payment_styles(id,code,name,category,level) SELECT gen_random_uuid(),'GL-'||lpad(n::text,5,'0'),'科目','EXPENSE',0 FROM generate_series(1,1001) n");
         db.update("INSERT INTO gl_entries(id,voucher_id,style_id,direction,amount,entry_date,period,is_deleted) SELECT gen_random_uuid(),gen_random_uuid(),id,1,1.0001,?,'2026-10',false FROM payment_styles",DATE);
+        db.update("""
+                INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status)
+                SELECT voucher_id,voucher_id::text,period,entry_date,'MANUAL','ANONYMOUS',1 FROM gl_entries
+                """);
     }
 
     private static final class Context implements AutoCloseable {
@@ -153,12 +160,15 @@ class ReportExportSpecialSourcesPostgresTest {
             Supplier<ExportPayload> load=report.startsWith("stock/")
                     ?()->context.stock.export(report.substring(6),parameters,"goodsCode","asc")
                     :()->context.finance.export(report,parameters,null,null);
-            ExportPayload original=load.get();assertThat(original.total()).isEqualTo(1001);assertThat(original.rows()).hasSize(1001);
+            // The current trial balance retains its source-template subtotal
+            // and grand-total rows in addition to all 1001 detail facts.
+            int expectedRows=report.equals("gl/trial-balance")?1003:1001;
+            ExportPayload original=load.get();assertThat(original.total()).isEqualTo(expectedRows);assertThat(original.rows()).hasSize(expectedRows);
             int originalStatements=context.sql.size();
             context.sql.clear();List<ExportPayload> batches=new ArrayList<>();ExportPayload result;
             try(var sink=ExportPageSink.open(batches::add);var cursor=ReportExportCursor.open()){result=load.get();}
-            assertThat(result.total()).isEqualTo(1001);assertThat(result.rows()).isEmpty();
-            assertThat(batches).extracting(batch->batch.rows().size()).containsExactly(500,500,1);
+            assertThat(result.total()).isEqualTo(expectedRows);assertThat(result.rows()).isEmpty();
+            assertThat(batches).extracting(batch->batch.rows().size()).containsExactly(500,500,expectedRows-1000);
             var streamed=batches.stream().flatMap(batch->batch.rows().stream()).toList();
             assertThat(streamed).containsExactlyElementsOf(original.rows());
             // Dirty-month checks are now embedded in the authoritative statement data CTE.
@@ -187,13 +197,22 @@ class ReportExportSpecialSourcesPostgresTest {
             }else{
                 String key=report.equals("gl/trial-balance")?"styleCode":"goodsCode";
                 String prefix=report.equals("gl/trial-balance")?"GL-":"G-";
-                assertThat(streamed).extracting(row->row.get(key)).containsExactlyElementsOf(
+                var detailRows=report.equals("gl/trial-balance")?streamed.stream()
+                        .filter(row->"DETAIL".equals(row.get("__rowKind"))).toList():streamed;
+                assertThat(detailRows).hasSize(1001).extracting(row->row.get(key)).containsExactlyElementsOf(
                         IntStream.rangeClosed(1,1001).mapToObj(value->String.format(prefix+"%05d",value)).toList());
+                if(report.equals("gl/trial-balance")) {
+                    var totals=streamed.stream().filter(row->!"DETAIL".equals(row.get("__rowKind"))).toList();
+                    assertThat(totals).extracting(row->row.get("__rowKind")).containsExactly("SUBTOTAL","TOTAL");
+                    assertThat(totals).extracting(row->row.get("styleName")).containsExactly("损益小计","合计");
+                    assertThat(totals).allSatisfy(row->assertThat((BigDecimal)row.get("closingDebit"))
+                            .isEqualByComparingTo("1001.1001"));
+                }
             }
             var output=java.nio.file.Path.of("target-b1-report-special-sources");java.nio.file.Files.createDirectories(output);
             new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(
                     output.resolve(report.replace('/','_')+".json").toFile(),Map.of(
-                            "report",report,"rows",1001,"originalPageStatements",originalStatements,
+                            "report",report,"rows",expectedRows,"originalPageStatements",originalStatements,
                             "cursorStatementsIncludingProofReads",context.sql.size(),"cursorDataStatements",dataStatements.size(),
                             "batchSizes",batches.stream().map(batch->batch.rows().size()).toList(),
                             "scope","Isolated migrated-column projection; real Hibernate and real SQL, unchanged preflight proofs retained",
@@ -216,6 +235,12 @@ class ReportExportSpecialSourcesPostgresTest {
                 if(!result.hasMore())break;
             }
             assertThat(actual).hasSize(1001).doesNotHaveDuplicates();
+            if(report.equals("gl/trial-balance")) {
+                // FinanceReportColumnCandidates.readSql excludes blank text;
+                // template totals are exported, but are not account codes.
+                assertThat(actual).containsExactlyElementsOf(IntStream.rangeClosed(1,1001)
+                        .mapToObj(value->String.format("GL-%05d",value)).toList());
+            }
             assertThat(context.sql).anySatisfy(sql->assertThat(sql).contains("candidate.bucket_count"));
         }
     }

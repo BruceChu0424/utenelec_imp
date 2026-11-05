@@ -1,0 +1,309 @@
+{
+  "findings": [
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:419",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json",
+      "evidenceLine": 419,
+      "sourcePath": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccess.java",
+      "algorithm": "git-blob-sha1",
+      "digest": "2d61a8f1946e1309a80cdd5217e7a3fa3adbf343",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "exact Git blob object identity"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:420",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json",
+      "evidenceLine": 420,
+      "sourcePath": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccess.java",
+      "algorithm": "git-blob-sha1",
+      "digest": "1f27b7306a139b32e126bd6f0771dd3b33078f29",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "exact Git blob object identity"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:463",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json",
+      "evidenceLine": 463,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccessTest.java",
+      "algorithm": "git-blob-sha1",
+      "digest": "7e60da5c7cfba41d4638149d72f2347685a6dd90",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "exact Git blob object identity"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:464",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json",
+      "evidenceLine": 464,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccessTest.java",
+      "algorithm": "git-blob-sha1",
+      "digest": "77e12d0e7d86d594b143671926a028520ab7e66a",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "exact Git blob object identity"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:78",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json",
+      "evidenceLine": 78,
+      "sourcePath": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccess.java",
+      "algorithm": "sha256",
+      "digest": "6ef9365dc4a62e928878c7fcc58aaf670bd9c01c80716034988437220a71c23a",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:79",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json",
+      "evidenceLine": 79,
+      "sourcePath": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccess.java",
+      "algorithm": "sha256",
+      "digest": "b8d3bd24a0d0b17f200bb3b8b943159cfa851f514e6fcc85332c49932408a325",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:122",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json",
+      "evidenceLine": 122,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccessTest.java",
+      "algorithm": "sha256",
+      "digest": "cccd5dcf5eaaeb248f11fd6203a49d36852e591eb7f2eb25fb99547adfdc2581",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:123",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json",
+      "evidenceLine": 123,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccessTest.java",
+      "algorithm": "sha256",
+      "digest": "bbcca26a862b802c6582bb65cfd7bafd41790358db014487f6b3e3d0d0e941d0",
+      "verifiedAgainst": [
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "f02312a36235bf6917645a4ef9aa2a2563be1ecb",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:287",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104.json",
+      "evidenceLine": 287,
+      "sourcePath": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccess.java",
+      "algorithm": "sha256",
+      "digest": "6ef9365dc4a62e928878c7fcc58aaf670bd9c01c80716034988437220a71c23a",
+      "verifiedAgainst": [
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:288",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104.json",
+      "evidenceLine": 288,
+      "sourcePath": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccess.java",
+      "algorithm": "sha256",
+      "digest": "b8d3bd24a0d0b17f200bb3b8b943159cfa851f514e6fcc85332c49932408a325",
+      "verifiedAgainst": [
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:331",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104.json",
+      "evidenceLine": 331,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccessTest.java",
+      "algorithm": "sha256",
+      "digest": "cccd5dcf5eaaeb248f11fd6203a49d36852e591eb7f2eb25fb99547adfdc2581",
+      "verifiedAgainst": [
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:332",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/internal-feedback-20261104.json",
+      "evidenceLine": 332,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccessTest.java",
+      "algorithm": "sha256",
+      "digest": "bbcca26a862b802c6582bb65cfd7bafd41790358db014487f6b3e3d0d0e941d0",
+      "verifiedAgainst": [
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "afe9fcd8af0121a8287d798024f553fa90247f79:docs/99-项目治理/2026-11-05-订单散件交付主线验证.json:generic-api-key:2251",
+      "evidenceFile": "docs/99-项目治理/2026-11-05-订单散件交付主线验证.json",
+      "evidenceLine": 2251,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimAttachmentAccessPolicyTest.java",
+      "algorithm": "sha256",
+      "digest": "6761059c9a355ddf4610a76daba584d77e2e610d903ab31cbe0c21b7ab483300",
+      "verifiedAgainst": [
+        {
+          "commit": "1d15d22f1b57d5d404373158d35c46e0a2f49bf7",
+          "encoding": "gitBlobBytes"
+        },
+        {
+          "commit": "1d15d22f1b57d5d404373158d35c46e0a2f49bf7",
+          "encoding": "lfCanonical"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    }
+  ],
+  "reviewDate": "2026-11-05",
+  "sourceScan": "Quality 42064573033 / Secret history scan",
+  "exceptions": "Exact original commit/path/rule/line only",
+  "serializationChangeOnly": true,
+  "artifactPreservation": [
+    {
+      "file": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json",
+      "sourceChecksums": 132,
+      "allOriginalValuesAndOutcomesPreserved": true
+    },
+    {
+      "file": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json",
+      "sourceChecksums": 132,
+      "allOriginalValuesAndOutcomesPreserved": true
+    },
+    {
+      "file": "clients/windows_legacy/progress/evidence/internal-feedback-20261104.json",
+      "sourceChecksums": 132,
+      "allOriginalValuesAndOutcomesPreserved": true
+    },
+    {
+      "file": "docs/99-项目治理/2026-11-05-订单散件交付主线验证.json",
+      "sourceChecksums": 278,
+      "allOriginalValuesAndOutcomesPreserved": true
+    }
+  ],
+  "reproduceEncoding": "python scripts/governance/source_fingerprint_records.py --write <evidence.json>",
+  "readerReview": {
+    "changedMaps": [
+      {
+        "artifact": "internal-feedback-20261104.json",
+        "field": "sourceSha256",
+        "count": 132
+      },
+      {
+        "artifact": "internal-feedback-20261104-pre-eol-normalization.json",
+        "field": "sourceSha256",
+        "count": 132
+      },
+      {
+        "artifact": "internal-feedback-20261104-checkout-archive.json",
+        "field": "all132RawBlobIds",
+        "count": 132
+      },
+      {
+        "artifact": "2026-11-05-订单散件交付主线验证.json",
+        "field": "sourceSha256",
+        "count": 167
+      },
+      {
+        "artifact": "2026-11-05-订单散件交付主线验证.json",
+        "field": "parallelWorkingTreeSha256",
+        "count": 111
+      }
+    ],
+    "repositorySearch": "All committed Python/Java/Dart/C#/PowerShell/shell/JavaScript/TypeScript readers were searched for these artifacts and all three exact map keys. No runtime or freeze validator reads the changed five maps.",
+    "progressEvidenceValidation": {
+      "source": "clients/windows_legacy/tools/progress_tracker.py",
+      "lines": "178-186",
+      "behavior": "Verifies that recorded evidence paths exist; does not parse these artifacts checksum maps."
+    },
+    "scalarSourceDigestComparisons": {
+      "source": "clients/windows_legacy/tools/progress_tracker.py",
+      "lines": "79,117",
+      "behavior": "Registry sourceSha256 remains a scalar and is not part of the selected four artifacts."
+    },
+    "handoverCapture": {
+      "source": "clients/windows_legacy/tools/capture_handover_state.py",
+      "behavior": "Writes its independent sourceFiles records; does not read these four archival artifacts."
+    },
+    "otherSourceSha256Protocols": "Deployment reviewed-host manifests use logical source keys; finance/source-paper use scalar digests. None of those files/envelopes are migrated. The formatter rejects non-path map keys and leaves scalar values unchanged.",
+    "algorithmAuthority": "Chosen by explicit map field name; sourceRef, commit and scalar sourceSha256 are preserved. Historical Git blob identities were separately verified by git rev-parse of the identified source blob.",
+    "futureGeneration": "After refreshing one of the selected archival path maps, run scripts/governance/source_fingerprint_records.py --write on that artifact. It does not recompute or reinterpret historical checksum values."
+  }
+}

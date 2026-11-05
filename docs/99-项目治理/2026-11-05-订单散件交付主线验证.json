@@ -2028,290 +2028,1125 @@
     "parallelWorkingChangesNotClaimedAsCompleted": true
   },
   "sourceSha256": {
-    "integration_test/material_analysis_cancel_reentry_test.dart": "d685bc9f256c194dec300c8927023e3cde09bebf247612fa9a26bf84aaea5ff5",
-    "lib/components/feedback/uten_busy_overlay.dart": "d3bf6a942f582144973e776fb7cfe78944b3bc85acb9aa3292d0940185bb4c7a",
-    "lib/core/network/request_reload_semantics.dart": "4b40507287f5ef2c3fae570543511ec0a4631b7c0ea96e2175f1b473ab7eaf08",
-    "lib/features/basic_data/widgets/goods_bom_tab.dart": "713646b6b3fd7d9bdb064443f54b164144342baa75143f41b00d582f9ba15b40",
-    "lib/features/basic_data/widgets/master_data_table_view.dart": "5caaa2906a0622e5096a31fd45dbfa3fc1f0c43087e4411085dfc2fb60d4fb6d",
-    "lib/features/finance/pages/finance_sales_order_review_page.dart": "719b2b494d4acbce424efdb8507bcb5c0e6b0028f06c0f35989218229dffb4be",
-    "lib/features/finance/widgets/sales_order_revision_table.dart": "88a81a0109a28f4d16172772adbeed793bd6db58df713940192748f3d35d6125",
-    "lib/features/production/delivery_processing/delivery_processing_repository.dart": "6cb0cd95ba70a152664e8b6d106562274f0665513ec75bffc9fa762fe616a72b",
-    "lib/features/production/delivery_processing/delivery_processing_tasks_button.dart": "45504989709192e64de05490897c2e816f605c715946918959fffe22da6af4ce",
-    "lib/features/production/models/material_analysis_ownership_overlay.dart": "98a3c73f99a2c0c549ac592e31d6cbfe6d06e26e293d1d884b2a5406c9ec07f0",
-    "lib/features/production/models/material_analysis_projection.dart": "9ee2348fd9043e0bad9d295d618e26aaf72c10dc96f7594e8f5bc43987f7d868",
-    "lib/features/production/models/production_material_analysis.dart": "bcf59359610ced56847d3cf8bddce1b5292b671ba0f4500c38af70bf26514fc5",
-    "lib/features/production/pages/material_analysis_candidates.dart": "40817625e1ed2f821455003c2ea1e9ca48a72750151daa96b987812635f97f5c",
-    "lib/features/production/pages/material_analysis_material_table.dart": "cbe173c5a8a9cc08f85795881dee5dba6de53c6da311527c5cf9c9d60dfa15be",
-    "lib/features/production/pages/production_material_analysis_page.dart": "b4aea5e51c1fb58836c18a502cd83660c6d5df2f7e8602dc8b1d4591fae2ed89",
-    "lib/features/production/pages/production_workshop_tasks_page.dart": "5b92cbfc53e275d41a129bccbbf1abee9880d5b3a678d25764abe0c7b1594133",
-    "lib/features/sales/models/sales_doc.dart": "fbcde4a88669422b4f283d747a00d81fa628c0f329f8ea75f9d319031e86ce6a",
-    "lib/features/sales/models/sales_order_progress.dart": "5c248a59251b0ad5ddf2694ae99c0199c27994c06de52653f6e81460e3afb6a8",
-    "lib/features/sales/models/sales_shipment_prefill.dart": "11f948310f2993896af65aba87476a24a742047978c16de7d738f14f5b8893ed",
-    "lib/features/sales/pages/sales_doc_detail_page.dart": "8a21132137a91e39cdcc5617f1c5a2df6bed7564d35f63d1154424f8d3f40b81",
-    "lib/features/sales/pages/sales_doc_edit_page.dart": "e6f6223e87cae2564ee7fed82eef45e60d7c0b6a6d4463798278e2049456f7a7",
-    "lib/features/sales/pages/sales_order_progress_page.dart": "e6eda0fd6f8f935044a9ea68cd5d4b1e09e6a303367a1569355bf1603b39920d",
-    "lib/features/sales/widgets/sales_batch_ship_panel.dart": "4a974c65f8b7862e9fc5f1964e72ddb3f9cfbe518633001dc88b39aee7cfd609",
-    "lib/features/sales/widgets/sales_doc_link_picker.dart": "66655c8197e4cba134e72c1ee25477e7a537bb7b8ac1cb7c27ce685a3028e688",
-    "lib/features/sales/widgets/sales_grid_columns.dart": "2f41cffe7218c68d10791f1ed6359cd5979e42f3c7bd7ec5887e4c1b005c42af",
-    "lib/features/sales/widgets/sales_plan_progress_panel.dart": "fecf7a369aa418c3e62187ef13116f3b14849f789c63fed2e55bb9fb0de6d48c",
-    "lib/features/warehouse/models/warehouse_sales_outbound.dart": "5b54d628a3c46f115be97f922d51d0975886d5d31610b77845ea3ebb5338519c",
-    "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart": "6982f3c25104a088984759f1abbf69b1e817b834b228066d5ed12dff2168f51d",
-    "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart": "0e66a4fee223527c1de4559182b2a4b4c1c011eccd3d4bded3c2efcdae8280de",
-    "lib/features/warehouse/repositories/warehouse_delivery_processing_repository.dart": "e861d48dffc8b519ec412a4e6ae4c1619bc0345f6c1aadbd054c4c91e7f946c7",
-    "lib/features/warehouse/repositories/warehouse_sales_outbound_repository.dart": "edcb11287920d444822baa63c9653c69a7b6c75fe130fcad2a051d2edfa2de8a",
-    "lib/features/warehouse/widgets/warehouse_component_processing_actions.dart": "44a32e93bb20363c2fdffdf778e1447cbf3fae0a46896f496724de7f81c51557",
-    "lib/features/warehouse/widgets/warehouse_delivery_components_table.dart": "faed95fb764a4e2d55afe318da312b3d90774dd43cdc9ea354737ed18eeefabd",
-    "lib/features/warehouse/widgets/warehouse_sales_outbound_table_columns.dart": "73570cc9526645aa68880ac60f65be349f0d195b4d81e7b29eef53252d046c26",
-    "lib/features/warehouse/widgets/warehouse_sales_picking_fields.dart": "7ad1c889210dcd5eae01e694de34fcb1f4a36217ddbf3b12bf4d8c4900096f3c",
-    "lib/shared/delivery/bom_delivery_rule_window.dart": "3ad173995771476b9cd3675eb23f3806fe5f5f9778b09f4c5bfe47d049b1745e",
-    "lib/shared/delivery/delivery_processing_target.dart": "0c54a72c9c012a9515811d4883fcfa7784de64dc8f20760c379da20bb132cfc0",
-    "lib/shared/delivery/order_delivery_plan.dart": "794c89124d129a776c9844e9c9eae41c7ef17531b61372ba304c1175df115fa0",
-    "lib/shared/delivery/order_delivery_repository.dart": "8a6d926f9b3684e64a3bd02ddfda63dde81e7f14fb935571e9eef5c86deddf7a",
-    "lib/shared/delivery/order_delivery_window.dart": "5a327e4b0d3229073ad0bf7b3f7cbcb5de53334c507bc1c7881c4e5db52974ad",
-    "lib/shared/sales_review/sales_order_review.dart": "5d5f73c7934c9cd4ebd55def747639c65ca59f3cb3ede060c4228e5939fc827b",
-    "lib/shared/widgets/business_precision_dialog.dart": "5428891d86e2182026c229eed6c77fde3a2ef1da2696608f5014aa2333d69255",
-    "lib/shared/widgets/sales_document_layout.dart": "00f79f1bc095226e1577e71425968db281c910f39c458b8f021d223abf613621",
-    "lib/shared/widgets/uten_tree_table_cell.dart": "298c36d57b85b7223d5ed21058fceb033c4001ddd2284c3fb7b2e71810700a95",
-    "server/src/main/java/com/uten/imp/application/port/BomGraphLockPort.java": "c11409d9063419d0dd2c74e44d75a77420c571ab2eb6582c1833d378e4397a37",
-    "server/src/main/java/com/uten/imp/application/port/MasterReferenceValidationPort.java": "c22a4ff85c9e672f81cebad9d767fc829273d6051a488f6cf3ee5fa31cdcba7d",
-    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryFulfillmentPort.java": "298025b3a85aada9a68dc5d92987a04e23e1c69431b985b862bb2ea911aed003",
-    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryInventoryPort.java": "c7dd66c431e96ac2a47c5288480788e05b8b9ee5582c192e01a0e8bb0da701cf",
-    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryMutationPort.java": "8c0eb5106f159cb871fa7c062d265b056083ea45a4bf00b355df8951473d1f9b",
-    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryOrderClaimPort.java": "57dd42b91183e3a024581afd121ec57845bed7b7ec8b6d1fc1c5bd1b591ef9bc",
-    "server/src/main/java/com/uten/imp/application/port/SalesOrderDeliverySourcePort.java": "2d9d9ebafe9a025c4dc7e0ac851d1abbf9961103cbffc7bc531137ed2c4baef8",
-    "server/src/main/java/com/uten/imp/application/port/WarehouseUseValidationPort.java": "5f390dc4baa7a3e707a0a0af295a03a05f1da654a5c23639a2893bf7896bd6c2",
-    "server/src/main/java/com/uten/imp/common/delivery/BomDeliveryService.java": "10873dbe2825d4c385247e6a49dd62a496f17fd826195757893abca986a9e66d",
-    "server/src/main/java/com/uten/imp/common/delivery/BomReferenceIdentitySql.java": "aed909d411f9421fbfd02598659e5ed168778abb50ed4d018750a43a997125ea",
-    "server/src/main/java/com/uten/imp/common/delivery/DeliveryBom.java": "4d5507f4bfba53acfb2783cdead48c90e4efdb30091b73f2881b8b177dd87c2d",
-    "server/src/main/java/com/uten/imp/common/delivery/DeliveryFrontier.java": "f33547ad7ba914709eae48bd33c25ca463077bac9421e2b8c0fc23619435510b",
-    "server/src/main/java/com/uten/imp/common/delivery/DeliveryPlan.java": "a6181b39a6dfe698eda34e503ed683ff5f7b91c28c1705c83a2f0d07c39a1bd1",
-    "server/src/main/java/com/uten/imp/common/delivery/DeliveryProcessingTargets.java": "8f6438c1ea0863943675fe341739dcde74b475b693673c9197fc8e731012ff24",
-    "server/src/main/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptor.java": "19c46b5d3834ada6fabaddeb7d4f66d3cfcab8614aea9ac227d299b706372ef3",
-    "server/src/main/java/com/uten/imp/common/web/ExactBodyReadRoutes.java": "93175f9f257f2a9187efad8f4ac8c81fa4b5be1c413eab000109d425314152b4",
-    "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomGraphLock.java": "7cf065eae09f96f395195fa406119b947b5782b245b2cee017246a724dc17170",
-    "server/src/main/java/com/uten/imp/features/master/reference/MasterReferenceValidationAdapter.java": "9f46edb0ad1d020e4a73aaacb69a9e29e8727056562b29dc55825e56eed1ae0d",
-    "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseScopeService.java": "7cf0394a4b41c8b97b071d47a8b990151d97e0f76c07dfb76a4e2acb31acde4c",
-    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisBomSnapshotReader.java": "5c82c47924a78f8f8258c68e8f4a9a7c532b1a13c0518617e754f939d266e475",
-    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisContracts.java": "24943e963a8b8ebe012b8893bf9d13fc1cddf5132021d2b4b051c848f0ca29c3",
-    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisDeliverySnapshot.java": "f364dc3e037c6e35076ae5c51a24efab666c776c6400dab22f02cbbecefce94b",
-    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRootSupplyService.java": "745b3001053740cd51d94db9e0f04538dd169f32aa8902e8f62397e956280fcf",
-    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java": "ba3b7cb6785a9d3f5de865eb33ce98c54983347166bbf34bb82c5b6d326a5097",
-    "server/src/main/java/com/uten/imp/features/production/analysis/PreplanAnalysisStockPegService.java": "9b9d43a0867f0eb73038761d284560469e3d56cab4eae6c2e343c2494d63befc",
-    "server/src/main/java/com/uten/imp/features/production/analysis/SalesDeliveryCustodyCoverage.java": "af75199b32a7cf1653cb3159e4cec9e1c1d67bced1559fe1a99927965e848168",
-    "server/src/main/java/com/uten/imp/features/production/analysis/SalesDeliveryFulfillmentService.java": "54a095f6d56f3f313e8b121d0fb304d6bf26652eae7bc0bfd91379a6feb1f292",
-    "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingContracts.java": "2368e4d47c2dcbbca7fed72350c423627922bd8d8deea32211d12574b25f86ce",
-    "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingController.java": "d34b2608798345ac6f3379bb037f8ebb653afcc2513176e41422298e294c2ecb",
-    "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingService.java": "3316b40adc607d8343a8aed7a260f65a159fb63ab04918d3db04c7d361d55751",
-    "server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewService.java": "cf48632dcff861bddf7ca11c9ac348c6110d7c46dbeee39ec7edc6ead2332c69",
-    "server/src/main/java/com/uten/imp/features/sales/SalesMutationFootprintService.java": "9abf826cd1dac9292582f4115b794f4f14f02a837fce5d2ebf0563987b4ef420",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderDeliveryController.java": "75d7ba20aa0b85ac14bce6d0042879d50d9aecf878238cd554b5909c2faedf20",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderDeliveryReadService.java": "07027572fe1867050e810b897493f0e1a5471085791bbab9a4096fda10eac275",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderDeliveryService.java": "a7d4a85a3ee48fcc80672c6c79b99db404b91da5e5cd35b10e294a6292b97065",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java": "8d29ac8a158961150995d95e5b3e030faf0ca8eca706b2c6ae166444c00bc67e",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderItem.java": "340aa39e96e5f7b39091e49f465f155ce49bacb528393c1023a131d998ef1cab",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderRevisionService.java": "9f49460e638718320696982cbfbfba2fdecf3a5c310a803d91a7c1b4aaf0ab94",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java": "1ea16719fe530029cb0bcb25311834642d93173f5df2681d68b0027506c0a22f",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderDeliveryFields.java": "f347db3f9bd83d0effeae978e3847f29e6c2f015bc24a05ffc5a086ebb61713a",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderItemDto.java": "081d6b88d341a773ba31aa14a76924b321599d76c718a0674fb47cf048f83198",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderItemLine.java": "96f1a54f7c679ae0d69a6d9171a93a089d5cbd441eafe80ea80f4df6baeb2688",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderProgressRow.java": "b4d8bfc3e5710215bc142871a5aff5589c7ef4f9c5f0ab42b8b904ceeeff03c1",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderShippableLine.java": "10aac910b3f5b52addabea9597573596ae3c941706ced5e9393aed6b3ca1495a",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/PlanProgressLine.java": "323958d1a257fec3de0876dac0f86d083dd1066570f432e38bc2a2b121fcf879",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/SalesOrderFinanceReviewDto.java": "98669bf5400a76fe69632c56a1810c6078b9ae3142ac9690ad026f4a60c94e0f",
-    "server/src/main/java/com/uten/imp/features/sales/ret/SalesReturnService.java": "a5161eae3ad46d3d64ee8ae728028341a06ff40defca723396c075fcbc20486b",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentDeliveryService.java": "98fdd8ee3b2f366798575c275c553b1e84d72245aba1f1f5323586f5632eabb1",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java": "084112cf035842cdadbdfa914a969e37df6878f498d26772054d8d7b9828a0ac",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/WarehouseWorkTransitionRequest.java": "55ac8eaa1a45b51bb445a6bd9c9a7c402618bde13164be6f8a0eb58a9c371bc9",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundController.java": "1a9e5c3441c9573187843f3c39ecb2cb6b09f77794e4c97d16d80273ea1713c1",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundDetail.java": "6b1978ab903d0725aaf5fc91cbb56caf7748324151b867eb051ef18c8fdcba72",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundProjectionService.java": "9f9533787bb12ceb5cf987f1c144c4392753dd46b8eae8456083d79a95f8e1ab",
-    "server/src/main/java/com/uten/imp/features/stock/SalesDeliveryInventoryService.java": "b48a4947fbca854f27706168ad5e5bfde89c2ad337f328103afc973aab6614ce",
-    "server/src/main/java/com/uten/imp/features/stock/SalesDeliveryOrderClaimService.java": "0dfa131b6f896dafd14332314b1035c18a88785c5c023af8e000b8ed6952cbf3",
-    "server/src/main/resources/db/migration/V1049__sales_order_delivery_plan.sql": "70ecae0124a5f16237ed47a496cea299332b7185f1a77e944bc5ab7d75a08188",
-    "server/src/main/resources/db/migration/V1050__production_order_delivery_snapshot.sql": "729c5b7fa95fbc943d69f71172667804253931a8278aed9ee7bdc69ee9ad283e",
-    "server/src/main/resources/db/migration/V1051__sales_delivery_component_fulfillment.sql": "a9cb02f1038e139dc145dde156f32c687957ae6b3830c1525ff1e390fc64d629",
-    "server/src/main/resources/db/migration/V1052__delivery_processing_workshop_custody.sql": "20551c4ec500f04e33857ad9cec7d36f0e7e4a70b627ed8d3ec362082e101dee",
-    "server/src/main/resources/db/migration/V1053__delivery_processing_warehouse_handover.sql": "33491ee9ca201a02aec19ac846442448c6ba8e5ffd68e71eeb620a04a045797a",
-    "server/src/main/resources/db/migration/V1054__sales_delivery_production_entitlement_bridge.sql": "cc6115ed8d61fd997fa7093c6992f671c98c3914c19dbd100f99376f7b9843e9",
-    "server/src/main/resources/db/migration/V1055__delivery_components_actual_cost_bridge.sql": "a24930932cce8a450a6df7d792288d96dc482faa2c6e7eefbea7da84ca7df3c4",
-    "server/src/main/resources/db/migration/V1056__delivery_original_order_stock_claims.sql": "fa0cdfc4d48e97a72bd49698c2a70a7b7e2d9d7a5f9a411c5963998ae53e67b1",
-    "server/src/main/resources/db/migration/V1058__direct_make_closed_delivery_credit.sql": "e5f8a1546cae0b053497c9e41becdbf36095a3038671131f497dfa0e69cc817a",
-    "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java": "f28e917d8df25d8827fdfc83b87e0132ac83ee44becfb475b09726fa7615e589",
-    "server/src/test/java/com/uten/imp/businesschain/FullChainEndToEndTest.java": "8d8321416d7a78557d85fa1429be807ee67e68ca48944b91374362bd19a1257b",
-    "server/src/test/java/com/uten/imp/businesschain/ProductionMaterialAnalysisScalePostgresTest.java": "834a88b47a33597fbbfb73892a3a888b2dd4a6eccbb636689f65149704603f14",
-    "server/src/test/java/com/uten/imp/businesschain/SalesBomDeliveryEndToEndTest.java": "0a9b96c4abc1b1b6b3403969e936ae4bd1b2b587a34c5a315afb86c277eacde6",
-    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMakeSourceEndToEndTest.java": "eb99ece60ee6b202ad4d47bdfc4ae027ee3c3aa51167df956d5e79cdf87478c2",
-    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMixedScenarioEndToEndTest.java": "e8feb5d33797ab36eeaa528b4ab4d74e8a7b6d68c62e369c22a95ca109a50623",
-    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryOrderClaimEndToEndTest.java": "2c433b9278b6651e9b0040bfce6e31ab81848c259422a871799cde1da5f7a5c2",
-    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryPrivateSourceEndToEndTest.java": "a1f0290ff9bfd02d0439d8f7831942eb37d8fbfa77767578ce46de3e25393eef",
-    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryRevisionEndToEndTest.java": "027f2213502c70154e95d7a61fa77a894c1a0db4fd2867870d0f1b2f6d26a059",
-    "server/src/test/java/com/uten/imp/businesschain/SalesDeliverySourceReverseUnitsEndToEndTest.java": "06bd499ba9eb985a25e4f5cfe2ed14395ea3421e23918c80f8be34a2d8c3dec3",
-    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryWarehouseScopeEndToEndTest.java": "292e499cb6dcb9dd4b8462bfc14b3753d5fea96b7dcbd2e7b8e9b784398bf145",
-    "server/src/test/java/com/uten/imp/common/delivery/BomDeliveryServiceTest.java": "feb6c29a225457380f5c1ec2ff76d62b60144da45a695f2d6973a4b15d6bc05c",
-    "server/src/test/java/com/uten/imp/common/delivery/DeliveryFrontierTest.java": "b3399a21467c4a68631815014d1e2eae3361c92c8a90af6c1b2d420a16691619",
-    "server/src/test/java/com/uten/imp/common/delivery/DeliveryProcessingIdentityTest.java": "6c2ce225abaa8d43974177c418f17958ded6041badd290104a928fce86889afa",
-    "server/src/test/java/com/uten/imp/common/delivery/DeliveryProcessingTargetsTest.java": "6c534a375687ca23cd66c6ad0d7198961fe83f151777eaacc4b58b9829e8321b",
-    "server/src/test/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptorTest.java": "4ab98d2608ca1d9af19d648278427b7a063d5f9f376368fe841946c2add6f3ce",
-    "server/src/test/java/com/uten/imp/common/web/ExactBodyReadRoutesTest.java": "1507924771c78d55d217d0fb04f28723de9255094c7e0e2932abb4e28939ee2b",
-    "server/src/test/java/com/uten/imp/features/master/reference/MasterReferenceValidationAdapterTest.java": "138c9405c30ac2626156115a78f3dade716f1e36517e30259e8a74a4ca21441a",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisDeliverySnapshotTest.java": "8a397ed602ff132b0bc6276abc039c83006ac28bcdd316d9eb4ed65255c15f53",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisOneTableContractTest.java": "0641605b58a9a7c575867e6a8105abec157730f62d2e83dca4915a5665769384",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisServiceBehaviorTest.java": "fb3a18c272cfed29f99d0d880d82f95bcc0dfa530d78166d7e9c92cdb8fac3b6",
-    "server/src/test/java/com/uten/imp/features/production/analysis/SalesDeliveryFulfillmentServiceTest.java": "bcb34115b7703ee4c2e01b1d715b804ea9fb4702fe68d0ae3fc0bcd13498f25f",
-    "server/src/test/java/com/uten/imp/features/production/execution/DeliveryProcessingServiceAuthorizationTest.java": "b6a1063f02fa14a16df13e1a0dd6b146a492107c014053ed3d9b8e9cf09f45c4",
-    "server/src/test/java/com/uten/imp/features/production/execution/DeliveryProcessingServiceTest.java": "d53f5b98c18058e2358c8c8bfcb8663354f99046c1bfd2c84922e6da67197ede",
-    "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java": "55eac733ebd58556336746dd489b75cd01a4fcad82f4b5f541db0b8c81a996e2",
-    "server/src/test/java/com/uten/imp/features/sales/SalesDeliveryUpdateFootprintPostgresTest.java": "acbcb0560ff9fde45727a1d601cf8ab7a8ea893d0afbaef604c363eab2ca0ebd",
-    "server/src/test/java/com/uten/imp/features/sales/order/SalesDeliveryQuantityDecreaseTest.java": "06603b3bf7c0446d1a5d43e34baf7f903f23493751fb32718963d149d9ed7072",
-    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderDeliveryReadServiceTest.java": "5fa6008f7c29c9116c9b3d808db727aa8532199a76ffc1a121bd2268042839e0",
-    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderDeliveryServiceTest.java": "5b1ebf817c3effa1c3cdf453ad028151cefb255c0bbcfa84d7578330c51c53d3",
-    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderShippablePageTest.java": "8730cc0ead156ca3188866c6ee4b3cfd503b92dbf649aa3f2072becfe15af05f",
-    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOwnerBoundaryTest.java": "fb4d38ea1c6023f445ae54bec0a406d5566e993e6a10f9492ace6789c765f7ed",
-    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentReverseGuardTest.java": "654e6e0d5ff983ce0ca54f4d4f9d0386a628ded550593c2ad17db64059bb5d59",
-    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentWarehouseReservationSqlContractTest.java": "6f672033fdd61d29dbf9deaf75c16a76739a09909939c0e1cc3fd946929ea1be",
-    "server/src/test/java/com/uten/imp/features/stock/SalesDeliveryOrderClaimServiceTest.java": "0d73f00ca1dce8de2faf356d8817a1f1944447eedcb94633505dab7301347968",
-    "server/src/test/java/com/uten/imp/security/B1ReadOnlyRouteContractTest.java": "6c8f7ab015e37d6b78636574d9b20b23f953f4edec8da63b101c285e2a3afc43",
-    "test/components/master_data_table_unfiltered_projection_test.dart": "f0cc24191327da7faec78e3bd2e1d284ff8b2859cc56697bb48bf9f484cd7fe4",
-    "test/core/network/delivery_request_reload_semantics_test.dart": "016b02a1984727c2a7a6bf87c0b8892255c5fabf59cfc22a3def7bfae538924a",
-    "test/features/basic_data/goods_bom_edit_mode_test.dart": "a30cac8764213c21d9664052f7144b77054f131e8b9af5607d8380161ff59267",
-    "test/features/production/delivery_processing_test.dart": "99040a3e46483547dd1679f4a8b3eb542d78f014df4ae67283fd8b771077c872",
-    "test/features/production/models/material_analysis_delivery_test.dart": "94bbd80987803b821ebf330589ca605ddbc03d7995ed5d1a3d980398979432b4",
-    "test/features/production/pages/material_analysis_delivery_cases.dart": "f3dfd899873aaee1241ca81072ad950a1a2dc618dd075aa06b4823b67d19420b",
-    "test/features/production/pages/material_analysis_one_table_test.dart": "e1a7bb6096799170aebeae89706a70996eaf03125cf13b934226c555dc7c34c6",
-    "test/features/production/pages/production_material_analysis_page_test.dart": "b89ce4e5b623b300c2eb6972780a82ddf4fac8ac36c684100076cecb02f53575",
-    "test/features/sales/models/sales_shipment_prefill_test.dart": "9af34f56168e5a1ee442ad9a359d880e88ec8c04ed24c1ef23e5bf2e1cb140d2",
-    "test/features/sales/pages/sales_doc_edit_duplicate_review_test.dart": "1e1c802e269c02507e179fc7b495f5eb96af2c1a959a98074c1481ed45040f75",
-    "test/features/warehouse/warehouse_component_processing_actions_test.dart": "000b2f434faa9301b9986822248f547b145fc1c6ea3212abffa9a2e16b925376",
-    "test/features/warehouse/warehouse_delivery_components_test.dart": "832489ea4a2af5a1002c278c9cde79ad76df2b2a3d6ebe6ee3d3d888068a9794",
-    "test/features/warehouse/warehouse_detail_collapsing_header_test.dart": "e8abb854b34549bf64169267cb9cc1c98c546eb7a1017a2281f6b4311128b3f5",
-    "test/features/warehouse/warehouse_sales_outbound_batch_test.dart": "212adcbe6f6e4916cfcd4748ddee75f7694c33d0d0217259b84c39fcd4ed0f1b",
-    "test/features/warehouse/warehouse_sales_outbound_secure_page_test.dart": "7db9ff27d5c7c6d829fa6f011b70800667a006947d7fefefb30c91a5fcf07828",
-    "test/features/warehouse/warehouse_task_projection_page_test.dart": "fbaa381c0c46d7aed601c2bc7a3ee3f7e60929d4a4bb1ef84f9b5171e247ff3b",
-    "test/shared/delivery/bom_delivery_rule_window_test.dart": "72c99691407f434737f5024a985c5906c6b80b8096e837bb65863324a42e5e95",
-    "test/shared/delivery/delivery_processing_target_test.dart": "bfaad9bc00f563cf9226f2f071d1c828f187dd312ee509a7edabb6c18d2f4832",
-    "test/shared/delivery/order_delivery_plan_test.dart": "2b1b1679c348afa1c7bb319ebaca384df563bfdfeb7df19c681607f02ce9edb0",
-    "test/shared/delivery/order_delivery_visual_capture_test.dart": "4617142b8a949e116925a3ca6770dcc22df2dfc9abcd113d49ce92f83dcf7cf8",
-    "test/shared/delivery/order_delivery_window_test.dart": "6eb8e161fda56b1270b40daa7e2a91db40e3184b3fd7605e040339b71e2cbe8b",
-    "test/shared/widgets/business_precision_dialog_test.dart": "8cf0e212e1baa8952f93fc8456412583607f881de33b73fbee770bdb421a076e",
-    "test/shared/widgets/reauth_over_busy_overlay_test.dart": "84813516ec313cd2c217967c50435b61eb1e5b274557dec15e8aeacb655a0848",
-    "test/support/dialog_fixture_capture.dart": "c9d209a2f0533f3ede7759ca57567fcbdf6fffcb065968f7108791f57bdea681"
+    "integration_test/material_analysis_cancel_reentry_test.dart": {
+      "algorithm": "sha256",
+      "digest": "d685bc9f256c194dec300c8927023e3cde09bebf247612fa9a26bf84aaea5ff5"
+    },
+    "lib/components/feedback/uten_busy_overlay.dart": {
+      "algorithm": "sha256",
+      "digest": "d3bf6a942f582144973e776fb7cfe78944b3bc85acb9aa3292d0940185bb4c7a"
+    },
+    "lib/core/network/request_reload_semantics.dart": {
+      "algorithm": "sha256",
+      "digest": "4b40507287f5ef2c3fae570543511ec0a4631b7c0ea96e2175f1b473ab7eaf08"
+    },
+    "lib/features/basic_data/widgets/goods_bom_tab.dart": {
+      "algorithm": "sha256",
+      "digest": "713646b6b3fd7d9bdb064443f54b164144342baa75143f41b00d582f9ba15b40"
+    },
+    "lib/features/basic_data/widgets/master_data_table_view.dart": {
+      "algorithm": "sha256",
+      "digest": "5caaa2906a0622e5096a31fd45dbfa3fc1f0c43087e4411085dfc2fb60d4fb6d"
+    },
+    "lib/features/finance/pages/finance_sales_order_review_page.dart": {
+      "algorithm": "sha256",
+      "digest": "719b2b494d4acbce424efdb8507bcb5c0e6b0028f06c0f35989218229dffb4be"
+    },
+    "lib/features/finance/widgets/sales_order_revision_table.dart": {
+      "algorithm": "sha256",
+      "digest": "88a81a0109a28f4d16172772adbeed793bd6db58df713940192748f3d35d6125"
+    },
+    "lib/features/production/delivery_processing/delivery_processing_repository.dart": {
+      "algorithm": "sha256",
+      "digest": "6cb0cd95ba70a152664e8b6d106562274f0665513ec75bffc9fa762fe616a72b"
+    },
+    "lib/features/production/delivery_processing/delivery_processing_tasks_button.dart": {
+      "algorithm": "sha256",
+      "digest": "45504989709192e64de05490897c2e816f605c715946918959fffe22da6af4ce"
+    },
+    "lib/features/production/models/material_analysis_ownership_overlay.dart": {
+      "algorithm": "sha256",
+      "digest": "98a3c73f99a2c0c549ac592e31d6cbfe6d06e26e293d1d884b2a5406c9ec07f0"
+    },
+    "lib/features/production/models/material_analysis_projection.dart": {
+      "algorithm": "sha256",
+      "digest": "9ee2348fd9043e0bad9d295d618e26aaf72c10dc96f7594e8f5bc43987f7d868"
+    },
+    "lib/features/production/models/production_material_analysis.dart": {
+      "algorithm": "sha256",
+      "digest": "bcf59359610ced56847d3cf8bddce1b5292b671ba0f4500c38af70bf26514fc5"
+    },
+    "lib/features/production/pages/material_analysis_candidates.dart": {
+      "algorithm": "sha256",
+      "digest": "40817625e1ed2f821455003c2ea1e9ca48a72750151daa96b987812635f97f5c"
+    },
+    "lib/features/production/pages/material_analysis_material_table.dart": {
+      "algorithm": "sha256",
+      "digest": "cbe173c5a8a9cc08f85795881dee5dba6de53c6da311527c5cf9c9d60dfa15be"
+    },
+    "lib/features/production/pages/production_material_analysis_page.dart": {
+      "algorithm": "sha256",
+      "digest": "b4aea5e51c1fb58836c18a502cd83660c6d5df2f7e8602dc8b1d4591fae2ed89"
+    },
+    "lib/features/production/pages/production_workshop_tasks_page.dart": {
+      "algorithm": "sha256",
+      "digest": "5b92cbfc53e275d41a129bccbbf1abee9880d5b3a678d25764abe0c7b1594133"
+    },
+    "lib/features/sales/models/sales_doc.dart": {
+      "algorithm": "sha256",
+      "digest": "fbcde4a88669422b4f283d747a00d81fa628c0f329f8ea75f9d319031e86ce6a"
+    },
+    "lib/features/sales/models/sales_order_progress.dart": {
+      "algorithm": "sha256",
+      "digest": "5c248a59251b0ad5ddf2694ae99c0199c27994c06de52653f6e81460e3afb6a8"
+    },
+    "lib/features/sales/models/sales_shipment_prefill.dart": {
+      "algorithm": "sha256",
+      "digest": "11f948310f2993896af65aba87476a24a742047978c16de7d738f14f5b8893ed"
+    },
+    "lib/features/sales/pages/sales_doc_detail_page.dart": {
+      "algorithm": "sha256",
+      "digest": "8a21132137a91e39cdcc5617f1c5a2df6bed7564d35f63d1154424f8d3f40b81"
+    },
+    "lib/features/sales/pages/sales_doc_edit_page.dart": {
+      "algorithm": "sha256",
+      "digest": "e6f6223e87cae2564ee7fed82eef45e60d7c0b6a6d4463798278e2049456f7a7"
+    },
+    "lib/features/sales/pages/sales_order_progress_page.dart": {
+      "algorithm": "sha256",
+      "digest": "e6eda0fd6f8f935044a9ea68cd5d4b1e09e6a303367a1569355bf1603b39920d"
+    },
+    "lib/features/sales/widgets/sales_batch_ship_panel.dart": {
+      "algorithm": "sha256",
+      "digest": "4a974c65f8b7862e9fc5f1964e72ddb3f9cfbe518633001dc88b39aee7cfd609"
+    },
+    "lib/features/sales/widgets/sales_doc_link_picker.dart": {
+      "algorithm": "sha256",
+      "digest": "66655c8197e4cba134e72c1ee25477e7a537bb7b8ac1cb7c27ce685a3028e688"
+    },
+    "lib/features/sales/widgets/sales_grid_columns.dart": {
+      "algorithm": "sha256",
+      "digest": "2f41cffe7218c68d10791f1ed6359cd5979e42f3c7bd7ec5887e4c1b005c42af"
+    },
+    "lib/features/sales/widgets/sales_plan_progress_panel.dart": {
+      "algorithm": "sha256",
+      "digest": "fecf7a369aa418c3e62187ef13116f3b14849f789c63fed2e55bb9fb0de6d48c"
+    },
+    "lib/features/warehouse/models/warehouse_sales_outbound.dart": {
+      "algorithm": "sha256",
+      "digest": "5b54d628a3c46f115be97f922d51d0975886d5d31610b77845ea3ebb5338519c"
+    },
+    "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart": {
+      "algorithm": "sha256",
+      "digest": "6982f3c25104a088984759f1abbf69b1e817b834b228066d5ed12dff2168f51d"
+    },
+    "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart": {
+      "algorithm": "sha256",
+      "digest": "0e66a4fee223527c1de4559182b2a4b4c1c011eccd3d4bded3c2efcdae8280de"
+    },
+    "lib/features/warehouse/repositories/warehouse_delivery_processing_repository.dart": {
+      "algorithm": "sha256",
+      "digest": "e861d48dffc8b519ec412a4e6ae4c1619bc0345f6c1aadbd054c4c91e7f946c7"
+    },
+    "lib/features/warehouse/repositories/warehouse_sales_outbound_repository.dart": {
+      "algorithm": "sha256",
+      "digest": "edcb11287920d444822baa63c9653c69a7b6c75fe130fcad2a051d2edfa2de8a"
+    },
+    "lib/features/warehouse/widgets/warehouse_component_processing_actions.dart": {
+      "algorithm": "sha256",
+      "digest": "44a32e93bb20363c2fdffdf778e1447cbf3fae0a46896f496724de7f81c51557"
+    },
+    "lib/features/warehouse/widgets/warehouse_delivery_components_table.dart": {
+      "algorithm": "sha256",
+      "digest": "faed95fb764a4e2d55afe318da312b3d90774dd43cdc9ea354737ed18eeefabd"
+    },
+    "lib/features/warehouse/widgets/warehouse_sales_outbound_table_columns.dart": {
+      "algorithm": "sha256",
+      "digest": "73570cc9526645aa68880ac60f65be349f0d195b4d81e7b29eef53252d046c26"
+    },
+    "lib/features/warehouse/widgets/warehouse_sales_picking_fields.dart": {
+      "algorithm": "sha256",
+      "digest": "7ad1c889210dcd5eae01e694de34fcb1f4a36217ddbf3b12bf4d8c4900096f3c"
+    },
+    "lib/shared/delivery/bom_delivery_rule_window.dart": {
+      "algorithm": "sha256",
+      "digest": "3ad173995771476b9cd3675eb23f3806fe5f5f9778b09f4c5bfe47d049b1745e"
+    },
+    "lib/shared/delivery/delivery_processing_target.dart": {
+      "algorithm": "sha256",
+      "digest": "0c54a72c9c012a9515811d4883fcfa7784de64dc8f20760c379da20bb132cfc0"
+    },
+    "lib/shared/delivery/order_delivery_plan.dart": {
+      "algorithm": "sha256",
+      "digest": "794c89124d129a776c9844e9c9eae41c7ef17531b61372ba304c1175df115fa0"
+    },
+    "lib/shared/delivery/order_delivery_repository.dart": {
+      "algorithm": "sha256",
+      "digest": "8a6d926f9b3684e64a3bd02ddfda63dde81e7f14fb935571e9eef5c86deddf7a"
+    },
+    "lib/shared/delivery/order_delivery_window.dart": {
+      "algorithm": "sha256",
+      "digest": "5a327e4b0d3229073ad0bf7b3f7cbcb5de53334c507bc1c7881c4e5db52974ad"
+    },
+    "lib/shared/sales_review/sales_order_review.dart": {
+      "algorithm": "sha256",
+      "digest": "5d5f73c7934c9cd4ebd55def747639c65ca59f3cb3ede060c4228e5939fc827b"
+    },
+    "lib/shared/widgets/business_precision_dialog.dart": {
+      "algorithm": "sha256",
+      "digest": "5428891d86e2182026c229eed6c77fde3a2ef1da2696608f5014aa2333d69255"
+    },
+    "lib/shared/widgets/sales_document_layout.dart": {
+      "algorithm": "sha256",
+      "digest": "00f79f1bc095226e1577e71425968db281c910f39c458b8f021d223abf613621"
+    },
+    "lib/shared/widgets/uten_tree_table_cell.dart": {
+      "algorithm": "sha256",
+      "digest": "298c36d57b85b7223d5ed21058fceb033c4001ddd2284c3fb7b2e71810700a95"
+    },
+    "server/src/main/java/com/uten/imp/application/port/BomGraphLockPort.java": {
+      "algorithm": "sha256",
+      "digest": "c11409d9063419d0dd2c74e44d75a77420c571ab2eb6582c1833d378e4397a37"
+    },
+    "server/src/main/java/com/uten/imp/application/port/MasterReferenceValidationPort.java": {
+      "algorithm": "sha256",
+      "digest": "c22a4ff85c9e672f81cebad9d767fc829273d6051a488f6cf3ee5fa31cdcba7d"
+    },
+    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryFulfillmentPort.java": {
+      "algorithm": "sha256",
+      "digest": "298025b3a85aada9a68dc5d92987a04e23e1c69431b985b862bb2ea911aed003"
+    },
+    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryInventoryPort.java": {
+      "algorithm": "sha256",
+      "digest": "c7dd66c431e96ac2a47c5288480788e05b8b9ee5582c192e01a0e8bb0da701cf"
+    },
+    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryMutationPort.java": {
+      "algorithm": "sha256",
+      "digest": "8c0eb5106f159cb871fa7c062d265b056083ea45a4bf00b355df8951473d1f9b"
+    },
+    "server/src/main/java/com/uten/imp/application/port/SalesDeliveryOrderClaimPort.java": {
+      "algorithm": "sha256",
+      "digest": "57dd42b91183e3a024581afd121ec57845bed7b7ec8b6d1fc1c5bd1b591ef9bc"
+    },
+    "server/src/main/java/com/uten/imp/application/port/SalesOrderDeliverySourcePort.java": {
+      "algorithm": "sha256",
+      "digest": "2d9d9ebafe9a025c4dc7e0ac851d1abbf9961103cbffc7bc531137ed2c4baef8"
+    },
+    "server/src/main/java/com/uten/imp/application/port/WarehouseUseValidationPort.java": {
+      "algorithm": "sha256",
+      "digest": "5f390dc4baa7a3e707a0a0af295a03a05f1da654a5c23639a2893bf7896bd6c2"
+    },
+    "server/src/main/java/com/uten/imp/common/delivery/BomDeliveryService.java": {
+      "algorithm": "sha256",
+      "digest": "10873dbe2825d4c385247e6a49dd62a496f17fd826195757893abca986a9e66d"
+    },
+    "server/src/main/java/com/uten/imp/common/delivery/BomReferenceIdentitySql.java": {
+      "algorithm": "sha256",
+      "digest": "aed909d411f9421fbfd02598659e5ed168778abb50ed4d018750a43a997125ea"
+    },
+    "server/src/main/java/com/uten/imp/common/delivery/DeliveryBom.java": {
+      "algorithm": "sha256",
+      "digest": "4d5507f4bfba53acfb2783cdead48c90e4efdb30091b73f2881b8b177dd87c2d"
+    },
+    "server/src/main/java/com/uten/imp/common/delivery/DeliveryFrontier.java": {
+      "algorithm": "sha256",
+      "digest": "f33547ad7ba914709eae48bd33c25ca463077bac9421e2b8c0fc23619435510b"
+    },
+    "server/src/main/java/com/uten/imp/common/delivery/DeliveryPlan.java": {
+      "algorithm": "sha256",
+      "digest": "a6181b39a6dfe698eda34e503ed683ff5f7b91c28c1705c83a2f0d07c39a1bd1"
+    },
+    "server/src/main/java/com/uten/imp/common/delivery/DeliveryProcessingTargets.java": {
+      "algorithm": "sha256",
+      "digest": "8f6438c1ea0863943675fe341739dcde74b475b693673c9197fc8e731012ff24"
+    },
+    "server/src/main/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptor.java": {
+      "algorithm": "sha256",
+      "digest": "19c46b5d3834ada6fabaddeb7d4f66d3cfcab8614aea9ac227d299b706372ef3"
+    },
+    "server/src/main/java/com/uten/imp/common/web/ExactBodyReadRoutes.java": {
+      "algorithm": "sha256",
+      "digest": "93175f9f257f2a9187efad8f4ac8c81fa4b5be1c413eab000109d425314152b4"
+    },
+    "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomGraphLock.java": {
+      "algorithm": "sha256",
+      "digest": "7cf065eae09f96f395195fa406119b947b5782b245b2cee017246a724dc17170"
+    },
+    "server/src/main/java/com/uten/imp/features/master/reference/MasterReferenceValidationAdapter.java": {
+      "algorithm": "sha256",
+      "digest": "9f46edb0ad1d020e4a73aaacb69a9e29e8727056562b29dc55825e56eed1ae0d"
+    },
+    "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseScopeService.java": {
+      "algorithm": "sha256",
+      "digest": "7cf0394a4b41c8b97b071d47a8b990151d97e0f76c07dfb76a4e2acb31acde4c"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisBomSnapshotReader.java": {
+      "algorithm": "sha256",
+      "digest": "5c82c47924a78f8f8258c68e8f4a9a7c532b1a13c0518617e754f939d266e475"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisContracts.java": {
+      "algorithm": "sha256",
+      "digest": "24943e963a8b8ebe012b8893bf9d13fc1cddf5132021d2b4b051c848f0ca29c3"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisDeliverySnapshot.java": {
+      "algorithm": "sha256",
+      "digest": "f364dc3e037c6e35076ae5c51a24efab666c776c6400dab22f02cbbecefce94b"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRootSupplyService.java": {
+      "algorithm": "sha256",
+      "digest": "745b3001053740cd51d94db9e0f04538dd169f32aa8902e8f62397e956280fcf"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java": {
+      "algorithm": "sha256",
+      "digest": "ba3b7cb6785a9d3f5de865eb33ce98c54983347166bbf34bb82c5b6d326a5097"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/PreplanAnalysisStockPegService.java": {
+      "algorithm": "sha256",
+      "digest": "9b9d43a0867f0eb73038761d284560469e3d56cab4eae6c2e343c2494d63befc"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/SalesDeliveryCustodyCoverage.java": {
+      "algorithm": "sha256",
+      "digest": "af75199b32a7cf1653cb3159e4cec9e1c1d67bced1559fe1a99927965e848168"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/SalesDeliveryFulfillmentService.java": {
+      "algorithm": "sha256",
+      "digest": "54a095f6d56f3f313e8b121d0fb304d6bf26652eae7bc0bfd91379a6feb1f292"
+    },
+    "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingContracts.java": {
+      "algorithm": "sha256",
+      "digest": "2368e4d47c2dcbbca7fed72350c423627922bd8d8deea32211d12574b25f86ce"
+    },
+    "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingController.java": {
+      "algorithm": "sha256",
+      "digest": "d34b2608798345ac6f3379bb037f8ebb653afcc2513176e41422298e294c2ecb"
+    },
+    "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingService.java": {
+      "algorithm": "sha256",
+      "digest": "3316b40adc607d8343a8aed7a260f65a159fb63ab04918d3db04c7d361d55751"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewService.java": {
+      "algorithm": "sha256",
+      "digest": "cf48632dcff861bddf7ca11c9ac348c6110d7c46dbeee39ec7edc6ead2332c69"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/SalesMutationFootprintService.java": {
+      "algorithm": "sha256",
+      "digest": "9abf826cd1dac9292582f4115b794f4f14f02a837fce5d2ebf0563987b4ef420"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderDeliveryController.java": {
+      "algorithm": "sha256",
+      "digest": "75d7ba20aa0b85ac14bce6d0042879d50d9aecf878238cd554b5909c2faedf20"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderDeliveryReadService.java": {
+      "algorithm": "sha256",
+      "digest": "07027572fe1867050e810b897493f0e1a5471085791bbab9a4096fda10eac275"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderDeliveryService.java": {
+      "algorithm": "sha256",
+      "digest": "a7d4a85a3ee48fcc80672c6c79b99db404b91da5e5cd35b10e294a6292b97065"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java": {
+      "algorithm": "sha256",
+      "digest": "8d29ac8a158961150995d95e5b3e030faf0ca8eca706b2c6ae166444c00bc67e"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderItem.java": {
+      "algorithm": "sha256",
+      "digest": "340aa39e96e5f7b39091e49f465f155ce49bacb528393c1023a131d998ef1cab"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderRevisionService.java": {
+      "algorithm": "sha256",
+      "digest": "9f49460e638718320696982cbfbfba2fdecf3a5c310a803d91a7c1b4aaf0ab94"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java": {
+      "algorithm": "sha256",
+      "digest": "1ea16719fe530029cb0bcb25311834642d93173f5df2681d68b0027506c0a22f"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderDeliveryFields.java": {
+      "algorithm": "sha256",
+      "digest": "f347db3f9bd83d0effeae978e3847f29e6c2f015bc24a05ffc5a086ebb61713a"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderItemDto.java": {
+      "algorithm": "sha256",
+      "digest": "081d6b88d341a773ba31aa14a76924b321599d76c718a0674fb47cf048f83198"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderItemLine.java": {
+      "algorithm": "sha256",
+      "digest": "96f1a54f7c679ae0d69a6d9171a93a089d5cbd441eafe80ea80f4df6baeb2688"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderProgressRow.java": {
+      "algorithm": "sha256",
+      "digest": "b4d8bfc3e5710215bc142871a5aff5589c7ef4f9c5f0ab42b8b904ceeeff03c1"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderShippableLine.java": {
+      "algorithm": "sha256",
+      "digest": "10aac910b3f5b52addabea9597573596ae3c941706ced5e9393aed6b3ca1495a"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/PlanProgressLine.java": {
+      "algorithm": "sha256",
+      "digest": "323958d1a257fec3de0876dac0f86d083dd1066570f432e38bc2a2b121fcf879"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/SalesOrderFinanceReviewDto.java": {
+      "algorithm": "sha256",
+      "digest": "98669bf5400a76fe69632c56a1810c6078b9ae3142ac9690ad026f4a60c94e0f"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/ret/SalesReturnService.java": {
+      "algorithm": "sha256",
+      "digest": "a5161eae3ad46d3d64ee8ae728028341a06ff40defca723396c075fcbc20486b"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentDeliveryService.java": {
+      "algorithm": "sha256",
+      "digest": "98fdd8ee3b2f366798575c275c553b1e84d72245aba1f1f5323586f5632eabb1"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java": {
+      "algorithm": "sha256",
+      "digest": "084112cf035842cdadbdfa914a969e37df6878f498d26772054d8d7b9828a0ac"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/WarehouseWorkTransitionRequest.java": {
+      "algorithm": "sha256",
+      "digest": "55ac8eaa1a45b51bb445a6bd9c9a7c402618bde13164be6f8a0eb58a9c371bc9"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundController.java": {
+      "algorithm": "sha256",
+      "digest": "1a9e5c3441c9573187843f3c39ecb2cb6b09f77794e4c97d16d80273ea1713c1"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundDetail.java": {
+      "algorithm": "sha256",
+      "digest": "6b1978ab903d0725aaf5fc91cbb56caf7748324151b867eb051ef18c8fdcba72"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundProjectionService.java": {
+      "algorithm": "sha256",
+      "digest": "9f9533787bb12ceb5cf987f1c144c4392753dd46b8eae8456083d79a95f8e1ab"
+    },
+    "server/src/main/java/com/uten/imp/features/stock/SalesDeliveryInventoryService.java": {
+      "algorithm": "sha256",
+      "digest": "b48a4947fbca854f27706168ad5e5bfde89c2ad337f328103afc973aab6614ce"
+    },
+    "server/src/main/java/com/uten/imp/features/stock/SalesDeliveryOrderClaimService.java": {
+      "algorithm": "sha256",
+      "digest": "0dfa131b6f896dafd14332314b1035c18a88785c5c023af8e000b8ed6952cbf3"
+    },
+    "server/src/main/resources/db/migration/V1049__sales_order_delivery_plan.sql": {
+      "algorithm": "sha256",
+      "digest": "70ecae0124a5f16237ed47a496cea299332b7185f1a77e944bc5ab7d75a08188"
+    },
+    "server/src/main/resources/db/migration/V1050__production_order_delivery_snapshot.sql": {
+      "algorithm": "sha256",
+      "digest": "729c5b7fa95fbc943d69f71172667804253931a8278aed9ee7bdc69ee9ad283e"
+    },
+    "server/src/main/resources/db/migration/V1051__sales_delivery_component_fulfillment.sql": {
+      "algorithm": "sha256",
+      "digest": "a9cb02f1038e139dc145dde156f32c687957ae6b3830c1525ff1e390fc64d629"
+    },
+    "server/src/main/resources/db/migration/V1052__delivery_processing_workshop_custody.sql": {
+      "algorithm": "sha256",
+      "digest": "20551c4ec500f04e33857ad9cec7d36f0e7e4a70b627ed8d3ec362082e101dee"
+    },
+    "server/src/main/resources/db/migration/V1053__delivery_processing_warehouse_handover.sql": {
+      "algorithm": "sha256",
+      "digest": "33491ee9ca201a02aec19ac846442448c6ba8e5ffd68e71eeb620a04a045797a"
+    },
+    "server/src/main/resources/db/migration/V1054__sales_delivery_production_entitlement_bridge.sql": {
+      "algorithm": "sha256",
+      "digest": "cc6115ed8d61fd997fa7093c6992f671c98c3914c19dbd100f99376f7b9843e9"
+    },
+    "server/src/main/resources/db/migration/V1055__delivery_components_actual_cost_bridge.sql": {
+      "algorithm": "sha256",
+      "digest": "a24930932cce8a450a6df7d792288d96dc482faa2c6e7eefbea7da84ca7df3c4"
+    },
+    "server/src/main/resources/db/migration/V1056__delivery_original_order_stock_claims.sql": {
+      "algorithm": "sha256",
+      "digest": "fa0cdfc4d48e97a72bd49698c2a70a7b7e2d9d7a5f9a411c5963998ae53e67b1"
+    },
+    "server/src/main/resources/db/migration/V1058__direct_make_closed_delivery_credit.sql": {
+      "algorithm": "sha256",
+      "digest": "e5f8a1546cae0b053497c9e41becdbf36095a3038671131f497dfa0e69cc817a"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "f28e917d8df25d8827fdfc83b87e0132ac83ee44becfb475b09726fa7615e589"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/FullChainEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "8d8321416d7a78557d85fa1429be807ee67e68ca48944b91374362bd19a1257b"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/ProductionMaterialAnalysisScalePostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "834a88b47a33597fbbfb73892a3a888b2dd4a6eccbb636689f65149704603f14"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesBomDeliveryEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "0a9b96c4abc1b1b6b3403969e936ae4bd1b2b587a34c5a315afb86c277eacde6"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMakeSourceEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "eb99ece60ee6b202ad4d47bdfc4ae027ee3c3aa51167df956d5e79cdf87478c2"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMixedScenarioEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "e8feb5d33797ab36eeaa528b4ab4d74e8a7b6d68c62e369c22a95ca109a50623"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryOrderClaimEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "2c433b9278b6651e9b0040bfce6e31ab81848c259422a871799cde1da5f7a5c2"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryPrivateSourceEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "a1f0290ff9bfd02d0439d8f7831942eb37d8fbfa77767578ce46de3e25393eef"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryRevisionEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "027f2213502c70154e95d7a61fa77a894c1a0db4fd2867870d0f1b2f6d26a059"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesDeliverySourceReverseUnitsEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "06bd499ba9eb985a25e4f5cfe2ed14395ea3421e23918c80f8be34a2d8c3dec3"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryWarehouseScopeEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "292e499cb6dcb9dd4b8462bfc14b3753d5fea96b7dcbd2e7b8e9b784398bf145"
+    },
+    "server/src/test/java/com/uten/imp/common/delivery/BomDeliveryServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "feb6c29a225457380f5c1ec2ff76d62b60144da45a695f2d6973a4b15d6bc05c"
+    },
+    "server/src/test/java/com/uten/imp/common/delivery/DeliveryFrontierTest.java": {
+      "algorithm": "sha256",
+      "digest": "b3399a21467c4a68631815014d1e2eae3361c92c8a90af6c1b2d420a16691619"
+    },
+    "server/src/test/java/com/uten/imp/common/delivery/DeliveryProcessingIdentityTest.java": {
+      "algorithm": "sha256",
+      "digest": "6c2ce225abaa8d43974177c418f17958ded6041badd290104a928fce86889afa"
+    },
+    "server/src/test/java/com/uten/imp/common/delivery/DeliveryProcessingTargetsTest.java": {
+      "algorithm": "sha256",
+      "digest": "6c534a375687ca23cd66c6ad0d7198961fe83f151777eaacc4b58b9829e8321b"
+    },
+    "server/src/test/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptorTest.java": {
+      "algorithm": "sha256",
+      "digest": "4ab98d2608ca1d9af19d648278427b7a063d5f9f376368fe841946c2add6f3ce"
+    },
+    "server/src/test/java/com/uten/imp/common/web/ExactBodyReadRoutesTest.java": {
+      "algorithm": "sha256",
+      "digest": "1507924771c78d55d217d0fb04f28723de9255094c7e0e2932abb4e28939ee2b"
+    },
+    "server/src/test/java/com/uten/imp/features/master/reference/MasterReferenceValidationAdapterTest.java": {
+      "algorithm": "sha256",
+      "digest": "138c9405c30ac2626156115a78f3dade716f1e36517e30259e8a74a4ca21441a"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisDeliverySnapshotTest.java": {
+      "algorithm": "sha256",
+      "digest": "8a397ed602ff132b0bc6276abc039c83006ac28bcdd316d9eb4ed65255c15f53"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisOneTableContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "0641605b58a9a7c575867e6a8105abec157730f62d2e83dca4915a5665769384"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisServiceBehaviorTest.java": {
+      "algorithm": "sha256",
+      "digest": "fb3a18c272cfed29f99d0d880d82f95bcc0dfa530d78166d7e9c92cdb8fac3b6"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/SalesDeliveryFulfillmentServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "bcb34115b7703ee4c2e01b1d715b804ea9fb4702fe68d0ae3fc0bcd13498f25f"
+    },
+    "server/src/test/java/com/uten/imp/features/production/execution/DeliveryProcessingServiceAuthorizationTest.java": {
+      "algorithm": "sha256",
+      "digest": "b6a1063f02fa14a16df13e1a0dd6b146a492107c014053ed3d9b8e9cf09f45c4"
+    },
+    "server/src/test/java/com/uten/imp/features/production/execution/DeliveryProcessingServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "d53f5b98c18058e2358c8c8bfcb8663354f99046c1bfd2c84922e6da67197ede"
+    },
+    "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "55eac733ebd58556336746dd489b75cd01a4fcad82f4b5f541db0b8c81a996e2"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/SalesDeliveryUpdateFootprintPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "acbcb0560ff9fde45727a1d601cf8ab7a8ea893d0afbaef604c363eab2ca0ebd"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesDeliveryQuantityDecreaseTest.java": {
+      "algorithm": "sha256",
+      "digest": "06603b3bf7c0446d1a5d43e34baf7f903f23493751fb32718963d149d9ed7072"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderDeliveryReadServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "5fa6008f7c29c9116c9b3d808db727aa8532199a76ffc1a121bd2268042839e0"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderDeliveryServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "5b1ebf817c3effa1c3cdf453ad028151cefb255c0bbcfa84d7578330c51c53d3"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderShippablePageTest.java": {
+      "algorithm": "sha256",
+      "digest": "8730cc0ead156ca3188866c6ee4b3cfd503b92dbf649aa3f2072becfe15af05f"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOwnerBoundaryTest.java": {
+      "algorithm": "sha256",
+      "digest": "fb4d38ea1c6023f445ae54bec0a406d5566e993e6a10f9492ace6789c765f7ed"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentReverseGuardTest.java": {
+      "algorithm": "sha256",
+      "digest": "654e6e0d5ff983ce0ca54f4d4f9d0386a628ded550593c2ad17db64059bb5d59"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentWarehouseReservationSqlContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "6f672033fdd61d29dbf9deaf75c16a76739a09909939c0e1cc3fd946929ea1be"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/SalesDeliveryOrderClaimServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "0d73f00ca1dce8de2faf356d8817a1f1944447eedcb94633505dab7301347968"
+    },
+    "server/src/test/java/com/uten/imp/security/B1ReadOnlyRouteContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "6c8f7ab015e37d6b78636574d9b20b23f953f4edec8da63b101c285e2a3afc43"
+    },
+    "test/components/master_data_table_unfiltered_projection_test.dart": {
+      "algorithm": "sha256",
+      "digest": "f0cc24191327da7faec78e3bd2e1d284ff8b2859cc56697bb48bf9f484cd7fe4"
+    },
+    "test/core/network/delivery_request_reload_semantics_test.dart": {
+      "algorithm": "sha256",
+      "digest": "016b02a1984727c2a7a6bf87c0b8892255c5fabf59cfc22a3def7bfae538924a"
+    },
+    "test/features/basic_data/goods_bom_edit_mode_test.dart": {
+      "algorithm": "sha256",
+      "digest": "a30cac8764213c21d9664052f7144b77054f131e8b9af5607d8380161ff59267"
+    },
+    "test/features/production/delivery_processing_test.dart": {
+      "algorithm": "sha256",
+      "digest": "99040a3e46483547dd1679f4a8b3eb542d78f014df4ae67283fd8b771077c872"
+    },
+    "test/features/production/models/material_analysis_delivery_test.dart": {
+      "algorithm": "sha256",
+      "digest": "94bbd80987803b821ebf330589ca605ddbc03d7995ed5d1a3d980398979432b4"
+    },
+    "test/features/production/pages/material_analysis_delivery_cases.dart": {
+      "algorithm": "sha256",
+      "digest": "f3dfd899873aaee1241ca81072ad950a1a2dc618dd075aa06b4823b67d19420b"
+    },
+    "test/features/production/pages/material_analysis_one_table_test.dart": {
+      "algorithm": "sha256",
+      "digest": "e1a7bb6096799170aebeae89706a70996eaf03125cf13b934226c555dc7c34c6"
+    },
+    "test/features/production/pages/production_material_analysis_page_test.dart": {
+      "algorithm": "sha256",
+      "digest": "b89ce4e5b623b300c2eb6972780a82ddf4fac8ac36c684100076cecb02f53575"
+    },
+    "test/features/sales/models/sales_shipment_prefill_test.dart": {
+      "algorithm": "sha256",
+      "digest": "9af34f56168e5a1ee442ad9a359d880e88ec8c04ed24c1ef23e5bf2e1cb140d2"
+    },
+    "test/features/sales/pages/sales_doc_edit_duplicate_review_test.dart": {
+      "algorithm": "sha256",
+      "digest": "1e1c802e269c02507e179fc7b495f5eb96af2c1a959a98074c1481ed45040f75"
+    },
+    "test/features/warehouse/warehouse_component_processing_actions_test.dart": {
+      "algorithm": "sha256",
+      "digest": "000b2f434faa9301b9986822248f547b145fc1c6ea3212abffa9a2e16b925376"
+    },
+    "test/features/warehouse/warehouse_delivery_components_test.dart": {
+      "algorithm": "sha256",
+      "digest": "832489ea4a2af5a1002c278c9cde79ad76df2b2a3d6ebe6ee3d3d888068a9794"
+    },
+    "test/features/warehouse/warehouse_detail_collapsing_header_test.dart": {
+      "algorithm": "sha256",
+      "digest": "e8abb854b34549bf64169267cb9cc1c98c546eb7a1017a2281f6b4311128b3f5"
+    },
+    "test/features/warehouse/warehouse_sales_outbound_batch_test.dart": {
+      "algorithm": "sha256",
+      "digest": "212adcbe6f6e4916cfcd4748ddee75f7694c33d0d0217259b84c39fcd4ed0f1b"
+    },
+    "test/features/warehouse/warehouse_sales_outbound_secure_page_test.dart": {
+      "algorithm": "sha256",
+      "digest": "7db9ff27d5c7c6d829fa6f011b70800667a006947d7fefefb30c91a5fcf07828"
+    },
+    "test/features/warehouse/warehouse_task_projection_page_test.dart": {
+      "algorithm": "sha256",
+      "digest": "fbaa381c0c46d7aed601c2bc7a3ee3f7e60929d4a4bb1ef84f9b5171e247ff3b"
+    },
+    "test/shared/delivery/bom_delivery_rule_window_test.dart": {
+      "algorithm": "sha256",
+      "digest": "72c99691407f434737f5024a985c5906c6b80b8096e837bb65863324a42e5e95"
+    },
+    "test/shared/delivery/delivery_processing_target_test.dart": {
+      "algorithm": "sha256",
+      "digest": "bfaad9bc00f563cf9226f2f071d1c828f187dd312ee509a7edabb6c18d2f4832"
+    },
+    "test/shared/delivery/order_delivery_plan_test.dart": {
+      "algorithm": "sha256",
+      "digest": "2b1b1679c348afa1c7bb319ebaca384df563bfdfeb7df19c681607f02ce9edb0"
+    },
+    "test/shared/delivery/order_delivery_visual_capture_test.dart": {
+      "algorithm": "sha256",
+      "digest": "4617142b8a949e116925a3ca6770dcc22df2dfc9abcd113d49ce92f83dcf7cf8"
+    },
+    "test/shared/delivery/order_delivery_window_test.dart": {
+      "algorithm": "sha256",
+      "digest": "6eb8e161fda56b1270b40daa7e2a91db40e3184b3fd7605e040339b71e2cbe8b"
+    },
+    "test/shared/widgets/business_precision_dialog_test.dart": {
+      "algorithm": "sha256",
+      "digest": "8cf0e212e1baa8952f93fc8456412583607f881de33b73fbee770bdb421a076e"
+    },
+    "test/shared/widgets/reauth_over_busy_overlay_test.dart": {
+      "algorithm": "sha256",
+      "digest": "84813516ec313cd2c217967c50435b61eb1e5b274557dec15e8aeacb655a0848"
+    },
+    "test/support/dialog_fixture_capture.dart": {
+      "algorithm": "sha256",
+      "digest": "c9d209a2f0533f3ede7759ca57567fcbdf6fffcb065968f7108791f57bdea681"
+    }
   },
   "parallelWorkingTreeSha256": {
-    "assets/workers/uten_pdf_worker.build.json": "5a188ceeecb81bd0119788bf2677a45e9040996d2fdf5c0955277c1e2c32a9b3",
-    "assets/workers/uten_pdf_worker.js": "ddbcd3ffed43944d987ad745079ad2416f9b99b1f8c7c671b8ecc5c038ef1c78",
-    "deploy/setup/test_internal_test_runtime_contract.py": "d42b151b965c95f8085f84b80508e672d71f21119b76116bd48f02e3107d4fee",
-    "docs/数据迁移/README.md": "5f88ea451dadbf31572b67f107c6a6bf79a788fd50846bf0cd7743ce74e0f066",
-    "lib/components/inputs/uten_table_cell_action.dart": "0e4481880bdd2a96f08c006450fa73fe864c7c432f491f05a1829f6b1fbfd746",
-    "lib/features/applications/pages/business_application_edit_page.dart": "7481f184d0711cd87a86f175ec6cfd923236295147dcbbfc21cafe4a1427bbab",
-    "lib/features/finance/payables/pages/finance_payables_page.dart": "13a66c294393f631a0a210a399ea3a5a554f84533a2a621be9d5dbb50357818e",
-    "lib/features/production/widgets/production_execution_group_panel.dart": "1e96e71c3b1b06fb39835802f2fd5e9f568aecca349c284941f3bab5f5d1ef98",
-    "lib/features/warehouse/materialbin/widgets/count_bag_material_card.dart": "16c13adfc2830d2dd9352e378afa8f3b912c59329b02a366673f970865931586",
-    "lib/features/warehouse/materialbin/widgets/machine_count_card.dart": "b39dfca2b31ac7280d572ba70aa21f24028d017ef2a793fed08d1618e7da1724",
-    "lib/shared/stock_ledger/widgets/goods_weight_learning_view.dart": "4f89ed06b761f8af7df7169ce2501f78c66a0e25f500241d706a199fb83c58fd",
-    "server/src/main/java/com/uten/imp/audit/AuditEventInterpreter.java": "d61788fc057bb52172de65e8cceeea0665448fb843dedeb7ba7b577b03fbad41",
-    "server/src/main/java/com/uten/imp/features/admin/serverstatus/ScheduledTaskCatalog.java": "b9c7798d9031f79eeda8508e2e4eb6114d2ffab0714ecb54cf216db1061665b1",
-    "server/src/main/java/com/uten/imp/features/auth/SessionWatchService.java": "b4bef1f0ccb5213ee51e0303a45a8a622ad5b25132ba2f05ebb2ba6ab50f7dd2",
-    "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetOpeningGroupController.java": "4ba825a5fb167fe03805457371f669295c7f2cbd17860c84c7ddc3c5e3dcdf42",
-    "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetTemplateController.java": "3fbc2a4f35b0641c4ac42582d24fc9708a19c1bc0428455b914b1e681f161ffb",
-    "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostInputController.java": "52e604292c14285a8a69a4412373fa3bb3b4cff6ec4c9ce7d1b61a035d4a7ed3",
-    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingImportController.java": "60d2f224671fe5a3ac34e5e909ecb43d627f8c52cb4bc92e12e22a37de917142",
-    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartController.java": "0683dee3980025e7b58db9936c19c254a4ac25f4fc2fdb953c3ab80f91afc647",
-    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisController.java": "4cf8bb1da544c2da7a1daa2d8e2893a4d221f737b4a31955c90627d20b36cbdb",
-    "server/src/main/java/com/uten/imp/features/finance/gl/NativeLegacyOpeningController.java": "52e115dbb2251fb3e38ef103481af8890e233dee7a4c3be15509439ea518e1f1",
-    "server/src/main/java/com/uten/imp/features/finance/payables/FinancePayableStatementAdjustmentController.java": "62f96c44ef330a1ecb67d001e3fb3096fab49a49e12edd32b440344b3082d8df",
-    "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayableRecognitionController.java": "4187fa2f13bb3684ba283d6082c6d2070ff62531a19ac1eccc0546f0fba29cf0",
-    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierPrepaymentController.java": "aaad94dc7930c13596db551e2aa30fae3ff7955e348bcd28039a524573d8460f",
-    "server/src/main/java/com/uten/imp/features/finance/report/FinanceTemplateSourceController.java": "eb5935ddc7d4aea60b7b08145994f49b71398654de13d6e142430d94fdcb19db",
-    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportController.java": "5976e7dd584b45e0787abbb0e52f4ce7077f84648083ef520f19ce2c3e9c9694",
-    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceMaterialStatementController.java": "87cb87ae95d3bb061f1f89d14007ac9d1b3f30b8eba1624dc5ad3b95dd4c9a67",
-    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceOpenItemClassificationController.java": "b903c7a2d8b9e0eddca83a840daa319e51920b8e9ea234a3379fbde4deec6f70",
-    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceReceivableClassificationController.java": "c44bb0c97d6203854145e4951f5137a5d9d5138e4f9fefac48d65e19ecd574c8",
-    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementDocumentController.java": "7ea457580c1c99e899cb7fad87737deacaf86a354ab5163f0a95728b032d5d45",
-    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractLossPolicyController.java": "f1d5ff9fed17fb14467f514b02dd9fbc2391d2968df3bd8621d6329ab4c5111b",
-    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractQuantityEvidenceController.java": "bd84ef0ebc0e9190c46535428f5e763b05c8fbc30706f4ae1aa060e44f6a9353",
-    "server/src/main/java/com/uten/imp/features/notice/ReviewNoticeCatalog.java": "46bd3446c7ff3e44b55c5688d67856e8373313e04a97f923a5292b9a8d847a33",
-    "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java": "cbef62a18b1c17a5b12f4a36630754bbd706769b7c2181067dc915df939f8231",
-    "server/src/test/java/com/uten/imp/businesschain/DailyReportV3ReviewedSaveLifecyclePostgresTest.java": "da5431a6dda33779a2770f311ababd9aa74aca5ecf2445c465a139e6ca8936a4",
-    "server/src/test/java/com/uten/imp/businesschain/PreplanPrivateFutureTransferEndToEndTest.java": "3b830feb5f0a3633f7dbd0e18b36dab725899d98ec205c9acdb9b9bff4b20eb6",
-    "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceReviewReadOnlyEndToEndTest.java": "e3349173ae267fd9544d6992300285a8456d15efe478980e3a0182c76738314c",
-    "server/src/test/java/com/uten/imp/businesschain/ProductionFqcPreStockBatchEndToEndTest.java": "7d87ac9a048efa69856e5b9655358d06ee5e08ce9f7bd1cd148c5f5d30d558bb",
-    "server/src/test/java/com/uten/imp/businesschain/SubcontractLossValueEndToEndTest.java": "29efcff229d24b1964680e182426a73a6799c23a133a53ce7a1d03595777d244",
-    "server/src/test/java/com/uten/imp/businesschain/WorkshopDirectTransferAvailabilityEndToEndTest.java": "fd2eccf69bd61a35322203fdaba1ef6a53c2c6085c5f868ae77d3cf1d65be182",
-    "server/src/test/java/com/uten/imp/common/columns/BusinessColumnConsiderationTest.java": "17267d36ba92c78caf5a312560166afc16ee164ce49c49213360e0a460eb4dd7",
-    "server/src/test/java/com/uten/imp/common/export/CostDocumentExportTest.java": "f896c0891e16eec79852ecaa948808ce1b271671a513e2d9e94cffbb13fb0d49",
-    "server/src/test/java/com/uten/imp/common/files/document/SpreadsheetGridReaderTest.java": "2d10bd79ef6e519d1ebff690bec4f38431282157f18e51ae3dfecabdf3a633d3",
-    "server/src/test/java/com/uten/imp/common/finance/ProcurementIqcReplacementAllocationBehaviorTest.java": "2c906abe5dd12ff73bdfb73f667622bae53480d005a46370a1ab0f621a27366e",
-    "server/src/test/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreviewTest.java": "77ce8454a53606abd57a6a16a841276895e9d814c49b02b92bafbc3f6ce7cd28",
-    "server/src/test/java/com/uten/imp/common/integrity/OperationalCommercialSignGuardWiringTest.java": "ba0ebd62705f743198b59f388cf395b301768388aa6797a0cc1ebf579fc78fb1",
-    "server/src/test/java/com/uten/imp/common/validation/MeasurementWeightRequestValidationTest.java": "6778ac6a19ed17cfeaf43840eaf569f1a9ce8731bda5a065b08603b0283d5049",
-    "server/src/test/java/com/uten/imp/common/web/JpaReaderOffsetTest.java": "fea7a326c7101c6cd98abe81903fabe994c96166a197ee361ed4490b4da37ec7",
-    "server/src/test/java/com/uten/imp/config/SecurityDefaultsTest.java": "b28e082ac39f1a693ecddf410f2d1824a0d8ed9ccbc7ccdbe55b0f4de73270c5",
-    "server/src/test/java/com/uten/imp/features/admin/AiPermissionGrantControllerSecurityTest.java": "65a6b4148c9b694219e771165606d58dcfc286170b05bf8bc6e30b619e878367",
-    "server/src/test/java/com/uten/imp/features/ai/usage/AiUsageAuditControllerSecurityTest.java": "7ffa2dfaa9eb479002f9f5da48933df202cae379a3e41c695ef95034da8aaa11",
-    "server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimAttachmentAccessPolicyTest.java": "6761059c9a355ddf4610a76daba584d77e2e610d903ab31cbe0c21b7ab483300",
-    "server/src/test/java/com/uten/imp/features/finance/FinancePaymentStyleValidationTest.java": "d019e3a7c7b3e7ae49bb1b2b95ec028910a123addfb68e7e24ba8959dd74f436",
-    "server/src/test/java/com/uten/imp/features/finance/PaymentStyleHierarchyLockOrderContractTest.java": "025ebe564e1f4e07b4406900b7f3124ed8e4e027930b1562d43903b9ad39e9b6",
-    "server/src/test/java/com/uten/imp/features/finance/asset/FixedAssetSchedulePagingTest.java": "dac9ef570f86ad9a5a1b31da36929ac85e8288a83124e6b32ab4e571ae08b460",
-    "server/src/test/java/com/uten/imp/features/finance/asset/domain/AssetSubmissionPolicyTest.java": "4ed5ad442a239861f5288cf501b586fb063dce6fb014edc40cdb5157db3085a8",
-    "server/src/test/java/com/uten/imp/features/finance/gl/CustomerPrepaymentGlAccountingContractTest.java": "6278d361208f0d43472bc4e3413ae26a088a6f0c2a7f48f11bb95041abc2a1fd",
-    "server/src/test/java/com/uten/imp/features/finance/gl/GlOperatingPlStreamingTest.java": "e533f355316b97cbe737a576ae7c398cd6c7c9c48694f7bf6f15eb5cac57d6bf",
-    "server/src/test/java/com/uten/imp/features/finance/gl/GlPostingServiceReceiptAccountingTest.java": "ee08557c6591121db929fa1bddf0e14fbefd577054dc9ebabaae857cd8050a84",
-    "server/src/test/java/com/uten/imp/features/finance/gl/GlReportSourceSemanticsTest.java": "17f215ceb3dc2e2ecbc6c6a3f9c88ca8670898a95545e1685b292e0bdfc469c2",
-    "server/src/test/java/com/uten/imp/features/finance/payables/ProcurementReceiptAmountAuthorityContractTest.java": "0ed863439bb62582f77dab93fb90d6e0aff590fc73918603bc9b307e89c443fc",
-    "server/src/test/java/com/uten/imp/features/finance/payables/ProcurementReceiptArrivalAllowanceContractTest.java": "53a4852754b6314917b47eca646cf60513c33f1719d0465f62ecccc94d45b96c",
-    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierClosedPeriodLockOrderContractTest.java": "2aad6f259608daa1c8d9e8bd0be3230bdf250ac736430f4bef4c2daf25671b15",
-    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierPayableHoldGuardBehaviorTest.java": "e8996a0ce65cb1687fcb08941226c6a312911c95779e78b1a2e24e812baaf543",
-    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierPayablePostingContractTest.java": "b22b05721d60d49edfd8b49cd25518aa2a46745c0262389469765165cc93ca2f",
-    "server/src/test/java/com/uten/imp/features/finance/payment/FinancePaymentSettlementTest.java": "9e2aaee72d4a2ef6609278ce23d0bc6959cafa92c6f5e59b3fd3fc4c7ce0886e",
-    "server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementApprovalHistoryQueryTest.java": "1126f8b605401ad433270d49ce34c51f744d852d82a4727d145487d32004be99",
-    "server/src/test/java/com/uten/imp/features/finance/report/FinanceReportPartyStatementTest.java": "25ce7a576c084e540671ba554b65edf20da30de1d777c1eb3bf5f0c62f2c01a0",
-    "server/src/test/java/com/uten/imp/features/finance/report/SupplierPayableHistoricalIntegrityContractTest.java": "b1d0f1300c25ddc163e0236de1c791651d2dd79ad68f52ed6d86c27df7f5006c",
-    "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostCalculatorTest.java": "b4e64f61efeee24e0fefd1d3e051cea0fc773501b0a3ce0f06c3c19abe7a460f",
-    "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostSourceDeduplicationTest.java": "aa175bd3e50b9c087ca7c15b7ad5eeb029e8f884517fe538643c0c360513051f",
-    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsBomImportNumericPrecisionTest.java": "c5ee40d7e5f7bf3239decbac69c960db608794201b2379acd65b35fb059a8710",
-    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsBomImportServiceTest.java": "cefe9dca05873aa78819aead9473afefe0de51e439dea6bdba96e74ba9cf26f7",
-    "server/src/test/java/com/uten/imp/features/org/employee/reconcile/EmployeeReconcileControllerSecurityTest.java": "92ccfc33ed266762d1f2e44acf4372c760abce9dec327ffef09a5a5af2f5ab10",
-    "server/src/test/java/com/uten/imp/features/production/analysis/AggregateMaterialOrderPreviewServiceTest.java": "78b9c5d32ba28450da8fc73638586c1b978871b9ac20c0cc779b72fba3c6a812",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisOneTableContractTest.java": "0641605b58a9a7c575867e6a8105abec157730f62d2e83dca4915a5665769384",
-    "server/src/test/java/com/uten/imp/features/production/dailyreport/DailyReportMaterialReviewContractTest.java": "77851050618d80e1576c1dfdeefa4d873d75ca1682aaf5eacc2325824bb78ea5",
-    "server/src/test/java/com/uten/imp/features/production/dailyreport/DailyReportOutputAllocationServiceTest.java": "8b1a1181a97c48edb608c906cceb89c874a52cbffcc0428def89bac4917b260a",
-    "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java": "55eac733ebd58556336746dd489b75cd01a4fcad82f4b5f541db0b8c81a996e2",
-    "server/src/test/java/com/uten/imp/features/production/fulfillment/ProductionDrawDiscoveryBatchContractTest.java": "51cf392580476ee26b3ce35326ab2e171777bbc50f64d49b47d6f5ebfa0bc5ba",
-    "server/src/test/java/com/uten/imp/features/production/plan/dto/PlanItemQuantityWireTest.java": "5fe471395642e44ded1e94aac2530093adf1e3b685d23584d422628a77b7b53e",
-    "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderGiftAllocationTest.java": "a7f4958817855677623fbbdef1c50cb4423b580118ea6c8cfc26fb1c5f45f73b",
-    "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderTotalAmountTest.java": "140a728d3bff98a087e71d5f0fd4f1a1c5d528e0691d5071cc65adf5a88753a3",
-    "server/src/test/java/com/uten/imp/features/sales/SalesPriceAuthorityTest.java": "294bf984bc83032e69823e9a2ebeb6e7bdc922f7445565ca1bc755e58453a5d3",
-    "server/src/test/java/com/uten/imp/features/sales/intake/IntakePricingAndClientTest.java": "f51b2ab47eb1a8bae4dbcbe32451b62a72a985885711d80ad773f82acd878cd2",
-    "server/src/test/java/com/uten/imp/features/sales/intake/IntakeSellerIdentityTest.java": "3850269a10ff36c08367ecb6fa3ca89eaeb551c889e1e75aacf35d77277e4948",
-    "server/src/test/java/com/uten/imp/features/sales/intake/SalesDocumentIntakeJobHandlerTest.java": "b3a990a229592d763d6eb60bbfce2ec2d74078c1ce8acc12f72e624b2a4af10a",
-    "server/src/test/java/com/uten/imp/features/sales/intake/SalesIntakeMatchingRegressionTest.java": "99d5c174d58faf14d31856688023a69fe89563e62c96c846e5b34ced08faee1a",
-    "server/src/test/java/com/uten/imp/features/sales/intake/SalesIntakePipelineTest.java": "af2de7756553bdc0d40f5f57b7aa9d12fea5590e2075a98e99cdeb92f538d561",
-    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderClientPriceGuardTest.java": "8472ebb4f0e939c02b75b16c1ce4f1f49d84d2228fd042f6910a1aab64f75036",
-    "server/src/test/java/com/uten/imp/features/stock/StockBalanceAdjustmentServiceTest.java": "a24d969e39cd389844542bc5f00d44eb99678ed835b41b9b10ba1290c8df3359",
-    "server/src/test/java/com/uten/imp/features/stock/StockCountPolicyTest.java": "aa948a7906a8621b1707da6896e097823c3fec39a006e5337c685f6bbe58b49d",
-    "server/src/test/java/com/uten/imp/features/stock/StockDocWeightCaptureContractTest.java": "9e4c1c799a1fc84588fc6f96ea345d8ab1391a6dd988331f1fc6a2942f046fcf",
-    "server/src/test/java/com/uten/imp/features/stock/StockDocWeightJsonContractTest.java": "6d63c2051808c36d2c7576f5e3a5abcf6247ce1fea44b2a0c01184fe77c30e09",
-    "server/src/test/java/com/uten/imp/features/stock/StockServiceTest.java": "cfd05c03a74b14265304dbd17b868943e4dba3e7148632fc4995629d9143f9df",
-    "server/src/test/java/com/uten/imp/features/stock/ledger/StockLedgerRowMaskingTest.java": "99885076c456159be3bf67ab9c9dca8f05707b9ab052861f482c3f5366a23590",
-    "server/src/test/java/com/uten/imp/features/stock/report/StockReportCostVisibilityTest.java": "89d2984b82288c98344d011b60fb0532752c1a51ea408139bab8ca613b2bbdea",
-    "server/src/test/java/com/uten/imp/features/stock/valuation/StockDocumentQuantityPrecisionBoundaryTest.java": "40b852868d3840a1ae613923d5dbffb9a75ced1bd9bf4325bdf4d71c3966f878",
-    "server/src/test/java/com/uten/imp/features/stock/weight/ApwEstimatorTest.java": "550f76ad06655fe92f619cfdc6eca8129e553662843971ec43c43b395efe1d83",
-    "server/src/test/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnAuthorityTest.java": "8636031a3f2f52d763117933efb527d8019cfc20a8e6c5ac230c3bbfceb0a910",
-    "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderSystemQtyChangeTest.java": "6bee297abd68f2f3d73370268b196fea2f5f5659b70e5e81a460ae035455737f",
-    "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderTotalAmountTest.java": "3eb4f976b35902de1c81b9ba31f4075b08ca8b2c5f28e7924ffb884d59910afa",
-    "server/src/test/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptAmountAuthorityTest.java": "65e9786a5dd739076108ee136e838f700c0b9f396e43219f1b8872f2631c2078",
-    "server/src/test/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationServiceTest.java": "96a70b82544d7460c53b516bee9af18a9dd35461d2bf0782332c5768869fc0c8",
-    "server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalWorkflowContractTest.java": "a00f4d334da853705ca62bef5c254e1ab65155487a4314ce2c7b74637ae1fba5",
-    "server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementIqcDispositionAmountBehaviorTest.java": "8610357b51d69f47a692541f03c4642ce44240822154747754ed81c0945e0aba",
-    "server/src/test/java/com/uten/imp/security/PermissionChainReachabilityContractTest.java": "650d77961d6fc83d5cdfa4d9a1a9c0e1eef5cb56fadcd866734e7ad55d456d46",
-    "test/architecture_boundaries_test.dart": "1030ad4874ac80e60be48531b3ffcb8817df285020840983665b5a6cf792c164",
-    "test/components/feedback/uten_date_range_tooltip_test.dart": "e5b4c8d9c173dd339071d302db7125d44d81a9dfbc7f99d6fa94982b4f162cd0",
-    "test/components/uten_table_cell_action_rich_test.dart": "5598d203e1d8be4e080027ea4509f0c885ca25b0d3f359a7c6927768a830b5c0",
-    "test/features/production/pages/production_material_analysis_page_test.dart": "b89ce4e5b623b300c2eb6972780a82ddf4fac8ac36c684100076cecb02f53575"
+    "assets/workers/uten_pdf_worker.build.json": {
+      "algorithm": "sha256",
+      "digest": "5a188ceeecb81bd0119788bf2677a45e9040996d2fdf5c0955277c1e2c32a9b3"
+    },
+    "assets/workers/uten_pdf_worker.js": {
+      "algorithm": "sha256",
+      "digest": "ddbcd3ffed43944d987ad745079ad2416f9b99b1f8c7c671b8ecc5c038ef1c78"
+    },
+    "deploy/setup/test_internal_test_runtime_contract.py": {
+      "algorithm": "sha256",
+      "digest": "d42b151b965c95f8085f84b80508e672d71f21119b76116bd48f02e3107d4fee"
+    },
+    "docs/数据迁移/README.md": {
+      "algorithm": "sha256",
+      "digest": "5f88ea451dadbf31572b67f107c6a6bf79a788fd50846bf0cd7743ce74e0f066"
+    },
+    "lib/components/inputs/uten_table_cell_action.dart": {
+      "algorithm": "sha256",
+      "digest": "0e4481880bdd2a96f08c006450fa73fe864c7c432f491f05a1829f6b1fbfd746"
+    },
+    "lib/features/applications/pages/business_application_edit_page.dart": {
+      "algorithm": "sha256",
+      "digest": "7481f184d0711cd87a86f175ec6cfd923236295147dcbbfc21cafe4a1427bbab"
+    },
+    "lib/features/finance/payables/pages/finance_payables_page.dart": {
+      "algorithm": "sha256",
+      "digest": "13a66c294393f631a0a210a399ea3a5a554f84533a2a621be9d5dbb50357818e"
+    },
+    "lib/features/production/widgets/production_execution_group_panel.dart": {
+      "algorithm": "sha256",
+      "digest": "1e96e71c3b1b06fb39835802f2fd5e9f568aecca349c284941f3bab5f5d1ef98"
+    },
+    "lib/features/warehouse/materialbin/widgets/count_bag_material_card.dart": {
+      "algorithm": "sha256",
+      "digest": "16c13adfc2830d2dd9352e378afa8f3b912c59329b02a366673f970865931586"
+    },
+    "lib/features/warehouse/materialbin/widgets/machine_count_card.dart": {
+      "algorithm": "sha256",
+      "digest": "b39dfca2b31ac7280d572ba70aa21f24028d017ef2a793fed08d1618e7da1724"
+    },
+    "lib/shared/stock_ledger/widgets/goods_weight_learning_view.dart": {
+      "algorithm": "sha256",
+      "digest": "4f89ed06b761f8af7df7169ce2501f78c66a0e25f500241d706a199fb83c58fd"
+    },
+    "server/src/main/java/com/uten/imp/audit/AuditEventInterpreter.java": {
+      "algorithm": "sha256",
+      "digest": "d61788fc057bb52172de65e8cceeea0665448fb843dedeb7ba7b577b03fbad41"
+    },
+    "server/src/main/java/com/uten/imp/features/admin/serverstatus/ScheduledTaskCatalog.java": {
+      "algorithm": "sha256",
+      "digest": "b9c7798d9031f79eeda8508e2e4eb6114d2ffab0714ecb54cf216db1061665b1"
+    },
+    "server/src/main/java/com/uten/imp/features/auth/SessionWatchService.java": {
+      "algorithm": "sha256",
+      "digest": "b4bef1f0ccb5213ee51e0303a45a8a622ad5b25132ba2f05ebb2ba6ab50f7dd2"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetOpeningGroupController.java": {
+      "algorithm": "sha256",
+      "digest": "4ba825a5fb167fe03805457371f669295c7f2cbd17860c84c7ddc3c5e3dcdf42"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetTemplateController.java": {
+      "algorithm": "sha256",
+      "digest": "3fbc2a4f35b0641c4ac42582d24fc9708a19c1bc0428455b914b1e681f161ffb"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostInputController.java": {
+      "algorithm": "sha256",
+      "digest": "52e604292c14285a8a69a4412373fa3bb3b4cff6ec4c9ce7d1b61a035d4a7ed3"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingImportController.java": {
+      "algorithm": "sha256",
+      "digest": "60d2f224671fe5a3ac34e5e909ecb43d627f8c52cb4bc92e12e22a37de917142"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartController.java": {
+      "algorithm": "sha256",
+      "digest": "0683dee3980025e7b58db9936c19c254a4ac25f4fc2fdb953c3ab80f91afc647"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisController.java": {
+      "algorithm": "sha256",
+      "digest": "4cf8bb1da544c2da7a1daa2d8e2893a4d221f737b4a31955c90627d20b36cbdb"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/gl/NativeLegacyOpeningController.java": {
+      "algorithm": "sha256",
+      "digest": "52e115dbb2251fb3e38ef103481af8890e233dee7a4c3be15509439ea518e1f1"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payables/FinancePayableStatementAdjustmentController.java": {
+      "algorithm": "sha256",
+      "digest": "62f96c44ef330a1ecb67d001e3fb3096fab49a49e12edd32b440344b3082d8df"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayableRecognitionController.java": {
+      "algorithm": "sha256",
+      "digest": "4187fa2f13bb3684ba283d6082c6d2070ff62531a19ac1eccc0546f0fba29cf0"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierPrepaymentController.java": {
+      "algorithm": "sha256",
+      "digest": "aaad94dc7930c13596db551e2aa30fae3ff7955e348bcd28039a524573d8460f"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceTemplateSourceController.java": {
+      "algorithm": "sha256",
+      "digest": "eb5935ddc7d4aea60b7b08145994f49b71398654de13d6e142430d94fdcb19db"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportController.java": {
+      "algorithm": "sha256",
+      "digest": "5976e7dd584b45e0787abbb0e52f4ce7077f84648083ef520f19ce2c3e9c9694"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceMaterialStatementController.java": {
+      "algorithm": "sha256",
+      "digest": "87cb87ae95d3bb061f1f89d14007ac9d1b3f30b8eba1624dc5ad3b95dd4c9a67"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceOpenItemClassificationController.java": {
+      "algorithm": "sha256",
+      "digest": "b903c7a2d8b9e0eddca83a840daa319e51920b8e9ea234a3379fbde4deec6f70"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceReceivableClassificationController.java": {
+      "algorithm": "sha256",
+      "digest": "c44bb0c97d6203854145e4951f5137a5d9d5138e4f9fefac48d65e19ecd574c8"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementDocumentController.java": {
+      "algorithm": "sha256",
+      "digest": "7ea457580c1c99e899cb7fad87737deacaf86a354ab5163f0a95728b032d5d45"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractLossPolicyController.java": {
+      "algorithm": "sha256",
+      "digest": "f1d5ff9fed17fb14467f514b02dd9fbc2391d2968df3bd8621d6329ab4c5111b"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractQuantityEvidenceController.java": {
+      "algorithm": "sha256",
+      "digest": "bd84ef0ebc0e9190c46535428f5e763b05c8fbc30706f4ae1aa060e44f6a9353"
+    },
+    "server/src/main/java/com/uten/imp/features/notice/ReviewNoticeCatalog.java": {
+      "algorithm": "sha256",
+      "digest": "46bd3446c7ff3e44b55c5688d67856e8373313e04a97f923a5292b9a8d847a33"
+    },
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java": {
+      "algorithm": "sha256",
+      "digest": "cbef62a18b1c17a5b12f4a36630754bbd706769b7c2181067dc915df939f8231"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/DailyReportV3ReviewedSaveLifecyclePostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "da5431a6dda33779a2770f311ababd9aa74aca5ecf2445c465a139e6ca8936a4"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/PreplanPrivateFutureTransferEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "3b830feb5f0a3633f7dbd0e18b36dab725899d98ec205c9acdb9b9bff4b20eb6"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceReviewReadOnlyEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "e3349173ae267fd9544d6992300285a8456d15efe478980e3a0182c76738314c"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/ProductionFqcPreStockBatchEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "7d87ac9a048efa69856e5b9655358d06ee5e08ce9f7bd1cd148c5f5d30d558bb"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SubcontractLossValueEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "29efcff229d24b1964680e182426a73a6799c23a133a53ce7a1d03595777d244"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/WorkshopDirectTransferAvailabilityEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "fd2eccf69bd61a35322203fdaba1ef6a53c2c6085c5f868ae77d3cf1d65be182"
+    },
+    "server/src/test/java/com/uten/imp/common/columns/BusinessColumnConsiderationTest.java": {
+      "algorithm": "sha256",
+      "digest": "17267d36ba92c78caf5a312560166afc16ee164ce49c49213360e0a460eb4dd7"
+    },
+    "server/src/test/java/com/uten/imp/common/export/CostDocumentExportTest.java": {
+      "algorithm": "sha256",
+      "digest": "f896c0891e16eec79852ecaa948808ce1b271671a513e2d9e94cffbb13fb0d49"
+    },
+    "server/src/test/java/com/uten/imp/common/files/document/SpreadsheetGridReaderTest.java": {
+      "algorithm": "sha256",
+      "digest": "2d10bd79ef6e519d1ebff690bec4f38431282157f18e51ae3dfecabdf3a633d3"
+    },
+    "server/src/test/java/com/uten/imp/common/finance/ProcurementIqcReplacementAllocationBehaviorTest.java": {
+      "algorithm": "sha256",
+      "digest": "2c906abe5dd12ff73bdfb73f667622bae53480d005a46370a1ab0f621a27366e"
+    },
+    "server/src/test/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreviewTest.java": {
+      "algorithm": "sha256",
+      "digest": "77ce8454a53606abd57a6a16a841276895e9d814c49b02b92bafbc3f6ce7cd28"
+    },
+    "server/src/test/java/com/uten/imp/common/integrity/OperationalCommercialSignGuardWiringTest.java": {
+      "algorithm": "sha256",
+      "digest": "ba0ebd62705f743198b59f388cf395b301768388aa6797a0cc1ebf579fc78fb1"
+    },
+    "server/src/test/java/com/uten/imp/common/validation/MeasurementWeightRequestValidationTest.java": {
+      "algorithm": "sha256",
+      "digest": "6778ac6a19ed17cfeaf43840eaf569f1a9ce8731bda5a065b08603b0283d5049"
+    },
+    "server/src/test/java/com/uten/imp/common/web/JpaReaderOffsetTest.java": {
+      "algorithm": "sha256",
+      "digest": "fea7a326c7101c6cd98abe81903fabe994c96166a197ee361ed4490b4da37ec7"
+    },
+    "server/src/test/java/com/uten/imp/config/SecurityDefaultsTest.java": {
+      "algorithm": "sha256",
+      "digest": "b28e082ac39f1a693ecddf410f2d1824a0d8ed9ccbc7ccdbe55b0f4de73270c5"
+    },
+    "server/src/test/java/com/uten/imp/features/admin/AiPermissionGrantControllerSecurityTest.java": {
+      "algorithm": "sha256",
+      "digest": "65a6b4148c9b694219e771165606d58dcfc286170b05bf8bc6e30b619e878367"
+    },
+    "server/src/test/java/com/uten/imp/features/ai/usage/AiUsageAuditControllerSecurityTest.java": {
+      "algorithm": "sha256",
+      "digest": "7ffa2dfaa9eb479002f9f5da48933df202cae379a3e41c695ef95034da8aaa11"
+    },
+    "server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimAttachmentAccessPolicyTest.java": {
+      "algorithm": "sha256",
+      "digest": "6761059c9a355ddf4610a76daba584d77e2e610d903ab31cbe0c21b7ab483300"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/FinancePaymentStyleValidationTest.java": {
+      "algorithm": "sha256",
+      "digest": "d019e3a7c7b3e7ae49bb1b2b95ec028910a123addfb68e7e24ba8959dd74f436"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/PaymentStyleHierarchyLockOrderContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "025ebe564e1f4e07b4406900b7f3124ed8e4e027930b1562d43903b9ad39e9b6"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/asset/FixedAssetSchedulePagingTest.java": {
+      "algorithm": "sha256",
+      "digest": "dac9ef570f86ad9a5a1b31da36929ac85e8288a83124e6b32ab4e571ae08b460"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/asset/domain/AssetSubmissionPolicyTest.java": {
+      "algorithm": "sha256",
+      "digest": "4ed5ad442a239861f5288cf501b586fb063dce6fb014edc40cdb5157db3085a8"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/gl/CustomerPrepaymentGlAccountingContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "6278d361208f0d43472bc4e3413ae26a088a6f0c2a7f48f11bb95041abc2a1fd"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/gl/GlOperatingPlStreamingTest.java": {
+      "algorithm": "sha256",
+      "digest": "e533f355316b97cbe737a576ae7c398cd6c7c9c48694f7bf6f15eb5cac57d6bf"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/gl/GlPostingServiceReceiptAccountingTest.java": {
+      "algorithm": "sha256",
+      "digest": "ee08557c6591121db929fa1bddf0e14fbefd577054dc9ebabaae857cd8050a84"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/gl/GlReportSourceSemanticsTest.java": {
+      "algorithm": "sha256",
+      "digest": "17f215ceb3dc2e2ecbc6c6a3f9c88ca8670898a95545e1685b292e0bdfc469c2"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payables/ProcurementReceiptAmountAuthorityContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "0ed863439bb62582f77dab93fb90d6e0aff590fc73918603bc9b307e89c443fc"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payables/ProcurementReceiptArrivalAllowanceContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "53a4852754b6314917b47eca646cf60513c33f1719d0465f62ecccc94d45b96c"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierClosedPeriodLockOrderContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "2aad6f259608daa1c8d9e8bd0be3230bdf250ac736430f4bef4c2daf25671b15"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierPayableHoldGuardBehaviorTest.java": {
+      "algorithm": "sha256",
+      "digest": "e8996a0ce65cb1687fcb08941226c6a312911c95779e78b1a2e24e812baaf543"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierPayablePostingContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "b22b05721d60d49edfd8b49cd25518aa2a46745c0262389469765165cc93ca2f"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payment/FinancePaymentSettlementTest.java": {
+      "algorithm": "sha256",
+      "digest": "9e2aaee72d4a2ef6609278ce23d0bc6959cafa92c6f5e59b3fd3fc4c7ce0886e"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementApprovalHistoryQueryTest.java": {
+      "algorithm": "sha256",
+      "digest": "1126f8b605401ad433270d49ce34c51f744d852d82a4727d145487d32004be99"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/report/FinanceReportPartyStatementTest.java": {
+      "algorithm": "sha256",
+      "digest": "25ce7a576c084e540671ba554b65edf20da30de1d777c1eb3bf5f0c62f2c01a0"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/report/SupplierPayableHistoricalIntegrityContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "b1d0f1300c25ddc163e0236de1c791651d2dd79ad68f52ed6d86c27df7f5006c"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostCalculatorTest.java": {
+      "algorithm": "sha256",
+      "digest": "b4e64f61efeee24e0fefd1d3e051cea0fc773501b0a3ce0f06c3c19abe7a460f"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostSourceDeduplicationTest.java": {
+      "algorithm": "sha256",
+      "digest": "aa175bd3e50b9c087ca7c15b7ad5eeb029e8f884517fe538643c0c360513051f"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsBomImportNumericPrecisionTest.java": {
+      "algorithm": "sha256",
+      "digest": "c5ee40d7e5f7bf3239decbac69c960db608794201b2379acd65b35fb059a8710"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsBomImportServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "cefe9dca05873aa78819aead9473afefe0de51e439dea6bdba96e74ba9cf26f7"
+    },
+    "server/src/test/java/com/uten/imp/features/org/employee/reconcile/EmployeeReconcileControllerSecurityTest.java": {
+      "algorithm": "sha256",
+      "digest": "92ccfc33ed266762d1f2e44acf4372c760abce9dec327ffef09a5a5af2f5ab10"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/AggregateMaterialOrderPreviewServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "78b9c5d32ba28450da8fc73638586c1b978871b9ac20c0cc779b72fba3c6a812"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisOneTableContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "0641605b58a9a7c575867e6a8105abec157730f62d2e83dca4915a5665769384"
+    },
+    "server/src/test/java/com/uten/imp/features/production/dailyreport/DailyReportMaterialReviewContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "77851050618d80e1576c1dfdeefa4d873d75ca1682aaf5eacc2325824bb78ea5"
+    },
+    "server/src/test/java/com/uten/imp/features/production/dailyreport/DailyReportOutputAllocationServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "8b1a1181a97c48edb608c906cceb89c874a52cbffcc0428def89bac4917b260a"
+    },
+    "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "55eac733ebd58556336746dd489b75cd01a4fcad82f4b5f541db0b8c81a996e2"
+    },
+    "server/src/test/java/com/uten/imp/features/production/fulfillment/ProductionDrawDiscoveryBatchContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "51cf392580476ee26b3ce35326ab2e171777bbc50f64d49b47d6f5ebfa0bc5ba"
+    },
+    "server/src/test/java/com/uten/imp/features/production/plan/dto/PlanItemQuantityWireTest.java": {
+      "algorithm": "sha256",
+      "digest": "5fe471395642e44ded1e94aac2530093adf1e3b685d23584d422628a77b7b53e"
+    },
+    "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderGiftAllocationTest.java": {
+      "algorithm": "sha256",
+      "digest": "a7f4958817855677623fbbdef1c50cb4423b580118ea6c8cfc26fb1c5f45f73b"
+    },
+    "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderTotalAmountTest.java": {
+      "algorithm": "sha256",
+      "digest": "140a728d3bff98a087e71d5f0fd4f1a1c5d528e0691d5071cc65adf5a88753a3"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/SalesPriceAuthorityTest.java": {
+      "algorithm": "sha256",
+      "digest": "294bf984bc83032e69823e9a2ebeb6e7bdc922f7445565ca1bc755e58453a5d3"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/intake/IntakePricingAndClientTest.java": {
+      "algorithm": "sha256",
+      "digest": "f51b2ab47eb1a8bae4dbcbe32451b62a72a985885711d80ad773f82acd878cd2"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/intake/IntakeSellerIdentityTest.java": {
+      "algorithm": "sha256",
+      "digest": "3850269a10ff36c08367ecb6fa3ca89eaeb551c889e1e75aacf35d77277e4948"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/intake/SalesDocumentIntakeJobHandlerTest.java": {
+      "algorithm": "sha256",
+      "digest": "b3a990a229592d763d6eb60bbfce2ec2d74078c1ce8acc12f72e624b2a4af10a"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/intake/SalesIntakeMatchingRegressionTest.java": {
+      "algorithm": "sha256",
+      "digest": "99d5c174d58faf14d31856688023a69fe89563e62c96c846e5b34ced08faee1a"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/intake/SalesIntakePipelineTest.java": {
+      "algorithm": "sha256",
+      "digest": "af2de7756553bdc0d40f5f57b7aa9d12fea5590e2075a98e99cdeb92f538d561"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderClientPriceGuardTest.java": {
+      "algorithm": "sha256",
+      "digest": "8472ebb4f0e939c02b75b16c1ce4f1f49d84d2228fd042f6910a1aab64f75036"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/StockBalanceAdjustmentServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "a24d969e39cd389844542bc5f00d44eb99678ed835b41b9b10ba1290c8df3359"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/StockCountPolicyTest.java": {
+      "algorithm": "sha256",
+      "digest": "aa948a7906a8621b1707da6896e097823c3fec39a006e5337c685f6bbe58b49d"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/StockDocWeightCaptureContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "9e4c1c799a1fc84588fc6f96ea345d8ab1391a6dd988331f1fc6a2942f046fcf"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/StockDocWeightJsonContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "6d63c2051808c36d2c7576f5e3a5abcf6247ce1fea44b2a0c01184fe77c30e09"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/StockServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "cfd05c03a74b14265304dbd17b868943e4dba3e7148632fc4995629d9143f9df"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/ledger/StockLedgerRowMaskingTest.java": {
+      "algorithm": "sha256",
+      "digest": "99885076c456159be3bf67ab9c9dca8f05707b9ab052861f482c3f5366a23590"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/report/StockReportCostVisibilityTest.java": {
+      "algorithm": "sha256",
+      "digest": "89d2984b82288c98344d011b60fb0532752c1a51ea408139bab8ca613b2bbdea"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/valuation/StockDocumentQuantityPrecisionBoundaryTest.java": {
+      "algorithm": "sha256",
+      "digest": "40b852868d3840a1ae613923d5dbffb9a75ced1bd9bf4325bdf4d71c3966f878"
+    },
+    "server/src/test/java/com/uten/imp/features/stock/weight/ApwEstimatorTest.java": {
+      "algorithm": "sha256",
+      "digest": "550f76ad06655fe92f619cfdc6eca8129e553662843971ec43c43b395efe1d83"
+    },
+    "server/src/test/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnAuthorityTest.java": {
+      "algorithm": "sha256",
+      "digest": "8636031a3f2f52d763117933efb527d8019cfc20a8e6c5ac230c3bbfceb0a910"
+    },
+    "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderSystemQtyChangeTest.java": {
+      "algorithm": "sha256",
+      "digest": "6bee297abd68f2f3d73370268b196fea2f5f5659b70e5e81a460ae035455737f"
+    },
+    "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderTotalAmountTest.java": {
+      "algorithm": "sha256",
+      "digest": "3eb4f976b35902de1c81b9ba31f4075b08ca8b2c5f28e7924ffb884d59910afa"
+    },
+    "server/src/test/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptAmountAuthorityTest.java": {
+      "algorithm": "sha256",
+      "digest": "65e9786a5dd739076108ee136e838f700c0b9f396e43219f1b8872f2631c2078"
+    },
+    "server/src/test/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedArrivalRegistrationServiceTest.java": {
+      "algorithm": "sha256",
+      "digest": "96a70b82544d7460c53b516bee9af18a9dd35461d2bf0782332c5768869fc0c8"
+    },
+    "server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalWorkflowContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "a00f4d334da853705ca62bef5c254e1ab65155487a4314ce2c7b74637ae1fba5"
+    },
+    "server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementIqcDispositionAmountBehaviorTest.java": {
+      "algorithm": "sha256",
+      "digest": "8610357b51d69f47a692541f03c4642ce44240822154747754ed81c0945e0aba"
+    },
+    "server/src/test/java/com/uten/imp/security/PermissionChainReachabilityContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "650d77961d6fc83d5cdfa4d9a1a9c0e1eef5cb56fadcd866734e7ad55d456d46"
+    },
+    "test/architecture_boundaries_test.dart": {
+      "algorithm": "sha256",
+      "digest": "1030ad4874ac80e60be48531b3ffcb8817df285020840983665b5a6cf792c164"
+    },
+    "test/components/feedback/uten_date_range_tooltip_test.dart": {
+      "algorithm": "sha256",
+      "digest": "e5b4c8d9c173dd339071d302db7125d44d81a9dfbc7f99d6fa94982b4f162cd0"
+    },
+    "test/components/uten_table_cell_action_rich_test.dart": {
+      "algorithm": "sha256",
+      "digest": "5598d203e1d8be4e080027ea4509f0c885ca25b0d3f359a7c6927768a830b5c0"
+    },
+    "test/features/production/pages/production_material_analysis_page_test.dart": {
+      "algorithm": "sha256",
+      "digest": "b89ce4e5b623b300c2eb6972780a82ddf4fac8ac36c684100076cecb02f53575"
+    }
   },
   "acceptance": {
     "realBusinessUat": false,
     "wpfDeliveryMigrated": false,
     "formalPackages": false
-  }
+  },
+  "sourceFingerprintEncoding": "typed-checksums-v1"
 }

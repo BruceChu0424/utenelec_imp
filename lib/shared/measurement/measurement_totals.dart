@@ -97,7 +97,9 @@ String measurementTotalsText(
       .join(' · ');
 }
 
+/// Displays measurement summaries at the caller's established statistical scale.
+/// Formatting does not change the source value or its aggregation.
 String formatMeasurementValue(double value, {int scale = 4}) {
-  final fixed = value.toExactString(minimumFractionDigits: scale);
-  return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
+  final fixed = value.toStringAsFixed(scale);
+  return exactNumberDisplay(fixed) ?? fixed;
 }

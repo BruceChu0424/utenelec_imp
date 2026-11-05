@@ -39,4 +39,17 @@ void main() {
 
     expect(text, '1.25 米');
   });
+
+  test(
+    'summary scale is honored without altering source totals or whole zeros',
+    () {
+      final totals = groupMeasurementTotals(const [
+        MeasuredAmount(value: 1.23456789, unitId: 'unit-m', unitName: '米'),
+      ]);
+      expect(formatMeasurementValue(totals.single.value, scale: 6), '1.234568');
+      expect(totals.single.value, 1.23456789);
+      expect(formatMeasurementValue(100, scale: 0), '100');
+      expect(formatMeasurementValue(0, scale: 0), '0');
+    },
+  );
 }

@@ -16467,7 +16467,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00"
+          "targetSha256": "f6c96ff0d42989b4e1cbcc26883ab3d6fcddd248c5afc0f40311c133a9ccc6da"
         },
         {
           "directive": "import",
@@ -71038,7 +71038,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00"
+          "targetSha256": "f6c96ff0d42989b4e1cbcc26883ab3d6fcddd248c5afc0f40311c133a9ccc6da"
         },
         {
           "directive": "import",
@@ -74331,7 +74331,7 @@
       "id": "page:finance/pages/finance_doc_detail_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_doc_detail_page.dart",
-      "sha256": "7f3266548b89ad4f9f14cf9296299052bb60b496ae1e766114d6bdefd9546e43",
+      "sha256": "1538eb751f525bb87a7072116a91e94645db5063af4899d7332afeac6c68367d",
       "lineCount": 1513,
       "classes": [
         {
@@ -74344,7 +74344,7 @@
           "name": "_FinanceDocDetailPageState",
           "line": 72,
           "role": "state-class",
-          "extends": "ConsumerState<FinanceDocDetailPage>\r\n    with NativeReadViewScopeMixin<FinanceDocDetailPage>"
+          "extends": "ConsumerState<FinanceDocDetailPage>\n    with NativeReadViewScopeMixin<FinanceDocDetailPage>"
         },
         {
           "name": "_KV",
@@ -74832,7 +74832,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00"
+          "targetSha256": "f6c96ff0d42989b4e1cbcc26883ab3d6fcddd248c5afc0f40311c133a9ccc6da"
         },
         {
           "directive": "import",
@@ -76998,7 +76998,7 @@
       "id": "page:finance/pages/finance_doc_edit_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_doc_edit_page.dart",
-      "sha256": "c7257cc799aac93dc3fed5563b7468777ccba8bbb564ac3470b832012fccae4b",
+      "sha256": "14d98d1eaef7abb6580e153c085ae238d1ed1fd883d17c1d92b99cecfaf8dcfe",
       "lineCount": 3237,
       "classes": [
         {
@@ -77011,7 +77011,7 @@
           "name": "_FinanceDocEditPageState",
           "line": 137,
           "role": "state-class",
-          "extends": "ConsumerState<FinanceDocEditPage>\r\n    with FormDraftMixin<FinanceDocEditPage>"
+          "extends": "ConsumerState<FinanceDocEditPage>\n    with FormDraftMixin<FinanceDocEditPage>"
         }
       ],
       "directImports": [
@@ -77913,7 +77913,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00"
+          "targetSha256": "f6c96ff0d42989b4e1cbcc26883ab3d6fcddd248c5afc0f40311c133a9ccc6da"
         },
         {
           "directive": "import",
@@ -77949,7 +77949,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "621850fe3d1e81c96dcb50181060876b220cc0e99c283f8be626c0153bafdf3e"
+          "targetSha256": "fe49093f0ce94e808c7a7083a882f809643bdc91838bc4c7197c34ed21e5e6d4"
         },
         {
           "directive": "import",
@@ -78045,7 +78045,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "21d0b2fa66b3ddbf7e00a2247e74c4e7f0aa24659a6a5678237a041f377cbfb5"
+          "targetSha256": "4ddcfec737a7781fa854be4a6d5e9917f9fe85ffa52d4f44c3b40c8a54207192"
         },
         {
           "directive": "import",
@@ -78081,7 +78081,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "11c8076dc5f432bde7a45d6dda7593a9179f6916c7256e6e0da1676815fc1980"
+          "targetSha256": "0fbf9909913810981bbda1bdc7972f1718f88daed756ab9b7f42f1e759ba4b54"
         },
         {
           "directive": "import",
@@ -78213,13 +78213,13 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f47e719a774934c8457232c593fa72ce8a9a87abf97f33b40a9be259e50117f2"
+          "targetSha256": "d3c249b10039437befa1fcf0490956573a0a134d2e7fff227cecb9571f94faa3"
         }
       ],
       "partUnits": [
         {
           "source": "lib/features/finance/pages/finance_doc_batch_entry.dart",
-          "sha256": "f47e719a774934c8457232c593fa72ce8a9a87abf97f33b40a9be259e50117f2",
+          "sha256": "d3c249b10039437befa1fcf0490956573a0a134d2e7fff227cecb9571f94faa3",
           "lineCount": 1298,
           "classes": [],
           "actionHandlers": [
@@ -81496,7 +81496,7 @@
       "id": "page:finance/pages/finance_doc_list_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_doc_list_page.dart",
-      "sha256": "87413fe38fadacee74e9d85590c1337880057f5f80743f914f5ed9088d729a51",
+      "sha256": "84cb53aa7ccaaf5a829e95a7e126052ef487e6300abd0479f856fd0e9dd0c7ac",
       "lineCount": 865,
       "classes": [
         {
@@ -81509,7 +81509,7 @@
           "name": "_FinanceDocListPageState",
           "line": 70,
           "role": "state-class",
-          "extends": "ConsumerState<FinanceDocListPage>\r\n    with\r\n        DraftBulkDeleteMixin<FinanceDocListPage>,\r\n        UtenRefreshParticipant<FinanceDocListPage>"
+          "extends": "ConsumerState<FinanceDocListPage>\n    with\n        DraftBulkDeleteMixin<FinanceDocListPage>,\n        UtenRefreshParticipant<FinanceDocListPage>"
         }
       ],
       "directImports": [
@@ -82039,7 +82039,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00"
+          "targetSha256": "f6c96ff0d42989b4e1cbcc26883ab3d6fcddd248c5afc0f40311c133a9ccc6da"
         },
         {
           "directive": "import",
@@ -89992,7 +89992,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00"
+          "targetSha256": "f6c96ff0d42989b4e1cbcc26883ab3d6fcddd248c5afc0f40311c133a9ccc6da"
         },
         {
           "directive": "import",
@@ -96899,7 +96899,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "46c89a4277c5810109c203fe719fa4768f4e57355067ce6cc6bc15f262536988"
+          "targetSha256": "f110e14374816c2352c18eeb11ac99bafa7738504f14f309579b4b1a80e2c5ab"
         },
         {
           "directive": "import",
@@ -168304,7 +168304,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "46c89a4277c5810109c203fe719fa4768f4e57355067ce6cc6bc15f262536988"
+          "targetSha256": "f110e14374816c2352c18eeb11ac99bafa7738504f14f309579b4b1a80e2c5ab"
         },
         {
           "directive": "import",
@@ -174499,7 +174499,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "46c89a4277c5810109c203fe719fa4768f4e57355067ce6cc6bc15f262536988"
+          "targetSha256": "f110e14374816c2352c18eeb11ac99bafa7738504f14f309579b4b1a80e2c5ab"
         },
         {
           "directive": "import",
@@ -274254,7 +274254,7 @@
     },
     {
       "source": "lib/features/finance/models/finance_doc.dart",
-      "sha256": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00",
+      "sha256": "f6c96ff0d42989b4e1cbcc26883ab3d6fcddd248c5afc0f40311c133a9ccc6da",
       "lineCount": 925
     },
     {
@@ -274354,22 +274354,22 @@
     },
     {
       "source": "lib/features/finance/pages/finance_doc_batch_entry.dart",
-      "sha256": "f47e719a774934c8457232c593fa72ce8a9a87abf97f33b40a9be259e50117f2",
+      "sha256": "d3c249b10039437befa1fcf0490956573a0a134d2e7fff227cecb9571f94faa3",
       "lineCount": 1298
     },
     {
       "source": "lib/features/finance/pages/finance_doc_detail_page.dart",
-      "sha256": "7f3266548b89ad4f9f14cf9296299052bb60b496ae1e766114d6bdefd9546e43",
+      "sha256": "1538eb751f525bb87a7072116a91e94645db5063af4899d7332afeac6c68367d",
       "lineCount": 1513
     },
     {
       "source": "lib/features/finance/pages/finance_doc_edit_page.dart",
-      "sha256": "c7257cc799aac93dc3fed5563b7468777ccba8bbb564ac3470b832012fccae4b",
+      "sha256": "14d98d1eaef7abb6580e153c085ae238d1ed1fd883d17c1d92b99cecfaf8dcfe",
       "lineCount": 3237
     },
     {
       "source": "lib/features/finance/pages/finance_doc_list_page.dart",
-      "sha256": "87413fe38fadacee74e9d85590c1337880057f5f80743f914f5ed9088d729a51",
+      "sha256": "84cb53aa7ccaaf5a829e95a7e126052ef487e6300abd0479f856fd0e9dd0c7ac",
       "lineCount": 865
     },
     {
@@ -274514,7 +274514,7 @@
     },
     {
       "source": "lib/features/finance/widgets/ar_ap_picker_dialog.dart",
-      "sha256": "21d0b2fa66b3ddbf7e00a2247e74c4e7f0aa24659a6a5678237a041f377cbfb5",
+      "sha256": "4ddcfec737a7781fa854be4a6d5e9917f9fe85ffa52d4f44c3b40c8a54207192",
       "lineCount": 1218
     },
     {
@@ -274619,7 +274619,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_entry_columns.dart",
-      "sha256": "621850fe3d1e81c96dcb50181060876b220cc0e99c283f8be626c0153bafdf3e",
+      "sha256": "fe49093f0ce94e808c7a7083a882f809643bdc91838bc4c7197c34ed21e5e6d4",
       "lineCount": 256
     },
     {
@@ -274639,7 +274639,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_grid_columns.dart",
-      "sha256": "11c8076dc5f432bde7a45d6dda7593a9179f6916c7256e6e0da1676815fc1980",
+      "sha256": "0fbf9909913810981bbda1bdc7972f1718f88daed756ab9b7f42f1e759ba4b54",
       "lineCount": 1009
     },
     {
@@ -278449,7 +278449,7 @@
     },
     {
       "source": "lib/shared/widgets/shipment_receivable_position_view.dart",
-      "sha256": "46c89a4277c5810109c203fe719fa4768f4e57355067ce6cc6bc15f262536988",
+      "sha256": "f110e14374816c2352c18eeb11ac99bafa7738504f14f309579b4b1a80e2c5ab",
       "lineCount": 228
     },
     {

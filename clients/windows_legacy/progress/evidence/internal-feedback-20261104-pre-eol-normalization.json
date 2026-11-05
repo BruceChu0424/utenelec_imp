@@ -4,138 +4,534 @@
   "localTaskCommit": "287343dc626d1db07d73d56826da44ac7b12dd1a",
   "gitCanonicalTree": "dafcb106ade53ea6df9377cd058ed7e301b5a6b4",
   "sourceSha256": {
-    "contracts/finance-entry-grouping-v1.json": "9bb2bbfd5b12814b0da36b18aa652fab5439d7c651d978ba88ad312dfab9b83a",
-    "lib/components/data_display/uten_detail_summary_card.dart": "a1053da25c56499dc8f08617c7e912c54efd00b80b8140f108667c161307a02c",
-    "lib/components/data_display/uten_revision_table.dart": "ee2e812b2911c85ca9b6f68e413ef5695bd06e0c9272b8dab63d96863e4f2cf1",
-    "lib/features/basic_data/models/goods_node.dart": "211c5cfcd8cc2d63d17b2915136253976a30688118fb8a3e99cdbeadc7114f27",
-    "lib/features/basic_data/widgets/uten_goods_picker.dart": "6fdda7d2057d9c3b2a051e487ddb591c7028e49f7b8706716004c48e8a46cef3",
-    "lib/features/finance/models/finance_doc.dart": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00",
-    "lib/features/finance/models/finance_entry_request.dart": "b8b68bf5e2e8a18b6fed4174bc599d0ae3801445dca7bff9318843e408d45f82",
-    "lib/features/finance/models/finance_entry_terms.dart": "cb93a081003bab97e643cbe6482ab60b40495ca3c40055c2bacf9801cec106fd",
-    "lib/features/finance/pages/finance_doc_batch_entry.dart": "f47e719a774934c8457232c593fa72ce8a9a87abf97f33b40a9be259e50117f2",
-    "lib/features/finance/pages/finance_doc_detail_page.dart": "7f3266548b89ad4f9f14cf9296299052bb60b496ae1e766114d6bdefd9546e43",
-    "lib/features/finance/pages/finance_doc_edit_page.dart": "c7257cc799aac93dc3fed5563b7468777ccba8bbb564ac3470b832012fccae4b",
-    "lib/features/finance/pages/finance_doc_list_page.dart": "87413fe38fadacee74e9d85590c1337880057f5f80743f914f5ed9088d729a51",
-    "lib/features/finance/pages/finance_sales_order_review_page.dart": "b1107ba28d69442cd8e01d4b4c2f352999157482049d618eaebfdc117e3fd72a",
-    "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart": "66b010ee588623631d27c636879a530cd14f45af1c8cac30764756bcf42aba43",
-    "lib/features/finance/widgets/ar_ap_picker_dialog.dart": "21d0b2fa66b3ddbf7e00a2247e74c4e7f0aa24659a6a5678237a041f377cbfb5",
-    "lib/features/finance/widgets/customer_prepayment_receipt_fields.dart": "03768607f867f309c66e0de09f992314bfb6e6b9bc8b91bc8beddf5bb8fc54ca",
-    "lib/features/finance/widgets/finance_actual_receipt_context.dart": "0f37f0c68297360b04d68666ff619bf541f319f7bab026ab5cb0e8ab38ff1a84",
-    "lib/features/finance/widgets/finance_entry_columns.dart": "621850fe3d1e81c96dcb50181060876b220cc0e99c283f8be626c0153bafdf3e",
-    "lib/features/finance/widgets/finance_grid_columns.dart": "11c8076dc5f432bde7a45d6dda7593a9179f6916c7256e6e0da1676815fc1980",
-    "lib/features/finance/widgets/receipt_order_collection_panel.dart": "7d322cdf73d27cdfd3bb2ab3d763f154ea32f86dea916a5d9528a8b0b0702645",
-    "lib/features/production/pages/material_analysis_aggregate_table.dart": "5097516f93658dae983d651293938269fe2bf4732df732964d6cfd0ec858ef58",
-    "lib/features/production/pages/material_analysis_material_table.dart": "a96f12003c8bbd759958d115506085e5f1c2d21bbe5ab7734deaae7196dda737",
-    "lib/features/production/pages/production_material_increment_create.dart": "2913ac28f560dfff38edc4b3c83be0f836d010dfe45021a06647245497cdac65",
-    "lib/features/production/pages/production_material_increment_pages.dart": "f58f23f9f12f5c57df0d364dc87800a9645f06eb9bfc5ac099f9c51b082eea69",
-    "lib/features/production/repositories/production_material_increment_repository.dart": "d99dda1d01ba6d21f71aa49533ae37f308a806676f5e1799a7bbd74e93c27090",
-    "lib/features/sales/models/sales_doc.dart": "cb7f9bc1c2fea82a9267f459ff320aadabb382f672362dbfecec1d82f0d7e83c",
-    "lib/features/sales/pages/sales_doc_detail_page.dart": "9438af547809e70a0f5cb0320320a76f92fec616cdad37ea3ed145991c463c68",
-    "lib/features/sales/pages/sales_doc_edit_page.dart": "a656f76218f3f5af644acd92ccc0090a3787869b8adfd326400bc32e5d8e7a29",
-    "lib/features/sales/pages/sales_doc_list_page.dart": "183749fd913fe99070d0fd62bfeac61828b2f1ae9b00c04d2f5884e9de9c88ff",
-    "lib/features/sales/repositories/sales_repository.dart": "671922bd9d289de67fcd23d2f61b3d5f19723ebeeb1ee84074679603a8282447",
-    "lib/features/sales/widgets/shipment_finance_change_summary.dart": "2a94e33b20b84a2243b013a24bf3e8216cbb906b35e8ccfb88133604c2607bf7",
-    "lib/features/warehouse/models/warehouse_form_draft_codec.dart": "018f949bbda8741dccd61799a162801d746857a8d10280c14816f2c1089f6b00",
-    "lib/features/warehouse/pages/inbound_arrival_registration_page.dart": "85fe6c743089ac5a907fe89bd8761055453bb396a34f54ead284d19ada655fe5",
-    "lib/features/warehouse/pages/production_finished_arrival_registration_page.dart": "737912befeb8a7d9ca241f6586fd31b5b2aa5bb7d749d85590ed70711c573103",
-    "lib/features/warehouse/widgets/inbound_registration_widgets.dart": "8a1dd5f6be19282f50980c388fbb9a97db2ce63c710f3e1fe9405e69dc15bef9",
-    "lib/features/warehouse/widgets/stock_grid_columns.dart": "3712364b95239e8a891aa28785ca9e0ae6df523120238935acdf1be890ffecce",
-    "lib/shared/attachments/business_attachment_section.dart": "4de6da3d8d6f401595d5b2c510a53a5a0e0ed0b3e16e878064b700bc4b4632d6",
-    "lib/shared/measurement/widgets/unit_weight_grid_column.dart": "f511cd614d16901e23a837ca6e7c4f56e902c06d371d41877f21d94350816fce",
-    "lib/shared/measurement/widgets/weight_grid_column.dart": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5",
-    "lib/shared/models/sales_order_money_position.dart": "5c27af4b45d725ba4d6b162115df9794147fd856692d3e840d8df6b4c8803ad4",
-    "lib/shared/models/shipment_receivable_position.dart": "fde0f96b40e6b26f9559c71b4a7cb2a3976d6e3a10ed358885c0f3f2d2ce492e",
-    "lib/shared/providers/list_refresh_provider.dart": "00d700bc777da95a22100cb5ec91c78206ba5fd83d2c0537b2ad57c41b165744",
-    "lib/shared/sales_review/sales_order_review.dart": "fa24d8ab14f0ad491b558911685e85ed9a8dbee0560dfda2df98544b18a90906",
-    "lib/shared/widgets/sales_order_money_position_view.dart": "761e78271111f67e8a6f79a669beb19a0af2d3039a639a663ebc988a256ee594",
-    "lib/shared/widgets/sales_order_money_summary_card.dart": "dd4ee792457342d980d2f8a2c5fc6396a950e198173d6d64ea6cc1faaaca8f21",
-    "lib/shared/widgets/sales_order_picker.dart": "45637af6a724e497ede2aa5db41649e1f345f2e158dffccd50592b5477f27442",
-    "lib/shared/widgets/shipment_receivable_position_view.dart": "46c89a4277c5810109c203fe719fa4768f4e57355067ce6cc6bc15f262536988",
-    "server/src/main/java/com/uten/imp/application/port/FinancePartyReferenceLabelsPort.java": "6397b73e6057ec8986e8d59869deaaef4f10481b6209dda1a5bb5d5a0af38cbd",
-    "server/src/main/java/com/uten/imp/application/port/SalesOrderMoneyReadPort.java": "ee4d46d0520dea6fd45bb12ca49e4becfdac907665a29fedae62719bb9369aeb",
-    "server/src/main/java/com/uten/imp/application/port/ShipmentReceivableFilterPort.java": "47172da6490d466f58e45f55fed2a636211cfb04a8ae9f25424f4ff685f03d35",
-    "server/src/main/java/com/uten/imp/application/port/ShipmentReceivablePositionPort.java": "48c7aea805ecc7e5d76a15474103d9aba3f327058f986dbb0475bbcdb33670ed",
-    "server/src/main/java/com/uten/imp/common/finance/ActualBankBookingPolicy.java": "598ea2280794955998a1aefaf6f3e8f9f24f60a0614cfad8d482154b41d3445f",
-    "server/src/main/java/com/uten/imp/features/finance/FinanceEntryGrouping.java": "8bffddb1448c94c5cf6adf3874a0a8e479b5184c378c55e65df0e41febaf94e4",
-    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierPrepaymentService.java": "8d5bedd6300b30e2c08ed807015f846045e61ce8688ef59ff4c8bbc0ae1f7eb8",
-    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementSnapshotSql.java": "431eeaed52924810246d1f5c56601a319658b7a787bc700b983ceac2e93d4a59",
-    "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java": "265a8431c1531df16e241cc214ea5062f47e158a794d43d5453cb258700932d0",
-    "server/src/main/java/com/uten/imp/features/finance/payment/dto/FinancePaymentDetail.java": "9fc3d8fb2c3de71ce0f0c03394c5c61db471de492f9d9d20a42282826980a6ba",
-    "server/src/main/java/com/uten/imp/features/finance/payment/dto/FinancePaymentListItem.java": "0924a307dcf448d81fffb3df138b202171c54862e733dcf44538b8a6d5c7b514",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/CustomerActualReceiptContext.java": "8c77e4365c95a0dce672a34ce6726a020a7e2fb32f37be9eb836c21514ff6e38",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceipt.java": "e7f6616b945755d596264c84b98ccc400f46beb4cd3707001d72b0bdb9f6da79",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptLine.java": "ac0b111b3b6d6d92f781ac9ae819a4b46ed26c1e499dbef23f60da7d0be717b9",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java": "10168b9bfd6e21663228bde476f7a62c9597e3230277f8ce2dc527ebc1e1c41d",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptUnapprovalAdapter.java": "3a257e47a92d67b97e6cc66f094071ba0428719c0509a7fdcfdcadad4f50af93",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/ReceiptCashPostingProof.java": "38800191f117aeb958f4921854a7ff4ee3c928b647a59f85bb49f7b8ae6a9941",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/ReceiptOrderCollectionController.java": "0ab847c4497d5a18a4067cec193cdbddb4c87cf6d8251a83340bf5a3e4d65b45",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptDetail.java": "852dcbe81df1f3b2878d62391d9646f21199dac20aa7986b78aedcbcce7b7901",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptLineDto.java": "3b16686ee715f2798db4438a5bd86134eb5e9ee42c13bd2f951df131a1f1140b",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptLineInput.java": "fcfcab0ba3658429c6c8bef976aec2d87434c1c4bb96a029c14413b3a7d96ee2",
-    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptListItem.java": "6db800c922098b32a4555e0eb94ce38a73bcaf4a84479bce9724c9ca56dded82",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentQueryService.java": "58ccfb5509d64b83fa0aedf6ca19056940fde36ddb58c1cebcb847bd901152fc",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/FinanceReceiptSourceAllocationService.java": "4b578ae38e7e78ebc1aade00a91b978de76870ee54a1779d7fb152ea0c52991d",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccess.java": "6ef9365dc4a62e928878c7fcc58aaf670bd9c01c80716034988437220a71c23a",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccess.java": "b8d3bd24a0d0b17f200bb3b8b943159cfa851f514e6fcc85332c49932408a325",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderCollectionPreviewService.java": "c85f1417a9b82857ad9ee6938bd21b21ccdc7209bfde24edb0f28845ca48f7a9",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderMoneyBatchReader.java": "0b36c606dee02e9872f6efba7062e275457620594e008e5d8e0aa9b3fdb55385",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderMoneyPositionQuery.java": "59bef7b558213d913b3eb439b37b763473252c6bb3e691c8ff229243c2e78adf",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderMoneyReadAdapter.java": "2dea54fbab759f295dfb51b992bdc952ddaebf489d4e378b0e29df3389c7b269",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/ShipmentReceivableFilterAdapter.java": "6fd854ba00b6c1b0ff1d257f6dcdbe6889070c61d58fcb4c6cbe35c8d857084f",
-    "server/src/main/java/com/uten/imp/features/finance/receivables/ShipmentReceivablePositionAdapter.java": "874b05f5e192014d78078b66da8fca630d9778f84e8ec3291a3431c1f7e95cc9",
-    "server/src/main/java/com/uten/imp/features/master/FinancePartyReferenceLabelsAdapter.java": "873d1a556d6e542397a39dd16fd7c1d71a414d176be99ff4e9557d1c5ee04f30",
-    "server/src/main/java/com/uten/imp/features/master/reference/GoodsReferenceProjection.java": "3b754cd07055745dedb11b7c683afc220863902f84dc9067307be6dbeaba2a91",
-    "server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialPreparationProjection.java": "40f94cc33ebb8fdea5db83b9c6aea3c239d5b8e550d10cb3679b7beb799b0d05",
-    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteAutoConfirm.java": "2846c31942c23a9eb85d351a18fb73b3fee5a32ea4a46edbcc1de54d8d63f6e5",
-    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java": "d2316e668aa02ebd1b70c702ead60183ce17523b78a27dbf69c22e75b06f53e8",
-    "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementContracts.java": "bc41eba51cacbd57cb68c4f48d05d30e1caa5491990552ff761b2ca0af13f842",
-    "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementController.java": "a67fe893cb6c6cbb2ea7f164f0487bb7b0b70e73c5551aa3dd68620956149931",
-    "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementService.java": "3fd51a71dbf7afa8f08b7175c2ec15a7ddb9feff6225869b7dcf7286b8b2ade2",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java": "c34a6b6fe620605f570266eedad82a8a76ac796e24c83e061205ccdf86e9fee2",
-    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java": "efdb8c426c4d5940ae450cbae39eb91f14e4181c2d4a0e5eec3fa96b2f32d839",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderListItem.java": "5fc91579fe8c51c8ddbef65279fd03c82158b0695c8541d9c4aacbf134c0a971",
-    "server/src/main/java/com/uten/imp/features/sales/order/dto/SalesOrderFinanceReviewDto.java": "cd8bbe701c47a3a5d1fb3b49f2dbe19f94fa17604304adcaaaaed828073a5660",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentController.java": "d652608f5ab43dd24c1a6b05bbd942cf9a79d1d74a9ee81324d1bf02701d2a64",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java": "50c0669bdb38dc56f050d3cf9d1cc3ce11468c61d35dd4dbee73735fce503be8",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/ShipmentDetail.java": "c9abfd09d8e3aff2d2237801d551bb86e8d676e95fc574c190050e290ed54835",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/ShipmentListItem.java": "5aa062d6272a5102db2c23a7ec1eed0cc10377a139fc792a03b33cfe4ffa4c6f",
-    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/ShipmentQueryFilter.java": "a0e11eadb83649f0e4cbfafd464d77e7b172640ba60b960f22ffe38b9bc463c8",
-    "server/src/main/resources/db/migration/V1049__receipt_explicit_order_collection_source.sql": "8eca6223790495b00603fb327c02d12533d7444414be626c2768919c6a326ff7",
-    "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentPartyReferenceHttpPostgresTest.java": "f3288b4a8a3b04f32bc60537b9a399d6896991c59c4b757267ed3b760a5316f8",
-    "server/src/test/java/com/uten/imp/businesschain/MaterialRouteAutoConfirmEndToEndTest.java": "4d97fb1d17d3c2345af580a1fe78b5d8423406ee11084529cca224277d677f49",
-    "server/src/test/java/com/uten/imp/businesschain/ProductionMaterialIncrementEndToEndTest.java": "19e351a66ee916bae0a14874e0d5abc4a1232ce36aa7cf3b760d3fc51c61dd15",
-    "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderAttributionPostgresTest.java": "b43c014d1638ef1f33251333dba9e9a66d77e1a34b2178b67a6cbca17250622f",
-    "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderLifecyclePostgresTest.java": "14d4fde51c432cbb6ea5d007f1981990d732ceafa9ee9ddab9ebc3b0a64866fa",
-    "server/src/test/java/com/uten/imp/businesschain/SalesFinanceInteractiveUatHarnessTest.java": "80f599f4bfa45bd4f299e590a89fa89d8211381b11577a4a8dcb2a44c9fb95e7",
-    "server/src/test/java/com/uten/imp/businesschain/ShipmentReceivableBatchFixture.java": "1b1582146a32eb9d09dede221461454245aa1c3bf7443bcb1298dff60205d6de",
-    "server/src/test/java/com/uten/imp/businesschain/SupplierPrepaymentPostgresTest.java": "a1f41b3542fe01def12f2a3b10e7594509cefa5f2b1a80f8fff7a121ded05f98",
-    "server/src/test/java/com/uten/imp/businesschain/WorkshopPublicSurplusEndToEndTest.java": "e0bf453eaa67a11c4b55ee84c60777fc12895f99b1fb1eab3e7eafe190011d11",
-    "server/src/test/java/com/uten/imp/common/finance/ActualBankBookingPolicyTest.java": "5d95d9312ec1cb496b07d564aa875e59e4138624b302ce431a4fdfec0d21bee9",
-    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierLegacyOpeningStatementPostgresTest.java": "76811bcbb5f4c348c8de877272ec927436ffe7cf8cb2c7b486e737793598ab6c",
-    "server/src/test/java/com/uten/imp/features/finance/payment/FinancePaymentSettlementPostgresTest.java": "45bd013aae4471da020235da4e43e71f498c096dbcb2ef052c2a1e1cc70813d2",
-    "server/src/test/java/com/uten/imp/features/finance/payment/FinancePaymentSettlementTest.java": "2a1893f72add3e10b358f8e26b309105efa196bf5afd40b0bc76fc10d5f39ce0",
-    "server/src/test/java/com/uten/imp/features/finance/receipt/FinanceReceiptKindFilterTest.java": "e59da92aa048506fea8a60bc5486ed87f1b808dc82a5e99eb9fdcb4be689d7d4",
-    "server/src/test/java/com/uten/imp/features/finance/receipt/FinanceReceiptSettlementTest.java": "fbf0acf3fd806021e2c389e2bb0c926edb72ff35565ef69c2dd267b6485ee142",
-    "server/src/test/java/com/uten/imp/features/finance/receipt/ReceiptSourcePermissionContractTest.java": "31486c116ffa210c2905785bce08e20c1c542ff5d4f330e5ae02eac90f572a73",
-    "server/src/test/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentSummaryPostgresTest.java": "004d2da6501cdfd40facec1dd3aad63650ec0cfe508188eb99d8a5dac1b0c432",
-    "server/src/test/java/com/uten/imp/features/finance/receivables/FinanceReceiptSourceAllocationExactTest.java": "ea7627f0b7cc26fe6b7d28f182d9bcec393aaae2922ac57e05c44828b0adfe20",
-    "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccessTest.java": "cccd5dcf5eaaeb248f11fd6203a49d36852e591eb7f2eb25fb99547adfdc2581",
-    "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccessTest.java": "bbcca26a862b802c6582bb65cfd7bafd41790358db014487f6b3e3d0d0e941d0",
-    "server/src/test/java/com/uten/imp/features/finance/receivables/SalesOrderCollectionPreviewTest.java": "125e292f2fa0c067f7fea49943e3f6aa155aec6efbb4b52d9a2a09d35b0821e9",
-    "server/src/test/java/com/uten/imp/features/finance/receivables/ShipmentReceivableFilterAdapterTest.java": "ed85feb8b4f7ee4ca4d97ccd8222cc79db817a926dc07c51bf28d80abd8823db",
-    "server/src/test/java/com/uten/imp/features/finance/receivables/ShipmentReceivablePositionAdapterTest.java": "1cb335941b19430c3af4a6ad3b4d39f02573f8a385eb2f49c5e870271646102d",
-    "server/src/test/java/com/uten/imp/features/master/FinancePartyReferenceLabelsAdapterTest.java": "a7a1bf9564c8b4fdff3336760fd3747d7a559a780a0c20717b81184eff92c941",
-    "server/src/test/java/com/uten/imp/features/master/reference/GoodsReferenceProjectionTest.java": "33cf987b34697d6998eaeb94f3d96f08ab6b3674a0b941f0753119bd095da377",
-    "server/src/test/java/com/uten/imp/features/production/analysis/AggregateMaterialSourceEligibilityTest.java": "3c5dfb8dcbce7cdd341512bac7097c74a91d320dc5370943aeced67680c8d46b",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisCoveredStockOrderTest.java": "4dfd8597587788dffff7c594d24ced20f031f039a190a3c99cd6a90607e679e4",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisOneTableContractTest.java": "2b3bdad2cda1a48c7ecae8d629a3e2be8c72873dd9c6db6bcd1118d01a47d545",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteAutoConfirmTest.java": "ae423c28d9f2c18550ee901b6c9f85c82ec66a6d83e7a3d8f66e4ea2a65ae8c8",
-    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteGroupIndexTest.java": "eed48d01ca8bb8afe6463e17cfcb9160817c70f3ed3b33cf58d4d9722758ca30",
-    "server/src/test/java/com/uten/imp/features/sales/order/OrderListEmployeeProjectionTest.java": "2bc5978fe5a1f87c50521e0dd47fe95e2282b929a8e2b2355a3cc33531e55ed5",
-    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesFinanceSnapshotIsolationContractTest.java": "36935b72c3f89d8de8f4886c55d0e59133942b5c17c335fcf27f0428c7ae9989",
-    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesFinanceSnapshotIsolationPostgresTest.java": "c6216510ed727dd6b51ce22d6ae946d44e6130b36139597ea6ac34644f35110e",
-    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOrderMoneySnapshotTest.java": "f01c39d02e0430b53e05fa2aa9e971d462c4e0eeaa6ebe07b624b088690ecae3",
-    "server/src/test/java/com/uten/imp/features/sales/shipment/ShipmentReceivablePositionConsumerTest.java": "1148705384258ac39ee09530b03af0dc07fee60445fc2ce91fa6484dbd8c40f9"
+    "contracts/finance-entry-grouping-v1.json": {
+      "algorithm": "sha256",
+      "digest": "9bb2bbfd5b12814b0da36b18aa652fab5439d7c651d978ba88ad312dfab9b83a"
+    },
+    "lib/components/data_display/uten_detail_summary_card.dart": {
+      "algorithm": "sha256",
+      "digest": "a1053da25c56499dc8f08617c7e912c54efd00b80b8140f108667c161307a02c"
+    },
+    "lib/components/data_display/uten_revision_table.dart": {
+      "algorithm": "sha256",
+      "digest": "ee2e812b2911c85ca9b6f68e413ef5695bd06e0c9272b8dab63d96863e4f2cf1"
+    },
+    "lib/features/basic_data/models/goods_node.dart": {
+      "algorithm": "sha256",
+      "digest": "211c5cfcd8cc2d63d17b2915136253976a30688118fb8a3e99cdbeadc7114f27"
+    },
+    "lib/features/basic_data/widgets/uten_goods_picker.dart": {
+      "algorithm": "sha256",
+      "digest": "6fdda7d2057d9c3b2a051e487ddb591c7028e49f7b8706716004c48e8a46cef3"
+    },
+    "lib/features/finance/models/finance_doc.dart": {
+      "algorithm": "sha256",
+      "digest": "5c19593c4a4b5b48c01ee6666202b64b7f0c8476dbf3f4c0ed2bcaa5c8637a00"
+    },
+    "lib/features/finance/models/finance_entry_request.dart": {
+      "algorithm": "sha256",
+      "digest": "b8b68bf5e2e8a18b6fed4174bc599d0ae3801445dca7bff9318843e408d45f82"
+    },
+    "lib/features/finance/models/finance_entry_terms.dart": {
+      "algorithm": "sha256",
+      "digest": "cb93a081003bab97e643cbe6482ab60b40495ca3c40055c2bacf9801cec106fd"
+    },
+    "lib/features/finance/pages/finance_doc_batch_entry.dart": {
+      "algorithm": "sha256",
+      "digest": "f47e719a774934c8457232c593fa72ce8a9a87abf97f33b40a9be259e50117f2"
+    },
+    "lib/features/finance/pages/finance_doc_detail_page.dart": {
+      "algorithm": "sha256",
+      "digest": "7f3266548b89ad4f9f14cf9296299052bb60b496ae1e766114d6bdefd9546e43"
+    },
+    "lib/features/finance/pages/finance_doc_edit_page.dart": {
+      "algorithm": "sha256",
+      "digest": "c7257cc799aac93dc3fed5563b7468777ccba8bbb564ac3470b832012fccae4b"
+    },
+    "lib/features/finance/pages/finance_doc_list_page.dart": {
+      "algorithm": "sha256",
+      "digest": "87413fe38fadacee74e9d85590c1337880057f5f80743f914f5ed9088d729a51"
+    },
+    "lib/features/finance/pages/finance_sales_order_review_page.dart": {
+      "algorithm": "sha256",
+      "digest": "b1107ba28d69442cd8e01d4b4c2f352999157482049d618eaebfdc117e3fd72a"
+    },
+    "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart": {
+      "algorithm": "sha256",
+      "digest": "66b010ee588623631d27c636879a530cd14f45af1c8cac30764756bcf42aba43"
+    },
+    "lib/features/finance/widgets/ar_ap_picker_dialog.dart": {
+      "algorithm": "sha256",
+      "digest": "21d0b2fa66b3ddbf7e00a2247e74c4e7f0aa24659a6a5678237a041f377cbfb5"
+    },
+    "lib/features/finance/widgets/customer_prepayment_receipt_fields.dart": {
+      "algorithm": "sha256",
+      "digest": "03768607f867f309c66e0de09f992314bfb6e6b9bc8b91bc8beddf5bb8fc54ca"
+    },
+    "lib/features/finance/widgets/finance_actual_receipt_context.dart": {
+      "algorithm": "sha256",
+      "digest": "0f37f0c68297360b04d68666ff619bf541f319f7bab026ab5cb0e8ab38ff1a84"
+    },
+    "lib/features/finance/widgets/finance_entry_columns.dart": {
+      "algorithm": "sha256",
+      "digest": "621850fe3d1e81c96dcb50181060876b220cc0e99c283f8be626c0153bafdf3e"
+    },
+    "lib/features/finance/widgets/finance_grid_columns.dart": {
+      "algorithm": "sha256",
+      "digest": "11c8076dc5f432bde7a45d6dda7593a9179f6916c7256e6e0da1676815fc1980"
+    },
+    "lib/features/finance/widgets/receipt_order_collection_panel.dart": {
+      "algorithm": "sha256",
+      "digest": "7d322cdf73d27cdfd3bb2ab3d763f154ea32f86dea916a5d9528a8b0b0702645"
+    },
+    "lib/features/production/pages/material_analysis_aggregate_table.dart": {
+      "algorithm": "sha256",
+      "digest": "5097516f93658dae983d651293938269fe2bf4732df732964d6cfd0ec858ef58"
+    },
+    "lib/features/production/pages/material_analysis_material_table.dart": {
+      "algorithm": "sha256",
+      "digest": "a96f12003c8bbd759958d115506085e5f1c2d21bbe5ab7734deaae7196dda737"
+    },
+    "lib/features/production/pages/production_material_increment_create.dart": {
+      "algorithm": "sha256",
+      "digest": "2913ac28f560dfff38edc4b3c83be0f836d010dfe45021a06647245497cdac65"
+    },
+    "lib/features/production/pages/production_material_increment_pages.dart": {
+      "algorithm": "sha256",
+      "digest": "f58f23f9f12f5c57df0d364dc87800a9645f06eb9bfc5ac099f9c51b082eea69"
+    },
+    "lib/features/production/repositories/production_material_increment_repository.dart": {
+      "algorithm": "sha256",
+      "digest": "d99dda1d01ba6d21f71aa49533ae37f308a806676f5e1799a7bbd74e93c27090"
+    },
+    "lib/features/sales/models/sales_doc.dart": {
+      "algorithm": "sha256",
+      "digest": "cb7f9bc1c2fea82a9267f459ff320aadabb382f672362dbfecec1d82f0d7e83c"
+    },
+    "lib/features/sales/pages/sales_doc_detail_page.dart": {
+      "algorithm": "sha256",
+      "digest": "9438af547809e70a0f5cb0320320a76f92fec616cdad37ea3ed145991c463c68"
+    },
+    "lib/features/sales/pages/sales_doc_edit_page.dart": {
+      "algorithm": "sha256",
+      "digest": "a656f76218f3f5af644acd92ccc0090a3787869b8adfd326400bc32e5d8e7a29"
+    },
+    "lib/features/sales/pages/sales_doc_list_page.dart": {
+      "algorithm": "sha256",
+      "digest": "183749fd913fe99070d0fd62bfeac61828b2f1ae9b00c04d2f5884e9de9c88ff"
+    },
+    "lib/features/sales/repositories/sales_repository.dart": {
+      "algorithm": "sha256",
+      "digest": "671922bd9d289de67fcd23d2f61b3d5f19723ebeeb1ee84074679603a8282447"
+    },
+    "lib/features/sales/widgets/shipment_finance_change_summary.dart": {
+      "algorithm": "sha256",
+      "digest": "2a94e33b20b84a2243b013a24bf3e8216cbb906b35e8ccfb88133604c2607bf7"
+    },
+    "lib/features/warehouse/models/warehouse_form_draft_codec.dart": {
+      "algorithm": "sha256",
+      "digest": "018f949bbda8741dccd61799a162801d746857a8d10280c14816f2c1089f6b00"
+    },
+    "lib/features/warehouse/pages/inbound_arrival_registration_page.dart": {
+      "algorithm": "sha256",
+      "digest": "85fe6c743089ac5a907fe89bd8761055453bb396a34f54ead284d19ada655fe5"
+    },
+    "lib/features/warehouse/pages/production_finished_arrival_registration_page.dart": {
+      "algorithm": "sha256",
+      "digest": "737912befeb8a7d9ca241f6586fd31b5b2aa5bb7d749d85590ed70711c573103"
+    },
+    "lib/features/warehouse/widgets/inbound_registration_widgets.dart": {
+      "algorithm": "sha256",
+      "digest": "8a1dd5f6be19282f50980c388fbb9a97db2ce63c710f3e1fe9405e69dc15bef9"
+    },
+    "lib/features/warehouse/widgets/stock_grid_columns.dart": {
+      "algorithm": "sha256",
+      "digest": "3712364b95239e8a891aa28785ca9e0ae6df523120238935acdf1be890ffecce"
+    },
+    "lib/shared/attachments/business_attachment_section.dart": {
+      "algorithm": "sha256",
+      "digest": "4de6da3d8d6f401595d5b2c510a53a5a0e0ed0b3e16e878064b700bc4b4632d6"
+    },
+    "lib/shared/measurement/widgets/unit_weight_grid_column.dart": {
+      "algorithm": "sha256",
+      "digest": "f511cd614d16901e23a837ca6e7c4f56e902c06d371d41877f21d94350816fce"
+    },
+    "lib/shared/measurement/widgets/weight_grid_column.dart": {
+      "algorithm": "sha256",
+      "digest": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5"
+    },
+    "lib/shared/models/sales_order_money_position.dart": {
+      "algorithm": "sha256",
+      "digest": "5c27af4b45d725ba4d6b162115df9794147fd856692d3e840d8df6b4c8803ad4"
+    },
+    "lib/shared/models/shipment_receivable_position.dart": {
+      "algorithm": "sha256",
+      "digest": "fde0f96b40e6b26f9559c71b4a7cb2a3976d6e3a10ed358885c0f3f2d2ce492e"
+    },
+    "lib/shared/providers/list_refresh_provider.dart": {
+      "algorithm": "sha256",
+      "digest": "00d700bc777da95a22100cb5ec91c78206ba5fd83d2c0537b2ad57c41b165744"
+    },
+    "lib/shared/sales_review/sales_order_review.dart": {
+      "algorithm": "sha256",
+      "digest": "fa24d8ab14f0ad491b558911685e85ed9a8dbee0560dfda2df98544b18a90906"
+    },
+    "lib/shared/widgets/sales_order_money_position_view.dart": {
+      "algorithm": "sha256",
+      "digest": "761e78271111f67e8a6f79a669beb19a0af2d3039a639a663ebc988a256ee594"
+    },
+    "lib/shared/widgets/sales_order_money_summary_card.dart": {
+      "algorithm": "sha256",
+      "digest": "dd4ee792457342d980d2f8a2c5fc6396a950e198173d6d64ea6cc1faaaca8f21"
+    },
+    "lib/shared/widgets/sales_order_picker.dart": {
+      "algorithm": "sha256",
+      "digest": "45637af6a724e497ede2aa5db41649e1f345f2e158dffccd50592b5477f27442"
+    },
+    "lib/shared/widgets/shipment_receivable_position_view.dart": {
+      "algorithm": "sha256",
+      "digest": "46c89a4277c5810109c203fe719fa4768f4e57355067ce6cc6bc15f262536988"
+    },
+    "server/src/main/java/com/uten/imp/application/port/FinancePartyReferenceLabelsPort.java": {
+      "algorithm": "sha256",
+      "digest": "6397b73e6057ec8986e8d59869deaaef4f10481b6209dda1a5bb5d5a0af38cbd"
+    },
+    "server/src/main/java/com/uten/imp/application/port/SalesOrderMoneyReadPort.java": {
+      "algorithm": "sha256",
+      "digest": "ee4d46d0520dea6fd45bb12ca49e4becfdac907665a29fedae62719bb9369aeb"
+    },
+    "server/src/main/java/com/uten/imp/application/port/ShipmentReceivableFilterPort.java": {
+      "algorithm": "sha256",
+      "digest": "47172da6490d466f58e45f55fed2a636211cfb04a8ae9f25424f4ff685f03d35"
+    },
+    "server/src/main/java/com/uten/imp/application/port/ShipmentReceivablePositionPort.java": {
+      "algorithm": "sha256",
+      "digest": "48c7aea805ecc7e5d76a15474103d9aba3f327058f986dbb0475bbcdb33670ed"
+    },
+    "server/src/main/java/com/uten/imp/common/finance/ActualBankBookingPolicy.java": {
+      "algorithm": "sha256",
+      "digest": "598ea2280794955998a1aefaf6f3e8f9f24f60a0614cfad8d482154b41d3445f"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/FinanceEntryGrouping.java": {
+      "algorithm": "sha256",
+      "digest": "8bffddb1448c94c5cf6adf3874a0a8e479b5184c378c55e65df0e41febaf94e4"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierPrepaymentService.java": {
+      "algorithm": "sha256",
+      "digest": "8d5bedd6300b30e2c08ed807015f846045e61ce8688ef59ff4c8bbc0ae1f7eb8"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementSnapshotSql.java": {
+      "algorithm": "sha256",
+      "digest": "431eeaed52924810246d1f5c56601a319658b7a787bc700b983ceac2e93d4a59"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java": {
+      "algorithm": "sha256",
+      "digest": "265a8431c1531df16e241cc214ea5062f47e158a794d43d5453cb258700932d0"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payment/dto/FinancePaymentDetail.java": {
+      "algorithm": "sha256",
+      "digest": "9fc3d8fb2c3de71ce0f0c03394c5c61db471de492f9d9d20a42282826980a6ba"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/payment/dto/FinancePaymentListItem.java": {
+      "algorithm": "sha256",
+      "digest": "0924a307dcf448d81fffb3df138b202171c54862e733dcf44538b8a6d5c7b514"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/CustomerActualReceiptContext.java": {
+      "algorithm": "sha256",
+      "digest": "8c77e4365c95a0dce672a34ce6726a020a7e2fb32f37be9eb836c21514ff6e38"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceipt.java": {
+      "algorithm": "sha256",
+      "digest": "e7f6616b945755d596264c84b98ccc400f46beb4cd3707001d72b0bdb9f6da79"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptLine.java": {
+      "algorithm": "sha256",
+      "digest": "ac0b111b3b6d6d92f781ac9ae819a4b46ed26c1e499dbef23f60da7d0be717b9"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java": {
+      "algorithm": "sha256",
+      "digest": "10168b9bfd6e21663228bde476f7a62c9597e3230277f8ce2dc527ebc1e1c41d"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptUnapprovalAdapter.java": {
+      "algorithm": "sha256",
+      "digest": "3a257e47a92d67b97e6cc66f094071ba0428719c0509a7fdcfdcadad4f50af93"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/ReceiptCashPostingProof.java": {
+      "algorithm": "sha256",
+      "digest": "38800191f117aeb958f4921854a7ff4ee3c928b647a59f85bb49f7b8ae6a9941"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/ReceiptOrderCollectionController.java": {
+      "algorithm": "sha256",
+      "digest": "0ab847c4497d5a18a4067cec193cdbddb4c87cf6d8251a83340bf5a3e4d65b45"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptDetail.java": {
+      "algorithm": "sha256",
+      "digest": "852dcbe81df1f3b2878d62391d9646f21199dac20aa7986b78aedcbcce7b7901"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptLineDto.java": {
+      "algorithm": "sha256",
+      "digest": "3b16686ee715f2798db4438a5bd86134eb5e9ee42c13bd2f951df131a1f1140b"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptLineInput.java": {
+      "algorithm": "sha256",
+      "digest": "fcfcab0ba3658429c6c8bef976aec2d87434c1c4bb96a029c14413b3a7d96ee2"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptListItem.java": {
+      "algorithm": "sha256",
+      "digest": "6db800c922098b32a4555e0eb94ce38a73bcaf4a84479bce9724c9ca56dded82"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentQueryService.java": {
+      "algorithm": "sha256",
+      "digest": "58ccfb5509d64b83fa0aedf6ca19056940fde36ddb58c1cebcb847bd901152fc"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/FinanceReceiptSourceAllocationService.java": {
+      "algorithm": "sha256",
+      "digest": "4b578ae38e7e78ebc1aade00a91b978de76870ee54a1779d7fb152ea0c52991d"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccess.java": {
+      "algorithm": "sha256",
+      "digest": "6ef9365dc4a62e928878c7fcc58aaf670bd9c01c80716034988437220a71c23a"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccess.java": {
+      "algorithm": "sha256",
+      "digest": "b8d3bd24a0d0b17f200bb3b8b943159cfa851f514e6fcc85332c49932408a325"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderCollectionPreviewService.java": {
+      "algorithm": "sha256",
+      "digest": "c85f1417a9b82857ad9ee6938bd21b21ccdc7209bfde24edb0f28845ca48f7a9"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderMoneyBatchReader.java": {
+      "algorithm": "sha256",
+      "digest": "0b36c606dee02e9872f6efba7062e275457620594e008e5d8e0aa9b3fdb55385"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderMoneyPositionQuery.java": {
+      "algorithm": "sha256",
+      "digest": "59bef7b558213d913b3eb439b37b763473252c6bb3e691c8ff229243c2e78adf"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/SalesOrderMoneyReadAdapter.java": {
+      "algorithm": "sha256",
+      "digest": "2dea54fbab759f295dfb51b992bdc952ddaebf489d4e378b0e29df3389c7b269"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/ShipmentReceivableFilterAdapter.java": {
+      "algorithm": "sha256",
+      "digest": "6fd854ba00b6c1b0ff1d257f6dcdbe6889070c61d58fcb4c6cbe35c8d857084f"
+    },
+    "server/src/main/java/com/uten/imp/features/finance/receivables/ShipmentReceivablePositionAdapter.java": {
+      "algorithm": "sha256",
+      "digest": "874b05f5e192014d78078b66da8fca630d9778f84e8ec3291a3431c1f7e95cc9"
+    },
+    "server/src/main/java/com/uten/imp/features/master/FinancePartyReferenceLabelsAdapter.java": {
+      "algorithm": "sha256",
+      "digest": "873d1a556d6e542397a39dd16fd7c1d71a414d176be99ff4e9557d1c5ee04f30"
+    },
+    "server/src/main/java/com/uten/imp/features/master/reference/GoodsReferenceProjection.java": {
+      "algorithm": "sha256",
+      "digest": "3b754cd07055745dedb11b7c683afc220863902f84dc9067307be6dbeaba2a91"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialPreparationProjection.java": {
+      "algorithm": "sha256",
+      "digest": "40f94cc33ebb8fdea5db83b9c6aea3c239d5b8e550d10cb3679b7beb799b0d05"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteAutoConfirm.java": {
+      "algorithm": "sha256",
+      "digest": "2846c31942c23a9eb85d351a18fb73b3fee5a32ea4a46edbcc1de54d8d63f6e5"
+    },
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java": {
+      "algorithm": "sha256",
+      "digest": "d2316e668aa02ebd1b70c702ead60183ce17523b78a27dbf69c22e75b06f53e8"
+    },
+    "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementContracts.java": {
+      "algorithm": "sha256",
+      "digest": "bc41eba51cacbd57cb68c4f48d05d30e1caa5491990552ff761b2ca0af13f842"
+    },
+    "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementController.java": {
+      "algorithm": "sha256",
+      "digest": "a67fe893cb6c6cbb2ea7f164f0487bb7b0b70e73c5551aa3dd68620956149931"
+    },
+    "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementService.java": {
+      "algorithm": "sha256",
+      "digest": "3fd51a71dbf7afa8f08b7175c2ec15a7ddb9feff6225869b7dcf7286b8b2ade2"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java": {
+      "algorithm": "sha256",
+      "digest": "c34a6b6fe620605f570266eedad82a8a76ac796e24c83e061205ccdf86e9fee2"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java": {
+      "algorithm": "sha256",
+      "digest": "efdb8c426c4d5940ae450cbae39eb91f14e4181c2d4a0e5eec3fa96b2f32d839"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderListItem.java": {
+      "algorithm": "sha256",
+      "digest": "5fc91579fe8c51c8ddbef65279fd03c82158b0695c8541d9c4aacbf134c0a971"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/SalesOrderFinanceReviewDto.java": {
+      "algorithm": "sha256",
+      "digest": "cd8bbe701c47a3a5d1fb3b49f2dbe19f94fa17604304adcaaaaed828073a5660"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentController.java": {
+      "algorithm": "sha256",
+      "digest": "d652608f5ab43dd24c1a6b05bbd942cf9a79d1d74a9ee81324d1bf02701d2a64"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java": {
+      "algorithm": "sha256",
+      "digest": "50c0669bdb38dc56f050d3cf9d1cc3ce11468c61d35dd4dbee73735fce503be8"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/ShipmentDetail.java": {
+      "algorithm": "sha256",
+      "digest": "c9abfd09d8e3aff2d2237801d551bb86e8d676e95fc574c190050e290ed54835"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/ShipmentListItem.java": {
+      "algorithm": "sha256",
+      "digest": "5aa062d6272a5102db2c23a7ec1eed0cc10377a139fc792a03b33cfe4ffa4c6f"
+    },
+    "server/src/main/java/com/uten/imp/features/sales/shipment/dto/ShipmentQueryFilter.java": {
+      "algorithm": "sha256",
+      "digest": "a0e11eadb83649f0e4cbfafd464d77e7b172640ba60b960f22ffe38b9bc463c8"
+    },
+    "server/src/main/resources/db/migration/V1049__receipt_explicit_order_collection_source.sql": {
+      "algorithm": "sha256",
+      "digest": "8eca6223790495b00603fb327c02d12533d7444414be626c2768919c6a326ff7"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentPartyReferenceHttpPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "f3288b4a8a3b04f32bc60537b9a399d6896991c59c4b757267ed3b760a5316f8"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/MaterialRouteAutoConfirmEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "4d97fb1d17d3c2345af580a1fe78b5d8423406ee11084529cca224277d677f49"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/ProductionMaterialIncrementEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "19e351a66ee916bae0a14874e0d5abc4a1232ce36aa7cf3b760d3fc51c61dd15"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderAttributionPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "b43c014d1638ef1f33251333dba9e9a66d77e1a34b2178b67a6cbca17250622f"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderLifecyclePostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "14d4fde51c432cbb6ea5d007f1981990d732ceafa9ee9ddab9ebc3b0a64866fa"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SalesFinanceInteractiveUatHarnessTest.java": {
+      "algorithm": "sha256",
+      "digest": "80f599f4bfa45bd4f299e590a89fa89d8211381b11577a4a8dcb2a44c9fb95e7"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/ShipmentReceivableBatchFixture.java": {
+      "algorithm": "sha256",
+      "digest": "1b1582146a32eb9d09dede221461454245aa1c3bf7443bcb1298dff60205d6de"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/SupplierPrepaymentPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "a1f41b3542fe01def12f2a3b10e7594509cefa5f2b1a80f8fff7a121ded05f98"
+    },
+    "server/src/test/java/com/uten/imp/businesschain/WorkshopPublicSurplusEndToEndTest.java": {
+      "algorithm": "sha256",
+      "digest": "e0bf453eaa67a11c4b55ee84c60777fc12895f99b1fb1eab3e7eafe190011d11"
+    },
+    "server/src/test/java/com/uten/imp/common/finance/ActualBankBookingPolicyTest.java": {
+      "algorithm": "sha256",
+      "digest": "5d95d9312ec1cb496b07d564aa875e59e4138624b302ce431a4fdfec0d21bee9"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payables/SupplierLegacyOpeningStatementPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "76811bcbb5f4c348c8de877272ec927436ffe7cf8cb2c7b486e737793598ab6c"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payment/FinancePaymentSettlementPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "45bd013aae4471da020235da4e43e71f498c096dbcb2ef052c2a1e1cc70813d2"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/payment/FinancePaymentSettlementTest.java": {
+      "algorithm": "sha256",
+      "digest": "2a1893f72add3e10b358f8e26b309105efa196bf5afd40b0bc76fc10d5f39ce0"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receipt/FinanceReceiptKindFilterTest.java": {
+      "algorithm": "sha256",
+      "digest": "e59da92aa048506fea8a60bc5486ed87f1b808dc82a5e99eb9fdcb4be689d7d4"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receipt/FinanceReceiptSettlementTest.java": {
+      "algorithm": "sha256",
+      "digest": "fbf0acf3fd806021e2c389e2bb0c926edb72ff35565ef69c2dd267b6485ee142"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receipt/ReceiptSourcePermissionContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "31486c116ffa210c2905785bce08e20c1c542ff5d4f330e5ae02eac90f572a73"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentSummaryPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "004d2da6501cdfd40facec1dd3aad63650ec0cfe508188eb99d8a5dac1b0c432"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receivables/FinanceReceiptSourceAllocationExactTest.java": {
+      "algorithm": "sha256",
+      "digest": "ea7627f0b7cc26fe6b7d28f182d9bcec393aaae2922ac57e05c44828b0adfe20"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccessTest.java": {
+      "algorithm": "sha256",
+      "digest": "cccd5dcf5eaaeb248f11fd6203a49d36852e591eb7f2eb25fb99547adfdc2581"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccessTest.java": {
+      "algorithm": "sha256",
+      "digest": "bbcca26a862b802c6582bb65cfd7bafd41790358db014487f6b3e3d0d0e941d0"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receivables/SalesOrderCollectionPreviewTest.java": {
+      "algorithm": "sha256",
+      "digest": "125e292f2fa0c067f7fea49943e3f6aa155aec6efbb4b52d9a2a09d35b0821e9"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receivables/ShipmentReceivableFilterAdapterTest.java": {
+      "algorithm": "sha256",
+      "digest": "ed85feb8b4f7ee4ca4d97ccd8222cc79db817a926dc07c51bf28d80abd8823db"
+    },
+    "server/src/test/java/com/uten/imp/features/finance/receivables/ShipmentReceivablePositionAdapterTest.java": {
+      "algorithm": "sha256",
+      "digest": "1cb335941b19430c3af4a6ad3b4d39f02573f8a385eb2f49c5e870271646102d"
+    },
+    "server/src/test/java/com/uten/imp/features/master/FinancePartyReferenceLabelsAdapterTest.java": {
+      "algorithm": "sha256",
+      "digest": "a7a1bf9564c8b4fdff3336760fd3747d7a559a780a0c20717b81184eff92c941"
+    },
+    "server/src/test/java/com/uten/imp/features/master/reference/GoodsReferenceProjectionTest.java": {
+      "algorithm": "sha256",
+      "digest": "33cf987b34697d6998eaeb94f3d96f08ab6b3674a0b941f0753119bd095da377"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/AggregateMaterialSourceEligibilityTest.java": {
+      "algorithm": "sha256",
+      "digest": "3c5dfb8dcbce7cdd341512bac7097c74a91d320dc5370943aeced67680c8d46b"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisCoveredStockOrderTest.java": {
+      "algorithm": "sha256",
+      "digest": "4dfd8597587788dffff7c594d24ced20f031f039a190a3c99cd6a90607e679e4"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisOneTableContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "2b3bdad2cda1a48c7ecae8d629a3e2be8c72873dd9c6db6bcd1118d01a47d545"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteAutoConfirmTest.java": {
+      "algorithm": "sha256",
+      "digest": "ae423c28d9f2c18550ee901b6c9f85c82ec66a6d83e7a3d8f66e4ea2a65ae8c8"
+    },
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteGroupIndexTest.java": {
+      "algorithm": "sha256",
+      "digest": "eed48d01ca8bb8afe6463e17cfcb9160817c70f3ed3b33cf58d4d9722758ca30"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/order/OrderListEmployeeProjectionTest.java": {
+      "algorithm": "sha256",
+      "digest": "2bc5978fe5a1f87c50521e0dd47fe95e2282b929a8e2b2355a3cc33531e55ed5"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesFinanceSnapshotIsolationContractTest.java": {
+      "algorithm": "sha256",
+      "digest": "36935b72c3f89d8de8f4886c55d0e59133942b5c17c335fcf27f0428c7ae9989"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesFinanceSnapshotIsolationPostgresTest.java": {
+      "algorithm": "sha256",
+      "digest": "c6216510ed727dd6b51ce22d6ae946d44e6130b36139597ea6ac34644f35110e"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOrderMoneySnapshotTest.java": {
+      "algorithm": "sha256",
+      "digest": "f01c39d02e0430b53e05fa2aa9e971d462c4e0eeaa6ebe07b624b088690ecae3"
+    },
+    "server/src/test/java/com/uten/imp/features/sales/shipment/ShipmentReceivablePositionConsumerTest.java": {
+      "algorithm": "sha256",
+      "digest": "1148705384258ac39ee09530b03af0dc07fee60445fc2ce91fa6484dbd8c40f9"
+    }
   },
   "verifiedRootFreezes": {
     "frontend-complete-final-source-freeze": {
@@ -587,5 +983,6 @@
     "shipmentAttachments": "Final real read-only attachment authorized/nonempty layout regression97/97 passed build/shipment-attachments-final-regression.log; product source remains frozen.",
     "taskFixtureCleanup": "Root verified all11 task-owned PostgreSQL container IDs naturally removed; build/task-fixture-cleanup-final.json. No company data writes; temp font/render/dependency/UAT markers locally ignored, not committed source."
   },
-  "trainingPdfSha256": "1d3da8d3e63ba2de0fcb03e9bb10e49800be15670c79ab9b2ee86c7ca5165360"
+  "trainingPdfSha256": "1d3da8d3e63ba2de0fcb03e9bb10e49800be15670c79ab9b2ee86c7ca5165360",
+  "sourceFingerprintEncoding": "typed-checksums-v1"
 }

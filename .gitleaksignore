@@ -504,3 +504,20 @@ a667078dfe9639b730d54e7283ad9b9e66e535b2:docs/99-项目治理/全平台整改交
 99885ee696f48aa4ee3878f0d95c0a479fcaee2e:docs/99-项目治理/evidence/login-session-lifecycle-frontend-20261103.json:generic-api-key:141
 b95a7c5bf94dbe0ac22a3abe2561428dbb150fe7:docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/backend-query-elision-followup-review.json:generic-api-key:361
 b95a7c5bf94dbe0ac22a3abe2561428dbb150fe7:docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/web-interaction-receipt.json:generic-api-key:80
+
+# 2026-11-05: exact historical source fingerprint false positives.
+# Nine source SHA-256 digests and four Git blob SHA-1 object identities were
+# recomputed/verified; see ci-source-fingerprint-review-20261105.json.
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:419
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:420
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:463
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json:generic-api-key:464
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:78
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:79
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:122
+f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json:generic-api-key:123
+287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:287
+287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:288
+287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:331
+287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:332
+afe9fcd8af0121a8287d798024f553fa90247f79:docs/99-项目治理/2026-11-05-订单散件交付主线验证.json:generic-api-key:2251

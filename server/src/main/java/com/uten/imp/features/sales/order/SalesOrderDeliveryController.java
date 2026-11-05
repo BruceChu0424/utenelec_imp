@@ -28,7 +28,7 @@ public class SalesOrderDeliveryController {
 
     @GetMapping("/delivery-bom")
     @PreAuthorize("hasAuthority('sales_order:create') or hasAuthority('sales_order:edit')"
-            + " or hasAuthority('goods:bom:view') or hasAuthority('goods:bom:edit')")
+            + " or hasAuthority('goods:view') or hasAuthority('goods:bom:edit')")
     public DeliveryBom.Snapshot bom(@RequestParam UUID goodsId) { return service.snapshot(goodsId); }
 
     @GetMapping("/{orderId}/items/{itemId}/delivery-bom")

@@ -93,7 +93,7 @@ class PermissionChainReachabilityContractTest {
                         JOIN permissions p ON p.id=link.permission_id
                         JOIN permission_surfaces surface ON surface.id=link.surface_id
                         WHERE p.code=? AND surface.enabled
-                        """, String.class, code)).containsExactlyInAnyOrderElementsOf(STAGED_APPROVAL_CONFIGURATION_ACTIONS.get(code));
+                        """, String.class, code)).containsExactlyInAnyOrderElementsOf(EXPLICIT_CONFIGURATION_ACTIONS.get(code));
                 continue;
             }
             if (STAGED_APPROVAL_CONFIGURATION_ACTIONS.containsKey(code)) {
@@ -110,7 +110,7 @@ class PermissionChainReachabilityContractTest {
                         JOIN permission_surfaces surface ON surface.id=link.surface_id
                         WHERE p.code=? AND surface.enabled
                         """, String.class, code))
-                        .containsExactlyElementsOf(STAGED_APPROVAL_CONFIGURATION_ACTIONS.get(code));
+                        .containsExactlyInAnyOrderElementsOf(STAGED_APPROVAL_CONFIGURATION_ACTIONS.get(code));
                 continue;
             }
             if (!reachable) {

@@ -232,6 +232,11 @@ final class MasterReferenceCatalog {
         lines(out, SALES_QUOTE, "sales_quote_items", "quote_id", GCU);
         lines(out, SHIPMENT, "sales_shipment_items", "shipment_id",
                 with(GCU, new Col(WAREHOUSE, "warehouse_id")));
+        // Frozen delivery children can differ from the order's parent goods.
+        // Their live shipment still needs each child master; these rows have no
+        // soft-delete flag and share the shipment's lifecycle and label scope.
+        lines(out, SHIPMENT, "sales_shipment_delivery_components", "shipment_id",
+                with(GCU, new Col(WAREHOUSE, "warehouse_id")), false);
         lines(out, SALES_RETURN, "sales_return_items", "return_id", GCU);
         lines(out, SALES_OTHER_SHIPMENT, "sales_other_shipment_items", "shipment_id", GCU);
         lines(out, PURCHASE_REQUEST, "purchase_request_items", "request_id", GCU);
@@ -651,13 +656,18 @@ final class MasterReferenceCatalog {
     }
 
     private static void lines(List<Reference> out, Doc doc, String items, String fk, List<Col> columns) {
+        lines(out, doc, items, fk, columns, true);
+    }
+
+    private static void lines(List<Reference> out, Doc doc, String items, String fk, List<Col> columns,
+                              boolean hasSoftDelete) {
         for (Col col : columns) {
             out.add(new Reference(col.target(), items, col.column(), doc.kind(), """
                     SELECT i.%1$s, '%2$s', CAST(h.id AS text), COALESCE(h.bill_no, '(无单号)'), h.%3$s, '%4$s'
                     FROM %5$s h JOIN %6$s i ON i.%7$s = h.id
-                    WHERE i.%1$s %8$s AND NOT i.is_deleted AND %9$s"""
+                    WHERE i.%1$s %8$s%10$s AND %9$s"""
                     .formatted(col.column(), doc.kind().name(), doc.owner(), doc.scope(), doc.table(), items, fk,
-                            TARGETS, doc.open())));
+                            TARGETS, doc.open(), hasSoftDelete ? " AND NOT i.is_deleted" : "")));
         }
     }
 
@@ -691,6 +701,12 @@ final class MasterReferenceCatalog {
 
     private static List<Exemption> buildExemptions() {
         List<Exemption> out = new ArrayList<>();
+        exempt(out, ExemptReason.COVERED,
+                "订单库存额度的不可变子证明；与交付组件逐字段绑定，有效组件由同一出货单在办引用检查覆盖，实际库存占用另由预留检查覆盖",
+                "sales_delivery_order_claims", "goods_id", "color_id", "unit_id", "warehouse_id");
+        exempt(out, ExemptReason.HISTORY,
+                "订单库存额度的不可变幂等办理回执，不授权后续新增占用；有效额度由交付组件与实际预留覆盖",
+                "sales_delivery_order_claim_requests", "warehouse_id");
         exempt(out, ExemptReason.HISTORY,
                 "仅在核验完成后记录的证据单位；当前单位依赖由货品及库存检查，历史核验 UUID 保留",
                 "stock_measurement_holds", "verified_unit_id");

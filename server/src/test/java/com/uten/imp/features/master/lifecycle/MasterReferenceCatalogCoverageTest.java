@@ -261,7 +261,8 @@ class MasterReferenceCatalogCoverageTest {
                 "goods_cost_import_mappings.mappings", "goods_cost_import_mappings.base_input", "goods_cost_import_mappings.result_input",
                 "goods_cost_commands.result", // command receipt is covered by the saved sheet and frozen snapshot
                 "production_material_return_receiving_confirmations.line_weights", // return-line UUID -> weight; goods identity is retained on the referenced return item
-                "production_material_increment_reversals.draw_item_quantities"); // stock draw-line UUID -> quantity; the immutable demand and draw items retain goods identity
+                "production_material_increment_reversals.draw_item_quantities", // stock draw-line UUID -> quantity; the immutable demand and draw items retain goods identity
+                "production_material_analysis_items.delivery_plan_snapshot"); // DeliveryPlan contains BOM-edge UUID paths, modes and a fingerprint, never goods UUIDs; item.goods_id and expanded material rows retain the goods identity
         List<String> unclassifiedJson = new ArrayList<>();
         try (Connection connection = connection(); var statement = connection.createStatement(); var rows = statement.executeQuery("""
                 SELECT c.relname,a.attname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace

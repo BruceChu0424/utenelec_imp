@@ -22,6 +22,27 @@ import java.util.UUID;
 public final class HistoricalExpenseSourceJdbc {
     private HistoricalExpenseSourceJdbc() { }
 
+    /** Original capture can read actual facts, never run a pre-upgrade workflow. */
+    public static FinanceApplicationExpensePort readOnlyPort(JdbcTemplate db,ObjectMapper json) {
+        return new FinanceApplicationExpensePort() {
+            @Override public Source source(UUID id,boolean forUpdate) {
+                if(forUpdate)throw unsupported();
+                return HistoricalExpenseSourceJdbc.source(db,json,id);
+            }
+            @Override public void verifyInvoice(UUID claim,UUID invoice,Long version,String result,String remark){throw unsupported();}
+            @Override public Map<String,Object> detail(UUID claim){throw unsupported();}
+            @Override public void submit(UUID id){throw unsupported();}
+            @Override public void withdraw(UUID id){throw unsupported();}
+            @Override public void decideFromApplication(UUID id,boolean approved,String reason){throw unsupported();}
+            @Override public UUID pay(UUID id,UUID account,UUID style,java.time.LocalDate date,com.uten.imp.common.finance.AccountingExpensePurpose purpose){throw unsupported();}
+            @Override public void paymentReversed(UUID id,UUID payment,String reason){throw unsupported();}
+        };
+    }
+
+    private static UnsupportedOperationException unsupported() {
+        return new UnsupportedOperationException("Historical claim capture cannot execute business commands");
+    }
+
     public static String snapshot(JdbcTemplate db,UUID id) {
         var claim=db.queryForObject("""
                 SELECT id,title,expense_kind,applicant_department_id,applicant_name_snapshot,remark,total_amount

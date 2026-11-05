@@ -37,7 +37,7 @@ CI 返回 HTTP 401。将这个已知仓库 ID 单独映射到 Central，避免�
 ## 快速开始
 ```bash
 cd server
-cp .env.example .env            # 模板已连接 Docker 宿主端口 localhost:5433
+cp .env.example .env            # 仅首次且.env不存在时执行；禁止覆盖已有私有配置，模板宿主端口5433
 docker compose up -d --wait --wait-timeout 600 postgres # 起开发用 Postgres，并等健康检查通过
 mvn -Pdev-run spring-boot:run    # 读取 .env，编译主代码，Flyway 自动建表 + 种子
 ```
@@ -225,7 +225,7 @@ mvn "-Duten.build.directory=target-tests" clean test
 
 启动失败先检查当前日志中最深一层原因：
 
-1. 连接失败：核对私有环境文件、`UTEN_PROFILE`、数据库名和实际宿主端口。本轮已重建的数据位于 `127.0.0.1:5434/uten_imp`，旧5433实例保全；复核步骤见[重建导入手册](../docs/数据迁移/重建彩排与正式导入执行手册.md)。
+1. 连接失败：核对私有环境文件、`UTEN_PROFILE`、数据库名和实际宿主端口。模板使用5433，既有导入实例曾使用5434；实际目标以当前受控配置和只读身份核对为准，见[重建导入手册](../docs/数据迁移/重建彩排与正式导入执行手册.md)，不移动或重置旧实例。
 2. 缺列/缺表：确认本轮源码需要的迁移已进入正式资源且Flyway成功完成；不关闭结构校验。
 3. `NoClassDefFoundError` 或依赖不匹配：停止旧进程，使用当前pom完整编译后启动。临时目录或旧依赖生成的classpath/argfile不能长期用作启动入口。
 4. 历史数据或迁移校验失败：保留错误及目标库备份，按对应迁移文档修正前提，再原样重跑；不修改已应用文件或执行repair掩盖差异。
@@ -442,25 +442,19 @@ UTEN_RUN_DB_TESTS=true mvn test -Dtest=FullChainEndToEndTest   # 只跑全链路
 ```
 
 **与 CI 同口径**: CI 上没有 `.env`, 未设 `UTEN_PROFILE` 时按 `prod` 启动(fail-closed, 例如要求显式内网网段)。
-本机跑门禁前先把 `server/.env` 挪开或在不拷 `.env` 的隔离 worktree 里跑, 否则 `dev` profile 会掩盖问题。
+本机优先在不复制 `.env` 的隔离冻结 worktree 中跑门禁；不移动、覆盖或输出运行服务的私有配置，避免 dev profile 掩盖 CI 差异。
 与正在运行的 `spring-boot:run` 并行测试时用独立输出目录(见上文「本地启动与并行测试的编译目录」)。
 
 CI 的后端门禁分快道与全量两级，并与 Flutter 格式/analyze/test/Web 构建、
 Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地测试通过都不能替代远端 CI、
 完整权限矩阵、关键业务 E2E 与生产同构迁移演练。发布门禁见 [ADR-060](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 与
 [新库上线与首装操作指引](../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。
-不可变制品、原子切换、严格 health、Nginx/systemd/watchdog 见 [deploy/README.md](../deploy/README.md)。
+现役不可变制品、原子切换、health、Nginx/systemd/watchdog 见[Simple运行手册](../deploy/simple/RUNBOOK.zh-CN.md)；[deploy总览](../deploy/README.md)已标记旧重链归档范围，不能当作当前操作入口。
 中国大陆环境还须执行
 [中国大陆部署与兼容性](../docs/99-项目治理/中国大陆部署与兼容性.md)。
 
 ## 依赖安全基线
 
-- 本轮已把结束支持的 Spring Boot 3.3 升到受支持的 `3.5.16`，springdoc 为 `2.8.17`。
-- OSV 2.4.0 初扫命中的 POI 5.2.5 `CVE-2025-31672` 已通过升级到 POI `5.5.1` 处理；
-  Bouncy Castle 1.78.1 的 `CVE-2025-14813`（critical）和 `CVE-2026-0636` 已通过升级到 `1.84`
-  处理；随后标准 SBOM 扫描发现的 Commons Lang 3.17.0 `CVE-2025-48924`、Jackson Databind
-  2.21.4 的 `CVE-2026-59889` / `CVE-2026-54515` / `GHSA-mhm7-754m-9p8w`，以及 PostgreSQL
-  JDBC 42.7.11 `CVE-2026-54291`，分别通过升级到 `3.18.0`、`2.21.5`、`42.7.12` 处理。
-- 冻结后的 CycloneDX 1.6 SBOM（138 components）经 OSV Scanner 2.4.0 复扫为 0，
-  `pubspec.lock`（150 packages）复扫也为 0；这表示当前输入和规则没有已知命中，不等于未来无漏洞，
-  仍须远端 CI、Dependabot 和定期复扫。
+当前源码以 [pom.xml](pom.xml) 为唯一依赖版本入口：Java 21、Spring Boot **4.1.1**、springdoc **3.1.1**、Jackson 2兼容线 **2.21.7** 与 PostgreSQL JDBC **42.7.12**。这些是源码声明，不代表目标服务器已升级或当前扫描无漏洞；禁止把旧 Boot 3.5/Spring 6 的扫描例外、SBOM条数或“0命中”记录移用于这套依赖。
+
+依赖扫描必须对最终提交新生成的锁文件、SBOM与漏洞库运行，结合 Quality Gate、OSV 与 CodeQL 的对应提交结果验收；历史扫描仅属于其原输入和时间。版本、迁移及发布状态统一见[当前版本验证](../docs/99-项目治理/当前版本验证.md)。

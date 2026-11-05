@@ -4,8 +4,8 @@
 
 | 项目 | 当前值 |
 |---|---|
-| 源码与运行版本 | 本轮交付源码为 **2.5.43+2543**；本轮开始时公司现网为 **2.5.42**。本轮归集销售审核与仓库任务可见性、编辑返回刷新、统一审核操作和徽章修复，以及货品 BOM 并排对比与替换。用户明确授权本轮不等待 CI 结果，检查继续保留，构建、签名、服务器激活与 Windows 双包交付分别核验；本地出包不代表服务器已升级。 |
-| 数据库迁移头 | 当前本地源码 **V986 / 912** 个迁移文件；本轮开始时公司已验收状态为 **V980 / 906**。下一号先核[迁移目录](server/src/main/resources/db/migration)和在途修改；源码不代表公司已安装；见[迁移索引](docs/数据迁移/README.md) |
+| 源码候选与发布状态 | 本地集成候选 **2.5.47+2548**（核对基线：2026-11-05）；不表示已发布、公司已安装或最终 CI 全绿。精确提交、启动、CI 与交付证据分别见[当前版本验证](docs/99-项目治理/当前版本验证.md)。 |
+| 数据库迁移头 | 本地候选源码 **V1059 / 998** 个迁移文件；按[迁移目录](server/src/main/resources/db/migration)与[迁移索引](docs/数据迁移/README.md)核对。目标库实际版本另查其 `flyway_schema_history`；三个进行中任务的未发布迁移继续隔离，完成整合时再核对编号。 |
 | 前端 | Flutter 3.44.2 / Dart 3.12.2(Web、Windows、macOS、Linux、Android、iOS) |
 | 后端 | Java 21、Spring Boot 4.1.1、PostgreSQL 16、Flyway |
 | 发布方式 | GitHub Actions 签名构建 → 阿里云 OSS → 服务器更新器拉取激活([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)) |
@@ -93,7 +93,7 @@
 │  ├─ src/main/resources/db/migration   Flyway 正式迁移(唯一的表结构来源)
 │  ├─ ops/              数据库账户、备份与运维维护脚本
 │  └─ legacy_migration/ 旧系统(YTDQ)数据导入脚本; 原始备份不入库, 由 UTEN_LEGACY_INPUT_DIR 指定
-├─ deploy/              部署: simple/(现役发布与运行手册) · updater · nginx · systemd · postgres · ocr；其余子目录(cloud、release、setup、monitoring、aliyun-oidc、watchdog 等)为退役旧发布链代码([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md))
+├─ deploy/              发布、客户端交付、备份、远程接入及运维；现役入口为 simple/RUNBOOK 与 SERVER_MIGRATION，各子目录按其顶部适用范围区分现役工具和归档旧链
 ├─ scripts/             仓库级辅助脚本(平台表清单审计、表键登记、特性分支发布等)
 ├─ website/             官网独立工程(Node 22)
 ├─ docs/                项目文档(准则、组件、页面、数据模型、架构、业务链路、ADR、迁移、治理)
@@ -112,29 +112,19 @@
 
 ### 1. 启动后端
 
-先确认实际数据库、角色和私有配置，再运行Maven。本轮重建使用独立本地127.0.0.1:5434/uten_imp，旧5433及其他数据库保留；当前导入事务尚未提交，普通Main启动及登录验收PENDING。不要为了看半套数据先启动业务应用，或把旧5433仍显示旧资料当成本轮未执行。
+先按[后端说明](server/README.md#快速开始)准备本地数据库、角色、附件目录及私有 `.env`；已有 `.env` 保留原字节，不覆盖或打印凭据。新空环境模板使用宿主端口 `5433`；已有导入实例可能使用 `5434`，实际连接由受控配置决定，不能据 README 猜测或切换数据库。
 
-本地导入、目标准备及真实结果统一见[重建彩排与正式导入执行手册](docs/数据迁移/重建彩排与正式导入执行手册.md)。新开发环境也先按其角色准备步骤建立空本地实例：owner/迁移为非SU的uten_migrator，应用为非SU的uten；不在共享旧实例上全局改角色或赋应用SU，不调用已退役的数据重置功能。
+在仓库根目录执行：
 
-原server/.env存在时必须保留原字节和秘密。受控配置需明确：
+```powershell
+.\server\dev.ps1
+```
 
-| 用途 | 本轮目标 |
-|---|---|
-| 应用连接 | UTEN_DB_URL指5434/uten_imp，UTEN_DB_USER=uten，密码由私有受控配置提供 |
-| dev Flyway | UTEN_DEV_MIGRATOR_DB_USER=uten_migrator及其私有密码；应用连接池不能使用owner |
-| 本地附件 | 本批已验证的local staging/final根；不能只改DB后继续指向旧附件目录 |
+也可在 `server/` 执行 `mvn -Pdev-run spring-boot:run`。`dev-run` 只用于开发启动，独立输出到 `target-dev`，跳过测试编译；验收、CI 和打包不得携带该 profile。并行实例使用各自构建目录与端口，数据库和附件仍须另行隔离，见[启动与并行测试](server/README.md#本地启动与并行测试的编译目录)。
 
-真实COMMIT、来源门和配置CAS完成后，才按正常方式启动：
+开发环境显式设置 `UTEN_PROFILE=dev`，由非超级用户的专用迁移账号执行 Flyway，应用连接池继续使用受限运行账号；`prod` 不靠重启自动迁移。等待 Flyway 完成、`Started UtenImpApplication` 及 `/actuator/health/readiness` 返回 `200/UP`，再核对前端实际请求。API 默认 `http://localhost:8080/api`；dev Swagger 为 `/swagger-ui.html`。
 
-    cd server
-    mvn spring-boot:run
-
-API默认http://localhost:8080/api，dev Swagger为/swagger-ui.html。核实际JVM及Hikari数据源身份，再确认http://localhost:8080/actuator/health/readiness实际返回200/UP。仅编译成功、端口监听或独立探针通过都不等于普通Main已就绪；原管理员登录需真实验证，不猜密码或伪造会话。
-
-若V915报应用仍继承重置执行权，说明实际owner/runtime分离尚不成立；先修受控新本地实例的真实角色/ACL，不Flyway repair、不跳迁移、不关闭守卫。已应用SQL字节不可修改。数据库异常退出时先确认正确实例恢复完成，不能终止不属于本次操作的进程。
-
-并行构建使用独立-Duten.build.directory=target-任务名，避免覆盖运行中类目录。更多首次管理员、私有配置和排错规则见[后端说明](server/README.md)。
-
+迁移重号、缺表、历史 checksum 或角色错误按后端排错步骤保留证据并处理，不执行 `repair`、跳过迁移或关闭守卫。源码、生成资源和真实数据库是三个检查对象；旧构建目录中的未发布候选 SQL 不能混入本次启动。
 
 ### 2. 启动前端
 
@@ -161,16 +151,9 @@ flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run --
 
 ## 本地数据重建与导入
 
-[执行手册](docs/数据迁移/重建彩排与正式导入执行手册.md)是唯一当前流程和结果表；旧失败回执、离线plan、完整23项/七门历史通过记录不能代替本轮实际验收。
+[重建彩排与正式导入执行手册](docs/数据迁移/重建彩排与正式导入执行手册.md)保留各批次来源、实际 COMMIT、保护范围和恢复证据。旧手册或旧 README 中带日期的 `RUNNING` / `PENDING` 只代表当时记录，不能据此判断当前导入仍在运行、已经完成或获准重放。先核对目标实例及后继实际回执，不清库、不重放已经成功的阶段。
 
-本轮冻结导入H3为993004ded4c8649d54b60a20fba6ee9265d8589e；封包MF为f72c67aa21344d6f22d429928f3d7eebf9ea35326969b7819b1d43fd97dc7507；第15轮run为007c7f69-3935-4c78-a1a8-9dda5ef3171a。直接写入最终本地5434/uten_imp，一次业务事务，**整理时RUNNING，COMMIT及真实验收PENDING**，不再做本地候选复制/改名。
-
-本轮保留全部人事、主档、采购、仓库、销售、委外和生产计划，用户明确跳过生产成本及历史财务；不是完整财务导入。成功时使用SUCCESS/WAIVED、fullBootstrap=false及实际四个来源门，三个财务门明确跳过，不冒称完整七门。普通Main启动、五个服务探针、.env/媒体配置和新库备份恢复仍须逐项真实回执。
-
-用户已选择先完整保留旧单并展示“待接续核对”，优先交付测试；现代接续开发不纳入本轮。已知边界包括433张有余量的chain0销售旧单、3222张已有旧执行累计的未完生产计划不能直接接上现代履约，以及41条未完采购明细单位待核而阻塞MRP。无FK委外旧收发退从历史/报表/详情入口查询，不猜成新订单或供应商余额。四类详情只读提示已实现并通过focused检查；真实浏览器/UAT及目标验收仍以手册结果表为准，PENDING。
-
-代码已整合Main工作目录，由用户统一提交、CI及发布；本任务不代Git提交、推送或操作公司服务器。真实原库/旧附件备份保留，恢复是否成功另行验证，不用备份文件存在冒充恢复通过。
-
+货品迁移以旧数据库的已有非空同义字段为先，价格 `0` 也算已有值；产品 Excel 只补真正缺失的属性和独有货品，冲突保留原文和源行，金额精度及单位冲突按[货品溯源规则](docs/数据迁移/2026-11-03-货品价格溯源与数据库优先修复.md)处理。历史单据的只读展示与现代履约接续分别验收，不能把源码候选或一次启动当作公司换库、完整导入或业务 UAT 已完成。
 
 ## 质量门禁与测试
 
@@ -178,14 +161,14 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 
 | CI 作业 | 本地等价命令 |
 |---|---|
-| Flutter / Web | `dart format --output=none --set-exit-if-changed lib test` → `flutter analyze` → `flutter test` |
-| Backend 快道(单元 + 架构 + 契约) | `cd server && mvn verify` |
-| Backend 全量(真库 + 全链路) | `cd server && UTEN_RUN_DB_TESTS=true mvn verify`(Docker/Testcontainers, 约 1.5-2 小时) |
+| Flutter / Web | `dart format --output=none --set-exit-if-changed lib test` → `flutter pub get --enforce-lockfile` → `flutter analyze --no-pub` → `flutter test --no-pub` |
+| Backend 快道(单元 + 架构 + 契约) | `cd server && mvn -Duten.build.directory=target-fast verify` |
+| Backend 全量(真库 + 全链路) | `cd server && UTEN_RUN_DB_TESTS=true mvn verify`(Docker/Testcontainers；完整发现、分片与汇总见[测试规范](docs/00-项目准则/15-全量测试分片与耗时核对.md)) |
 | Deployment contracts | `python -m unittest discover -s deploy/updater -p "test*.py"`(以及 `deploy/postgres/backup`、`deploy/setup`、`deploy/monitoring`、`deploy/aliyun-oidc`、`deploy/ocr`；模板校验 `pwsh deploy/verify-templates.ps1`) |
 | Website / Node 22 | `cd website && node scripts/quality-gate.mjs` |
 | Secret history scan | gitleaks 全历史扫描 |
 
-> **本地验证必须与 CI 同口径**: CI 没有 `server/.env`, 未设 `UTEN_PROFILE` 时后端按 `prod` 启动(fail-closed)。在本机跑后端门禁前先把 `server/.env` 挪开, 否则 `dev` profile 会掩盖只在 `prod` 口径暴露的问题。
+> **本地验证必须与 CI 同口径**：优先在不复制私有 `.env` 的冻结工作树验证，使用独立构建目录。CI 没有 `server/.env`，未设 `UTEN_PROFILE` 时按 `prod` 失败关闭；不让本机 dev 配置掩盖差异，也不移动或覆盖运行服务使用的私有配置。具体原生 Windows、Android、浏览器草稿、部署合同和 Web 构建检查以工作流为准，表中命令不是完整门禁清单。
 
 业务正确性的主证据是 [`FullChainEndToEndTest`](server/src/test/java/com/uten/imp/businesschain/FullChainEndToEndTest.java)(跨模块全链路场景, 真实 PostgreSQL, 切换账号走完整安全链)。定向测试只证明对应场景, 发布前必须在同一候选提交上完成全量检查。
 

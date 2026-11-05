@@ -1,0 +1,214 @@
+{
+  "baselineCommit": "4b471a4e3d98e1b03d862feb09c48c42bd4334c6",
+  "reviewDate": "2026-11-05",
+  "candidateVersion": "2.5.47+2548",
+  "migrationHead": "1059",
+  "migrationFiles": 998,
+  "releaseClaim": false,
+  "ciClaim": false,
+  "readmeReviewMode": "对36份非vendor/非测试资源README核对标题/适用状态、版本和关键口径及本地链接；全文逐段核对本轮修改文件，不宣称全部仓库文档逐句已审。",
+  "readmes": [
+    {
+      "path": "README.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "clients/windows_legacy/README.zh-CN.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "deploy/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/aliyun-oidc/README.zh-CN.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "deploy/client/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/client/flutter-engine-patches/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/client/legacy_windows/README.zh-CN.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "deploy/client/native_window_regression/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/cloud/README-cloud.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "deploy/company-files/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/disaster-recovery/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/dr-backup/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/monitoring/README.zh-CN.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "deploy/ocr/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/postgres/backup/README.zh-CN.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "deploy/release/README.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "deploy/remote-access/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "deploy/simple/host/README.zh-CN.md",
+      "status": "reviewed_unchanged",
+      "reason": "保留目录自身标注的现役合同或退役历史；本次没有授权启用旧链、重新部署或改变该工具职责。"
+    },
+    {
+      "path": "docs/99-决策记录-ADR/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "资源/维护/工具说明，本批未改变其owning契约；不把这些说明视为版本安装证明。"
+    },
+    {
+      "path": "docs/README.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "docs/数据迁移/README.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "ios/Runner/Assets.xcassets/LaunchImage.imageset/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "资源/维护/工具说明，本批未改变其owning契约；不把这些说明视为版本安装证明。"
+    },
+    {
+      "path": "server/README.md",
+      "status": "updated",
+      "reason": "修正现行候选/依赖/权限边界或失效导航；具体改动见Git diff。"
+    },
+    {
+      "path": "server/legacy_migration/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "资源/维护/工具说明，本批未改变其owning契约；不把这些说明视为版本安装证明。"
+    },
+    {
+      "path": "server/legacy_migration/tests/finance_fee_style/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "隔离迁移夹具的使用说明，属于对应夹具合同，不是当前运行/发布证明。"
+    },
+    {
+      "path": "server/legacy_migration/tests/finance_flow_monthly/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "隔离迁移夹具的使用说明，属于对应夹具合同，不是当前运行/发布证明。"
+    },
+    {
+      "path": "server/legacy_migration/tests/production_counter/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "隔离迁移夹具的使用说明，属于对应夹具合同，不是当前运行/发布证明。"
+    },
+    {
+      "path": "server/legacy_migration/tests/quantity_counter/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "隔离迁移夹具的使用说明，属于对应夹具合同，不是当前运行/发布证明。"
+    },
+    {
+      "path": "server/legacy_migration/tests/sales_other_settlement/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "隔离迁移夹具的使用说明，属于对应夹具合同，不是当前运行/发布证明。"
+    },
+    {
+      "path": "server/maintenance/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "资源/维护/工具说明，本批未改变其owning契约；不把这些说明视为版本安装证明。"
+    },
+    {
+      "path": "server/src/main/resources/fonts/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "资源/维护/工具说明，本批未改变其owning契约；不把这些说明视为版本安装证明。"
+    },
+    {
+      "path": "services/material_forecast/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "独立工程说明和本地命令；本批未改变其源码栈、运行边界或部署授权。"
+    },
+    {
+      "path": "website/.scrape/v2/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "独立工程说明和本地命令；本批未改变其源码栈、运行边界或部署授权。"
+    },
+    {
+      "path": "website/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "独立工程说明和本地命令；本批未改变其源码栈、运行边界或部署授权。"
+    },
+    {
+      "path": "website/deploy/README.md",
+      "status": "reviewed_unchanged",
+      "reason": "独立工程说明和本地命令；本批未改变其源码栈、运行边界或部署授权。"
+    },
+    {
+      "path": "website/scripts/legacy-v2-import.README.md",
+      "status": "reviewed_unchanged",
+      "reason": "独立工程说明和本地命令；本批未改变其源码栈、运行边界或部署授权。"
+    }
+  ],
+  "excludedGeneratedPaths": [
+    "clients/windows_legacy/progress/**",
+    "docs/99-项目治理/Win7兼容版/pages/**"
+  ],
+  "historicalPolicy": "带日期审计/验收正文保留原事实；由当前索引与状态页标明不能当当前通过证明。",
+  "activeTasksExcluded": [
+    "finance-full-chain-audit-20261104",
+    "visual-workflow-20261104",
+    "platform-loading-20261104"
+  ],
+  "nextPass": [
+    "当前员工业务指南：订单交付/分次收款/多材料追加/收货人和单重",
+    "当前架构/安全/测试文档的接口和术语交叉核对"
+  ],
+  "validation": {
+    "markdownFilesChecked": 44,
+    "localTargetsChecked": 1051,
+    "brokenLocalTargets": 0,
+    "candidateSourceValuesMatch": true,
+    "generatedProgressPathsChanged": false,
+    "productBuildOrCIClaim": false
+  }
+}

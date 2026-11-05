@@ -147,8 +147,8 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                 approval(connection, type, pendingOrder, "PENDING", 1);
                 assertEquals(1, count(connection, pendingOrder));
                 assert23514(() -> updateOrderTax(connection, type, pendingOrder));
-                assert23514(() -> updateItemPrice(connection, type, pendingItem));
-                assert23514(() -> orderItem(connection, type, pendingOrder));
+                assertPendingReferenceFrozen(() -> updateItemPrice(connection, type, pendingItem));
+                assertPendingReferenceFrozen(() -> orderItem(connection, type, pendingOrder));
                 assert23514(() -> deleteItem(connection, type, pendingItem));
 
                 UUID approvedOrder = order(connection, type, activeCurrency,
@@ -272,7 +272,8 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                             () -> update.get(250, TimeUnit.MILLISECONDS));
                     caseTx.commit();
                     SQLException blocked = update.get(5, TimeUnit.SECONDS);
-                    assertEquals("23514", blocked.getSQLState());
+                    assertEquals("55000", blocked.getSQLState());
+                    assertTrue(blocked.getMessage().contains("pending finance reference price proof is immutable"));
                 }
 
                 UUID updateFirstOrder;
@@ -522,7 +523,7 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                         id,receipt_type,receipt_id,receipt_item_id,inspection_item_id,
                         order_item_id,receipt_bill_no,supplier_id,currency_id,
                         exchange_rate,tax_rate,settlement_method_id,goods_id,
-                        unit_rate,received_base_qty,received_qty,
+                        unit_id,unit_rate,received_base_qty,received_qty,
                         received_amount_original,received_amount_local,
                         failed_base_qty,failed_qty,failed_amount_original,
                         failed_amount_local,owner_user_id,status,row_version,
@@ -531,7 +532,7 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                     SELECT ?,'PURCHASE',receipt.id,item.id,?,item.order_item_id,
                            receipt.bill_no,receipt.supplier_id,receipt.currency_id,
                            receipt.exchange_rate,receipt.tax_rate,
-                           receipt.settlement_method_id,item.goods_id,item.unit_rate,
+                           receipt.settlement_method_id,item.goods_id,item.unit_id,item.unit_rate,
                            10,10,10,10,2,2,2,2,?,'RETURN_RECORDED',1,
                            'RET-V440',DATE '2026-08-30','PG退回证据',?,now(),?,?
                     FROM purchase_receipts receipt
@@ -1001,16 +1002,17 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
         }
         try (PreparedStatement insert = connection.prepareStatement("""
                 INSERT INTO %s(
-                    id,bill_no,bill_date,order_id,line_no,goods_id,unit_rate,
+                    id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,unit_rate,
                     qty,price,amount_original,amount_local,
                     goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
-                VALUES(?,?,'2026-08-30',?,1,?,1,10,1,10,10,
+                VALUES(?,?,'2026-08-30',?,1,?,?,1,10,1,10,10,
                     'V438-G','V438货品','MASTER_AT_SAVE')
                 """.formatted(itemTable(type)))) {
             insert.setObject(1, id);
             insert.setString(2, billNo);
             insert.setObject(3, orderId);
             insert.setObject(4, goods);
+            insert.setObject(5, materialUnit);
             insert.executeUpdate();
         }
         return id;
@@ -1069,6 +1071,13 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
     private static void assert23514(SqlAction action) {
         SQLException failure = assertThrows(SQLException.class, action::run);
         assertEquals("23514", failure.getSQLState());
+    }
+
+    /** V1062 freezes pending price operands before the older commercial guard. */
+    private static void assertPendingReferenceFrozen(SqlAction action) {
+        SQLException failure=assertThrows(SQLException.class,action::run);
+        assertEquals("55000",failure.getSQLState());
+        assertTrue(failure.getMessage().contains("pending finance reference price proof is immutable"));
     }
 
     private static UUID order(

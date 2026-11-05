@@ -88,7 +88,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 251 条守卫 / 19 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 268 条守卫 / 19 条豁免。
 /// 2026-10-31 销售负责人队列与报价/订货详情独立登记三条路径，各自查看码不授予决策动作。
 /// 2026-10-29 客户端发布工作台 /settings/software-publish 上线（client-updates
 /// 批次），any=[client_release:publish]（V946 INDIVIDUAL_ONLY），守卫 244→245；
@@ -186,6 +186,42 @@ const _masterHistoryViewPermissions = <String>[
 ];
 
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  // Completed applications, staged approvals and exact-weight recovery routes.
+  // Keep the legacy count fixed; each added path retains its exact authority.
+  '/applications': [Perm.expenseApply, ..._applicationApplyAny],
+  '/applications/new': _applicationApplyAny,
+  '/applications/mine': _applicationApplyAny,
+  '/applications/:id/edit': _applicationApplyAny,
+  '/applications/approval': [
+    Perm.applicationView,
+    ...Perm.applicationApprovalPermissions,
+  ],
+  '/applications/:id': [
+    ..._applicationApplyAny,
+    Perm.applicationView,
+    ...Perm.applicationApprovalPermissions,
+  ],
+  '/approvals/settings': [Perm.approvalPolicyManage],
+  // Unknown department identities fail closed; actual stages have dedicated tests.
+  '/approvals/:departmentCode': [],
+  '/finance/applications': _financeApplicationAny,
+  '/finance/applications/new': _financeApplicationAny,
+  '/finance/applications/:id': _financeApplicationAny,
+  '/finance/applications/:id/edit': _financeApplicationAny,
+  '/finance/applications/:id/continue': _financeApplicationAny,
+  '/finance/applications/settings': [Perm.expenseSettings],
+  '/workshop-material/close-retry': [Perm.workshopMaterialCount],
+  '/measurement/weigh-count-recovery': [
+    Perm.stockView,
+    Perm.warehouseInboundStockIn,
+    Perm.stockDocEdit,
+    Perm.stockWeightManage,
+  ],
+  '/measurement/weight-sample': [
+    Perm.warehouseInboundStockIn,
+    Perm.stockDocEdit,
+    Perm.stockWeightManage,
+  ],
   '/sales/manager-review': [
     Perm.salesQuoteManagerView,
     Perm.salesOrderManagerView,
@@ -266,6 +302,21 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   // 撤回仍由服务端逐动作校验，页面权限面按独立系统管理边界豁免转授。
   '/settings/software-publish': [Perm.clientReleasePublish],
 };
+
+const _applicationApplyAny = <String>[
+  Perm.applicationApply,
+  Perm.applicationApplyTravel,
+  Perm.applicationApplyPayment,
+  Perm.applicationApplyPrepayment,
+  Perm.applicationApplySupplierPayment,
+];
+const _financeApplicationAny = <String>[
+  Perm.financeApplicationView,
+  Perm.financeApplicationApply,
+  Perm.expenseApply,
+  Perm.payrollGenerate,
+  Perm.expenseSettings,
+];
 
 String _samplePath(String pattern) => pattern
     .split('/')

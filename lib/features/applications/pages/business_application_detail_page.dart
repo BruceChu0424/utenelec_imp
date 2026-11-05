@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -444,7 +445,9 @@ class _BusinessApplicationDetailPageState
     final form = linkFinance
         ? 'applicationPrepaymentFinance'
         : 'applicationPayment';
-    final query = GoRouterState.of(context).uri.queryParameters;
+    final query =
+        goRouterPageStateOrNull(context)?.uri.queryParameters ??
+        const <String, String>{};
     final activeDrafts = ref.read(formDraftsProvider);
     final activeMemo = activeDrafts.any(
       (draft) =>
@@ -554,22 +557,24 @@ class _BusinessApplicationDetailPageState
         writable &&
         application?.canLinkFinance == true &&
         perms.contains(Perm.applicationPrepaymentLinkFinance);
+    final resumedDraftForm = goRouterPageStateOrNull(
+      context,
+    )?.uri.queryParameters['draftForm'];
     if (!_resumedPaymentOpened &&
         writable &&
         (perms.contains(Perm.applicationPay) ||
             perms.contains(Perm.applicationPrepaymentLinkFinance)) &&
         application != null &&
-        const {'applicationPayment', 'applicationPrepaymentFinance'}.contains(
-          GoRouterState.of(context).uri.queryParameters['draftForm'],
-        )) {
+        const {
+          'applicationPayment',
+          'applicationPrepaymentFinance',
+        }.contains(resumedDraftForm)) {
       _resumedPaymentOpened = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _pay(
             application,
-            linkFinance:
-                GoRouterState.of(context).uri.queryParameters['draftForm'] ==
-                'applicationPrepaymentFinance',
+            linkFinance: resumedDraftForm == 'applicationPrepaymentFinance',
           );
         }
       });

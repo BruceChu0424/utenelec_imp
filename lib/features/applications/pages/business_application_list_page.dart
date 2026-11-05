@@ -679,6 +679,7 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       ),
       body: UtenContentContainer.wide(child: content),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: !widget.approval
           ? (viewingExpense
                 ? _expenseFloatingAction()

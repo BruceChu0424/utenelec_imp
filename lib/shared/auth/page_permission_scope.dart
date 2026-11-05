@@ -103,10 +103,15 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/workshop-material/bin' ||
       path == '/workshop-material/issue' ||
       path == '/workshop-material/issue/batch' ||
-      path == '/workshop-material/count') {
+      path == '/workshop-material/count' ||
+      path == '/workshop-material/close-retry') {
     return _workshopMaterialScope;
   }
   if (path == '/reports/workshop-material') return _workshopMaterialReportScope;
+  if (path == '/measurement/weigh-count-recovery' ||
+      path == '/measurement/weight-sample') {
+    return _stockItemScope;
+  }
 
   // 基础资料及财务别名入口。
   if (path == '/finance/customers') return _clientScope;
@@ -114,10 +119,7 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/finance/accounts') return _accountScope;
   if (path == '/finance/applications' ||
       _isDescendant(path, '/finance/applications')) {
-    return const PagePermissionScope(
-      surfaceKey: 'finance.applications',
-      title: FinanceRequirementNames.financeApplications,
-    );
+    return _financeApplicationsScope;
   }
   if (path == '/finance/audits' || _isDescendant(path, '/finance/audits')) {
     // 业务审核中心（V812 补挂）：六个审核队列的合并工作台。
@@ -323,6 +325,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _productionReportScope,
   _whereUsedScope,
   _financeHubScope,
+  _financeApplicationsScope,
   _financeAuditCenterScope,
   _financeOrderApprovalScope,
   _salesFinanceScope,
@@ -1161,6 +1164,10 @@ const _securityScope = PagePermissionScope(
 );
 
 // V812 补挂：车间内料仓三张操作页与设置页（仓库侧动作面）。
+const _financeApplicationsScope = PagePermissionScope(
+  surfaceKey: 'finance.applications',
+  title: FinanceRequirementNames.financeApplications,
+);
 const _workshopMaterialScope = PagePermissionScope(
   surfaceKey: 'warehouse.workshop-material',
   title: '车间内料仓',

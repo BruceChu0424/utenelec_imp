@@ -422,6 +422,7 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor> {
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: allowed
             ? UtenFloatingActionGroup(
                 children: [

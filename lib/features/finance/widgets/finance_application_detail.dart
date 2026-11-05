@@ -275,6 +275,7 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
           ),
         ],
       ),
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: pendingActions.isEmpty
           ? null
           : UtenFloatingActionGroup(

@@ -44,7 +44,9 @@ void main() {
             !normalized.endsWith('/core/print/pdf_printer_io.dart')) {
           violations.add(normalized);
         }
-        if (source.contains('PdfPreview(')) violations.add(normalized);
+        if (RegExp(r'\bPdfPreview\s*\(').hasMatch(source)) {
+          violations.add(normalized);
+        }
       }
 
       expect(

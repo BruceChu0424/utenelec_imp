@@ -1,5 +1,7 @@
 package com.uten.imp.features.finance.arap;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.uten.imp.application.port.ClientCreditFactsPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
@@ -22,6 +24,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
 /** Full migrated disposable PostgreSQL: actual client scope, balance port and credit SQL. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiClientCreditFactsPostgresTest extends AiPlatformPostgresTestSupport {
     @Autowired private ClientCreditFactsPort credit;
     private UUID employee, otherEmployee, actor, owned, foreign, currency;

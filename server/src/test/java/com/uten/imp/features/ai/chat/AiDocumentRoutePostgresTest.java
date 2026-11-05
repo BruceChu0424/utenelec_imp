@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.chat;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Real HTTP/JWT/queue/worker with local parsers; all DB and file effects stay in disposable fixtures. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
     private String admin;
     @BeforeEach void localOnlyFixture() throws Exception {

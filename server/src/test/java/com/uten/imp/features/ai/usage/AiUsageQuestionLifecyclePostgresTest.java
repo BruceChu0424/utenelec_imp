@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.usage;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import com.uten.imp.features.ai.support.FakeAiProviderServer;
@@ -12,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
 /** Accepted question metadata survives both local completion and a failed provider call. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiUsageQuestionLifecyclePostgresTest extends AiPlatformPostgresTestSupport {
     @Test void localAndFailedQuestionsRemainBoundToTheirEmployeeAfterTemporaryInputIsReleased() throws Exception {
         Staff staff = aiUser();

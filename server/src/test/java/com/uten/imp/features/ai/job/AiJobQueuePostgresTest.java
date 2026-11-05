@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.job;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.port.AiJobUsagePort;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
@@ -33,6 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * 取消; 权限变化即失败; 租约回收与坏文件规则; AI 调用比租约长时续租; 认领令牌; SKIP LOCKED 认领;
  * 终态清空上传文件; 清理任务; 结果使用出口(一个结果只给一张单据)。
  */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiJobQueuePostgresTest extends AiPlatformPostgresTestSupport {
 
     @Autowired

@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.intake;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.common.text.IntakeTextNormalizer;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
@@ -31,6 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * ({@code sales_quote.create} 请求本身的语义事件 + {@code client.learn_from_document} 旁路事件, 同一请求编号)。
  * <b>CI 必须显式设置 {@code UTEN_RUN_DB_TESTS=true}</b>, 否则整类跳过。
  */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesIntakeSaveLearningPostgresTest extends AiPlatformPostgresTestSupport {
 
     private static final String INTAKE_KIND = "SALES_DOCUMENT_INTAKE";

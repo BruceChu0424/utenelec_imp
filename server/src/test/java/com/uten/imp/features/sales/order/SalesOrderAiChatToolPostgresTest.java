@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.uten.imp.application.port.AiDocumentStatusToolPostgresSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 不存在的单号得到同一句中性回答; 跨部门按相同查看权限和对象范围读取, 存下的回答在范围或数据变化后不再展示;
  * 查到一次写一条与详情页相同的查看审计, 查不到不写。
  */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSupport {
 
     @Autowired

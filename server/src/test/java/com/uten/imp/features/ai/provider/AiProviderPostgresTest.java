@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.provider;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import com.uten.imp.features.ai.support.FakeAiProviderServer;
@@ -22,6 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * AI 服务设置的真库 + 全安全链测试(ADR-133): 只给超管、写入要再认证、密钥只写不读、
  * 新建/改/删之后审计里没有任何密文或明文密钥、用已保存密钥测试只发往保存的地址。
  */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiProviderPostgresTest extends AiPlatformPostgresTestSupport {
 
     private static final String SECOND_KEY = "sk-fake-rotated-9876543210zyxwvABCD";

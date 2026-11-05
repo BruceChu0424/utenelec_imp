@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.chat;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import com.uten.imp.features.ai.support.FakeAiProviderServer;
@@ -25,6 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * conversation memory across pages (owner-only, bounded by the setting, sensitive answers withheld,
  * identity change and clearing stop it) and the thinking-depth parameter reaching the provider.
  */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiChatConversationPostgresTest extends AiPlatformPostgresTestSupport {
     // ADR-153: a KNOWLEDGE reply must cite an issued knowledge source; these memory replies cite none.
     private static final String REPLY = """

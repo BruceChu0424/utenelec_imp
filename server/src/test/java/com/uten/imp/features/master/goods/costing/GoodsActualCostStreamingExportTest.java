@@ -78,12 +78,14 @@ class GoodsActualCostStreamingExportTest {
             assertThatThrownBy(()->service.streamExport(snapshot.filter(),"a".repeat(64),ExportDocument.MAX_SECTION_ROWS))
                     .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
         }
-        verifyNoInteractions(sink);assertThat(read.closed).isTrue();
+        // Scoped cleanup finalizes once; an aborted read still cannot publish
+        // even a header or page (all other interactions remain forbidden).
+        verify(sink,only()).complete();assertThat(read.closed).isTrue();
         read.closed=false;read.fail=true;
         try(var scope=DocumentPageSink.open(sink)){
             assertThatThrownBy(()->service.streamExport(snapshot.filter(),"a".repeat(64),ExportDocument.MAX_SECTION_ROWS)).isInstanceOf(CancellationException.class);
         }
-        verifyNoInteractions(sink);assertThat(read.closed).isTrue();
+        verify(sink,times(2)).complete();verifyNoMoreInteractions(sink);assertThat(read.closed).isTrue();
     }
     @Test void anUnseenInputCannotLeakEvenTheAggregateHeader() throws Exception {
         var snapshot=fixture();prepare(snapshot);var sink=mock(DocumentPageSink.Consumer.class);
@@ -91,7 +93,7 @@ class GoodsActualCostStreamingExportTest {
         try(var scope=DocumentPageSink.open(sink)){
             assertThatThrownBy(()->service.streamExport(snapshot.filter(),"a".repeat(64),ExportDocument.MAX_SECTION_ROWS)).isInstanceOf(ApiException.class);
         }
-        verifyNoInteractions(sink);
+        verify(sink,only()).complete();
     }
     @Test void writerCanonicalHashUsesTheExactSameBytesWithoutAWholeString() {
         var canonical=new GoodsCostJson(json);

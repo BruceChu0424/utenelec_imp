@@ -567,10 +567,10 @@ public class BusinessDataResetSqlContractTest {
                 Path.of("..", "docs", "数据迁移", "README.md"),
                 Path.of("docs", "数据迁移", "README.md"));
         assertThat(migrationReadme)
-                .as("docs/数据迁移/README.md 的「当前正式目录」没跟上："
-                        + "请改成 **当前源码目录：V%d/%d …**（并补一句新迁移做了什么）"
+                .as("docs/数据迁移/README.md 的「当前本地候选源码目录」没跟上："
+                        + "请改成 **当前本地候选源码目录：V%d/%d …**（并补一句新迁移做了什么）"
                                 .formatted(head, count))
-                .contains("当前源码目录：V" + head + "/" + count);
+                .contains("当前本地候选源码目录：V" + head + "/" + count);
     }
 
     @Test

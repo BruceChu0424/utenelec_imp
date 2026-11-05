@@ -1,12 +1,16 @@
 package com.uten.imp.features.sales.ret;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,6 +22,19 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class SalesReturnAmountAuthorityTest {
+    private AutoCloseable precision;
+
+    @BeforeEach
+    void selectTheFourPlacePolicyUsedByTheseAllocationExamples() {
+        precision = BusinessPrecisionContext.use(Map.of("money.cumulative-share",
+                new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseTheOperationPolicy() throws Exception {
+        precision.close();
+    }
+
     @Test
     void discountedOriginalAndLocalAmountsConserveEverySplitAndFinalRoundingRemainder() {
         BigDecimal priorOriginal = BigDecimal.ZERO;

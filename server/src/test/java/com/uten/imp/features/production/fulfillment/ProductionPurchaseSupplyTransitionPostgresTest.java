@@ -610,8 +610,8 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                          insert into purchase_receipt_items(
                              id, bill_no, bill_date, receipt_id,
                              order_item_id, goods_id, unit_id,
-                             unit_rate, qty, price, amount_original, amount_local, replacement_intent, goods_snapshot_source
-                         ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
+                             unit_rate, qty, charged_base_qty,gift_base_qty,price, amount_original, amount_local, replacement_intent, goods_snapshot_source
+                         ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?,0,0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
                          """);
                  PreparedStatement balance = connection.prepareStatement("""
                          update stock_balances
@@ -630,6 +630,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                 item.setObject(6, fixture.goodsId());
                 item.setObject(7, fixture.unitId());
                 item.setBigDecimal(8, decimal(quantity));
+                item.setBigDecimal(9, decimal(quantity));
                 item.executeUpdate();
                 balance.setBigDecimal(1, decimal(quantity));
                 balance.setObject(2, fixture.balanceId());

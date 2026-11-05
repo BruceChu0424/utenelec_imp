@@ -13,6 +13,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -345,12 +346,13 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                         "UPDATE " + route.orderHeaderTable
                                 + " SET status=1, settlement_method_id=? WHERE id=?",
                         activeSettlementMethodId(connection), approvedOrder.orderId());
-                assertConstraint(
-                        connection,
-                        route.orderItemConstraint,
-                        "UPDATE " + route.orderItemTable
-                                + " SET qty=8 WHERE id=?",
-                        approvedOrder.orderItemId());
+                String beforeFrozenChange = scalarText(connection,
+                        "SELECT to_jsonb(item)::text FROM " + route.orderItemTable + " item WHERE id=?", approvedOrder.orderItemId());
+                SQLException frozen = assertThrows(SQLException.class, () -> execute(connection,
+                        "UPDATE " + route.orderItemTable + " SET qty=8 WHERE id=?", approvedOrder.orderItemId()));
+                assertEquals("55000", frozen.getSQLState());
+                assertEquals(beforeFrozenChange, scalarText(connection,
+                        "SELECT to_jsonb(item)::text FROM " + route.orderItemTable + " item WHERE id=?", approvedOrder.orderItemId()));
                 execute(
                         connection,
                         "UPDATE " + route.orderItemTable
@@ -622,12 +624,12 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     id,bill_no,bill_date,receipt_id,line_no,order_item_id,
                     goods_id,unit_id,goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,goods_snapshot_locked_at,
-                    unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted)
-                VALUES(?,?,?,?,?,?, ?,?,?,?,'MASTER_AT_APPROVAL',now(),1,?,0,0,0,'NORMAL',FALSE)
+                    unit_rate,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,is_deleted)
+                VALUES(?,?,?,?,?,?, ?,?,?,?,'MASTER_AT_APPROVAL',now(),1,?,?,0,0,0,0,'NORMAL',FALSE)
                 """, itemId, billNo, BILL_DATE, receiptId, lineNo, orderItemId,
                 fixture.goodsId(), fixture.unitId(),
                 "V420-G-" + fixture.goodsId(), "V420 split goods",
-                new BigDecimal(qty));
+                new BigDecimal(qty), new BigDecimal(qty));
     }
 
     private static void insertInspection(

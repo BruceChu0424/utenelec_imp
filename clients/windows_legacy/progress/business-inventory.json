@@ -78105,7 +78105,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "7d322cdf73d27cdfd3bb2ab3d763f154ea32f86dea916a5d9528a8b0b0702645"
+          "targetSha256": "8fcd19e67ffc108c45975aba7c85426709a6e0b7cb17cec066f53e7a6a62037c"
         },
         {
           "directive": "import",
@@ -218202,7 +218202,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -222494,7 +222494,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -226079,7 +226079,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -227386,7 +227386,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -237856,7 +237856,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -238618,7 +238618,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5"
+          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
         },
         {
           "directive": "import",
@@ -275726,8 +275726,8 @@
     },
     {
       "source": "lib/features/finance/widgets/receipt_order_collection_panel.dart",
-      "sha256": "7d322cdf73d27cdfd3bb2ab3d763f154ea32f86dea916a5d9528a8b0b0702645",
-      "lineCount": 296
+      "sha256": "8fcd19e67ffc108c45975aba7c85426709a6e0b7cb17cec066f53e7a6a62037c",
+      "lineCount": 300
     },
     {
       "source": "lib/features/finance/widgets/sales_order_revision_table.dart",
@@ -278946,8 +278946,8 @@
     },
     {
       "source": "lib/shared/measurement/widgets/weight_grid_column.dart",
-      "sha256": "8b931c054367a6dab78d5c7b2bb083ec0981d7387f57fc565f3ab757beccddd5",
-      "lineCount": 1230
+      "sha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444",
+      "lineCount": 1231
     },
     {
       "source": "lib/shared/measurement/widgets/weight_params_load_notice.dart",

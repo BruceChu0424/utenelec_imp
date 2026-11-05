@@ -316,7 +316,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     tokens: {
       'Perm.salesShipmentFinanceApprove': 4,
       'Perm.salesShipmentFinanceReject': 4,
-      'Perm.salesShipmentFinanceView': 3,
+      // Frozen/current receivable references and refreshes use the same native
+      // finance read grant; claims and approve/reject/reverse checks stay intact.
+      'Perm.salesShipmentFinanceView': 9,
       'Perm.salesShipmentFinanceReverse': 2,
       'Perm.salesShipmentView': 1,
     },
@@ -340,11 +342,16 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 3,
     tokens: {
       'Perm.salesOrderCreate': 1,
-      'Perm.salesOrderPriceView': 3,
+      'Perm.salesOrderPriceView': 5,
       'Perm.salesQuoteConvert': 1,
       'Perm.salesQuoteFinanceView': 1,
       'Perm.salesShipmentCreate': 1,
-      'Perm.salesShipmentFinanceView': 1,
+      'Perm.salesShipmentFinanceView': 2,
+      // SalesOrderService.list returns order money only for these exact native
+      // finance grants, or all-finance + customer-prepayment + original price.
+      'Perm.salesOrderFinanceView': 1,
+      'Perm.financeViewAll': 2,
+      'Perm.customerPrepaymentView': 2,
     },
   ),
   // Bulk permission work keeps authorization:manage AND superadmin, matching the controller/service and step-up write contract.
@@ -427,7 +434,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsEdit': 1,
       'Perm.goodsExport': 1,
       // 2026-10-28：AppBar 右上角新增不依赖分类选中的导入入口（工具条入口保留）。
-      'Perm.goodsImport': 2,
+      // Both existing entrances share an async click guard which rechecks the
+      // original goods:import grant. The import service remains authoritative.
+      'Perm.goodsImport': 3,
     },
   ),
   'lib/features/basic_data/widgets/goods_operation_history_panel.dart': (
@@ -932,6 +941,45 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.financeOrderApprovalView': 1},
   ),
+  // AttachmentService requires attachment:view AND the native owner's view
+  // scope. The new retained-reference section adds that exact conjunction;
+  // its other 22 references already belonged to the unchanged global baseline.
+  'lib/features/sales/pages/sales_doc_detail_page.dart': (
+    legacyCount: 22,
+    tokens: {
+      'Perm.salesShipmentReject': 1,
+      'Perm.salesOrderChangeQty': 1,
+      'Perm.salesOrderStop': 1,
+      'Perm.salesOrderChangePlanned': 1,
+      'Perm.salesOrderCancel': 1,
+      'Perm.warehouseSalesOutboundExecute': 1,
+      'Perm.salesReturnQualityView': 1,
+      'Perm.salesReturnQualityCorrect': 1,
+      'Perm.salesReturnQualityDispose': 1,
+      'Perm.salesQuoteView': 3,
+      'Perm.salesOrderPriority': 1,
+      'Perm.salesOrderReallocate': 1,
+      'Perm.financeViewAll': 1,
+      'Perm.customerPrepaymentView': 1,
+      'Perm.salesShipmentFinanceView': 1,
+      'Perm.attachmentView': 1,
+      'Perm.salesShipmentView': 1,
+      'Perm.purchaseOrderView': 1,
+      'Perm.subcontractOrderView': 1,
+      'Perm.productionPlanView': 1,
+      'Perm.productionMaterialAnalysisView': 1,
+    },
+  ),
+  // WarehouseSalesOutboundController keeps view+execute on each physical
+  // processing action; the returned native header capability is also required.
+  'lib/features/warehouse/widgets/warehouse_component_processing_actions.dart':
+      (
+        legacyCount: 0,
+        tokens: {
+          'Perm.warehouseSalesOutboundExecute': 2,
+          'Perm.warehouseSalesOutboundView': 1,
+        },
+      ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -1030,7 +1078,8 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      306, // +37 exact source-reviewed references; retired guards stay removed.
+      325, // Prior 306 + 19 exact native source references reviewed above;
+      // the global 835 cap and wrong-token/copied-file rejection stay fixed.
     );
   });
 

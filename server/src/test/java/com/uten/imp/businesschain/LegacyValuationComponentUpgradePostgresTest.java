@@ -46,31 +46,21 @@ class LegacyValuationComponentUpgradePostgresTest {
             Legacy original;
             TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                     .locations("classpath:db/migration").target("1024").load().migrate();
-            try(var old=start(postgres,logs,"1024","before")){
-                var db=old.getBean(JdbcTemplate.class);var fixture=fixture(old);var world=fixture.seedWorld("real-v1-base-"+UUID.randomUUID());
-                fixture.loginAs(world.superAdminUserId());fixture.seedChartOfAccounts();
-                var posting=old.getBean(InventoryCostPostingService.class);var policy=posting.policy();
-                posting.configure(new InventoryCostPostingService.PolicyChange(true,BusinessTime.today().withDayOfMonth(1),"匿名真实旧四位成本与原GL核对",policy.version()));
-                var request=new StockDocSaveRequest();request.setDocType("OTHER_IN");request.setBillDate(BusinessTime.today());request.setWarehouseId(world.warehouseId());
-                var line=new StockDocItemLine();line.setGoodsId(world.goodsD());line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("3"));
-                // A separately supplied real source amount does not invent an inexact unit price.
-                line.setAmountOriginal(new BigDecimal("1.0001"));line.setAmountLocal(new BigDecimal("1.0001"));request.setItems(List.of(line));
-                var stock=old.getBean(StockDocService.class);UUID incoming=stock.create(request).getId();stock.approve(incoming);
-                UUID order=fixture.createApprovedOrder(world,world.goodsD(),"1","100");fixture.loginAs(world.superAdminUserId());
-                UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=? AND NOT is_deleted",UUID.class,order);
-                var shipment=fixture.shipmentRequest(world,orderItem,world.goodsD(),"1");shipment.setBillDate(BusinessTime.today());
-                UUID shipmentId=old.getBean(SalesShipmentService.class).create(shipment).getId();fixture.shipThroughWarehouse(shipmentId);
-                UUID shipmentItem=db.queryForObject("SELECT id FROM sales_shipment_items WHERE shipment_id=? AND NOT is_deleted",UUID.class,shipmentId);
+            try{
+                var old=new HistoricalInventoryJdbc(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                        postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()),"real-v1-base-"+UUID.randomUUID());
+                var db=old.db;var world=old.world;old.enableGl("匿名真实旧四位成本与原GL核对");
+                // Only original inputs are supplied. The actual old inventory
+                // engine produces the historical amount, without an ORM factory.
+                var received=old.receipt(world.goodsD(),null,"3","1.0001");UUID incoming=received.document().id();
+                UUID shipmentItem=old.ship(world.goodsD(),"1");
                 UUID source=db.queryForObject("SELECT result_node_id FROM stock_value_events WHERE source_doc_id=? AND operation='RECEIVE'",UUID.class,incoming);
                 UUID sourceItem=db.queryForObject("SELECT id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",UUID.class,incoming);
                 assertThat(amount(db,"SELECT sum(amount_delta_local) FROM stock_value_postings WHERE owner_kind='COGS' AND owner_id=?",shipmentItem)).isEqualByComparingTo("0.3334");
                 assertThat(amount(db,"SELECT amount_local FROM stock_balances WHERE goods_id=?",world.goodsD())).isEqualByComparingTo("0.6667");
-                posting.post(period());
+                old.postGl();
                 assertThat(glAmount(db,world.goodsD())).isEqualByComparingTo("0.3334");
-                var unrelated=new StockDocSaveRequest();unrelated.setDocType("OTHER_IN");unrelated.setBillDate(BusinessTime.today());unrelated.setWarehouseId(world.warehouseId());
-                var separate=new StockDocItemLine();separate.setGoodsId(world.goodsB());separate.setColorId(world.colorId());separate.setUnitId(world.unitId());
-                separate.setUnitRate(BigDecimal.ONE);separate.setQty(new BigDecimal("2"));separate.setAmountOriginal(new BigDecimal("7.1234"));separate.setAmountLocal(new BigDecimal("7.1234"));
-                unrelated.setItems(List.of(separate));stock.approve(stock.create(unrelated).getId());
+                old.receipt(world.goodsB(),world.colorId(),"2","7.1234");
                 original=new Legacy(world,incoming,sourceItem,source,shipmentItem,storedFacts(db,world.goodsD()),glFacts(db,world.goodsD()),storedFacts(db,world.goodsB()));
             }finally{SecurityContextHolder.clearContext();}
 
@@ -117,29 +107,17 @@ class LegacyValuationComponentUpgradePostgresTest {
             TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword())
                 .locations("classpath:db/migration").target("1024").load().migrate();
             CursorLegacy original;
-            try(var before=start(postgres,logs,"1024","before-two-cursors")){
-                var db=before.getBean(JdbcTemplate.class);var fixture=fixture(before);var world=fixture.seedWorld("actual-old-consumption-prefix-"+UUID.randomUUID());
-                fixture.loginAs(world.superAdminUserId());fixture.seedChartOfAccounts();
-                var stock=before.getBean(StockDocService.class);
-                var opening=new StockDocSaveRequest();opening.setDocType("OTHER_IN");opening.setBillDate(BusinessTime.today());opening.setWarehouseId(world.warehouseId());
-                var lines=new ArrayList<StockDocItemLine>();
-                for(var spec:List.of(new Object[]{world.goodsB(),"6","60"},new Object[]{world.goodsE(),"3","1.0001"})){
-                    var line=new StockDocItemLine();line.setGoodsId((UUID)spec[0]);line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);
-                    line.setQty(new BigDecimal((String)spec[1]));line.setAmountOriginal(new BigDecimal((String)spec[2]));line.setAmountLocal(line.getAmountOriginal());lines.add(line);
-                }
-                opening.setItems(lines);UUID incoming=stock.create(opening).getId();stock.approve(incoming);
-                UUID plan=org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"approvedPlan",world,world.goodsA(),"3","3");
-                org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"issueReadyPlanAndMaterials",world,plan);
-                UUID planItem=org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"planItemIdFor",plan,world.goodsA());
-                UUID orderItem=org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"orderItemIdOfPlan",plan);
-                UUID report=org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"reportAndApprove",world,planItem,orderItem,world.goodsA(),"3");
-                fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
-                drainAll(fixture,world);
-                var policy=before.getBean(InventoryCostPostingService.class).policy();before.getBean(InventoryCostPostingService.class).configure(
-                    new InventoryCostPostingService.PolicyChange(true,BusinessTime.today().withDayOfMonth(1),"真实旧双实耗游标与原GL",policy.version()));
-                var shipment=fixture.shipmentRequest(world,orderItem,world.goodsA(),"1");shipment.setBillDate(BusinessTime.today());
-                UUID shipped=before.getBean(SalesShipmentService.class).create(shipment).getId();fixture.shipThroughWarehouse(shipped);drainAll(fixture,world);
-                before.getBean(InventoryCostPostingService.class).post(period());
+            try{
+                var before=new HistoricalInventoryJdbc(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                        postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()),"actual-old-consumption-prefix-"+UUID.randomUUID());
+                var db=before.db;var world=before.world;
+                before.receipt(world.goodsB(),null,"6","60");
+                var incoming=before.receipt(world.goodsE(),null,"3","1.0001").document().id();
+                UUID scope=before.produceA();
+                UUID plan=db.queryForObject("SELECT plan_id FROM production_execution_segments WHERE id=?",UUID.class,scope);
+                before.enableGl("真实旧双实耗游标与原GL");
+                UUID orderItem=db.queryForObject("SELECT allocation.sales_order_item_id FROM execution_segment_sales_allocations allocation WHERE execution_segment_id=?",UUID.class,scope);
+                before.ship(world.goodsA(),"1",orderItem);before.drain();before.postGl();
                 var originalGl=glFacts(db,world.goodsA());assertThat(originalGl).isNotEmpty();
                 var consumed=db.queryForMap("""
                     SELECT posting.id,posting.demand_id,event.result_node_id FROM production_material_settlement_postings posting
@@ -149,10 +127,7 @@ class LegacyValuationComponentUpgradePostgresTest {
                     """,plan,world.goodsE());
                 var returns=new ArrayList<UUID>();
                 for(String qty:List.of("0.1","0.2")){
-                    var request=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();request.setIdempotencyKey("old-actual-partial:"+UUID.randomUUID());request.setReason("真实旧实耗分次退回");
-                    var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();line.setDemandId((UUID)consumed.get("demand_id"));line.setSourcePostingId((UUID)consumed.get("id"));line.setSettlementType("CONSUMED");line.setQtyBase(new BigDecimal(qty));request.setLines(List.of(line));
-                    before.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService.class).reverse(plan,request,world.superAdminUserId());
-                    drainAll(fixture,world);
+                    before.reverseConsumption((UUID)consumed.get("id"),qty);
                 }
                 returns.addAll(db.queryForList("SELECT result_node_id FROM stock_value_events WHERE operation='CONSUMPTION_RETURN' AND source_node_id=? ORDER BY occurred_at,id",UUID.class,consumed.get("result_node_id")));
                 assertThat(returns).hasSize(2);
@@ -201,6 +176,7 @@ class LegacyValuationComponentUpgradePostgresTest {
     private record CursorLegacy(FullChainEndToEndTest.World world,UUID incoming,UUID item,UUID source,List<UUID> returns,Map<String,String> glFacts,String materialFacts,String productFacts){}
 
     private ConfigurableApplicationContext start(PostgreSQLContainer postgres,Path logs,String target,String stage){
+        if(!"latest".equals(target))throw new IllegalArgumentException("Current ORM requires the completed forward catalog");
         var args=new ArrayList<>(List.of("--spring.profiles.active=dev","--server.port=0",
                 "--spring.datasource.url="+postgres.getJdbcUrl(),"--spring.datasource.username="+postgres.getUsername(),"--spring.datasource.password="+postgres.getPassword(),
                 "--spring.flyway.url="+postgres.getJdbcUrl(),"--spring.flyway.user="+postgres.getUsername(),"--spring.flyway.password="+postgres.getPassword(),
@@ -211,7 +187,6 @@ class LegacyValuationComponentUpgradePostgresTest {
                 "--uten.reporting.materialized-view-refresh.enabled=false","--uten.production.readiness-reconcile.enabled=false",
                 "--uten.features.goods-owner-scope-enabled=false","--uten.storage.uploads-enabled=false","--uten.policy-intelligence.enabled=false",
                 "--uten.inventory.value-work.enabled=false","--uten.storage.local-dir="+logs.resolve("storage"),"--logging.file.name="+logs.resolve(stage+".log")));
-        if(!"latest".equals(target))args.add("--spring.flyway.target="+target);
         return new SpringApplicationBuilder(UtenImpApplication.class).web(WebApplicationType.SERVLET).run(args.toArray(String[]::new));
     }
     private FullChainEndToEndTest fixture(ConfigurableApplicationContext context){var result=new FullChainEndToEndTest();context.getAutowireCapableBeanFactory().autowireBean(result);return result;}

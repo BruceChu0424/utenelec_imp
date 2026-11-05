@@ -24,7 +24,7 @@ class ProcurementReferencePricePolicyPostgresTest {
     private static final UUID CURRENCY = UUID.randomUUID(), SETTLEMENT = UUID.randomUUID();
     private static final String PURPOSE = "money.reference-unit-price";
     private record OwnerSql(String orderInsert, String itemInsert, String row, String header, String proof,
-            String replacePolicy, String deleteItem, String missingPolicy) { }
+            String replacePolicy, String deleteItem, String missingPolicy, String changeOriginalTotal) { }
     private static OwnerSql owner(String prefix) {
         return switch (prefix) {
             case "purchase" -> new OwnerSql(
@@ -33,14 +33,16 @@ class ProcurementReferencePricePolicyPostgresTest {
                     "SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?", "SELECT to_jsonb(i)::text FROM purchase_orders i WHERE id=?",
                     "SELECT fn_procurement_reference_price_proof(1,6,reference_price_precision_policy) FROM purchase_order_items WHERE id=?",
                     "UPDATE purchase_order_items SET reference_price_precision_policy=fn_business_precision_snapshot() WHERE id=?",
-                    "DELETE FROM purchase_order_items WHERE id=?", "SELECT reference_price_precision_policy IS NULL FROM purchase_order_items WHERE id=?");
+                    "DELETE FROM purchase_order_items WHERE id=?", "SELECT reference_price_precision_policy IS NULL FROM purchase_order_items WHERE id=?",
+                    "UPDATE purchase_order_items SET total_amount_input=2 WHERE id=?");
             case "subcontract" -> new OwnerSql(
                     "INSERT INTO subcontract_orders(id,status,currency_id,exchange_rate,tax_rate,settlement_method_id,total_original,total_local) VALUES(?,?,?,1,0,?,?,?)",
                     "INSERT INTO subcontract_order_items(id,order_id,legacy_id,qty,unit_id,price,total_amount_input,amount_original,amount_local) VALUES(?,?,?,?,?,?,?,?,?)",
                     "SELECT to_jsonb(i)::text FROM subcontract_order_items i WHERE id=?", "SELECT to_jsonb(i)::text FROM subcontract_orders i WHERE id=?",
                     "SELECT fn_procurement_reference_price_proof(1,6,reference_price_precision_policy) FROM subcontract_order_items WHERE id=?",
                     "UPDATE subcontract_order_items SET reference_price_precision_policy=fn_business_precision_snapshot() WHERE id=?",
-                    "DELETE FROM subcontract_order_items WHERE id=?", "SELECT reference_price_precision_policy IS NULL FROM subcontract_order_items WHERE id=?");
+                    "DELETE FROM subcontract_order_items WHERE id=?", "SELECT reference_price_precision_policy IS NULL FROM subcontract_order_items WHERE id=?",
+                    "UPDATE subcontract_order_items SET total_amount_input=2 WHERE id=?");
             default -> throw new IllegalArgumentException("Unsupported fixture owner");
         };
     }
@@ -186,8 +188,33 @@ class ProcurementReferencePricePolicyPostgresTest {
         } finally { source.getConnection().rollback(); source.getConnection().setAutoCommit(true); }
     }
 
+    @ParameterizedTest @ValueSource(strings = {"purchase", "subcontract"})
+    void frozenOriginalTotalRejectsBeforeRequestingPrecisionAndPreservesEveryStoredFact(String prefix) throws Exception {
+        UUID oldOrder = order(prefix, 1, BigDecimal.ONE), oldItem = UUID.randomUUID();
+        insert(prefix, oldItem, oldOrder, new BigDecimal("6"), BigDecimal.ONE, new BigDecimal("0.1666666666"), null);
+        install(); choose(Map.of(PURPOSE, new BusinessPrecisionContext.Choice(4, "DOWN")));
+        UUID newOrder = order(prefix, 1, BigDecimal.ONE), newItem = UUID.randomUUID();
+        insert(prefix, newItem, newOrder, new BigDecimal("6"), BigDecimal.ONE, new BigDecimal("0.1666"), null);
+        choose(Map.of());
+        for (var pair : List.of(Map.entry(oldOrder, oldItem), Map.entry(newOrder, newItem))) {
+            String beforeItem = row(prefix, pair.getValue()), beforeHeader = header(prefix, pair.getKey());
+            int beforeRevisions = jdbc.queryForObject("SELECT count(*) FROM procurement_order_source_revisions", Integer.class);
+            assertThatThrownBy(() -> jdbc.update(owner(prefix).changeOriginalTotal(), pair.getValue()))
+                    .hasStackTraceContaining("immutable").satisfies(failure -> {
+                        Throwable root = failure;
+                        while (root.getCause() != null) root = root.getCause();
+                        assertThat(root).isInstanceOf(org.postgresql.util.PSQLException.class);
+                        assertThat(((org.postgresql.util.PSQLException)root).getSQLState()).isEqualTo("55000");
+                    });
+            assertThat(row(prefix, pair.getValue())).isEqualTo(beforeItem);
+            assertThat(header(prefix, pair.getKey())).isEqualTo(beforeHeader);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM procurement_order_source_revisions", Integer.class)).isEqualTo(beforeRevisions);
+        }
+    }
+
     private static void install() throws Exception {
         jdbc.execute(read("V1062__freeze_procurement_total_reference_price_policy.sql"));
+        jdbc.execute(read("V1065__reject_unproven_frozen_procurement_reference_price_updates.sql"));
         jdbc.execute("CREATE TRIGGER finance_proof BEFORE INSERT OR UPDATE ON procurement_order_approval_cases FOR EACH ROW EXECUTE FUNCTION fn_guard_procurement_finance_commercial_snapshot()");
     }
     private static UUID order(String prefix, int status, BigDecimal total) {

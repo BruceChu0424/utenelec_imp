@@ -172,6 +172,9 @@ class InventoryValueOutputRefreshContinuationPostgresTest {
     }
     private static void execute(Connection connection,String sql)throws Exception{try(var statement=connection.createStatement()){statement.execute(sql);}}
     private static void execute(Connection connection,String sql,Object... values)throws Exception{
-        try(var statement=connection.prepareStatement(sql)){for(int i=0;i<values.length;i++)statement.setObject(i+1,values[i]);statement.execute();}
+        try(var statement=connection.prepareStatement(sql)) {
+            for(int i=0;i<values.length;i++) { statement.setObject(i+1,values[i]); }
+            statement.execute();
+        }
     }
 }

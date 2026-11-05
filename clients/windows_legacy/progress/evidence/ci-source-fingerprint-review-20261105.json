@@ -258,5 +258,52 @@
       "allOriginalValuesAndOutcomesPreserved": true
     }
   ],
-  "reproduceEncoding": "python scripts/governance/source_fingerprint_records.py --write <evidence.json>"
+  "reproduceEncoding": "python scripts/governance/source_fingerprint_records.py --write <evidence.json>",
+  "readerReview": {
+    "changedMaps": [
+      {
+        "artifact": "internal-feedback-20261104.json",
+        "field": "sourceSha256",
+        "count": 132
+      },
+      {
+        "artifact": "internal-feedback-20261104-pre-eol-normalization.json",
+        "field": "sourceSha256",
+        "count": 132
+      },
+      {
+        "artifact": "internal-feedback-20261104-checkout-archive.json",
+        "field": "all132RawBlobIds",
+        "count": 132
+      },
+      {
+        "artifact": "2026-11-05-订单散件交付主线验证.json",
+        "field": "sourceSha256",
+        "count": 167
+      },
+      {
+        "artifact": "2026-11-05-订单散件交付主线验证.json",
+        "field": "parallelWorkingTreeSha256",
+        "count": 111
+      }
+    ],
+    "repositorySearch": "All committed Python/Java/Dart/C#/PowerShell/shell/JavaScript/TypeScript readers were searched for these artifacts and all three exact map keys. No runtime or freeze validator reads the changed five maps.",
+    "progressEvidenceValidation": {
+      "source": "clients/windows_legacy/tools/progress_tracker.py",
+      "lines": "178-186",
+      "behavior": "Verifies that recorded evidence paths exist; does not parse these artifacts checksum maps."
+    },
+    "scalarSourceDigestComparisons": {
+      "source": "clients/windows_legacy/tools/progress_tracker.py",
+      "lines": "79,117",
+      "behavior": "Registry sourceSha256 remains a scalar and is not part of the selected four artifacts."
+    },
+    "handoverCapture": {
+      "source": "clients/windows_legacy/tools/capture_handover_state.py",
+      "behavior": "Writes its independent sourceFiles records; does not read these four archival artifacts."
+    },
+    "otherSourceSha256Protocols": "Deployment reviewed-host manifests use logical source keys; finance/source-paper use scalar digests. None of those files/envelopes are migrated. The formatter rejects non-path map keys and leaves scalar values unchanged.",
+    "algorithmAuthority": "Chosen by explicit map field name; sourceRef, commit and scalar sourceSha256 are preserved. Historical Git blob identities were separately verified by git rev-parse of the identified source blob.",
+    "futureGeneration": "After refreshing one of the selected archival path maps, run scripts/governance/source_fingerprint_records.py --write on that artifact. It does not recompute or reinterpret historical checksum values."
+  }
 }

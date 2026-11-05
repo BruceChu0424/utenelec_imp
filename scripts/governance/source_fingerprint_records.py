@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 
 ALGORITHMS = {
@@ -23,7 +23,7 @@ def source_records(mapping: dict, algorithm: str) -> tuple[dict, int]:
         if not isinstance(path, str):
             raise ValueError("source checksum keys must be repository-relative file paths")
         relative = PurePosixPath(path)
-        if "/" not in path or relative.is_absolute() or ".." in relative.parts:
+        if "/" not in path or relative.is_absolute() or PureWindowsPath(path).drive or ".." in relative.parts:
             raise ValueError("source checksum keys must be repository-relative file paths")
         if isinstance(value, dict):
             if set(value) != {"algorithm", "digest"} or value["algorithm"] != algorithm:

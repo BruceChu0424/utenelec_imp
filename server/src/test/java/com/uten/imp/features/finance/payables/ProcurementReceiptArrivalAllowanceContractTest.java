@@ -37,7 +37,8 @@ class ProcurementReceiptArrivalAllowanceContractTest {
                         + "                ProcurementArrivalControlPort." + type);
         int authority = service.indexOf("receiptAmountAuthority.apply(r, items)");
         int iqc = service.indexOf("inspectionService.receive");
-        int ap = service.indexOf("arApService.postArAp");
+        // 2026-11-04 财务整合（0aaffa3aa）后 AP 立账经 postOrDefer 委托 ProcurementPayablePosting。
+        int ap = service.indexOf("postOrDefer(");
         assertThat(arrival).isGreaterThanOrEqualTo(0);
         assertThat(arrival).isLessThan(authority);
         assertThat(authority).isLessThan(iqc);

@@ -39,12 +39,16 @@ class StockDocWeightCaptureContractTest {
     void weightInputIsKilogramsWithFourDecimalsAndZeroMeansNotWeighed() {
         assertNull(WeightInput.kg(null, "重量"));
         assertNull(WeightInput.kg(new BigDecimal("0.0000"), "重量"), "0 = 没称");
-        assertEquals(new BigDecimal("12.5000"), WeightInput.kg(new BigDecimal("12.50"), "重量"));
-        assertEquals(new BigDecimal("0.0001"), WeightInput.kg(new BigDecimal("0.000100"), "重量"),
-                "去尾零后不超过 4 位小数就收");
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：千克输入完整保留（尾零剥离），
+        // 不再四位刻度；24 位小数以内直接收，超出不默认取舍，必须明确本次精度选择。
+        assertThat(WeightInput.kg(new BigDecimal("12.50"), "重量")).isEqualByComparingTo("12.5");
+        assertThat(WeightInput.kg(new BigDecimal("0.000100"), "重量")).isEqualByComparingTo("0.0001");
         assertValidation(() -> WeightInput.kg(new BigDecimal("-1"), "第 1 行实称重量"), "第 1 行实称重量");
-        assertValidation(() -> WeightInput.kg(new BigDecimal("0.00001"), "重量"), "4 位小数");
-        assertValidation(() -> WeightInput.kg(new BigDecimal("100000000000000"), "重量"), "范围");
+        assertThat(WeightInput.kg(new BigDecimal("0.00001"), "重量")).isEqualByComparingTo("0.00001");
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> WeightInput.kg(new BigDecimal("0.0000000000000000000000001"), "重量"))
+                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        assertValidation(() -> WeightInput.kg(new BigDecimal("1".repeat(41)), "重量"), "最多40位整数和48位有效小数");
         assertEquals("12.5", WeightInput.text(new BigDecimal("12.5000")));
         assertEquals("", WeightInput.text(null));
     }
@@ -121,7 +125,8 @@ class StockDocWeightCaptureContractTest {
                 new StockDocIssueBatchRequest.ItemWeight(ITEM_A, new BigDecimal("2.50"), null),
                 new StockDocIssueBatchRequest.ItemWeight(ITEM_B, BigDecimal.ZERO, false)));
         assertEquals(List.of(ITEM_A), List.copyOf(weights.keySet()), "0 且不按称重推算的条目丢弃");
-        assertEquals(new BigDecimal("2.5000"), weights.get(ITEM_A).weightKg());
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：批量重量完整保留（尾零剥离），按数值比较。
+        assertThat(weights.get(ITEM_A).weightKg()).isEqualByComparingTo("2.5");
 
         assertValidation(() -> StockDocService.batchIssueWeights(List.of(
                 new StockDocIssueBatchRequest.ItemWeight(ITEM_A, BigDecimal.ONE, null),
@@ -133,7 +138,7 @@ class StockDocWeightCaptureContractTest {
         StockDocIssueRequest.Line remaining = line(ITEM_A, "4", null, null);
         StockDocIssueRequest.Line other = line(ITEM_B, "1", null, null);
         StockDocService.attachBatchWeights(List.of(remaining, other), weights);
-        assertEquals(new BigDecimal("2.5000"), remaining.getWeightKg());
+        assertThat(remaining.getWeightKg()).isEqualByComparingTo("2.5");
         assertFalse(remaining.getQtyFromWeight());
         assertNull(other.getWeightKg());
     }
@@ -168,8 +173,10 @@ class StockDocWeightCaptureContractTest {
         assertValidation(() -> StockDocService.materialReturnWeights(List.of(
                 new ProductionMaterialReturnConfirmRequest.Line(ITEM_A, BigDecimal.ONE),
                 new ProductionMaterialReturnConfirmRequest.Line(ITEM_A, BigDecimal.TEN))), "只能填一次");
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：负数由原始输入容量守卫拦截，
+        // 报错文案为「必须为非负数，最多40位整数和48位有效小数」。
         assertValidation(() -> StockDocService.materialReturnWeights(List.of(
-                new ProductionMaterialReturnConfirmRequest.Line(ITEM_A, new BigDecimal("-0.1")))), "不能小于 0");
+                new ProductionMaterialReturnConfirmRequest.Line(ITEM_A, new BigDecimal("-0.1")))), "必须为非负数");
         assertNull(new ProductionMaterialReturnConfirmRequest(received, "confirm-key-01").lines(),
                 "两参构造保持不带重量");
     }

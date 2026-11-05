@@ -219,9 +219,10 @@ class StockBalanceAdjustmentServiceTest {
         verify(stockDocService).createAuthorizedBalanceAdjustment(captor.capture(), eq("balance-adjust-test-key"));
         var line = captor.getValue().getItems().getFirst();
         assertEquals(0, new BigDecimal("10").compareTo(line.getCountQty()));
-        assertEquals(new BigDecimal("5.2500"), line.getCountWeight());
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：目标重量完整保留（尾零剥离），按数值比较。
+        org.assertj.core.api.Assertions.assertThat(line.getCountWeight()).isEqualByComparingTo("5.25");
         assertEquals(0, BigDecimal.ZERO.compareTo(result.deltaQty()));
-        assertEquals(new BigDecimal("5.2500"), result.afterWeightKg());
+        org.assertj.core.api.Assertions.assertThat(result.afterWeightKg()).isEqualByComparingTo("5.25");
     }
 
     @Test

@@ -20,17 +20,24 @@ class SubcontractOrderTotalAmountTest {
         assertThat(masked.getAmountOriginalExact()).isNull();
     }
 
-    @Test void financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct() {
-        var order = new SubcontractOrder(); order.setExchangeRate(new BigDecimal("7.1"));
-        order.setTotalOriginal(new BigDecimal("100")); order.setTotalLocal(new BigDecimal("710"));
-        var item = new SubcontractOrderItem(); item.setQty(new BigDecimal("3000"));
-        item.setTotalAmountInput(new BigDecimal("100"));
-        item.setPrice(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty()));
-        item.setAmountOriginal(new BigDecimal("100")); item.setAmountLocal(new BigDecimal("710"));
-        assertThatCode(() -> ReflectionTestUtils.invokeMethod(SubcontractOrderService.class,
-                "requireFinanceCommercialAuthority", order, List.of(item))).doesNotThrowAnyException();
-        item.setAmountOriginal(item.getQty().multiply(item.getPrice()));
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(SubcontractOrderService.class,
-                "requireFinanceCommercialAuthority", order, List.of(item))).isInstanceOf(ApiException.class);
+    @Test void financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct() throws Exception {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：100/3000 除不尽，
+        // 参考单价按四位 HALF_UP 反推（仅作一致性校验，不得回乘为货款）。
+        try (var ignored = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.reference-unit-price", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
+            var order = new SubcontractOrder(); order.setExchangeRate(new BigDecimal("7.1"));
+            order.setTotalOriginal(new BigDecimal("100")); order.setTotalLocal(new BigDecimal("710"));
+            var item = new SubcontractOrderItem(); item.setQty(new BigDecimal("3000"));
+            // 2026-11-04 数量采用契约（0aaffa3aa/d533807ca V1033 范式）：送审校验需要单位换算率。
+            item.setUnitRate(BigDecimal.ONE);
+            item.setTotalAmountInput(new BigDecimal("100"));
+            item.setPrice(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty()));
+            item.setAmountOriginal(new BigDecimal("100")); item.setAmountLocal(new BigDecimal("710"));
+            assertThatCode(() -> ReflectionTestUtils.invokeMethod(SubcontractOrderService.class,
+                    "requireFinanceCommercialAuthority", order, List.of(item))).doesNotThrowAnyException();
+            item.setAmountOriginal(item.getQty().multiply(item.getPrice()));
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(SubcontractOrderService.class,
+                    "requireFinanceCommercialAuthority", order, List.of(item))).isInstanceOf(ApiException.class);
+        }
     }
 }

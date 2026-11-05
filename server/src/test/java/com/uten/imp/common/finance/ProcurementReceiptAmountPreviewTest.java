@@ -1,10 +1,29 @@
 package com.uten.imp.common.finance;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
+import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProcurementReceiptAmountPreviewTest {
+
+    private AutoCloseable precision;
+
+    @BeforeEach
+    void bindExplicitPrecisionChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：100/3 等累计份额除不尽，
+        // 按 ADR-112 既有四位 HALF_UP 分摊，末批收回全部余量。
+        precision = BusinessPrecisionContext.use(Map.of(
+                "money.cumulative-share", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseExplicitPrecisionChoice() throws Exception {
+        precision.close();
+    }
+
     private static BigDecimal n(String value) { return new BigDecimal(value); }
 
     @Test void multipleRowsForOneSourceWithinADraftShareTheRemainder() {

@@ -52,6 +52,7 @@ class DailyReportV3ReviewedSaveLifecyclePostgresTest {
     WorkshopPublicSurplusEndToEndTest workshop;
     FullChainEndToEndTest harness;
 
+    private AutoCloseable precisionChoices;
     @BeforeEach void prepare(){
         assertThat(db.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class)).isEqualTo(com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT);
         assertThat(db.queryForObject("SELECT script FROM flyway_schema_history WHERE success AND version='840'",String.class)).isEqualTo("V840__daily_report_material_review_decisions.sql");
@@ -59,8 +60,16 @@ class DailyReportV3ReviewedSaveLifecyclePostgresTest {
         workshop=new WorkshopPublicSurplusEndToEndTest();beans.autowireBean(workshop);workshop.prepare();
         harness=(FullChainEndToEndTest)ReflectionTestUtils.getField(workshop,"fixture");
         assertThat(harness).isNotNull();
+        // 2026-11-04 显式精度选择契约：V1025 起实际单耗/库存价值切片在库内按原数相除，
+        // 本类直调服务(报工审核/撤审触发的 BOM 实际单耗维护)遇除不尽时须本次明确精度。
+        // WorkshopPublicSurplus 的夹具借用方只调用 prepare()、不继承其选择，按
+        // DailyReportDefectLearningEndToEndTest 同款自行绑定。
+        precisionChoices=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "goods.bom.actual-usage",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN"),
+                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN"),
+                "workshop.material.waste-rate",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")));
     }
-    @AfterEach void logout(){SecurityContextHolder.clearContext();}
+    @AfterEach void logout(){SecurityContextHolder.clearContext();if(precisionChoices!=null)try{precisionChoices.close();}catch(Exception ignored){}}
 
     @Test @Order(1)
     void makerSaveThenReadonlyV3KeepUnapprovalAndNewGenerationConserveExactUseAndCost(){

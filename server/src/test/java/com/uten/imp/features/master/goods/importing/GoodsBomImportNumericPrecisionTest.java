@@ -17,18 +17,26 @@ class GoodsBomImportNumericPrecisionTest {
     @Test void quantityAndBasisKeepTheirOwnSupportedScaleDespiteTheDisplayFormat() throws Exception {
         assertDecimal("0.03125", number("0.03125", false, "qty", "0.00"));
         assertDecimal("0.123456", number("0.123456", false, "basisOutputQty", "0.00"));
-        assertDecimal("0.3", number("0.30000000000000004", false, "qty", "General"));
+        // 2026-11-04 起按 0aaffa3aa 精确原数契约：原生二进制尾差不再折算到 Excel 15 位精度，按存储值原样保留。
+        assertDecimal("0.30000000000000004", number("0.30000000000000004", false, "qty", "General"));
+        // 每列不再有 5/6 位小数上限；24 位有效小数内按存储值全精度接受。
+        assertDecimal("0.000001", number("0.000001", false, "qty", "0.00"));
+        assertDecimal("0.1234567", number("0.1234567", false, "basisOutputQty", "0.00"));
     }
 
-    @Test void explicitTextAndRealExcessScaleStillRejectWithoutRounding() {
-        assertThrows(NumberFormatException.class, () -> number("35.299999999999997", true, "qty", "General"));
-        assertThrows(NumberFormatException.class, () -> number("0.000001", false, "qty", "0.00"));
-        assertThrows(NumberFormatException.class, () -> number("0.1234567", false, "basisOutputQty", "0.00"));
+    @Test void explicitTextAndRealExcessScaleStillRejectWithoutRounding() throws Exception {
+        // 2026-11-04 起按 0aaffa3aa 契约：上限放宽到 40 位整数、24 位有效小数，且不再静默舍入。
+        // 显式文本与原生数值超出 24 位有效小数同样整行报错，不做任何就近取整。
+        assertThrows(NumberFormatException.class, () -> number("0.1234567890123456789012345", true, "qty", "General"));
+        assertThrows(NumberFormatException.class, () -> number("0.1234567890123456789012345", false, "qty", "General"));
+        assertThrows(NumberFormatException.class, () -> number("1e999999999", true, "qty", "General"));
     }
 
     @Test void explicitValidFractionAndNativeTailUseTheSameBusinessQuantity() throws Exception {
         assertDecimal("0.03125", number("0.03125", true, "qty", "General"));
-        assertDecimal("35.3", number("35.299999999999997", false, "qty", "General"));
+        // 2026-11-04 起按 0aaffa3aa 契约：文本与原生同一存储值得到同一精确业务数量，不再折算尾差。
+        assertDecimal("35.299999999999997", number("35.299999999999997", true, "qty", "General"));
+        assertDecimal("35.299999999999997", number("35.299999999999997", false, "qty", "General"));
     }
 
     @Test void validEighteenDigitNativeQuantitiesKeepEverySourceDigit() throws Exception {

@@ -76,6 +76,10 @@ class AiPermissionGrantControllerSecurityTest {
         context = new AnnotationConfigApplicationContext(Config.class);
         business = AopTestUtils.getUltimateTargetObject(context.getBean(AiPermissionGrantService.class));
         sessions = context.getBean(AuthSessionService.class);
+        // 2026-11-04 对账: d533807ca 起 AuthSessionService 带 @Autowired setSpringEvents,
+        // 容器装配会调用 mock 上的这个 setter。清掉装配期交互, 下面各用例的
+        // verifyNoInteractions(sessions) 仍只约束请求路径(不核销凭证、不动会话)。
+        clearInvocations(sessions);
         proposals = context.getBean(AiChatActionProposalPort.class);
         mvc = MockMvcBuilders.standaloneSetup(context.getBean(AiPermissionGrantController.class))
                 .setControllerAdvice(new GlobalExceptionHandler())

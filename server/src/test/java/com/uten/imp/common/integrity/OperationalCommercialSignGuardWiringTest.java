@@ -40,7 +40,9 @@ class OperationalCommercialSignGuardWiringTest {
         assertThat(compact).contains("getPrice().signum()<0", "ErrorCode.VALIDATION_FAILED", "ProcurementQuantities.of(");
         assertThat(compact.indexOf("getPrice().signum()<0")).isLessThan(compact.indexOf("itemRepo.save("));
         String stored = DraftMutationSourceContract.method(source, "requireNonNegativeStoredCommercial");
-        assertThat(stored).contains("requireStoredTotals(", "ProcurementQuantities.of(",
+        // 2026-11-04：0aaffa3aa 起采购数量守卫改用 ProcurementQuantities.frozen（含数量采用 base 列），
+        // 守卫本体收敛到 NonNegativeCommercialSignGuard 公共助手。
+        assertThat(stored).contains("requireStoredTotals(", "ProcurementQuantities.frozen(",
                 "getPrice()", "getAmountOriginal()", "getAmountLocal()", "ErrorCode.CONFLICT");
         assertThat(DraftMutationSourceContract.methodNamesInvoking(source, "requireNonNegativeStoredCommercial"))
                 .containsExactlyInAnyOrder(approvalKernel, "requireReversibleBusiness", "reverse");

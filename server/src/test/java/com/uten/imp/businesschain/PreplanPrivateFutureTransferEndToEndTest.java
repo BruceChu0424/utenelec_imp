@@ -178,16 +178,29 @@ class PreplanPrivateFutureTransferEndToEndTest {
      */
     @Test void subcontractSupplyWithDirectMaterialsIsNotAPrivateTransferSourceAndReturnsToItsOwnAnalysis() {
         var c=scenario("private-subcontract-direct");fixture.seedGoodsSources(Map.of(c.material(),"SUBCONTRACT"));
-        fixture.addSubcontractDirectMaterial(c.world(),c.material(),"1");
+        UUID directMaterial=fixture.addSubcontractDirectMaterial(c.world(),c.material(),"1");
         var a=preview(c,"A","100");var am=material(a,c.material());
         commands.notifySupply(a.analysisId(),new NotifyRequest(a.version(),a.fingerprint(),"future-sc-notify-"+a.analysisId(),"SUBCONTRACT",List.of(am.materialLineId()),List.of(),null));
         UUID application=db.queryForObject("SELECT allocation.external_item_id FROM preplan_supply_actions action JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id WHERE action.analysis_id=? AND action.route='SUBCONTRACT'",UUID.class,a.analysisId());
         UUID orderItem=orderSubcontract(c,application,"100");
+        // V1025（2026-11-04 对齐）：领料发外后按持久队列收口直属料/委外件的待核对成本，
+        // 否则同池后续回厂收货按 40001 拒绝；真实运行由轮询工作器数秒内完成，这里同步
+        // 驱动同一真实工作器，与 PreplanReallocationMakeSupplementEndToEndTest 同款。
+        drainValuationCostWork(c.world(),List.of(directMaterial,c.material()));
         var b=preview(c,"B","100");var bm=material(b,c.material());
         assertTrue(transfers.sources(b.analysisId(),bm.materialLineId()).isEmpty(),"带直属物料的委外在途不能被别的分析私有转拨");
         assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE subcontract_order_items SET qty=qty-1 WHERE id=?",orderItem));
-        receiveSubcontract(c,orderItem,"20");qty("20",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());qty("0",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
+        receiveSubcontract(c,orderItem,"20");drainValuationCostWork(c.world(),List.of(directMaterial,c.material()));
+        qty("20",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());qty("0",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
         receiveSubcontract(c,orderItem,"80");qty("100",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());qty("0",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
+    }
+
+    private void drainValuationCostWork(FullChainEndToEndTest.World w,java.util.List<UUID> goods){
+        var operator=org.springframework.security.core.context.SecurityContextHolder.getContext();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        try{InventoryValueWorkTestSupport.drain(beans.getBean(
+                com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,goods);}
+        finally{org.springframework.security.core.context.SecurityContextHolder.setContext(operator);}
     }
 
     @Test void concurrentTargetsCannotTransferTheSamePrivateCapacityTwice() throws Exception {

@@ -119,8 +119,9 @@ class MaterialAnalysisOneTableContractTest {
                 "row.requiredQty()!=null", "row.requiredQty().signum()>0",
                 "row.shortageQty()!=null", "row.shortageQty().signum()>0");
         assertThat(service).contains("&& row.confirmedRoute() == null");
-        // 覆盖行按库存齐套显示；来源确认另按本批正需求办理，不再依赖物理缺口。
+        // 库存覆盖展示与来源确认分别保留物理缺口和正需求约束。
         assertThat(service).contains("&& row.shortageQty().signum() > 0;");
+        assertThat(routePredicate).contains("row.shortageQty().signum()>0");
         // 根供给行另有根路线冻结机制，不进这个分支。
         assertThat(service).contains("MaterialAnalysisFlowStageService.ROUTE_PENDING_INPUT");
     }

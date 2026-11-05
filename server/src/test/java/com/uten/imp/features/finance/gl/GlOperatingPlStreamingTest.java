@@ -12,18 +12,18 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.math.BigDecimal;
 import java.util.*;
-import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+// 2026-11-04 财务整合（0aaffa3aa）后经营损益表改为固定原表模板行集（附件16 sourceRows 3..92 共 90 行）：
+// 不再有 v_stock_actual_cogs_postings 动态类别分组流，取数经 GlReportLineSource 绑定与
+// FinanceManufacturingLabor 劳动池归集；本测试按新语义钉分页/导出一致性、行预算失败关闭、
+// 未配置行不冒充完整合计与列检索模板闭合。
 class GlOperatingPlStreamingTest {
-    private static final BigDecimal COST = new BigDecimal("0.123456789012345678");
-    private final List<Long> offsets = new ArrayList<>();
 
     @AfterEach void clear() {
         TransactionSynchronizationManager.clear();SecurityContextHolder.clearContext();
@@ -32,27 +32,18 @@ class GlOperatingPlStreamingTest {
     private GlReportService service() {
         EntityManager em = mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call -> {
-            String sql = call.getArgument(0);var query = mock(Query.class);Map<String,Object> parameters = new HashMap<>();
-            when(query.setParameter(anyString(), any())).thenAnswer(binding -> {
-                parameters.put(binding.getArgument(0), binding.getArgument(1));return query;
-            });
-            when(query.getSingleResult()).thenReturn(sql.contains("subcontract_receipt_items")
-                    ? new BigDecimal("7.25") : new BigDecimal("1000"));
-            when(query.getResultList()).thenAnswer(read -> {
-                if (!sql.contains("v_stock_actual_cogs_postings")) return List.of();
-                assertThat(sql).contains("ORDER BY 2 DESC,1", "LIMIT :__groupLimit OFFSET :__groupOffset");
-                long offset = ((Number) parameters.get("__groupOffset")).longValue();offsets.add(offset);
-                assertThat(parameters.get("__groupLimit")).isEqualTo(500);
-                return IntStream.range((int) offset, Math.min(501, (int) offset + 500))
-                        .mapToObj(value -> new Object[]{String.format("类别-%04d",value), COST, value == 500}).toList();
-            });
+            String sql = call.getArgument(0);var query = mock(Query.class);
+            when(query.setParameter(anyString(), any())).thenAnswer(binding -> query);
+            // to_regclass 预检查等标量查询返回非 TRUE 值：账套无接续基线，全部月份视为已知范围。
+            when(query.getSingleResult()).thenReturn(new java.math.BigDecimal("1000"));
+            when(query.getResultList()).thenReturn(List.of());
             return query;
         });
         GlReportLineSource lines = mock(GlReportLineSource.class);
         when(lines.bindings(anyCollection())).thenReturn(new GlReportLineSource.Bindings(Map.of()));
         when(lines.styleMonthly(anyCollection(), anyString(), any(), any())).thenReturn(Map.of());
         when(lines.payrollMonthly(anyCollection(), anyInt(), any())).thenReturn(Map.of());
-        when(lines.depreciationMonthly(anyCollection(), anyString(), anyString())).thenReturn(Map.of());
+        when(lines.depreciationMonthly(anyCollection(), anyString(), anyString(), anyString())).thenReturn(Map.of());
         return new GlReportService(em, lines,com.uten.imp.support.FinanceReportTestAccess.company());
     }
 
@@ -66,67 +57,72 @@ class GlOperatingPlStreamingTest {
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }
 
-    @Test void sameAuthorityPreservesAllDynamicCategoriesExactTotalAndTheFixedTailAcrossBothOutputs() {
+    @Test void sameAuthorityPreservesAllTemplateRowsExactTotalAndTheProfitTailAcrossBothOutputs() {
         var service = service();
-        var first = service.operatingPlPage(2026,10,1,500);
-        var second = service.operatingPlPage(2026,10,2,500);
+        var first = service.operatingPlPage(2026,10,1,50);
+        var second = service.operatingPlPage(2026,10,2,50);
         List<Map<String,Object>> expected = new ArrayList<>(first.rows());expected.addAll(second.rows());
-        assertThat(first.total()).isEqualTo(expected.size());assertThat(first.rows()).hasSize(500);
-        assertThat(expected.stream().filter(row -> "库存价值".equals(row.get("sub")))).hasSize(501);
-        assertThat(expected).anySatisfy(row -> {
-            assertThat(row.get("sub")).isEqualTo("销售成本合计");
-            assertThat((BigDecimal) row.get("amount")).isEqualByComparingTo(COST.multiply(new BigDecimal("501")));
-        });
-        context();offsets.clear();List<ExportPayload> pages = new ArrayList<>();
+        assertThat(first.total()).isEqualTo(90);assertThat(first.rows()).hasSize(50);
+        assertThat(expected).hasSize(90);
+        assertThat(expected.getFirst()).containsEntry("category","应收账款").containsEntry("__lineKey","OP_REVENUE");
+        assertThat(expected.getLast()).containsEntry("sub","利润额").containsEntry("__lineKey","OP_PROFIT");
+        assertThat(expected.stream().filter(row -> "工费合计".equals(row.get("sub")))).hasSize(1);
+        assertThat(expected.stream().filter(row -> "一般管理费合计".equals(row.get("sub")))).hasSize(1);
+        context();List<ExportPayload> pages = new ArrayList<>();
         try (var sink = ExportPageSink.open(pages::add)) {
             var streamed = service.exportInCurrentSnapshot("gl/operating-pl", null, 2026,10,1000);
-            assertThat(streamed.rows()).isEmpty();assertThat(streamed.total()).isEqualTo(expected.size());
+            assertThat(streamed.rows()).isEmpty();assertThat(streamed.total()).isEqualTo(90);
         }
-        assertThat(offsets).containsExactly(0L,500L);
         assertThat(pages).allSatisfy(page -> assertThat(page.rows().size()).isLessThanOrEqualTo(500));
         assertThat(pages.stream().flatMap(page -> page.rows().stream())).containsExactlyElementsOf(expected);
-        assertThat(pages.getLast().rows().getLast().get("sub")).isEqualTo("管理费合计");
+        assertThat(pages.getLast().rows().getLast().get("sub")).isEqualTo("利润额");
     }
 
-    @Test void rowBudgetIncludesTheLeadingRowAndFixedTailAndNeverReportsAPartialSuccess() {
+    @Test void rowBudgetExceededFailsClosedWithoutReportingAPartialSuccess() {
         var service = service();context();List<ExportPayload> pages = new ArrayList<>();
         try (var sink = ExportPageSink.open(pages::add)) {
-            assertThatThrownBy(() -> service.exportInCurrentSnapshot("gl/operating-pl",null,2026,10,500))
-                    .isInstanceOf(ApiException.class).hasMessageContaining("500");
+            // 行预算必须覆盖全部 90 个模板行（含利润额固定尾行）；89 行预算在第 90 行失败关闭。
+            assertThatThrownBy(() -> service.exportInCurrentSnapshot("gl/operating-pl",null,2026,10,89))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("89");
         }
-        assertThat(pages).hasSize(1);assertThat(pages.getFirst().rows()).hasSize(500);
+        assertThat(pages).isEmpty();
     }
 
     @Test void unconfiguredDetailsCannotBecomeApparentlyCompleteLaborOrAdminTotals() {
-        var result = service().operatingPlPage(2026,10,2,500);
-        for (String subtotal : List.of("工费合计", "管理费合计")) {
+        var result = service().operatingPlPage(2026,10,1,500);
+        assertThat(result.rows()).hasSize(90);
+        for (String subtotal : List.of("工费合计", "一般管理费合计")) {
             var row = result.rows().stream().filter(value -> subtotal.equals(value.get("sub")))
                     .findFirst().orElseThrow();
-            assertThat(row.get("amount")).as(subtotal).isNull();
-            assertThat(row.get("amountExact")).isNull();
-            assertThat(row.get("salesRatio")).isNull();
-            assertThat(row.get("basis").toString()).contains("尚未配置完整");
+            assertThat(row.get("m10")).as(subtotal).isNull();
+            assertThat(row.get("r10")).as(subtotal).isNull();
+            assertThat(row.get("averageRatio")).as(subtotal).isNull();
+            assertThat((Boolean) row.get("__pending")).as(subtotal).isTrue();
         }
+        var laborDetail = result.rows().stream()
+                .filter(value -> "LABOR_DIRECT".equals(value.get("__lineKey"))).findFirst().orElseThrow();
+        assertThat(laborDetail.get("m10")).isNull();
+        assertThat(laborDetail.get("__basis")).isEqualTo("待配置取数或确认无业务");
     }
 
-    @Test void headersMatchAfterAllFiveHundredAndOneCategoriesAndRetainTheOriginalSubtotalBeforePagingAndExport() {
+    @Test void headersMatchAfterAllTemplateRowsAndRetainTheTemplateClosureBeforePagingAndExport() {
         var service=service();
         var options=new com.uten.imp.features.finance.report.FinanceReportColumnOptions(
-                Map.of("search.item","类别-0500","search.amount",COST.toPlainString()),null,null);
+                Map.of("search.sub","利润额"),null,null);
         var first=service.operatingPlPage(2026,10,1,1,options);
-        var second=service.operatingPlPage(2026,10,2,1,options);
-        assertThat(first.total()).isEqualTo(2);assertThat(first.rows().getFirst()).containsEntry("item","类别-0500").containsEntry("amountExact",COST.toPlainString());
-        assertThat(second.rows().getFirst()).containsEntry("sub","销售成本合计");
-        assertThat((BigDecimal)second.rows().getFirst().get("amount")).isEqualByComparingTo(COST.multiply(new BigDecimal("501")));
-        assertThat(first.columnSearchKeys()).containsExactlyInAnyOrder("category","sub","item","amount","salesRatio","basis");
-        assertThat(service.operatingPlPage(2026,10,3,1,options).rows()).isEmpty();
+        assertThat(first.total()).isEqualTo(1);
+        assertThat(first.rows().getFirst()).containsEntry("sub","利润额")
+                .containsEntry("__lineKey","OP_PROFIT");
+        assertThat(service.operatingPlPage(2026,10,2,1,options).rows()).isEmpty();
+        assertThat(first.columnSearchKeys()).contains("category","sub","item","m10","r10",
+                "averageRatio","remark","varianceReason");
         assertThat(service.operatingPlPage(2026,10,1,10,new com.uten.imp.features.finance.report.FinanceReportColumnOptions(
-                Map.of("search.item","OP-unmatched","search.amount","!=0"),null,null)).total()).isZero();
+                Map.of("search.sub","OP-unmatched"),null,null)).total()).isZero();
         context();var pages=new ArrayList<ExportPayload>();
         try(var sink=ExportPageSink.open(pages::add)) {
             var report=service.exportInCurrentSnapshot("gl/operating-pl",null,2026,10,1000,options);
-            assertThat(report.total()).isEqualTo(2);
+            assertThat(report.total()).isEqualTo(1);
         }
-        assertThat(pages.stream().flatMap(page->page.rows().stream())).containsExactly(first.rows().getFirst(),second.rows().getFirst());
+        assertThat(pages.stream().flatMap(page->page.rows().stream())).containsExactly(first.rows().getFirst());
     }
 }

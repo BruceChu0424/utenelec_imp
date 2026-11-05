@@ -29,8 +29,9 @@ class SupplierPayablePostingContractTest {
                 .contains("r.getSettlementStyleLegacy(), List.of(), r.getSettlementMethodId()");
         assertThat(subcontractReceipt)
                 .contains("var payable=consideration.freezeReceipt(\"SUBCONTRACT\",id)")
-                .contains("boolean chargeable=payable.original().signum()!=0||payable.local().signum()!=0")
-                .contains("if(chargeable)postAp(r,payable.original(),payable.local(),+1)")
+                // 2026-11-04 财务整合（0aaffa3aa）后以 postAp 返回值记录正式立账与否，替代原 chargeable 布尔。
+                .contains("boolean formallyPosted=postAp(r,payable.original(),payable.local(),+1)")
+                .contains("r.setApPosted(formallyPosted)")
                 .contains("signedOriginal", "dueDate", "settlementStyleLegacy");
         assertThat(subcontractReturn)
                 .contains("postAp(r, r.getTotalOriginal(), totalLocalOf(items), -1)")

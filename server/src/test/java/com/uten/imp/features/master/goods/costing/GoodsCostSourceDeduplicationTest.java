@@ -2,6 +2,8 @@ package com.uten.imp.features.master.goods.costing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +32,21 @@ class GoodsCostSourceDeduplicationTest {
     private final LocalDate date=LocalDate.of(2026,10,26);
     private final GoodsInfo root=new GoodsInfo(rootId,"P","产品",unitId,"个",null,null,"自制","1");
     private final GoodsInfo material=new GoodsInfo(materialId,"M","材料",unitId,"个",null,null,"采购","1");
+    private AutoCloseable precisionChoices;
+
+    @BeforeEach
+    void bindExplicitCostPrecisionChoices() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：
+        // 扣税口径单价（10/1.1 除不尽）投影需要调用方显式选择；沿用既有 24 位 HALF_UP 口径。
+        precisionChoices=BusinessPrecisionContext.use(Map.of(
+                "cost.fraction",new BusinessPrecisionContext.Choice(24,"HALF_UP"),
+                "cost.calculation",new BusinessPrecisionContext.Choice(24,"HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseExplicitCostPrecisionChoices() throws Exception {
+        precisionChoices.close();
+    }
 
     @BeforeEach void defaults() {
         when(sources.goods(rootId)).thenReturn(root);

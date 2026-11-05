@@ -162,7 +162,7 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         assertExportShowsPendingWithoutApprovalSignature(order.getId(), "已反审");
     }
 
-    @Test void independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity() {
+    @Test void independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity() throws Exception {
         var w = fixture.seedWorld("subcontract-review-readonly");
         fixture.loginAs(w.superAdminUserId());
         fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
@@ -171,48 +171,56 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
                 INSERT INTO user_permission_overrides(user_id, permission_id, effect)
                 SELECT ?, id, 'grant' FROM permissions WHERE code='finance_order_approval:reject'
                 """, reviewer);
-        fixture.withSubcontractKitStaged(w, java.util.Map.of(w.goodsE(), "3"), () -> {
-            var request = new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
-            request.setBillDate(BusinessTime.today());
-            request.setSupplierId(w.supplierId());
-            request.setWarehouseId(w.warehouseId());
-            request.setCurrencyId(w.currencyId());
-            request.setExchangeRate(BigDecimal.ONE);
-            request.setTaxRate(BigDecimal.ZERO);
-            request.setSettlementMethodId(ReflectionTestUtils.invokeMethod(fixture, "activeSettlementMethodId"));
-            var line = new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
-            line.setGoodsId(w.goodsE());
-            line.setUnitId(w.unitId());
-            line.setUnitRate(BigDecimal.ONE);
-            line.setQty(new BigDecimal("3"));
-            line.setTotalAmountInput(new BigDecimal("10.1234567891"));
-            request.setItems(List.of(line));
-            var order = subcontractOrders.create(request);
-            UUID itemId = order.getItems().getFirst().getId();
-            var submitted = finance.submit("SUBCONTRACT", order.getId());
-            String original = snapshot(submitted.caseId());
-            line.setTotalAmountInput(BigDecimal.ZERO);
-            assertThatThrownBy(() -> subcontractOrders.update(order.getId(), request)).isInstanceOf(ApiException.class);
-            fixture.loginAs(reviewer);
-            var claim = claims.claim("PROCUREMENT_FINANCE_APPROVE", submitted.caseId().toString());
-            assertThatThrownBy(() -> subcontractOrders.update(order.getId(), request))
-                    .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
-            var review = finance.review(submitted.caseId());
-            assertThat(review.allowedActions()).containsExactly("APPROVE", "REJECT");
-            assertThat(review.items()).singleElement().satisfies(row -> {
-                assertThat(row.orderItemId()).isEqualTo(itemId);
-                assertThat(row.sourceItemId()).isNull();
-                assertThat(row.qty()).isEqualByComparingTo("3");
-                assertThat(row.totalAmountInput()).isEqualByComparingTo("10.1234567891");
+        // 2026-11-04 显式精度选择契约：总金额 10.1234567891 / 数量 3 除不尽，建单与送财重推
+        // 参考单价(money.reference-unit-price)都须由本次操作明确保留位与取舍（真实入口经
+        // X-Uten-Precision-Choices 头绑定；E2E 直调服务按 MoneyPolicy 测试同款绑定）。
+        // 参考单价只是展示投影，不回乘成成交总额，下方原额断言不受该选择影响。
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.reference-unit-price",
+                new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(10, "HALF_UP")))) {
+            fixture.withSubcontractKitStaged(w, java.util.Map.of(w.goodsE(), "3"), () -> {
+                var request = new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
+                request.setBillDate(BusinessTime.today());
+                request.setSupplierId(w.supplierId());
+                request.setWarehouseId(w.warehouseId());
+                request.setCurrencyId(w.currencyId());
+                request.setExchangeRate(BigDecimal.ONE);
+                request.setTaxRate(BigDecimal.ZERO);
+                request.setSettlementMethodId(ReflectionTestUtils.invokeMethod(fixture, "activeSettlementMethodId"));
+                var line = new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
+                line.setGoodsId(w.goodsE());
+                line.setUnitId(w.unitId());
+                line.setUnitRate(BigDecimal.ONE);
+                line.setQty(new BigDecimal("3"));
+                line.setTotalAmountInput(new BigDecimal("10.1234567891"));
+                request.setItems(List.of(line));
+                var order = subcontractOrders.create(request);
+                UUID itemId = order.getItems().getFirst().getId();
+                var submitted = finance.submit("SUBCONTRACT", order.getId());
+                String original = snapshot(submitted.caseId());
+                line.setTotalAmountInput(BigDecimal.ZERO);
+                assertThatThrownBy(() -> subcontractOrders.update(order.getId(), request)).isInstanceOf(ApiException.class);
+                fixture.loginAs(reviewer);
+                var claim = claims.claim("PROCUREMENT_FINANCE_APPROVE", submitted.caseId().toString());
+                assertThatThrownBy(() -> subcontractOrders.update(order.getId(), request))
+                        .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+                var review = finance.review(submitted.caseId());
+                assertThat(review.allowedActions()).containsExactly("APPROVE", "REJECT");
+                assertThat(review.items()).singleElement().satisfies(row -> {
+                    assertThat(row.orderItemId()).isEqualTo(itemId);
+                    assertThat(row.sourceItemId()).isNull();
+                    assertThat(row.qty()).isEqualByComparingTo("3");
+                    assertThat(row.totalAmountInput()).isEqualByComparingTo("10.1234567891");
+                });
+                finance.rejectBatch(List.of(new BatchDecisionItem(submitted.caseId(), submitted.version(), claim.claimId())), "请原制单人核对金额");
+                assertThat(snapshot(submitted.caseId())).isEqualTo(original);
+                assertThat(db.queryForObject("SELECT total_amount_input FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId)).isEqualByComparingTo("10.1234567891");
+                assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?", String.class, submitted.caseId())).isEqualTo("REJECTED");
+                assertThat(db.queryForObject("SELECT status FROM subcontract_orders WHERE id=?", Short.class, order.getId())).isZero();
+                assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_events WHERE case_id=? AND event_type='FINANCE_EDIT'", Integer.class, submitted.caseId())).isZero();
+                return null;
             });
-            finance.rejectBatch(List.of(new BatchDecisionItem(submitted.caseId(), submitted.version(), claim.claimId())), "请原制单人核对金额");
-            assertThat(snapshot(submitted.caseId())).isEqualTo(original);
-            assertThat(db.queryForObject("SELECT total_amount_input FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId)).isEqualByComparingTo("10.1234567891");
-            assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?", String.class, submitted.caseId())).isEqualTo("REJECTED");
-            assertThat(db.queryForObject("SELECT status FROM subcontract_orders WHERE id=?", Short.class, order.getId())).isZero();
-            assertThat(db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_events WHERE case_id=? AND event_type='FINANCE_EDIT'", Integer.class, submitted.caseId())).isZero();
-            return null;
-        });
+        }
     }
 
     private String snapshot(UUID caseId) {

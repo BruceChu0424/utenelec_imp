@@ -44,7 +44,10 @@ class ProcurementApprovalHistoryQueryTest {
             assertTrue(statement.contains("c.status = 'APPROVED'"));
             assertFalse(statement.contains("WHERE c.status = 'PENDING'"));
             assertTrue(statement.contains("c.bill_no_snapshot = ?"));
-            assertTrue(statement.contains("LOWER(COALESCE(c.display_snapshot ->> 'supplierName'"));
+            // 2026-11-04 财务整合（0aaffa3aa）后关键词检索改为 ILIKE 定位条件，
+            // 展示快照供应商名回落 supplier.name，不再使用 LOWER(COALESCE(...)) 形式。
+            assertTrue(statement.contains(
+                    "COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '') ILIKE ?"));
         }
         assertTrue(listSql.getValue().contains("COALESCE(c.finance_exchange_rate"));
     }

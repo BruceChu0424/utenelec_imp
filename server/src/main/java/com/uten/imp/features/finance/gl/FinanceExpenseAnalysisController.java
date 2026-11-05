@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.finance.report.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,13 +17,16 @@ import static com.uten.imp.features.finance.gl.FinanceExpenseAnalysisContracts.*
 @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all')")
 public class FinanceExpenseAnalysisController {
     private final FinanceExpenseAnalysisService service;
+    private final AuditDetailViewRecorder detailViewAudit;
     @GetMapping("/groups") public Map<String,Object> groups(@RequestParam String period){return Map.of("items",service.groups(period),"feeHeaders",java.util.stream.IntStream.range(0,17).mapToObj(i->FinanceTemplateContract.header("salesExpense",i)).toList());}
     @PostMapping("/groups") @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public Map<String,Object> group(@RequestBody GroupInput input){return Map.of("items",service.saveGroup(input));}
     @PostMapping("/groups/seed-template") @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public Map<String,Object> seed(@RequestParam String period){return Map.of("items",service.seedGroups(period));}
     @GetMapping("/entries") public ReportTableResponse entries(@RequestParam String period,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.entries(period,page,size,FinanceReportColumnOptions.current());}
-    @GetMapping("/entries/{id}") public Map<String,Object> entry(@PathVariable UUID id){return service.entry(id);}
+    // 2026-11-04 对账: 0aaffa3aa 财务复刻端点补 DirectView 审计登记(参照 FinanceApplicationController 范式)。
+    @GetMapping("/entries/{id}") public Map<String,Object> entry(@PathVariable UUID id){var result=service.entry(id);
+        detailViewAudit.record("view_finance_expense_analysis_entry_detail","finance_sales_expense_pool",id,Objects.toString(result.get("billNo"),null),null,"销售费用归集行");return result;}
     @PostMapping("/assignments") @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public Map<String,Object> assign(@RequestBody AssignmentInput input){return service.assign(input);}
     @GetMapping("/policy") public Map<String,Object> policy(@RequestParam String period){return service.policy(period);}
@@ -35,7 +39,8 @@ public class FinanceExpenseAnalysisController {
     @PostMapping("/labor") @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public Map<String,Object> labor(@RequestBody LaborSplitInput input){return service.saveLabor(input);}
     @GetMapping("/note-imports") public Map<String,Object> recentImports(@RequestParam String period){return Map.of("items",service.recentNoteImports(period));}
-    @GetMapping("/note-imports/{id}") public NoteImportPreview imported(@PathVariable UUID id){return service.importedNotes(id);}
+    @GetMapping("/note-imports/{id}") public NoteImportPreview imported(@PathVariable UUID id){var result=service.importedNotes(id);
+        detailViewAudit.record("view_finance_note_import_detail","finance_expense_note_imports",id,result.sourceName(),null,"费用备注导入批次");return result;}
     @PostMapping(value="/notes/import-preview",consumes="multipart/form-data")
     @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public NoteImportPreview preview(@RequestParam String period,@RequestParam("file")MultipartFile file)throws IOException{

@@ -38,11 +38,12 @@ class MeasurementWeightRequestValidationTest {
 
     @Test
     void warehouseArrivalRejectsOverPrecisionActualTotalWeight() {
+        // 2026-11-04 起按 0aaffa3aa 精确小数契约：实称重量上限放宽到 48 位小数，超出该边界仍整行拒绝。
         var line = new ProcurementArrivalContracts
                 .WarehouseArrivalRegisterRequest.ArrivalLine(
                 UUID.randomUUID(), BigDecimal.ONE, UUID.randomUUID(),
                 null, UUID.randomUUID(), BigDecimal.ONE,
-                new BigDecimal("1.00001"), null);
+                new BigDecimal("1." + "0".repeat(48) + "1"), null);
         var request = new ProcurementArrivalContracts
                 .WarehouseArrivalRegisterRequest(
                 "arrival-weight-001", "PURCHASE",
@@ -78,8 +79,9 @@ class MeasurementWeightRequestValidationTest {
 
     @Test
     void salesOutboundRejectsOverPrecisionWeight() {
+        // 2026-11-04 起按 0aaffa3aa 精确小数契约：出库净重上限放宽到 48 位小数，超出该边界仍整行拒绝。
         var place = new WarehouseWorkTransitionRequest.StockPlace(
-                UUID.randomUUID(), "A-01", null, new BigDecimal("1.00001"));
+                UUID.randomUUID(), "A-01", null, new BigDecimal("1." + "0".repeat(48) + "1"));
 
         assertThat(validator.validate(place))
                 .anyMatch(v -> v.getPropertyPath().toString().equals("weightKg"));

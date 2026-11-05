@@ -119,7 +119,9 @@ class GlReportSourceSemanticsTest {
     }
 
     private static void assertAmount(List<Map<String, Object>> rows, String label, String column, String expected) {
-        Map<String, Object> row = rows.stream().filter(value -> label.equals(value.get("item")))
+        // 2026-11-04 财务整合（0aaffa3aa）后行名来自审阅原表合同（如「四、净利润（净亏损以“-”号填列）」），
+        // 行名断言按前缀取值比较，不锁原表完整括注文本。
+        Map<String, Object> row = rows.stream().filter(value -> String.valueOf(value.get("item")).startsWith(label))
                 .findFirst().orElseThrow();
         assertThat((BigDecimal) row.get(column)).isEqualByComparingTo(expected);
     }

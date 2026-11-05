@@ -43,9 +43,12 @@ class SalesOrderClientPriceGuardTest {
     }
 
     @Test
-    void clientPriceAboveListIsBlockedOnTheRoundedDiscount() {
+    void clientPriceAboveListIsBlockedOnTheComputedDiscount() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）改写：MoneyPolicy 精确商原样保留，
+        // 不再统一取四位；10.0004 / 10 = 1.00004 > 1 按高于标价拦下（旧契约四舍五入成 1 折放行的口径作废）。
         assertThatThrownBy(() -> check(line("10.01"), null, "10", BASE)).isInstanceOf(ApiException.class);
-        assertThatCode(() -> check(line("10.0004"), null, "10", BASE)).as("取 4 位后是 1").doesNotThrowAnyException();
+        assertThatThrownBy(() -> check(line("10.0004"), null, "10", BASE)).as("精确商 1.00004 高于标价")
+                .isInstanceOf(ApiException.class);
         assertThatCode(() -> check(line("9"), null, "10", BASE)).doesNotThrowAnyException();
     }
 

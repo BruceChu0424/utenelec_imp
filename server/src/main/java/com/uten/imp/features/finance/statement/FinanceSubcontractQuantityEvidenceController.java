@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.statement;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -16,13 +17,17 @@ import static com.uten.imp.features.finance.statement.FinanceSubcontractQuantity
 @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all')")
 public class FinanceSubcontractQuantityEvidenceController {
     private final FinanceSubcontractQuantityEvidenceService service;
+    private final AuditDetailViewRecorder detailViewAudit;
     @GetMapping public Map<String,Object> list(@RequestParam UUID supplierId,@RequestParam LocalDate dateFrom,@RequestParam LocalDate dateTo,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.list(new Scope(supplierId,dateFrom,dateTo),page,size);}
-    @GetMapping("/{id}")public Map<String,Object> get(@PathVariable UUID id){return service.get(id);}
+    // 2026-11-04 对账: 0aaffa3aa 财务复刻端点补 DirectView 审计登记(参照 FinanceApplicationController 范式)。
+    @GetMapping("/{id}")public Map<String,Object> get(@PathVariable UUID id){var result=service.get(id);
+        detailViewAudit.record("view_finance_subcontract_quantity_evidence_detail","finance_subcontract_quantity_evidence",id,null,null,"委外数量证据");return result;}
     @GetMapping("/operations/{request}")public Map<String,Object> operation(@PathVariable UUID request){return service.operation(request);}
     @GetMapping("/approved")public Snapshot approved(@RequestParam UUID supplierId,@RequestParam LocalDate dateFrom,@RequestParam LocalDate dateTo){return service.approved(new Scope(supplierId,dateFrom,dateTo));}
     @GetMapping("/pcs-units")public List<Map<String,Object>> pcsUnits(){return service.pcsUnits();}
     @GetMapping("/sources")public Map<String,Object> sources(@RequestParam UUID supplierId,@RequestParam LocalDate dateFrom,@RequestParam LocalDate dateTo,@RequestParam SourceKind kind,@RequestParam(required=false)String keyword,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size,@RequestParam(required=false)UUID orderItemId){return service.sourceChoices(new Scope(supplierId,dateFrom,dateTo),kind,keyword,page,size,orderItemId);}
-    @GetMapping("/sources/{kind}/{id}")public Map<String,Object> source(@PathVariable SourceKind kind,@PathVariable UUID id,@RequestParam UUID supplierId){return service.sourceChoice(new SourceRef(kind,id),supplierId);}
+    @GetMapping("/sources/{kind}/{id}")public Map<String,Object> source(@PathVariable SourceKind kind,@PathVariable UUID id,@RequestParam UUID supplierId){var result=service.sourceChoice(new SourceRef(kind,id),supplierId);
+        detailViewAudit.record("view_finance_subcontract_source_detail","finance_subcontract_quantity_sources",id,null,null,"委外数量证据来源");return result;}
     @PostMapping(consumes=MediaType.APPLICATION_JSON_VALUE)public Map<String,Object> save(@RequestBody Save input){return service.save(input,null,null,null);}
     @PostMapping(consumes=MediaType.MULTIPART_FORM_DATA_VALUE)public Map<String,Object> saveFile(@RequestPart("input")Save input,@RequestPart("file")MultipartFile file)throws IOException{return service.save(input,file.getOriginalFilename(),file.getContentType(),file.getBytes());}
     @PostMapping("/{id}/decision")public Map<String,Object> decide(@PathVariable UUID id,@RequestBody Decision input){return service.decide(id,input);}

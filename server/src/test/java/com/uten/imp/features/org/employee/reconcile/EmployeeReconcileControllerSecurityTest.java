@@ -39,6 +39,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -96,6 +97,10 @@ class EmployeeReconcileControllerSecurityTest {
         queries = AopTestUtils.getUltimateTargetObject(context.getBean(ReconcilePlanQueryService.class));
         applies = AopTestUtils.getUltimateTargetObject(context.getBean(ReconcileApplyService.class));
         sessions = context.getBean(AuthSessionService.class);
+        // 2026-11-04 对账: d533807ca 起 AuthSessionService 带 @Autowired setSpringEvents,
+        // 容器装配会调用 mock 上的这个 setter。清掉装配期交互, 请求路径上的
+        // verifyNoInteractions(sessions) 语义不变(不核销凭证、不动会话)。
+        clearInvocations(sessions);
         mvc = MockMvcBuilders.standaloneSetup(context.getBean(ReconcilePlanController.class))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addFilters(new ImpersonationWriteGuardFilter(new ObjectMapper(), mock(AuditService.class))).build();

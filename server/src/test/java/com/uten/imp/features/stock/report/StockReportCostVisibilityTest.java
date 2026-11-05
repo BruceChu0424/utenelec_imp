@@ -138,7 +138,9 @@ class StockReportCostVisibilityTest {
                     assertThat(c.label()).isEqualTo("库存重量(千克)");
                     assertThat(c.type()).isEqualTo(ExportColumn.NUMBER);
                 });
-        assertThat(kg.rows().get(0)).containsEntry("weight", new BigDecimal("2.5000")).containsEntry("weightStatus", "");
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：导出重量完整保留（尾零剥离），按数值比较。
+        assertThat((BigDecimal) kg.rows().get(0).get("weight")).isEqualByComparingTo("2.5");
+        assertThat(kg.rows().get(0)).containsEntry("weightStatus", "");
         assertThat(kg.rows().get(1)).containsEntry("weightStatus", "估算");
         // 未知重量绝不写 0: 数值为空, 状态「未称」。
         assertThat(kg.rows().get(2)).containsEntry("weightStatus", "未称");

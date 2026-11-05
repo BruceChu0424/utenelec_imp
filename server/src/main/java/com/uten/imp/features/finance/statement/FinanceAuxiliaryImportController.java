@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.statement;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.files.document.BoundedBodyReader;
 import com.uten.imp.common.web.*;
 import lombok.RequiredArgsConstructor;
@@ -18,10 +19,13 @@ import static org.springframework.format.annotation.DateTimeFormat.ISO;
 @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all')")
 public class FinanceAuxiliaryImportController {
     private final FinanceAuxiliaryImportService service;
+    private final AuditDetailViewRecorder detailViewAudit;
     public record Apply(UUID importId) { }
     @GetMapping public Map<String,Object> recent(){return Map.of("items",service.recent());}
     @GetMapping("/operations/{request}")public Map<String,Object> operation(@PathVariable UUID request){return service.operation(request);}
-    @GetMapping("/{id}") public FinanceAuxiliaryImportService.Preview imported(@PathVariable UUID id){return service.imported(id);}
+    // 2026-11-04 对账: 0aaffa3aa 财务复刻端点补 DirectView 审计登记(参照 FinanceApplicationController 范式)。
+    @GetMapping("/{id}") public FinanceAuxiliaryImportService.Preview imported(@PathVariable UUID id){var result=service.imported(id);
+        detailViewAudit.record("view_finance_auxiliary_import_detail","finance_statement_source_reviews",id,result.sourceName(),null,"辅助明细导入批次");return result;}
     @PostMapping("/{id}/recheck") @PreAuthorize("hasAuthority('payment_style:edit')") public FinanceAuxiliaryImportService.Preview recheck(@PathVariable UUID id,@RequestParam(required=false)UUID requestId){return service.recheck(id,requestId);}
     @PostMapping("/{id}/file")public ResponseEntity<byte[]> file(@PathVariable UUID id){return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(service.imported(id).sourceName(),java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(service.sourceBytes(id));}
     @GetMapping("/{id}/comparison") public Map<String,Object> compare(@PathVariable UUID id){return Map.of("items",service.compare(id));}

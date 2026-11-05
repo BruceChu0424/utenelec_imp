@@ -107,7 +107,9 @@ class StockLedgerRowMaskingTest {
         values.put("balance_weight_after", new BigDecimal("99"));
         StockLedgerRow row = StockLedgerQueryService.row(resultSet(values), KILOGRAMS, true, Set.of());
 
-        assertThat(row.balanceWeightKgAfter()).isEqualByComparingTo("12.3457");
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：按数量精确换算的结存重量完整保留
+        // 12.34567 千克，不再按四位 HALF_UP 归一到 12.3457。
+        assertThat(row.balanceWeightKgAfter()).isEqualByComparingTo("12.34567");
         assertThat(StockLedgerQueryService.exactWeight(new BigDecimal("-1"), BigDecimal.ONE)).isNull();
         assertThat(StockLedgerQueryService.exactWeight(BigDecimal.ZERO, BigDecimal.ONE)).isEqualByComparingTo("0");
     }

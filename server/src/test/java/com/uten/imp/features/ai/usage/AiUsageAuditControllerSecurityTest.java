@@ -56,6 +56,10 @@ class AiUsageAuditControllerSecurityTest {
         usage = AopTestUtils.getUltimateTargetObject(context.getBean(AiUsageAuditService.class));
         dashboard = AopTestUtils.getUltimateTargetObject(context.getBean(AiUsageDashboardService.class));
         sessions = context.getBean(AuthSessionService.class);
+        // 2026-11-04 对账: d533807ca 起 AuthSessionService 带 @Autowired setSpringEvents,
+        // 容器装配会调用 mock 上的这个 setter。清掉装配期交互, 请求路径上的
+        // verifyNoInteractions(sessions) 语义不变(不核销凭证、不动会话)。
+        clearInvocations(sessions);
         mvc = MockMvcBuilders.standaloneSetup(context.getBean(AiUsageAuditController.class)).setControllerAdvice(new GlobalExceptionHandler())
                 .addFilters(new ImpersonationWriteGuardFilter(new ObjectMapper(), mock(AuditService.class))).build();
     }

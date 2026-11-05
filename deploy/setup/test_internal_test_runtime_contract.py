@@ -428,8 +428,10 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
         for permission, expected_count in {
             # 2026-09-11：+1 upload（PUT /{id}/category，整理自己传的文件，
             # 刻意不借用 delete 权限）、+1 download（GET /{id}/preview，读文件字节）。
+            # 2026-11-04 对账：+1 view（GET /linked，0aaffa3aa 财务忠实复现
+            # 整合加的跨单链接附件可见性查询，只读、同 view 门槛）。
             "attachment:upload": 4,
-            "attachment:view": 2,
+            "attachment:view": 3,
             "attachment:download": 4,
             "attachment:delete": 1,
             "attachment:reconcile:view": 1,

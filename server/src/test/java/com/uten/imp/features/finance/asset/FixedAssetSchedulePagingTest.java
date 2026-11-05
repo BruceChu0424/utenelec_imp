@@ -14,6 +14,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+// 2026-11-04 财务整合（0aaffa3aa）后折旧/摊销清单改由 FinanceAssetTemplateReport 生成：
+// 原表模板列 + v_finance_asset_report_facts 物化事实 + LEFT JOIN LATERAL 计提/账簿投影，
+// 分页与计数仍经 FinanceProjectedReportTable 的 __limit/__offset 与 COUNT 包装。
 class FixedAssetSchedulePagingTest {
     @Test void bothSchedulesPageTheComputedBookProjectionAndSkipUnrequestedCount() {
         for (boolean fixed : new boolean[]{true, false}) {
@@ -32,16 +35,21 @@ class FixedAssetSchedulePagingTest {
                 assertThat(response.rows()).isEmpty();
             }
             assertThat(sql).hasSize(1);
-            assertThat(sql.getFirst()).contains("ORDER BY report.\"code\"", "LIMIT :__limit OFFSET :__offset",
-                    "LEFT JOIN LATERAL", "COUNT(*) AS posted_months", "COALESCE(SUM(l.amount),0)",
-                    "l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false");
+            assertThat(sql.getFirst())
+                    .contains("WITH template_facts AS MATERIALIZED (SELECT * FROM v_finance_asset_report_facts)")
+                    .contains("SELECT report.* FROM (")
+                    .contains("LEFT JOIN LATERAL")
+                    .contains("v_finance_asset_posting_facts")
+                    .contains("COALESCE(sum(f.amount_local) FILTER(WHERE NOT f.pending),0)")
+                    .contains("ORDER BY report.\"assetName\",report.\"__assetId\"")
+                    .contains("LIMIT :__limit OFFSET :__offset");
             verify(query).setParameter("__limit", 500);
             verify(query).setParameter("__offset", 1_073_741_823_000L);
             verify(query, never()).getSingleResult();
         }
     }
 
-    @Test void requestedScheduleCountUsesTheSameActiveMasterPredicate() {
+    @Test void requestedScheduleCountUsesTheSameTemplateFactsSource() {
         EntityManager em = mock(EntityManager.class);
         Query query = mock(Query.class);
         List<String> sql = new ArrayList<>();
@@ -55,7 +63,10 @@ class FixedAssetSchedulePagingTest {
             assertThat(response.totalPages()).isEqualTo(26);
         }
         assertThat(sql).hasSize(2);
-        assertThat(sql.getLast()).contains("SELECT COUNT(*) FROM (SELECT report.*", "book.accum_dep", "WHERE a.is_deleted=false");
+        // 计数包装与数据页同源：同一 template_facts 投影、同一活动资产谓词，不允许另起一套口径。
+        assertThat(sql.getLast())
+                .contains("SELECT COUNT(*) FROM (SELECT report.* FROM (WITH template_facts")
+                .contains("WHERE NOT a.is_deleted");
         verify(query).setParameter("__offset", 40L);
     }
 }

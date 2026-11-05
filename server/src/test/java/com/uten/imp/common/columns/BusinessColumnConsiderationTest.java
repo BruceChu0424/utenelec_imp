@@ -1,14 +1,18 @@
 package com.uten.imp.common.columns;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,6 +22,22 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class BusinessColumnConsiderationTest {
+
+    private AutoCloseable precision;
+
+    @BeforeEach
+    void bindExplicitPrecisionChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：10/3 参考单价除不尽，
+        // 按本用例既定的十位 HALF_UP 口径反推（总额模式只认输入总额，不回乘）。
+        precision = BusinessPrecisionContext.use(Map.of(
+                "money.reference-unit-price", new BusinessPrecisionContext.Choice(10, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseExplicitPrecisionChoice() throws Exception {
+        precision.close();
+    }
+
     @Test void totalModeKeepsTheExactConsiderationWhenTheFeeChangesOrIsCleared() {
         EntityManager em = mock(EntityManager.class);
         Query query = mock(Query.class);

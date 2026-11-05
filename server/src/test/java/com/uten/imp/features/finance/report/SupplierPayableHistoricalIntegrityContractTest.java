@@ -46,11 +46,11 @@ class SupplierPayableHistoricalIntegrityContractTest {
         String payment = source("features/finance/payment/FinancePaymentService.java");
         String settlement = source("features/finance/payables/SupplierSettlementService.java");
 
+        // 2026-11-04 财务整合（0aaffa3aa）后直接付款不再由付款服务自管 ar_ap_ledger 行，
+        // 红冲按原红冲日期委托 SupplierPrepaymentPort.reverse 保留带日期的预付资产事件。
         assertThat(payment)
                 .doesNotContain("ledgerRepo.delete(ledger)")
-                .contains("ledger.setStatus((short) -1)")
-                .contains("ledger.setDeleted(true)")
-                .contains("ledger.setDeletedAt(reversedAt)");
+                .contains("prepayments().reverse(p.getId(),p.getReversedAt())");
         assertThat(settlement)
                 .contains("ledger.source_doc_type='DIRECT_PAYMENT'")
                 .contains("ledger.status=-1")

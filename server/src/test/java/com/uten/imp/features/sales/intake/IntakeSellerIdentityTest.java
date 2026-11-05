@@ -9,7 +9,10 @@ import com.uten.imp.application.port.CompanyBrandingReadPort;
 import com.uten.imp.common.files.document.DocumentGrid.Cell;
 import com.uten.imp.common.files.document.DocumentGrid.Row;
 import com.uten.imp.common.files.document.DocumentGrid.Sheet;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -29,6 +32,22 @@ import static org.mockito.Mockito.*;
 /** Company presentation must not make a different deployment import itself as a customer. */
 class IntakeSellerIdentityTest {
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    private AutoCloseable discountPrecision;
+
+    @BeforeEach
+    void bindDiscountRoundingChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：JobHandler → SalesIntakePipeline →
+        // IntakePricing → MoneyPolicy.discountFromUnitPrice 反推折扣（divide key=money.discount，maximum=24），
+        // 除不尽时按用户显式四位 HALF_UP 取舍；精确商保留原样。
+        discountPrecision = BusinessPrecisionContext.use(Map.of(
+                "money.discount", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseDiscountRoundingChoice() throws Exception {
+        discountPrecision.close();
+    }
 
     private static IntakeSellerIdentity seller(String name, String... aliases) {
         return new IntakeSellerIdentity(new CompanyBrandingReadPort.Identity(7, name, List.of(aliases)));

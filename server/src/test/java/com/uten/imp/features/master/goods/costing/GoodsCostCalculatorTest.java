@@ -2,6 +2,8 @@ package com.uten.imp.features.master.goods.costing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
@@ -21,6 +23,23 @@ class GoodsCostCalculatorTest {
     final UUID rootId=UUID.randomUUID(),materialId=UUID.randomUUID(),edgeId=UUID.randomUUID(),unitId=UUID.randomUUID();
     final GoodsInfo root=new GoodsInfo(rootId,"P1","成品",unitId,"个",null,null,"自制","1");
     final GoodsInfo material=new GoodsInfo(materialId,"M1","材料",unitId,"kg",null,null,"采购","1");
+    private AutoCloseable precisionChoices;
+
+    @BeforeEach
+    void bindExplicitCostPrecisionChoices() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：
+        // 成本用量投影（cost.fraction，原 24 位 HALF_EVEN 口径）与费用/单位换算（cost.calculation）
+        // 除不尽时由调用方显式选择；此处沿用既有 24 位口径，取舍仅 HALF_UP/DOWN 可选。
+        precisionChoices=BusinessPrecisionContext.use(Map.of(
+                "cost.fraction",new BusinessPrecisionContext.Choice(24,"HALF_UP"),
+                "cost.calculation",new BusinessPrecisionContext.Choice(24,"HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseExplicitCostPrecisionChoices() throws Exception {
+        precisionChoices.close();
+    }
+
     @BeforeEach void defaults() {
         when(sources.goods(rootId)).thenReturn(root);when(sources.currency(null)).thenReturn("本币");
         when(sources.edges(materialId)).thenReturn(List.of());

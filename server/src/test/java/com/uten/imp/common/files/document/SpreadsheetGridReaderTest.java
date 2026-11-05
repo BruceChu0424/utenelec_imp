@@ -66,7 +66,7 @@ class SpreadsheetGridReaderTest {
     }
 
     @Test
-    void numbersAreExactAndTrimmedToExcelPrecision() throws IOException {
+    void numbersAreExactWithTheirStoredBinaryTail() throws IOException {
         byte[] bytes = xlsx(wb -> {
             Row row = wb.createSheet("S").createRow(0);
             row.createCell(0).setCellValue(0.1 + 0.2);
@@ -74,7 +74,8 @@ class SpreadsheetGridReaderTest {
             row.createCell(2).setCellValue(1.61568);
         });
         Sheet sheet = SpreadsheetGridReader.read(bytes, DocumentKind.XLSX).sheets().getFirst();
-        assertThat(sheet.text(0, 0)).isEqualTo("0.3");
+        // 2026-11-04 起按 0aaffa3aa 契约：展示精度不再折算业务原数，0.1+0.2 的存储尾差按原样读出。
+        assertThat(sheet.text(0, 0)).isEqualTo("0.30000000000000004");
         assertThat(sheet.text(0, 1)).isEqualTo("1800");
         assertThat(sheet.row(0).cell(2).number()).isEqualByComparingTo(new BigDecimal("1.61568"));
     }

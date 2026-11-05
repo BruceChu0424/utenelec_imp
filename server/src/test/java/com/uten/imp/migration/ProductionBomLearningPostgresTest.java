@@ -74,7 +74,8 @@ class ProductionBomLearningPostgresTest {
         sql("CREATE VIEW v_goods_bom_actual_usage AS "+actualUsageView);
         sql("CREATE VIEW v_goods_bom_item_usage AS "+usageView);
         for(String function:List.of("fn_production_execution_cost_scope(uuid)","fn_production_execution_cost_members(uuid)",
-                "fn_material_issue_pending_return(uuid,uuid)","fn_bom_learning_manual_ownership()","fn_enqueue_bom_learning(uuid)",
+                "fn_material_issue_pending_return(uuid,uuid)","fn_bom_learning_manual_ownership()",
+                "fn_guard_inventory_source_derived_numeric()","fn_enqueue_bom_learning(uuid)",
                 "fn_publish_learned_bom(uuid,boolean)","fn_refresh_bom_learning(uuid,boolean)","fn_drain_bom_learning_queue()",
                 "fn_touch_bom_learning()","fn_goods_bom_material_cost(uuid)","fn_relearn_bom_actual_usage(uuid,uuid,uuid)",
                 "fn_bom_learning_uncovered_output(uuid[],uuid,uuid)",
@@ -86,7 +87,8 @@ class ProductionBomLearningPostgresTest {
                 SELECT pg_get_triggerdef(trigger.oid) FROM pg_trigger trigger JOIN pg_class relation ON relation.oid=trigger.tgrelid
                 JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
                 WHERE namespace.nspname='public' AND NOT trigger.tgisinternal
-                    AND (trigger.tgname LIKE 'trg_learn_bom_%' OR trigger.tgname IN('trg_drain_bom_learning_queue','trg_bom_learning_manual_ownership'))
+                    AND (trigger.tgname LIKE 'trg_learn_bom_%' OR trigger.tgname IN('trg_drain_bom_learning_queue','trg_bom_learning_manual_ownership')
+                      OR (relation.relname='goods_bom_actual_usages' AND trigger.tgname='trg_zz_inventory_source_derived_numeric'))
                 """)) {
             while(rows.next())sql(rows.getString(1).replace(" ON public."," ON "+schema+".").replace("FUNCTION public.","FUNCTION "+schema+"."));
         }
@@ -656,6 +658,8 @@ class ProductionBomLearningPostgresTest {
     }
 
     @Test void forwardRepairBoundsMixedDateZeroWithoutErasingTheEarlierOrderExposure()throws Exception {
+        sql("SELECT set_config('app.business_precision_choices',?,false)",
+                "{\"version\":1,\"choices\":{\"goods.bom.actual-usage\":{\"scale\":24,\"rounding\":\"HALF_UP\"}}}");
         restoreV739LearningFunctions();
         batch(product,"100","100","20",true);
         UUID insert=goods("采购");
@@ -678,6 +682,8 @@ class ProductionBomLearningPostgresTest {
     }
 
     @Test void preservedHistoricalZeroShrinksAfterPartialOutputReversalWithoutLeakingPastRelearn()throws Exception {
+        sql("SELECT set_config('app.business_precision_choices',?,false)",
+                "{\"version\":1,\"choices\":{\"goods.bom.actual-usage\":{\"scale\":24,\"rounding\":\"HALF_UP\"}}}");
         restoreV739LearningFunctions();
         batch(product,"100","100","20",true);
         UUID insert=goods("采购");

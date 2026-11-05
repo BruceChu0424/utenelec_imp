@@ -46,6 +46,14 @@ import static org.assertj.core.api.Assertions.*;
         "uten.bootstrap.admin-password=AssetReviewHarnessAdmin-1!"})
 @org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation.class)
 class FinanceAssetReviewRevisionPostgresTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "money.cumulative-share", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("asset_review").withUsername("fixture_admin").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
@@ -300,7 +308,7 @@ class FinanceAssetReviewRevisionPostgresTest {
             var pending=new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
             for(boolean deferred:List.of(false,true)) pending.add(executor.submit(()->{
                 login(maker,financialPermissions());
-                try {
+                try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
                     return new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status->{
                         var draft=sourceDraft(deferred,deferred?deferredCategory:fixedCategory,maker,sourceId,
                                 hasUuid&&deferred?"other-reference":reference,null,null);

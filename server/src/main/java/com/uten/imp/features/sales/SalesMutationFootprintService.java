@@ -32,8 +32,19 @@ public class SalesMutationFootprintService implements com.uten.imp.application.p
     private final FulfillmentMutationLocks locks;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.SalesDeliveryFulfillmentPort> deliveryFulfillment;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.MasterReferenceValidationPort masterReferences;
 
     public record RequestedLine(UUID goodsId, UUID colorId, UUID orderItemId, UUID shipmentItemId) {}
+    /** Only product identity and intent enter discovery; quantities and client BOM paths never define locks. */
+    public record ProposedOrderLine(UUID goodsId,UUID colorId,boolean physicalDelivery) {}
+
+    public void lockOrderUpdate(UUID id,Collection<ProposedOrderLine> requested) {
+        List<ProposedOrderLine> changes=requested==null?List.of():requested.stream().filter(line->line.goodsId()!=null).toList();
+        var roots=changes.stream().map(line->new RequestedLine(line.goodsId(),line.colorId(),null,null)).toList();
+        var request=footprint(Document.ORDER,id,roots,List.of(),changes);
+        locks.acquire(request.declared(),request.discovery()).verifyUnchanged();
+    }
 
     public void lockOrder(UUID id, Collection<InventoryDimension> requested) {
         List<RequestedLine> lines = requested == null ? List.of() : requested.stream()
@@ -111,18 +122,23 @@ public class SalesMutationFootprintService implements com.uten.imp.application.p
     /** 单张入口与批量入口共用的足迹: 声明(嵌套时内存核对) + 发现。 */
     private FulfillmentMutationLocks.Footprint footprint(Document kind, UUID id, Collection<RequestedLine> requested,
             Collection<UUID> orderItems) {
+        return footprint(kind,id,requested,orderItems,List.of());
+    }
+    private FulfillmentMutationLocks.Footprint footprint(Document kind, UUID id, Collection<RequestedLine> requested,
+            Collection<UUID> orderItems,Collection<ProposedOrderLine> orderChanges) {
         List<RequestedLine> proposed = requested == null ? List.of() : List.copyOf(requested);
         List<UUID> selected = orderItems == null ? List.of() : List.copyOf(orderItems);
+        List<ProposedOrderLine> changes=List.copyOf(orderChanges);
         // ADR-107: 嵌套在已持有预锁的命令里时, 手里已知的订单与请求维度只在内存里核对覆盖。
         var declaredInventory = new LinkedHashSet<InventoryDimension>();
         proposed.forEach(line -> add(declaredInventory, line.goodsId(), line.colorId()));
         var declared = FulfillmentMutationLockPlan.declared(kind == Document.ORDER && id != null
                 ? Set.of(new CommercialSource(CommercialType.SALES_ORDER, id)) : Set.of(), declaredInventory, Set.of());
-        return new FulfillmentMutationLocks.Footprint(declared, () -> discover(kind, id, proposed, selected));
+        return new FulfillmentMutationLocks.Footprint(declared, () -> discover(kind, id, proposed, selected,changes));
     }
 
     private FulfillmentMutationLockPlan discover(Document kind, UUID id,
-            List<RequestedLine> requested, List<UUID> selectedOrderItems) {
+            List<RequestedLine> requested, List<UUID> selectedOrderItems,List<ProposedOrderLine> orderChanges) {
         var sources = new LinkedHashSet<CommercialSource>();
         var inventory = new LinkedHashSet<InventoryDimension>();
         var orderItems = new LinkedHashSet<>(selectedOrderItems);
@@ -203,6 +219,7 @@ public class SalesMutationFootprintService implements com.uten.imp.application.p
                 add(inventory,(UUID)row[1],(UUID)row[2]);
             }
         }
+        if(!orderChanges.isEmpty()) discoverProposedOrderDelivery(orderChanges,inventory,parts);
         var base=new FulfillmentMutationLockPlan(sources,inventory,Set.of(),Set.of(),CanonicalFingerprint.sha256(parts));
         if(kind==Document.SHIPMENT&&deliveryFulfillment!=null){
             var bridge=deliveryFulfillment.getIfAvailable();
@@ -212,6 +229,49 @@ public class SalesMutationFootprintService implements com.uten.imp.application.p
             }
         }
         return base;
+    }
+
+    private void discoverProposedOrderDelivery(List<ProposedOrderLine> changes,Set<InventoryDimension> inventory,List<String> parts) {
+        Set<UUID> roots=new LinkedHashSet<>(),physical=new LinkedHashSet<>();
+        changes.forEach(line->{roots.add(line.goodsId());if(line.physicalDelivery())physical.add(line.goodsId());});
+        // This is a read-only discovery before S/I. Do not acquire the graph transaction lock
+        // ahead of inventory: the ordinary save acquires that lock later and revalidates its reviewed fingerprint.
+        if(masterReferences==null)throw new ApiException(ErrorCode.CONFLICT,"交付预锁资料校验服务不可用");
+        masterReferences.requireVisibleGoodsBatch(roots);
+        var query=em.createNativeQuery("""
+            WITH RECURSIVE proposed(root_id) AS (SELECT id FROM goods WHERE id IN(:roots)),
+            reachable(root_id,goods_id) AS (
+              SELECT root_id,root_id FROM proposed
+              UNION SELECT reachable.root_id,edge.component_goods_id FROM reachable
+                JOIN goods_bom_items edge ON edge.goods_id=reachable.goods_id AND NOT edge.is_deleted
+            ), needed(root_id) AS (
+              SELECT proposed.root_id FROM proposed WHERE %s OR EXISTS(
+                SELECT 1 FROM reachable JOIN goods_bom_items edge ON edge.goods_id=reachable.goods_id AND NOT edge.is_deleted
+                JOIN goods_bom_delivery_rules rule ON rule.bom_edge_id=edge.id
+                WHERE reachable.root_id=proposed.root_id AND jsonb_array_length(rule.required_operations)>0)
+            )
+            SELECT needed.root_id,CAST(NULL AS uuid),CAST(NULL AS uuid),goods.id,goods.color_id,
+              '1', 'PER_UNIT', '1',TRUE,FALSE,'PART','[]',goods.unit_id,goods.is_deleted,goods.auto_created,goods.status
+            FROM needed JOIN goods ON goods.id=needed.root_id
+            UNION ALL
+            SELECT reachable.root_id,edge.id,edge.goods_id,component.id,COALESCE(edge.color_id,component.color_id),
+              edge.qty::text,edge.consumption_basis,edge.basis_output_qty::text,edge.allow_partial_package,
+              COALESCE(rule.mandatory_assembly,FALSE),COALESCE(rule.material_role,'UNCLASSIFIED'),
+              COALESCE(rule.required_operations::text,'[]'),component.unit_id,component.is_deleted,component.auto_created,component.status
+            FROM reachable JOIN needed ON needed.root_id=reachable.root_id
+            JOIN goods_bom_items edge ON edge.goods_id=reachable.goods_id AND NOT edge.is_deleted
+            JOIN goods component ON component.id=edge.component_goods_id
+            LEFT JOIN goods_bom_delivery_rules rule ON rule.bom_edge_id=edge.id
+            ORDER BY 1,2 NULLS FIRST,3,4,5
+            """.formatted(physical.isEmpty()?"FALSE":"proposed.root_id IN(:physical)"))
+                .setParameter("roots",sorted(roots)).setMaxResults(10001);
+        if(!physical.isEmpty())query.setParameter("physical",sorted(physical));
+        var rows=NativeQueryResults.objectArrayRows(query);
+        if(rows.size()>10000)throw new ApiException(ErrorCode.CONFLICT,"本次交付BOM预锁超过10000条边，请拆单办理");
+        Set<UUID> visible=new LinkedHashSet<>();
+        for(var row:rows){parts.add("proposed-delivery:"+java.util.Arrays.toString(row));
+            visible.add((UUID)row[3]);add(inventory,(UUID)row[3],(UUID)row[4]);}
+        if(!visible.isEmpty())masterReferences.requireVisibleGoodsBatch(visible);
     }
 
     private static void add(Set<InventoryDimension> inventory,UUID goods,UUID color) {

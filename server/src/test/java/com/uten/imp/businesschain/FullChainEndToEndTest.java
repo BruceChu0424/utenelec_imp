@@ -5202,13 +5202,23 @@ class FullChainEndToEndTest {
         return receiveAndPassPurchase(w,orderItemId,goodsId,qty,idempotencySuffix,List.of(qty));
     }
 
+    UUID receiveAndPassPurchase(World w,UUID orderItemId,UUID goodsId,BigDecimal qty,
+            String idempotencySuffix,LocalDate billDate) {
+        return receiveAndPassPurchase(w,orderItemId,goodsId,qty,idempotencySuffix,List.of(qty),billDate);
+    }
+
     private UUID receiveAndPassPurchase(World w,UUID orderItemId,UUID goodsId,BigDecimal qty,
             String idempotencySuffix,List<BigDecimal> stockBatches) {
+        return receiveAndPassPurchase(w,orderItemId,goodsId,qty,idempotencySuffix,stockBatches,
+                idempotencySuffix.startsWith("root-") ? BusinessTime.today() : LocalDate.of(2026,1,20));
+    }
+
+    private UUID receiveAndPassPurchase(World w,UUID orderItemId,UUID goodsId,BigDecimal qty,
+            String idempotencySuffix,List<BigDecimal> stockBatches,LocalDate billDate) {
         loginAs(w.superAdminUserId());
         com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest request =
                 new com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest();
-        request.setBillDate(idempotencySuffix.startsWith("root-")
-                ? com.uten.imp.common.time.BusinessTime.today() : LocalDate.of(2026,1,20));
+        request.setBillDate(java.util.Objects.requireNonNull(billDate));
         request.setSupplierId(w.supplierId());
         request.setWarehouseId(w.warehouseId());
         request.setCurrencyId(w.currencyId());
@@ -7890,6 +7900,7 @@ class FullChainEndToEndTest {
     void shipment_partialThenFull_accumulatesShippedAndChain() {
         World w = seedWorld("s25part");
         UUID orderItemId = produceFinishedFromOpeningInputs(w, w.goodsA(), "10", "10").orderItemId();
+        drainCostsWithFreshRunnerWithoutSession(w);
         UUID orderId = orderIdOfItem(orderItemId);
         loginAs(w.superAdminUserId());
 
@@ -7905,6 +7916,7 @@ class FullChainEndToEndTest {
                 "部分发货 → chain_status → 8");
         assertFalse(orderIsClosed(orderId), "部分发货不结案");
 
+        drainCostsWithFreshRunnerWithoutSession(w);
         UUID ship2 = createShipment(w, orderItemId, w.goodsA(), "5");
         shipThroughWarehouse(ship2);
         assertEquals(0, shippedQty(orderItemId).compareTo(new BigDecimal("10")),
@@ -7927,6 +7939,7 @@ class FullChainEndToEndTest {
     void shipment_requireCompletePolicy_rejectsPartialAllowsFull() {
         World w = seedWorld("s25policy");
         UUID orderItemId = produceFinishedFromOpeningInputs(w, w.goodsA(), "10", "10").orderItemId();
+        drainCostsWithFreshRunnerWithoutSession(w);
         UUID orderId = orderIdOfItem(orderItemId);
         loginAs(w.superAdminUserId());
         jdbc.update("update sales_orders set shipment_policy = 'REQUIRE_COMPLETE' where id = ?", orderId);

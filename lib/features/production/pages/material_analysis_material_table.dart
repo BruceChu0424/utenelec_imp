@@ -1192,11 +1192,43 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 灰勾选框悬浮里的「为什么勾不了」：权限门、组级拦截原因（已转交 / 已下满 /
   /// 缺权限等，见 [_tableIssueBlockedReason]），都说不上的按只读上下文行解释。
   String _materialTableUnselectableReason(_MaterialTableRow row) {
+    if (row.deliveryContext) {
+      final processingRequired =
+          row.material?.deliveryOperations.isNotEmpty == true ||
+          row.product?.deliveryPlan?.processes.any(
+                (entry) => entry['required'] == true,
+              ) ==
+              true;
+      return '按交付方案无需该层组装，不参与本层下单'
+          '${processingRequired ? '；必要加工随实际交付件执行' : ''}';
+    }
     if (!_canSelectMaterialRows) {
       return '缺少下单 / 调拨相关权限，这些行当前不可勾选';
     }
     for (final group in _materialRowAllGroups(row)) {
       final reason = _tableIssueBlockedReason(group);
+      final analysis = _analysis;
+      if (reason == _tableMissingSourceReason &&
+          analysis != null &&
+          !group.actionable &&
+          _groupSafetyReplenishmentGapQty(group) <= 0 &&
+          group.paths.every(
+            (path) => path.shortageQty <= 0 && !path.hasPriorityMakeSupplement,
+          )) {
+        final coverage = MaterialQualifiedCoverage(
+          group.paths,
+          _analysisIndexes(analysis).materialsById,
+        );
+        if (coverage.requiredText != null &&
+            coverage.requiredText != '0' &&
+            coverage.gapText == '0') {
+          final processingRequired = group.paths.any(
+            (path) => path.deliveryOperations.isNotEmpty,
+          );
+          return '本批库存已覆盖，无需下单'
+              '${processingRequired ? '；必要加工仍需执行' : ''}';
+        }
+      }
       if (reason != null) return reason;
     }
     return '只读上下文行，不参与下单';
@@ -5322,6 +5354,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// ([_tableMissingAssignment]) 与汇总表 [selectableForOrder] 都按它识别。
   static const _tableMissingWorkshopReason = '先在「生产车间」列里指定本次交给哪个车间';
   static const _tableMissingWorkerReason = '先在「负责人」列里指定本次谁负责';
+  static const _tableMissingSourceReason = '请先在货品资料维护默认来源，再刷新物料分析';
 
   /// 已转交共享制造 / 不再需要备料的来源行说明：灰勾选框悬浮与「没有量可下」
   /// 的数量格提示共用同一句，避免两处各说各话。
@@ -5349,7 +5382,7 @@ abstract class _MaterialAnalysisMaterialTableState
       return '此来源已有未提交的汇总总量，请到「按物料汇总」修改、下达或撤销该草稿';
     }
     if (group.representative.confirmedRoute == null) {
-      return '请先在货品资料维护默认来源，再刷新物料分析';
+      return _tableMissingSourceReason;
     }
     // 路线草稿保存失败时 _routeDraft/_dirtyRouteGroups 会留在页面上，此时
     // _draftRoute 给的是还没落盘的路线：照它选下达通道会直接吃服务端 400，

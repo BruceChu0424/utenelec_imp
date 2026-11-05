@@ -109,7 +109,7 @@ class SalesDeliverySourceReverseUnitsEndToEndTest {
                 new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,com.uten.imp.common.time.BusinessTime.today(),BigDecimal.ONE))));
         UUID analysisItem=analysis.products().getFirst().analysisLineId();
         UUID purchase=ReflectionTestUtils.invokeMethod(fixture,"approvePurchaseForAnalysis",w,analysis,w.goodsA());
-        UUID receipt=fixture.receiveAndPassPurchase(w,purchase,w.goodsA(),new BigDecimal("20"),tag+"-receipt");
+        UUID receipt=fixture.receiveAndPassPurchase(w,purchase,w.goodsA(),new BigDecimal("20"),tag+"-receipt",com.uten.imp.common.time.BusinessTime.today());
         fixture.loginAs(w.superAdminUserId());
         UUID original=db.queryForObject("SELECT sales_reservation_id FROM preplan_root_output_events WHERE analysis_item_id=? AND event_kind='FULFILL'",UUID.class,analysisItem);
         assertThat(db.queryForObject("SELECT qty_source FROM preplan_root_output_events WHERE sales_reservation_id=? AND event_kind='FULFILL'",BigDecimal.class,original)).isEqualByComparingTo("1");

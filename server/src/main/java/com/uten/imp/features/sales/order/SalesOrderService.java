@@ -1478,10 +1478,7 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
-        SalesOrder o = requireWritableOrderForUpdate(id, req.getItems() == null ? List.of()
-                : req.getItems().stream().filter(line -> line.getGoodsId() != null)
-                    .map(line -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
-                            line.getGoodsId(), line.getColorId())).toList());
+        SalesOrder o = requireWritableOrderForProposedUpdate(id,req);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
         boolean rejectedRevision = (o.isFinanceRejected() || o.getManagerReview().rejected())
                 && !o.isFinanceConfirmed()
@@ -3580,6 +3577,19 @@ public class SalesOrderService {
             String... operationAuthorities) {
         SalesOrder visible = requireWritableOrder(id, operationAuthorities);
         mutationFootprint.lockOrder(id, requested);
+        return writableOrderAfterFootprint(visible,operationAuthorities);
+    }
+
+    private SalesOrder requireWritableOrderForProposedUpdate(UUID id,OrderSaveRequest request) {
+        SalesOrder visible=requireWritableOrder(id);
+        mutationFootprint.lockOrderUpdate(id,request.getItems()==null?List.of():request.getItems().stream()
+                .map(line->new com.uten.imp.features.sales.SalesMutationFootprintService.ProposedOrderLine(
+                        line.getGoodsId(),line.getColorId(),line.getDeliveryPlan()!=null&&line.getDeliveryPlan().requiresPhysicalFulfillment())).toList());
+        return writableOrderAfterFootprint(visible);
+    }
+
+    private SalesOrder writableOrderAfterFootprint(SalesOrder visible,String... operationAuthorities) {
+        UUID id=visible.getId();
         SalesOrder locked = em.find(
                 SalesOrder.class, visible.getId(),
                 jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);

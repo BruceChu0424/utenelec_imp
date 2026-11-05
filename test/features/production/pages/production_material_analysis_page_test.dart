@@ -277,7 +277,95 @@ void registerMaterialAnalysisCancelReentryTests() {
   );
 }
 
+Map<String, dynamic> _disabledHintCoverageFixture(
+  Map<String, dynamic> overrides,
+) {
+  final json = _makeTreeAnalysisJson();
+  (json['flatMaterials'] as List)
+      .cast<Map<String, dynamic>>()
+      .firstWhere((row) => row['materialLineId'] == 'buy-child')
+      .addAll({
+        'routeConfirmed': false,
+        'sourceSuggestion': 'BUY',
+        'availableQty': 12,
+        'allocatedAvailableQty': 12,
+        'shortageQty': 0,
+        'demandSupplyGapQty': 0,
+        'additionalSupplyRecommendedQty': 0,
+        'actionable': false,
+        'flowStage': 'BUY_PENDING_ISSUE',
+        ...overrides,
+      });
+  return json;
+}
+
+Future<({Checkbox checkbox, String hint})> _disabledHintOfCoverage(
+  WidgetTester tester,
+  Map<String, dynamic> overrides,
+) async {
+  await tester.pumpWidget(const SizedBox());
+  await tester.pump();
+  await _pumpPage(
+    tester,
+    size: const Size(1400, 1000),
+    permissions: const {
+      Perm.productionMaterialAnalysisCreate,
+      Perm.productionMaterialAnalysisRefresh,
+      Perm.productionMaterialAnalysisRoute,
+      Perm.productionMaterialAnalysisNotify,
+    },
+    allowedActions: const ['CONFIRM_ROUTES', 'NOTIFY_SUPPLY'],
+    analysisJson: _disabledHintCoverageFixture(overrides),
+  );
+  final row = await _materialTableRowVisible(tester, 'buy-child');
+  final checkbox = find.descendant(of: row, matching: find.byType(Checkbox));
+  expect(checkbox, findsOneWidget);
+  final tooltip = tester.widget<Tooltip>(
+    find.ancestor(of: checkbox, matching: find.byType(Tooltip)),
+  );
+  return (
+    checkbox: tester.widget<Checkbox>(checkbox),
+    hint: tooltip.message ?? '',
+  );
+}
+
+void _registerMaterialDisabledHintCases() {
+  testWidgets(
+    'disabled hint retains source maintenance for shortage unknown facts and safety supply',
+    (tester) async {
+      for (final overrides in <Map<String, dynamic>>[
+        {'shortageQty': 1, 'demandSupplyGapQty': 1},
+        {
+          'quantityFactsExact': {'demandSupplyGapQty': 'unknown'},
+        },
+        {'mainWarehouseSafetyReplenishmentGapQty': 1},
+      ]) {
+        final result = await _disabledHintOfCoverage(tester, overrides);
+        expect(result.hint, contains('维护默认来源'));
+        expect(result.hint, isNot(contains('本批库存已覆盖，无需下单')));
+        expect(result.checkbox.onChanged, isNull);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+  testWidgets(
+    'disabled hint keeps delivery context assembly cancelled and required processing visible',
+    (tester) async {
+      final result = await _disabledHintOfCoverage(tester, {
+        'deliveryContext': true,
+        'deliveryOperations': ['LASER'],
+      });
+      expect(result.hint, contains('无需该层组装'));
+      expect(result.hint, contains('必要加工随实际交付件执行'));
+      expect(result.hint, isNot(contains('维护默认来源')));
+      expect(result.checkbox.onChanged, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
 void main() {
+  _registerMaterialDisabledHintCases();
   registerMaterialAnalysisCancelReentryTests();
   testWidgets('501 paths keep master roles read-only in the aggregate view', (
     tester,

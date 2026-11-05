@@ -37,6 +37,10 @@ import static org.assertj.core.api.Assertions.*;
     "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
     "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class GiftPhysicalConservationEndToEndTest {
+    private final AutoCloseable scenarioPrecision=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+            "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")));
+    @AfterEach void releaseScenarioPrecision() throws Exception {scenarioPrecision.close();}
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -98,10 +102,10 @@ class GiftPhysicalConservationEndToEndTest {
     @Test void receiptUnapprovalAndRepeatedCommandsRestoreBothSourceCountersThenNewGenerationPostsExactlyOnce(){
         F f=fixture();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         var request=new DocumentUnapprovalService.UnapproveRequest("gift-unapprove-"+receipt,"收费和免费实物同代际守恒");
-        var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",receipt,request);
+        var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,request);
         assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(receipt)).isZero();
         assertThat(number("SELECT received_qty+gift_received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();
-        var again=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",receipt,request);
+        var again=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,request);
         assertThat(again.getId()).isEqualTo(draft.getId());assertThat(stock(f)).isZero();
         assertThat(draft.getItems().getFirst().getQuantitySemantics()).isEqualTo("CHARGED_PLUS_GIFT_V1");
         receipts.approve(draft.getId());passAndStock(f,draft.getId());
@@ -119,7 +123,7 @@ class GiftPhysicalConservationEndToEndTest {
         // facts too — the gift is no longer a physical tranche, so its base is 0.
         db.update("UPDATE purchase_receipt_items SET quantity_semantics='LEGACY_RECORDED',gift_base_qty=0 WHERE receipt_id=?",receipt);
         receipts.approve(receipt);passAndStock(f,receipt);assertThat(stock(f)).isEqualByComparingTo("10");
-        var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",receipt,new DocumentUnapprovalService.UnapproveRequest("gift-legacy-"+receipt,"保原历史实物量"));
+        var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,new DocumentUnapprovalService.UnapproveRequest("gift-legacy-"+receipt,"保原历史实物量"));
         assertThat(stock(f)).isZero();assertThat(draft.getItems().getFirst().getQuantitySemantics()).isEqualTo("LEGACY_RECORDED");
         receipts.approve(draft.getId());passAndStock(f,draft.getId());assertThat(stock(f)).isEqualByComparingTo("10");
         assertThat(number("SELECT gift_received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();

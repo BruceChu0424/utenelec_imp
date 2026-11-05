@@ -163,3 +163,6 @@ output/
 /services/material_forecast/.venv*/
 /services/material_forecast/runtime/
 /services/material_forecast/**/__pycache__/
+
+# Browser tests verify this temporary copy against the tracked worker before and after execution.
+/test/.uten-ci-codec-worker.js

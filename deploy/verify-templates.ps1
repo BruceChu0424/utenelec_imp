@@ -285,7 +285,11 @@ if (([regex]::Matches($text.WebsiteInquiryController, '@(?:Get|Post|Put|Patch|De
 # 复核结论同上——两者是登录 ERP 内部的对账台端点（@PreAuthorize attachment:reconcile:view /
 # attachment:reconcile:approve_delete），走通用 location /api/ 的既有鉴权与限流，
 # 不是公网上传入口，presign/confirm/raw 三个专项 location 口径不变，attachment location 计数仍为 2。
-if (([regex]::Matches($text.AttachmentController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 13) {
+# 13 -> 14（2026-11-05）：GET /linked 是关联原件的只读入口，仍要求 attachment:view
+# 和当前 owner 的 requireCanView，再由 visibleLinked 限制可见关联；不签发额外上传权限。
+# 它走通用 /api/ 鉴权与限流，内网 presign/confirm 的 404、raw 的 GET/HEAD 边界及
+# 上述恰好两个附件专项 location 均保持不变。
+if (([regex]::Matches($text.AttachmentController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 14) {
     throw 'Forbidden deployment contract: attachment Controller route inventory changed without gateway review'
 }
 Assert-Contains $text.InternalTestGuide '<!-- INTERNAL-TEST-SINGLE-NVME-NOT-PRODUCTION -->' 'internal-test production boundary'

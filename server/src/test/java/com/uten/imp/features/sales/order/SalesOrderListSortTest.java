@@ -26,6 +26,7 @@ class SalesOrderListSortTest {
         var service = mock(SalesOrderService.class, CALLS_REAL_METHODS);
         ReflectionTestUtils.setField(service, "orderRepo", repository);
         ReflectionTestUtils.setField(service, "accessPolicy", mock(SalesDocumentAccessPolicy.class));
+        ReflectionTestUtils.setField(service, "priceMasker", mock(SalesPriceMasker.class));
         service.setRetainedRecords(mock(RetainedRecordReader.class));
         List<Pageable> requested = new ArrayList<>();
         when(repository.findAll(any(Specification.class), any(Pageable.class))).thenAnswer(call -> {

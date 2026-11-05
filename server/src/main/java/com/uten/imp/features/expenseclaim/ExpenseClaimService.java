@@ -455,6 +455,16 @@ public class ExpenseClaimService {
     @Transactional(readOnly = true)
     public ExpenseClaimDto detail(UUID id) { return readDetail(id, false); }
 
+    /** Optional native detail for an independently authorized application view.
+     * An expected audience miss must not poison its caller's write transaction. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<ExpenseClaimDto> findReadableDetail(UUID id) {
+        AuthUser user=requireStaff();
+        var claim=claimRepository.findById(id).filter(value->!value.isDeleted());
+        if(claim.isEmpty()||!readAccess.mayRead(user,claim.get(),observerScope(user)))return java.util.Optional.empty();
+        return java.util.Optional.of(readDetail(claim.get(),false));
+    }
+
     @Transactional(readOnly = true)
     public ExpenseClaimDto detailHistory(UUID id) { return readDetail(id, true); }
 
@@ -467,6 +477,11 @@ public class ExpenseClaimService {
     private ExpenseClaimDto readDetail(UUID id, boolean historyRead) {
         ExpenseClaim claim = requireClaim(id, historyRead);
         assertCanRead(claim);
+        return readDetail(claim,historyRead);
+    }
+
+    private ExpenseClaimDto readDetail(ExpenseClaim claim, boolean historyRead) {
+        UUID id=claim.getId();
         AuthUser user = requireStaff();
         List<AttachmentDto> attachments = has(user, "attachment:view")
                 ? attachmentService.list("EXPENSE_CLAIM", id, historyRead, false)

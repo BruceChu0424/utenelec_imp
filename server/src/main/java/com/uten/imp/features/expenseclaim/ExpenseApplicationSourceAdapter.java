@@ -33,7 +33,8 @@ public class ExpenseApplicationSourceAdapter implements FinanceApplicationExpens
     @Override public void submit(UUID id){claims.getObject().submit(id);}
     @Override public void withdraw(UUID id){claims.getObject().withdraw(id);}
     @Override public void verifyInvoice(UUID claimId,UUID invoiceId,Long version,String result,String remark){claims.getObject().verifyInvoice(claimId,invoiceId,new com.uten.imp.features.expenseclaim.dto.ExpenseClaimInvoiceVerifyRequest(version,result,remark));}
-    @Override public Map<String,Object> detail(UUID claimId){return json.convertValue(claims.getObject().detail(claimId),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});}
+    @Override public Map<String,Object> detail(UUID claimId){return json.convertValue(claims.getObject().findReadableDetail(claimId)
+            .orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND,"报销单不存在")),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});}
     @Override public void decideFromApplication(UUID id,boolean approved,String reason){claims.getObject().decideFromFinancialApplication(id,approved,reason);}
     @Override public UUID pay(UUID id,UUID account,UUID style,LocalDate date,AccountingExpensePurpose purpose){return claims.getObject().pay(id,new ExpenseClaimPaymentRequest(account,style,date,null,purpose.name())).financeExpenseId();}
     @Override public void paymentReversed(UUID id,UUID financeExpense,String reason){claims.getObject().paymentReversedFromFinancialApplication(id,financeExpense,reason);}

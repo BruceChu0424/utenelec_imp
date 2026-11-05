@@ -399,6 +399,27 @@ class ExpenseClaimServiceTest {
     }
 
     @Test
+    void optionalDetailKeepsUnauthorizedAndDeletedClaimsUnavailableWithoutBuildingTheirDto() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:pay"));
+        ExpenseClaim claim=claim(UUID.randomUUID(),"REJECTED");
+        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        assertTrue(service.findReadableDetail(claim.getId()).isEmpty());
+        claim.setDeleted(true);
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
+        claim.setApplicantId(actorId);
+        assertTrue(service.findReadableDetail(claim.getId()).isEmpty());
+        verifyNoInteractions(itemRepository,invoiceRepository,attachmentService);
+    }
+
+    @Test
+    void optionalDetailDoesNotConvertARealReadFailureIntoUnavailable() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
+        UUID id=UUID.randomUUID();
+        when(claimRepository.findById(id)).thenThrow(new IllegalStateException("actual read failed"));
+        assertEquals("actual read failed",assertThrows(IllegalStateException.class,()->service.findReadableDetail(id)).getMessage());
+    }
+
+    @Test
     void detailWithoutAttachmentViewNeverIssuesDownloadCapabilities() {
         when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
         ExpenseClaim claim = claim(actorId, "DRAFT");
@@ -409,6 +430,11 @@ class ExpenseClaimServiceTest {
         var detail = service.detail(claim.getId());
 
         assertEquals(List.of(), detail.attachments());
+        var optional=service.findReadableDetail(claim.getId()).orElseThrow();
+        assertEquals(detail.id(),optional.id());
+        assertEquals(detail.totalAmount(),optional.totalAmount());
+        assertEquals(detail.items(),optional.items());
+        assertEquals(detail.attachments(),optional.attachments());
         verifyNoInteractions(attachmentService);
     }
 

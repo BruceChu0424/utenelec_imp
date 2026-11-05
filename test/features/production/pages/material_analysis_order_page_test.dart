@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
@@ -327,11 +328,29 @@ void main() {
     );
     await _openOrder(tester);
     await _type(tester, 'm-b', '5', append: true);
+    expect(_qty(tester, 'm-b', append: true), '5');
     _table(tester).onSelectedIdsChanged!({'PREPARATION|m-b'});
     await tester.pumpAndSettle();
-    await _submit(tester);
+    expect(_table(tester).selectedIds, {'PREPARATION|m-b'});
+    await tester.tap(
+      find.byKey(const Key('material-preparation-order-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
+    expect(_writes(harness), isEmpty);
+    await tester.tap(find.text('保留余量，额外下单'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<RadioGroup<bool>>(find.byType(RadioGroup<bool>)).groupValue,
+      isFalse,
+    );
+    await tester.tap(find.text('继续'));
+    await tester.pumpAndSettle();
+    expect(_writes(harness), isEmpty);
+    await _confirmOrder(tester);
     final write = _writes(harness).single;
     expect(write.path, endsWith('/aggregate-orders/submit'));
+    expect((write.data as Map)['skipAutoClaim'], isTrue);
     final input = ((write.data as Map)['groups'] as List).single as Map;
     expect(input['materialLineIds'], ['m-b']);
     expect(input['qty'], '5');
@@ -481,9 +500,22 @@ Future<void> _openOrder(
 Future<void> _submit(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('material-preparation-order-submit')));
   await tester.pumpAndSettle();
-  await tester.tap(
-    find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
+  await _confirmOrder(tester);
+}
+
+Future<void> _confirmOrder(WidgetTester tester) async {
+  final confirm = find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.text('确认下单'),
   );
+  expect(
+    confirm,
+    findsOneWidget,
+    reason: ProviderScope.containerOf(
+      tester.element(find.byType(MaterialApp)),
+    ).read(appNotificationProvider).map((notice) => notice.message).join(' | '),
+  );
+  await tester.tap(confirm);
   for (var i = 0; i < 20; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }

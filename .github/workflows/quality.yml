@@ -401,19 +401,24 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - name: Verify browser update and stale-bundle behavior before release
         run: node --test web/update_check.test.cjs web/maintenance.test.cjs
-      - name: Verify browser draft reset, receipts, and exact material quantities
+      - name: Bind the complete browser cohort to the same source plan
+        run: python3 .github/scripts/flutter_test_shards.py plan --output build/flutter-ci-plan --shards 8 --history .github/test-timings/flutter.json
+      - name: Verify all six browser files with native machine evidence
         run: |
           worker=test/.uten-ci-codec-worker.js
           test ! -e "$worker"
           trap 'rm -f -- "$worker"' EXIT
           cp -- web/uten_data_codec_worker.js "$worker"
           cmp -- web/uten_data_codec_worker.js "$worker"
-          flutter test --no-pub --platform chrome \
-          --dart-define=UTEN_DATA_CODEC_WORKER_PATH=/.uten-ci-codec-worker.js \
-          test/shared/drafts/form_draft_storage_browser_test.dart \
-          test/shared/drafts/form_draft_history_browser_test.dart \
-          test/device_audit_receipt_storage_web_test.dart \
-          test/features/production/models/material_quantity_apportionment_test.dart
+          python3 .github/scripts/flutter_test_shards.py browser --plan build/flutter-ci-plan/plan.json --output build/flutter-ci-reports
+      - name: Preserve complete browser evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: flutter-test-results-browser
+          path: build/flutter-ci-reports/
+          if-no-files-found: error
+          retention-days: 14
 
   frontend-build:
     name: Flutter / production Web build

@@ -25,11 +25,23 @@ from urllib.parse import unquote, urlsplit
 from backend_test_shards import digest, read_json, source_identity, write_json
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = 1
+VERSION = 2
 FLUTTER_VERSION = "3.44.2"
 PROTOCOL_VERSION = "0.1.1"
 SHARDS = 8
 COMMAND_OPTIONS = ("test", "--no-pub", "--machine", "--no-fail-fast")
+WORKER_PATH = "test/.uten-ci-codec-worker.js"
+WORKER_SOURCE = "web/uten_data_codec_worker.js"
+BROWSER_OPTIONS = (*COMMAND_OPTIONS, "--platform", "chrome",
+                   "--dart-define=UTEN_DATA_CODEC_WORKER_PATH=/.uten-ci-codec-worker.js")
+BROWSER_FILES = (
+    "test/shared/drafts/form_draft_storage_browser_test.dart",
+    "test/shared/drafts/form_draft_history_browser_test.dart",
+    "test/device_audit_receipt_storage_web_test.dart",
+    "test/features/production/models/material_quantity_apportionment_test.dart",
+    "test/attachments/attachment_media_preview_browser_test.dart",
+    "test/core/web_update_bridge_browser_test.dart",
+)
 # The pinned SDK loader emits no LoadSuite at all for this library selector.
 # This is platform metadata, not a parser/count of test declarations. Unknown
 # selectors are never an excuse for a missing execution report.
@@ -107,13 +119,15 @@ def make_plan(files, count, history, source):
     for bucket in buckets:
         bucket["files"].sort()
     plan = {"schema_version": VERSION, "source": source, "ci": ci_identity(), "flutter_version": FLUTTER_VERSION,
-            "command_options": list(COMMAND_OPTIONS), "files": weighted, "shards": buckets}
+            "command_options": list(COMMAND_OPTIONS), "browser_options": list(BROWSER_OPTIONS),
+            "browser_files": list(BROWSER_FILES), "files": weighted, "shards": buckets}
     return {**plan, "plan_hash": digest(plan)}
 
 
 def validate_plan(plan, root=ROOT, check_source=True):
     if (type(plan.get("schema_version")) is not int or plan.get("schema_version") != VERSION or plan.get("flutter_version") != FLUTTER_VERSION
             or plan.get("command_options") != list(COMMAND_OPTIONS)
+            or plan.get("browser_options") != list(BROWSER_OPTIONS) or plan.get("browser_files") != list(BROWSER_FILES)
             or plan.get("plan_hash") != digest({k: v for k, v in plan.items() if k != "plan_hash"})):
         raise ValueError("invalid Flutter plan version, command, or fingerprint")
     files, shards = plan["files"], plan["shards"]
@@ -121,6 +135,10 @@ def validate_plan(plan, root=ROOT, check_source=True):
            or row["bytes"] < 0 or not re.fullmatch(r"[a-f0-9]{64}", row.get("sha256", "")) for row in files):
         raise ValueError("invalid source file or platform metadata")
     paths = [test_path(row["path"]) for row in files]
+    if (len(set(plan["browser_files"])) != len(plan["browser_files"])
+            or not set(plan["browser_files"]) <= set(paths)
+            or not {row["path"] for row in files if row["vm_platform_skip"]} <= set(plan["browser_files"])):
+        raise ValueError("fixed Chrome cohort must cover every VM-inapplicable browser library")
     assigned = [path for shard in shards for path in shard["files"]]
     if (not paths or len(set(paths)) != len(paths) or Counter(paths) != Counter(assigned)
             or any(value != 1 for value in Counter(assigned).values())
@@ -169,7 +187,7 @@ def suite_path(value, root):
         raise ValueError("suite outside the assigned checkout") from error
 
 
-def parse_events(path, expected_files, root=ROOT, platform_skips=()):
+def parse_events(path, expected_files, root=ROOT, platform_skips=(), platform="vm"):
     expected = set(expected_files)
     allowed_missing = set(platform_skips)
     if not allowed_missing <= expected:
@@ -221,7 +239,7 @@ def parse_events(path, expected_files, root=ROOT, platform_skips=()):
                 ids.add(identity)
                 if kind == "suite":
                     owner = suite_path(value["path"], root)
-                    if value.get("platform") != "vm" or owner not in expected or owner in suites.values():
+                    if value.get("platform") != platform or owner not in expected or owner in suites.values():
                         raise ValueError("foreign platform, unexpected or duplicate test file suite")
                     suites[identity] = owner
                 else:
@@ -307,18 +325,45 @@ def parse_events(path, expected_files, root=ROOT, platform_skips=()):
             "elapsed_seconds": elapsed / 1000, "durations_seconds": durations}
 
 
+def verify_worker(root):
+    source, worker = Path(root) / WORKER_SOURCE, Path(root) / WORKER_PATH
+    if (source.is_symlink() or worker.is_symlink() or not source.is_file() or not worker.is_file()
+            or (Path(root) / "web").is_symlink() or (Path(root) / "test").is_symlink()
+            or sha256(source) != sha256(worker)):
+        raise ValueError("codec worker is missing, linked or differs from the reviewed source")
+    return {"path": WORKER_PATH, "source": WORKER_SOURCE, "sha256": sha256(source)}
+
+
+def require_browser_execution(actual, files):
+    executed = {test["file"] for test in actual["tests"] if not test["skipped"]}
+    if executed != set(files):
+        raise ValueError("Chrome cohort contains files without real non-skipped test execution")
+
+
 def run_shard(plan, number, output, flutter="flutter", root=ROOT):
     validate_plan(plan, root)
     if type(number) is not int or number not in range(len(plan["shards"])):
         raise ValueError("unknown shard")
+    return _run_cohort(plan, number, plan["shards"][number]["files"], COMMAND_OPTIONS, "vm", output, flutter, root)
+
+
+def run_browser(plan, output, flutter="flutter", root=ROOT):
+    validate_plan(plan, root)
+    if not plan["browser_files"]:
+        raise ValueError("empty Chrome cohort")
+    return _run_cohort(plan, "browser", plan["browser_files"], BROWSER_OPTIONS, "chrome", output, flutter, root)
+
+
+def _run_cohort(plan, number, files, options, mode, output, flutter, root):
     directory = Path(output) / f"shard-{number}"
     directory.mkdir(parents=True, exist_ok=False)
-    files = plan["shards"][number]["files"]
-    command = [shutil.which(flutter) or flutter, *COMMAND_OPTIONS, *files]
+    command = [shutil.which(flutter) or flutter, *options, *files]
     record = {"schema_version": VERSION, "source": plan["source"], "plan_hash": plan["plan_hash"],
-              "ci": ci_identity(), "shard": number, "files": files, "command": command, "exit_code": None, "complete": False}
+              "ci": ci_identity(), "mode": mode, "shard": number, "files": files, "command": command, "exit_code": None, "complete": False}
     started = time.monotonic()
     try:
+        if mode == "chrome":
+            record["worker"] = verify_worker(root)
         version = subprocess.run([command[0], "--version", "--machine"], cwd=root,
                                  capture_output=True, text=True, encoding="utf-8", check=False)
         payload = version.stdout[version.stdout.find("{"):] if "{" in version.stdout else ""
@@ -329,12 +374,18 @@ def run_shard(plan, number, output, flutter="flutter", root=ROOT):
         with (directory / "machine.jsonl").open("wb") as stdout, (directory / "stderr.log").open("wb") as stderr:
             process = subprocess.run(command, cwd=root, stdout=stdout, stderr=stderr, check=False)
         record["exit_code"] = process.returncode
+        if mode == "chrome":
+            if verify_worker(root) != record["worker"]:
+                raise ValueError("codec worker changed during Chrome execution")
+            record["worker"]["verified_after"] = True
         record["source_after"] = source_identity(root)
         record["machine_sha256"] = sha256(directory / "machine.jsonl")
         record["stderr_sha256"] = sha256(directory / "stderr.log")
         check_stderr(directory / "stderr.log")
-        skips = [row["path"] for row in plan["files"] if row["vm_platform_skip"] and row["path"] in files]
-        record["results"] = parse_events(directory / "machine.jsonl", files, root, skips)
+        skips = [row["path"] for row in plan["files"] if mode == "vm" and row["vm_platform_skip"] and row["path"] in files]
+        record["results"] = parse_events(directory / "machine.jsonl", files, root, skips, "vm" if mode == "vm" else "chrome")
+        if mode == "chrome":
+            require_browser_execution(record["results"], files)
         record["complete"] = process.returncode == 0 and record["source_after"] == plan["source"]
     except (OSError, ValueError, KeyError, TypeError) as error:
         record["error"] = str(error)
@@ -345,12 +396,49 @@ def run_shard(plan, number, output, flutter="flutter", root=ROOT):
     return record
 
 
+def _verify_cohort(plan, reports, shard, options, mode, root):
+    directory = reports / f"shard-{shard['id']}"
+    if directory.is_symlink() or {path.name for path in directory.iterdir()} != {"report.json", "machine.jsonl", "stderr.log"}:
+        raise ValueError("invalid Flutter report ownership/files")
+    if any(path.is_symlink() or not path.is_file() for path in directory.iterdir()):
+        raise ValueError("linked/special Flutter evidence file")
+    report = read_json(directory / "report.json")
+    if (type(report.get("schema_version")) is not int or report.get("schema_version") != VERSION or report.get("source") != plan["source"]
+            or report.get("source_after") != plan["source"] or report.get("plan_hash") != plan["plan_hash"]
+            or report.get("ci") != plan.get("ci")
+            or type(report.get("shard")) is not type(shard["id"]) or report.get("shard") != shard["id"] or report.get("mode") != mode or report.get("files") != shard["files"]
+            or type(report.get("exit_code")) is not int or report.get("exit_code") != 0 or report.get("complete") is not True
+            or report.get("sdk", {}).get("frameworkVersion") != plan["flutter_version"]
+            or not isinstance(report.get("command"), list)
+            or report["command"][1:] != [*options, *shard["files"]]
+            or not isinstance(report["command"][0], str)
+            or report.get("machine_sha256") != sha256(directory / "machine.jsonl")
+            or report.get("stderr_sha256") != sha256(directory / "stderr.log")):
+        raise ValueError("failed, filtered, wrong-SHA or tampered Flutter report")
+    skips = [row["path"] for row in plan["files"] if mode == "vm" and row["vm_platform_skip"] and row["path"] in shard["files"]]
+    check_stderr(directory / "stderr.log")
+    actual = parse_events(directory / "machine.jsonl", shard["files"], root, skips, "vm" if mode == "vm" else "chrome")
+    if report.get("results") != actual:
+        raise ValueError("producer summary differs from fresh JSON reconciliation")
+    if mode == "chrome":
+        expected_worker = {"path": WORKER_PATH, "source": WORKER_SOURCE,
+                           "sha256": sha256(Path(root) / WORKER_SOURCE), "verified_after": True}
+        if report.get("worker") != expected_worker:
+            raise ValueError("Chrome report lacks exact codec worker provenance")
+        require_browser_execution(actual, shard["files"])
+    elif report.get("worker") is not None:
+        raise ValueError("unexpected worker in VM report")
+    return actual
+
+
 def verify_reports(plan, reports, root=ROOT):
     validate_plan(plan, root)
     reports = Path(reports)
     if reports.is_symlink():
         raise ValueError("Flutter reports must not be a link")
     expected_directories = {f"shard-{row['id']}" for row in plan["shards"]}
+    if plan["browser_files"]:
+        expected_directories.add("shard-browser")
     existing = {path.name for path in reports.iterdir()}
     if existing - {"verification.json", "timings.json"} != expected_directories:
         raise ValueError("missing, duplicate or unexpected Flutter report shard")
@@ -360,33 +448,28 @@ def verify_reports(plan, reports, root=ROOT):
             raise ValueError("summary output is a link or special node")
     completed = []
     for shard in plan["shards"]:
-        directory = reports / f"shard-{shard['id']}"
-        if directory.is_symlink() or {path.name for path in directory.iterdir()} != {"report.json", "machine.jsonl", "stderr.log"}:
-            raise ValueError("invalid Flutter report ownership/files")
-        if any(path.is_symlink() or not path.is_file() for path in directory.iterdir()):
-            raise ValueError("linked/special Flutter evidence file")
-        report = read_json(directory / "report.json")
-        if (type(report.get("schema_version")) is not int or report.get("schema_version") != VERSION or report.get("source") != plan["source"]
-                or report.get("source_after") != plan["source"] or report.get("plan_hash") != plan["plan_hash"]
-                or report.get("ci") != plan.get("ci")
-                or type(report.get("shard")) is not int or report.get("shard") != shard["id"] or report.get("files") != shard["files"]
-                or type(report.get("exit_code")) is not int or report.get("exit_code") != 0 or report.get("complete") is not True
-                or report.get("sdk", {}).get("frameworkVersion") != plan["flutter_version"]
-                or not isinstance(report.get("command"), list)
-                or report["command"][1:] != [*COMMAND_OPTIONS, *shard["files"]]
-                or not isinstance(report["command"][0], str)
-                or report.get("machine_sha256") != sha256(directory / "machine.jsonl")
-                or report.get("stderr_sha256") != sha256(directory / "stderr.log")):
-            raise ValueError("failed, filtered, wrong-SHA or tampered Flutter report")
-        skips = [row["path"] for row in plan["files"] if row["vm_platform_skip"] and row["path"] in shard["files"]]
-        check_stderr(directory / "stderr.log")
-        actual = parse_events(directory / "machine.jsonl", shard["files"], root, skips)
-        if report.get("results") != actual:
-            raise ValueError("producer summary differs from fresh JSON reconciliation")
+        actual = _verify_cohort(plan, reports, shard, COMMAND_OPTIONS, "vm", root)
         completed.append({"id": shard["id"], **actual})
+    browser = None
+    if plan["browser_files"]:
+        browser = _verify_cohort(plan, reports, {"id": "browser", "files": plan["browser_files"]},
+                                 BROWSER_OPTIONS, "chrome", root)
+        platform_files = {row["path"] for row in plan["files"] if row["vm_platform_skip"]}
+        if not platform_files <= set(browser["files"]):
+            raise ValueError("a VM-inapplicable file lacks actual Chrome coverage")
+    vm_files = {file for shard in completed for file in shard["files"]}
+    chrome_files = set(browser["files"]) if browser else set()
+    if vm_files | chrome_files != {row["path"] for row in plan["files"]}:
+        raise ValueError("the planned source inventory lacks complete platform execution")
     summary = {"complete": True, "source": plan["source"], "plan_hash": plan["plan_hash"],
-               "file_count": len(plan["files"]), "testcase_count": sum(row["testcase_count"] for row in completed),
-               "skipped_count": sum(len(row["skipped"]) for row in completed), "shards": completed}
+               "file_count": len(plan["files"]), "executed_file_count": len(vm_files | chrome_files),
+               "vm_file_count": len(vm_files), "browser_file_count": len(chrome_files),
+               "dual_platform_files": sorted(vm_files & chrome_files),
+               "testcase_count": sum(row["testcase_count"] for row in completed)
+                    + (browser["testcase_count"] if browser else 0),
+               "skipped_count": sum(len(row["skipped"]) for row in completed) + (len(browser["skipped"]) if browser else 0),
+               "shards": completed, "browser": browser,
+               "browser_only_files": [row["path"] for row in plan["files"] if row["vm_platform_skip"]]}
     return summary
 
 
@@ -402,6 +485,10 @@ def main():
     running.add_argument("--shard", type=int, required=True)
     running.add_argument("--output", default="build/flutter-ci-reports")
     running.add_argument("--flutter", default="flutter")
+    browser = actions.add_parser("browser")
+    browser.add_argument("--plan", required=True)
+    browser.add_argument("--output", default="build/flutter-ci-reports")
+    browser.add_argument("--flutter", default="flutter")
     verifying = actions.add_parser("verify")
     verifying.add_argument("--plan", required=True)
     verifying.add_argument("--reports", required=True)
@@ -416,8 +503,9 @@ def main():
                 raise ValueError("plan output already exists")
             write_json(output / "plan.json", plan)
             print(f"Planned all {len(plan['files'])} Flutter test files in {len(plan['shards'])} complete partitions")
-        elif args.action == "run":
-            record = run_shard(read_json(args.plan), args.shard, args.output, args.flutter)
+        elif args.action in {"run", "browser"}:
+            record = (run_shard(read_json(args.plan), args.shard, args.output, args.flutter)
+                      if args.action == "run" else run_browser(read_json(args.plan), args.output, args.flutter))
             if not record["complete"]:
                 raise ValueError(record.get("error", "Flutter process/source failed"))
         else:
@@ -425,7 +513,8 @@ def main():
             write_json(Path(args.reports) / "verification.json", summary)
             timings = {path: duration for shard in summary["shards"] for path, duration in shard["durations_seconds"].items()}
             write_json(Path(args.reports) / "timings.json", {"schema_version": VERSION, "source": summary["source"], "durations_seconds": timings})
-            print(f"Verified {summary['file_count']} files exactly once and {summary['testcase_count']} completed real test instances")
+            print(f"Verified {summary['file_count']} whole-file VM assignments, {summary['browser_file_count']} Chrome files "
+                  f"and {summary['testcase_count']} completed real test instances; unique executed files={summary['executed_file_count']}")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         parser.exit(1, f"Complete Flutter gate failed: {error}\n")
 

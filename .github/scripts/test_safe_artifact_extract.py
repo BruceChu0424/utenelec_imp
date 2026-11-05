@@ -139,6 +139,10 @@ class ArtifactExtractionTests(unittest.TestCase):
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/report.json", "{}"), ("shard-1/report.json", "{}")]),
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/other.json", "{}")]),
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/nested/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-browser", [("shard-0/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-browser/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-browser2", [("shard-browser/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-browser", [("shard-browser/worker.js", "forged")]),
             ("flutter-test-results-*", "backend-test-results-0", [("shard-0/report.json", "{}")]),
         ):
             with self.subTest(selector=selector, folder=folder, members=members):
@@ -150,6 +154,15 @@ class ArtifactExtractionTests(unittest.TestCase):
                 archive.unlink()
                 if folder:
                     (self.raw / folder).rmdir()
+
+    def test_browser_report_is_an_exact_ninth_owner_under_the_existing_flutter_root(self):
+        for owner in (*unpack.FLUTTER_SHARD_IDS, "browser"):
+            self.archive([(f"shard-{owner}/{name}", "{}") for name in ("report.json", "machine.jsonl", "stderr.log")],
+                         folder=f"flutter-test-results-{owner}")
+        result = self.extract("flutter-test-results-*")
+        self.assertEqual(9, result["archives"])
+        self.assertEqual({f"shard-{owner}" for owner in unpack.FLUTTER_REPORT_OWNERS},
+                         {path.name for path in (self.workspace / "build/flutter-ci-reports").iterdir()})
 
     def test_flutter_zip_symlinks_and_source_owned_build_aliases_fail_closed(self):
         info = zipfile.ZipInfo("plan.json")
@@ -333,6 +346,8 @@ class AuthenticatedWorkflowBoundaryTests(unittest.TestCase):
         self.assertEqual(tuple(str(int(value.strip())) for value in matrix[1].split(",")), unpack.FLUTTER_SHARD_IDS)
         self.assertEqual(16, len(unpack.SHARD_IDS))
         self.assertEqual(8, len(unpack.FLUTTER_SHARD_IDS))
+        self.assertEqual((*unpack.FLUTTER_SHARD_IDS, "browser"), unpack.FLUTTER_REPORT_OWNERS)
+        self.assertIn("name: flutter-test-results-browser", source)
 
     def test_all_quality_downloads_keep_official_runtime_scope_and_hard_digest_gate(self):
         source = (unpack.ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")

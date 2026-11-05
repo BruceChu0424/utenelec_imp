@@ -19,13 +19,13 @@ SOURCE = {"sha": "a" * 40, "fingerprint": "b" * 64}
 CI = {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
 
 
-def events(files, root):
+def events(files, root, platform="vm"):
     result = [{"type": "start", "time": 0, "protocolVersion": "0.1.1", "runnerVersion": None}]
     metadata = {"skip": False, "skipReason": None}
     for number, file in enumerate(files):
         base = number * 10
         result.extend([
-            {"type": "suite", "time": base + 1, "suite": {"id": base, "platform": "vm", "path": str(root / file)}},
+            {"type": "suite", "time": base + 1, "suite": {"id": base, "platform": platform, "path": str(root / file)}},
             {"type": "testStart", "time": base + 2, "test": {"id": base + 1, "suiteID": base, "name": "loading " + file, "groupIDs": [], "metadata": metadata}},
             {"type": "testDone", "time": base + 3, "testID": base + 1, "result": "success", "skipped": False, "hidden": True},
             {"type": "group", "time": base + 4, "group": {"id": base + 2, "suiteID": base, "parentID": None, "name": "", "testCount": 1, "metadata": metadata}},
@@ -50,6 +50,7 @@ class FlutterEvidenceTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.object(runner, "source_identity", return_value=SOURCE).start()
         patch.object(runner, "ci_identity", return_value=CI).start()
+        patch.object(runner, "BROWSER_FILES", ()).start()
 
     def plan(self, count=2):
         return runner.make_plan(runner.inventory(self.root), count, {}, SOURCE)
@@ -62,18 +63,24 @@ class FlutterEvidenceTests(unittest.TestCase):
         return runner.parse_events(self.write_events(rows), files, self.root)
 
     def save_reports(self, plan):
-        for shard in plan["shards"]:
+        cohorts = [(shard, "vm", runner.COMMAND_OPTIONS) for shard in plan["shards"]]
+        if plan["browser_files"]:
+            cohorts.append(({"id": "browser", "files": plan["browser_files"]}, "chrome", runner.BROWSER_OPTIONS))
+        for shard, mode, options in cohorts:
             directory = self.reports / f"shard-{shard['id']}"
             directory.mkdir(parents=True)
             raw = directory / "machine.jsonl"
-            raw.write_text("\n".join(json.dumps(row) for row in events(shard["files"], self.root)) + "\n", encoding="utf-8")
+            skips = [row["path"] for row in plan["files"] if mode == "vm" and row["vm_platform_skip"] and row["path"] in shard["files"]]
+            raw.write_text("\n".join(json.dumps(row) for row in events([file for file in shard["files"] if file not in skips], self.root, mode)) + "\n", encoding="utf-8")
             (directory / "stderr.log").write_text("", encoding="utf-8")
-            report = {"schema_version": 1, "source": SOURCE, "source_after": SOURCE, "ci": CI,
+            report = {"schema_version": runner.VERSION, "source": SOURCE, "source_after": SOURCE, "ci": CI, "mode": mode,
                       "plan_hash": plan["plan_hash"], "shard": shard["id"], "files": shard["files"],
-                      "command": ["flutter", *runner.COMMAND_OPTIONS, *shard["files"]],
+                      "command": ["flutter", *options, *shard["files"]],
                       "sdk": {"frameworkVersion": runner.FLUTTER_VERSION}, "exit_code": 0, "complete": True,
                       "machine_sha256": runner.sha256(raw), "stderr_sha256": runner.sha256(directory / "stderr.log"),
-                      "results": runner.parse_events(raw, shard["files"], self.root)}
+                      "results": runner.parse_events(raw, shard["files"], self.root, skips, mode)}
+            if mode == "chrome":
+                report["worker"] = {**runner.verify_worker(self.root), "verified_after": True}
             runner.write_json(directory / "report.json", report)
 
     def test_exact_sdk_file_suffix_recursion_and_non_test_files(self):
@@ -120,6 +127,7 @@ class FlutterEvidenceTests(unittest.TestCase):
     def test_source_owned_browser_selector_is_separate_from_completed_vm_files(self):
         browser = self.root / "test/browser_test.dart"
         browser.write_text("@TestOn('browser')\nlibrary;\nvoid main() {}", encoding="utf-8")
+        runner.BROWSER_FILES = ("test/browser_test.dart",)
         plan = self.plan()
         self.assertTrue(next(row for row in plan["files"] if row["path"] == "test/browser_test.dart")["vm_platform_skip"])
         raw = self.write_events(events(["test/a_test.dart"], self.root))
@@ -293,6 +301,105 @@ class FlutterEvidenceTests(unittest.TestCase):
                 runner.main()
             self.assertEqual(2, failure.exception.code)
 
+    def browser_plan(self):
+        runner.BROWSER_FILES = ("test/a_test.dart", "test/nested/b_test.dart")
+        (self.root / "test/nested/b_test.dart").write_text("@TestOn('browser')\nlibrary;\nvoid main() {}", encoding="utf-8")
+        (self.root / "web").mkdir()
+        (self.root / runner.WORKER_SOURCE).write_text("reviewed worker bytes", encoding="utf-8")
+        (self.root / runner.WORKER_PATH).write_bytes((self.root / runner.WORKER_SOURCE).read_bytes())
+        return self.plan(1)
+
+    def test_every_vm_inapplicable_file_must_belong_to_the_fixed_browser_cohort(self):
+        plan = self.browser_plan()
+        runner.validate_plan(plan, self.root)
+        for change in ("missing", "duplicate", "filter", "unknown"):
+            invalid = copy.deepcopy(plan)
+            if change == "missing": invalid["browser_files"].pop()
+            elif change == "duplicate": invalid["browser_files"].append(invalid["browser_files"][0])
+            elif change == "filter": invalid["browser_options"].extend(["--name", "only one"])
+            else: invalid["browser_files"].append("test/unknown_test.dart")
+            invalid["plan_hash"] = runner.digest({k: v for k, v in invalid.items() if k != "plan_hash"})
+            with self.subTest(change=change), self.assertRaises(ValueError): runner.validate_plan(invalid, self.root)
+        runner.BROWSER_FILES = ("test/a_test.dart",)
+        with self.assertRaisesRegex(ValueError, "every VM-inapplicable"):
+            runner.validate_plan(self.plan(1), self.root)
+
+    def test_browser_evidence_closes_vm_platform_exceptions_and_allows_explicit_dual_platform_file(self):
+        plan = self.browser_plan()
+        self.save_reports(plan)
+        result = runner.verify_reports(plan, self.reports, self.root)
+        self.assertEqual(["test/nested/b_test.dart"], result["browser_only_files"])
+        self.assertEqual(list(runner.BROWSER_FILES), result["browser"]["files"])
+        self.assertEqual(3, result["testcase_count"])
+        self.assertEqual(2, result["executed_file_count"])
+        self.assertEqual(1, result["vm_file_count"])
+        self.assertEqual(2, result["browser_file_count"])
+        self.assertEqual(["test/a_test.dart"], result["dual_platform_files"])
+        self.assertEqual(["test/nested/b_test.dart"], result["shards"][0]["platform_skipped_files"])
+
+    def test_missing_browser_report_wrong_sha_or_platform_nonzero_and_filters_fail(self):
+        plan = self.browser_plan()
+        self.save_reports(plan)
+        report = self.reports / "shard-browser/report.json"
+        original = runner.read_json(report)
+        for field, value in (("exit_code", 1), ("mode", "vm"), ("source", {**SOURCE, "sha": "c" * 40}),
+                             ("files", original["files"][:1]), ("worker", None),
+                             ("command", ["flutter", *runner.BROWSER_OPTIONS, "--tags", "fast", *original["files"]])):
+            with self.subTest(field=field):
+                runner.write_json(report, {**original, field: value})
+                with self.assertRaises(ValueError): runner.verify_reports(plan, self.reports, self.root)
+        runner.write_json(report, original)
+        shutil.rmtree(report.parent)
+        with self.assertRaisesRegex(ValueError, "missing, duplicate"):
+            runner.verify_reports(plan, self.reports, self.root)
+
+    def test_browser_file_with_only_declared_skips_is_not_actual_browser_coverage(self):
+        plan = self.browser_plan()
+        self.save_reports(plan)
+        directory = self.reports / "shard-browser"
+        rows = events(plan["browser_files"], self.root, "chrome")
+        rows[5]["test"]["metadata"] = {"skip": True, "skipReason": "declaration"}
+        rows[6]["skipped"] = True
+        raw = directory / "machine.jsonl"
+        raw.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+        report = runner.read_json(directory / "report.json")
+        report.update(machine_sha256=runner.sha256(raw), results=runner.parse_events(raw, plan["browser_files"], self.root, platform="chrome"))
+        runner.write_json(directory / "report.json", report)
+        with self.assertRaisesRegex(ValueError, "without real non-skipped"):
+            runner.verify_reports(plan, self.reports, self.root)
+
+    def test_worker_is_verified_before_and_after_browser_execution(self):
+        plan = self.browser_plan()
+        def process(command, **options):
+            if "--version" in command:
+                return subprocess.CompletedProcess(command, 0, json.dumps({"frameworkVersion": runner.FLUTTER_VERSION}), "")
+            self.assertEqual([*runner.BROWSER_OPTIONS, *plan["browser_files"]], command[1:])
+            raw = "\n".join(json.dumps(row) for row in events(plan["browser_files"], self.root, "chrome")) + "\n"
+            options["stdout"].write(raw.encode())
+            (self.root / runner.WORKER_PATH).write_text("tampered", encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0)
+        with patch.object(runner.subprocess, "run", side_effect=process):
+            report = runner.run_browser(plan, self.reports, root=self.root)
+        self.assertFalse(report["complete"])
+        self.assertIn("worker", report["error"])
+        shutil.rmtree(self.reports)
+        with patch.object(runner.subprocess, "run") as launch:
+            report = runner.run_browser(plan, self.reports, root=self.root)
+        launch.assert_not_called()
+        self.assertFalse(report["complete"])
+
+    def test_browser_stream_cannot_reuse_a_vm_result(self):
+        self.browser_plan()
+        with self.assertRaisesRegex(ValueError, "foreign platform"):
+            runner.parse_events(self.write_events(events(list(runner.BROWSER_FILES), self.root)), runner.BROWSER_FILES,
+                                self.root, platform="chrome")
+
+    def test_browser_cli_rejects_arbitrary_file_arguments_and_skip_controls(self):
+        for arguments in (("--name", "x"), ("--tags", "x"), ("--run-skipped",), ("test/a_test.dart",), ("--platform", "vm")):
+            with patch.object(sys, "argv", ["tool", "browser", "--plan", "x", *arguments]), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as failure:
+                runner.main()
+            self.assertEqual(2, failure.exception.code)
+
 
 class FlutterWorkflowTests(unittest.TestCase):
     @classmethod
@@ -329,9 +436,16 @@ class FlutterWorkflowTests(unittest.TestCase):
         for value in ("API_BASE_URL=https://lan.uten.test/api", "CLOUD_API_BASE_URL=https://cloud.uten.test/api"):
             self.assertIn(value, issuer)
         browser = self.job("frontend-browser")
-        for path in ("web/update_check.test.cjs", "web/maintenance.test.cjs", "form_draft_storage_browser_test.dart", "form_draft_history_browser_test.dart", "device_audit_receipt_storage_web_test.dart", "material_quantity_apportionment_test.dart"):
+        for path in ("web/update_check.test.cjs", "web/maintenance.test.cjs"):
             self.assertIn(path, browser)
-        self.assertIn("--platform chrome", browser)
+        self.assertEqual(("test/shared/drafts/form_draft_storage_browser_test.dart", "test/shared/drafts/form_draft_history_browser_test.dart",
+                          "test/device_audit_receipt_storage_web_test.dart", "test/features/production/models/material_quantity_apportionment_test.dart",
+                          "test/attachments/attachment_media_preview_browser_test.dart", "test/core/web_update_bridge_browser_test.dart"), runner.BROWSER_FILES)
+        self.assertIn("flutter_test_shards.py browser --plan build/flutter-ci-plan/plan.json", browser)
+        self.assertIn("name: flutter-test-results-browser", browser)
+        self.assertIn("path: build/flutter-ci-reports/", browser)
+        self.assertIn("if: always()", browser)
+        self.assertIn("trap 'rm -f --", browser)
         self.assertIn("cmp -- web/uten_data_codec_worker.js", browser)
         build = self.job("frontend-build")
         for value in ("verify-font-assets.ps1", "flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run --dart-define=API_BASE_URL=/api", "release_tools.stamp_web_release", 'commit=os.environ["GITHUB_SHA"]'):

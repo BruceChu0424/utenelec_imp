@@ -35,8 +35,9 @@ SHARD_IDS = tuple(str(number) for number in range(16))
 SHARD_DIRECTORIES = frozenset("shard-" + number for number in SHARD_IDS)
 SHARD_NAME = re.compile(r"backend-test-results-(" + "|".join(SHARD_IDS) + r")\Z")
 FLUTTER_SHARD_IDS = tuple(str(number) for number in range(8))
-FLUTTER_SHARD_DIRECTORIES = frozenset("shard-" + number for number in FLUTTER_SHARD_IDS)
-FLUTTER_SHARD_NAME = re.compile(r"flutter-test-results-(" + "|".join(FLUTTER_SHARD_IDS) + r")\Z")
+FLUTTER_REPORT_OWNERS = (*FLUTTER_SHARD_IDS, "browser")
+FLUTTER_SHARD_DIRECTORIES = frozenset("shard-" + number for number in FLUTTER_REPORT_OWNERS)
+FLUTTER_SHARD_NAME = re.compile(r"flutter-test-results-(" + "|".join(FLUTTER_REPORT_OWNERS) + r")\Z")
 REPORT_POOLS = {
     "backend-test-results-*": (SHARD_NAME, SHARD_DIRECTORIES),
     "flutter-test-results-*": (FLUTTER_SHARD_NAME, FLUTTER_SHARD_DIRECTORIES),

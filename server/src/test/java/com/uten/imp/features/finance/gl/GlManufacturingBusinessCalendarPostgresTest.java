@@ -39,7 +39,17 @@ class GlManufacturingBusinessCalendarPostgresTest {
         var source = new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword());
         db = new JdbcTemplate(source);
         named = new NamedParameterJdbcTemplate(source);
-        MigratedProjectionSchema.createCurrentTables(db, "stock_movements", "subcontract_receipts", "subcontract_receipt_items");
+        MigratedProjectionSchema.createCurrentTables(db, "stock_movements", "subcontract_receipts", "subcontract_receipt_items",
+                "gl_entries", "gl_vouchers", "finance_gl_voucher_evidence", "finance_report_line_bindings",
+                "finance_chart_code_styles", "finance_manufacturing_labor_splits", "finance_expense_analysis_periods",
+                "finance_gl_opening_baselines", "finance_accounting_import_batches");
+        // The public report also reads the real labor attribution and ledger
+        // boundary. Their empty facts must resolve through production SQL.
+        db.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+        MigratedProjectionSchema.createCurrentFunctions(db, "fn_finance_gl_voucher_is_booked",
+                "fn_finance_entry_is_pnl_closing", "fn_finance_direction_occurrence", "fn_finance_debit_occurrence",
+                "fn_finance_manufacturing_occurrence", "fn_finance_expense_entry_fingerprint");
+        MigratedProjectionSchema.createCurrentViews(db, "v_finance_manufacturing_labor_pool");
         // Shanghai 2025-12-31 23:59:59; outside the selected business year.
         movement("2025-12-31T15:59:59Z", "900");
         // First instant of the business year; UTC is still December.
@@ -88,7 +98,8 @@ class GlManufacturingBusinessCalendarPostgresTest {
         assertThat((BigDecimal)output.get("m1")).isEqualByComparingTo("33.33");
         assertThat(output.get("m3")).isNull();
         assertThat((BigDecimal)output.get("m4")).isZero();
-        assertThat(output.get("basis").toString()).contains("待核实金额");
+        assertThat(output).containsEntry("__lineKey","MFG_OUTPUT").containsEntry("__basis","权威业务事实")
+                .containsEntry("__pending",true);
     }
 
     private static void movement(String instant, String amount) {
@@ -102,7 +113,16 @@ class GlManufacturingBusinessCalendarPostgresTest {
         when(result.setParameter(anyString(), any())).thenAnswer(call -> {
             parameters.put(call.getArgument(0),call.getArgument(1)); return result;
         });
-        when(result.getResultList()).thenAnswer(call -> {
+        when(result.getResultList()).thenAnswer(call -> readRows(sql, parameters, timezone));
+        when(result.getSingleResult()).thenAnswer(call -> {
+            var rows = readRows(sql, parameters, timezone);
+            assertThat(rows).hasSize(1);
+            return rows.getFirst();
+        });
+        return result;
+    }
+
+    private static List<Object> readRows(String sql, Map<String,Object> parameters, String timezone) {
             // Each query opens a fresh connection, so set timezone on that exact connection.
             return named.execute(sql, parameters, statement -> {
                 try (var session = statement.getConnection().prepareStatement("SELECT set_config('TimeZone', ?, false)")) {
@@ -113,12 +133,19 @@ class GlManufacturingBusinessCalendarPostgresTest {
                     }
                 }
                 try (var rows = statement.executeQuery()) {
-                    var output = new java.util.ArrayList<Object[]>();
-                    while (rows.next()) output.add(new Object[]{rows.getInt(1),rows.getBigDecimal(2)});
+                    var output = new java.util.ArrayList<Object>();
+                    int columns = rows.getMetaData().getColumnCount();
+                    while (rows.next()) {
+                        if (columns == 1) {
+                            output.add(rows.getObject(1));
+                        } else {
+                            Object[] row = new Object[columns];
+                            for (int column = 0; column < columns; column++) row[column] = rows.getObject(column + 1);
+                            output.add(row);
+                        }
+                    }
                     return output;
                 }
             });
-        });
-        return result;
     }
 }

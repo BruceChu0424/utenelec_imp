@@ -8,6 +8,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -360,6 +361,7 @@ class _BusinessApplicationEditPageState
             TextFormField(
               initialValue: _supplierName,
               readOnly: true,
+              errorBuilder: utenTextFieldErrorBuilder,
               decoration: const UtenInputDecoration(
                 InputDecoration(labelText: '原收款供应商'),
                 info: '保留已审阅原供应商及其原币义务。',

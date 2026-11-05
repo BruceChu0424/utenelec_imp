@@ -139,7 +139,23 @@ void main() {
       expect(bounds.left, greaterThanOrEqualTo(16));
       expect(bounds.right, lessThanOrEqualTo(304));
     }
-    expect(find.byType(Icon), findsNothing);
+    // 2026-11-04 清除呈现=框内红圆关闭钮后，整树无 Icon 不再成立（红圆里的
+    // × Icon 是清除控件本体）；契约收窄为「日期按钮与普通按钮内容区不回归
+    // 装饰性 Icon」，清除红圆不在此列。
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('narrow-date')),
+        matching: find.byType(Icon),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('narrow-action')),
+        matching: find.byType(Icon),
+      ),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

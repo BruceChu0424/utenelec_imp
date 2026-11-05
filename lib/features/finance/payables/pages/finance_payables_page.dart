@@ -889,27 +889,28 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                           // 拿不到有界高度（2026-11-04 844×390 初屏筛选命中）。
                           builder: (context, constraints) =>
                               UtenCollapsingHeaderScrollView(
-                            collapsingHeader: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                FinancePayablesKpiStrip(
-                                  summary: _result?.summary,
-                                  loading: _loading && _result == null,
-                                  compact: constraints.maxHeight < 420,
+                                collapsingHeader: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    FinancePayablesKpiStrip(
+                                      summary: _result?.summary,
+                                      loading: _loading && _result == null,
+                                      compact: constraints.maxHeight < 420,
+                                    ),
+                                    const SizedBox(height: UtenSpacing.s12),
+                                  ],
                                 ),
-                              const SizedBox(height: UtenSpacing.s12),
-                            ],
-                          ),
-                          body: _buildPayablesTablePane(
-                            theme: theme,
-                            names: names.supplierEntries,
-                            currencyNames: names.currencyEntries,
-                            settlementMethods: settlementMethods,
-                            total: total,
-                            canCreatePayment: canCreatePayment,
-                            canApplyOffset: canApplyOffset,
-                          ),
-                          ),
+                                body: _buildPayablesTablePane(
+                                  theme: theme,
+                                  names: names.supplierEntries,
+                                  currencyNames: names.currencyEntries,
+                                  settlementMethods: settlementMethods,
+                                  total: total,
+                                  canCreatePayment: canCreatePayment,
+                                  canApplyOffset: canApplyOffset,
+                                ),
+                              ),
                         ),
                       )
                     else if (_workspace == _PayablesWorkspaceView.lossClaims &&

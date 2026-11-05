@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/formatters/exact_decimal.dart';
 import '../../../../shared/formatters/financial_amount_validation.dart';
+import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 
 import '../../../../core/l10n/gen/app_localizations.dart';
@@ -210,7 +211,7 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
             isDense: true,
             labelText: label,
             hintText: hint,
-            errorText: error,
+            error: utenFieldError(error),
           ),
         ),
         onChanged: onChanged,

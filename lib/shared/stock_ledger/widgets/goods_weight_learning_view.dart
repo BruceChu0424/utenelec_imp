@@ -1288,10 +1288,15 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
               decoration: UtenInputDecoration(
                 InputDecoration(
                   labelText: '默认皮重',
-                  helperText: numericInputEvidenceTooltip(
-                    widget.profile?.inputEvidence ?? const [],
-                    'DEFAULT_TARE_KG',
-                  ),
+                  helper: () {
+                    final evidence = numericInputEvidenceTooltip(
+                      widget.profile?.inputEvidence ?? const [],
+                      'DEFAULT_TARE_KG',
+                    );
+                    return evidence == null
+                        ? null
+                        : UtenFieldMessage.autofill(evidence);
+                  }(),
                   suffixText: entry.symbol,
                 ),
                 info: '称重计数时预填的箱/袋/托盘重量; 可直接写 850g、1.2kg',

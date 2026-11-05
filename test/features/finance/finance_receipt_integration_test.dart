@@ -285,8 +285,12 @@ void main() {
     (tester) async {
       final api = await _pumpEditor(tester, detail: _receiptDetail());
 
-      final importAction = find.text('引用应收');
+      final importAction = find.byKey(const ValueKey('receipt-import-ar'));
       expect(importAction, findsOneWidget);
+      expect(
+        find.descendant(of: importAction, matching: find.text('按出货单收款')),
+        findsOneWidget,
+      );
       // 2026-09-10 返回键契约：编辑页不再提供「查看历史」跳列表入口（列表从 hub 进入，
       // 返回键 popOrBackTo 回来源页），顶栏只剩业务动作。
       expect(find.text('查看历史'), findsNothing);
@@ -394,7 +398,7 @@ void main() {
       expect(
         grid.columns.map((column) => column.label),
         containsAllInOrder(const [
-          '来源类型 / 单号',
+          '应收编号/来源',
           '销售订单号',
           '应收总额',
           '累计已收',
@@ -839,7 +843,8 @@ void main() {
       size: const Size(375, 900),
     );
 
-    // 2026-09-14：「引用应收 / 应用预收」从 AppBar 的「资金引用」菜单迁到明细
+    // 资金引用动作位于明细表格上方；按出货单收款保留独立的系统应收引用。
+    // 「按出货单收款 / 应用预收」从 AppBar 的「资金引用」菜单迁到明细
     // 表格上方（用户反馈按钮应放在表格上面），AppBar 只留草稿入口。窄屏下
     // 这两个入口仍必须直接可点，不再藏在菜单里。
     // 迁到表格上方后它在可滚动区里，窄屏首屏既没露出、也还没被懒构建，
@@ -859,7 +864,7 @@ void main() {
     expect(find.text('保存').hitTestable(), findsOneWidget);
     _expectReceiptTotal(tester, '360.00');
     expect(find.text('真实账户实际入账 人民币 324.00'), findsNothing);
-    expect(find.text('引用应收'), findsOneWidget);
+    expect(find.text('按出货单收款'), findsOneWidget);
     // 没有预收权限：应用预收入口不出现。
     expect(
       find.byKey(const ValueKey('receipt-apply-prepayment')),
@@ -882,7 +887,7 @@ void main() {
         },
       );
 
-      // 引用应收位于表格工具栏，预收抵扣保持在上方业务区。
+      // 按出货单收款位于表格工具栏，预收抵扣保持在上方业务区。
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('receipt-import-ar')),
         240,
@@ -903,7 +908,7 @@ void main() {
         find.byKey(const ValueKey('receipt-apply-prepayment')),
         findsOneWidget,
       );
-      expect(find.text('引用应收'), findsOneWidget);
+      expect(find.text('按出货单收款'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -947,7 +952,7 @@ void main() {
       expect(find.text('10.00'), findsWidgets);
 
       for (final column in const [
-        '应收单号',
+        '出货单/原来源',
         '应收币种',
         '本次收款金额',
         '当前批次实际到账汇率',

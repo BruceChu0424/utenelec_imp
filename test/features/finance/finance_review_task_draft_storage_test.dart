@@ -603,6 +603,16 @@ class _Fixture {
       await tester.runAsync(() => tester.tap(find.byKey(ValueKey(approveKey))));
       await _settle(tester);
     }
+    if (kind == _Review.shipment &&
+        find.byKey(ValueKey(inputKey)).evaluate().isEmpty) {
+      // Shipment references are intentionally folded until the reviewer opens
+      // the summary's public More action. No controller/private-state bypass.
+      final more = find.byKey(const ValueKey('detail-summary-toggle')).first;
+      await tester.ensureVisible(more);
+      await tester.tap(more);
+      await _settle(tester);
+      expect(find.byKey(ValueKey(inputKey)).hitTestable(), findsOneWidget);
+    }
     return tester.widget<TextField>(find.byKey(ValueKey(inputKey)));
   }
 
@@ -855,6 +865,72 @@ void main() {
         reopened.read(formDraftsProvider).single.hasUnknownSubmission,
         isTrue,
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'shipment exact rate and cancelled reject reason survive folding and native restore',
+    (tester) async {
+      tester.view.physicalSize = const Size(2600, 1700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fixture = _Fixture(_Review.shipment);
+      await tester.runAsync(fixture.initialize);
+      addTearDown(() => tester.runAsync(fixture.removeStorage));
+      final container = await fixture.mount(tester);
+      await fixture.inputField(tester);
+      const rate = '007.2300';
+      const reason = '  原始退回原因 007.2300  ';
+      await tester.enterText(find.byKey(ValueKey(fixture.inputKey)), rate);
+      await tester.runAsync(
+        () =>
+            tester.tap(find.byKey(const Key('finance-shipment-audit-reject'))),
+      );
+      await _settle(tester);
+      await tester.enterText(
+        find.byKey(const Key('finance-shipment-audit-reject-reason')),
+        reason,
+      );
+      await tester.tap(find.text('取消'));
+      await _settle(tester);
+      await tester.tap(find.text('审核资料与参考'));
+      await _settle(tester);
+      expect(find.byKey(ValueKey(fixture.inputKey)), findsNothing);
+      expect(fixture.rawInput(tester), rate);
+      await _waitForNativeDraftOperation(
+        tester,
+        fixture.editor(tester).saveFormDraftNow(),
+        phase:
+            'the folded shipment rate and cancelled reason native checkpoint',
+        diagnostics: () => fixture.submissionDiagnostics(container),
+      );
+      final draft = container.read(formDraftsProvider).single;
+      expect(draft.data['inputs'], {'rate': rate, 'rejectReason': reason});
+      expect(draft.hasUnknownSubmission, isFalse);
+      expect(fixture.businessPosts, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _settle(tester);
+      await fixture.mount(tester, location: draft.resumeLocation);
+      expect(fixture.rawInput(tester), rate);
+      expect((await fixture.inputField(tester)).controller!.text, rate);
+      await tester.runAsync(
+        () =>
+            tester.tap(find.byKey(const Key('finance-shipment-audit-reject'))),
+      );
+      await _settle(tester);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('finance-shipment-audit-reject-reason')),
+            )
+            .controller!
+            .text,
+        reason,
+      );
+      await tester.tap(find.text('取消'));
+      await _settle(tester);
+      expect(fixture.businessPosts, 0);
       expect(tester.takeException(), isNull);
     },
   );

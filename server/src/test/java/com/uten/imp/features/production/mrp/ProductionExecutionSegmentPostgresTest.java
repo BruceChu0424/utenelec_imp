@@ -681,14 +681,14 @@ class ProductionExecutionSegmentPostgresTest {
                         """,
                         supply.orderPegId());
 
-                assertConstraint(
-                        connection,
-                        "production_subcontract_order_item_supply_guard",
-                        """
-                        update subcontract_order_items
-                        set qty = 3 where id = ?
-                        """,
-                        supply.orderItemId());
+                String beforeQuantityChange = scalarText(connection,
+                        "select to_jsonb(item)::text from subcontract_order_items item where id = ?", supply.orderItemId());
+                PSQLException frozenQuantity = assertThrows(PSQLException.class, () -> execute(connection,
+                        "update subcontract_order_items set qty = 3 where id = ?", supply.orderItemId()));
+                assertEquals("55000", frozenQuantity.getSQLState());
+                assertTrue(frozenQuantity.getMessage().contains("immutable"));
+                assertEquals(beforeQuantityChange, scalarText(connection,
+                        "select to_jsonb(item)::text from subcontract_order_items item where id = ?", supply.orderItemId()));
                 assertConstraint(
                         connection,
                         "production_subcontract_application_supply_guard",
@@ -2104,8 +2104,8 @@ class ProductionExecutionSegmentPostgresTest {
                     insert into purchase_receipt_items(
                         id, bill_no, bill_date, receipt_id,
                         order_item_id, goods_id, unit_id,
-                        unit_rate, qty, price, amount_original, amount_local, replacement_intent, goods_snapshot_source
-                    ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
+                        unit_rate, qty, charged_base_qty,gift_base_qty,price, amount_original, amount_local, replacement_intent, goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, ?, 1, ?, ?,0,0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
                     """,
                     itemId,
                     billNo,
@@ -2114,7 +2114,7 @@ class ProductionExecutionSegmentPostgresTest {
                     fixture.waitingBOrderItemId(),
                     fixture.materialBId(),
                     fixture.unitId(),
-                    decimal(qty));
+                    decimal(qty), decimal(qty));
             if (addToStock) {
                 execute(
                         connection,

@@ -429,9 +429,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`。
 
-接续/限制：2026-10-31 负责人订货审核仍未迁移；反审核须先持久化decisionId并按不可变事件身份、下一修订号、员工及原因核对未知结果，不能凭状态猜成功或重放。合同见contracts/sales-manager-review/v1.json。。
+接续/限制：2026-10-31 负责人订货审核仍未迁移；反审核须先持久化decisionId并按不可变事件身份、下一修订号、员工及原因核对未知结果，不能凭状态猜成功或重放。合同见contracts/sales-manager-review/v1.json。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。。
 
 ## W7-BIZ-075
 

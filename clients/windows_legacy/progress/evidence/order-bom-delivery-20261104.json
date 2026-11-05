@@ -1,0 +1,75 @@
+{
+  "id": "E-ORDER-BOM-DELIVERY-20261104",
+  "branch": "uimp/order-bom-delivery-20261104",
+  "base": "0c23563d4",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "platforms": {
+    "web+flutter": {
+      "implementation": "共用同一Dart页面与Uten组件",
+      "validation": "最终检查见validationRecord；不等于生产或正式客户端验收"
+    },
+    "wpf_legacy": {
+      "status": "not-migrated",
+      "targetPcAcceptance": false,
+      "tasks": [
+        "W7-BIZ-025",
+        "W7-BIZ-074",
+        "W7-BIZ-108",
+        "W7-BIZ-110",
+        "W7-BIZ-111",
+        "W7-BIZ-112",
+        "W7-BIZ-115",
+        "W7-BIZ-135",
+        "W7-BIZ-136",
+        "W7-BIZ-137",
+        "W7-BIZ-139",
+        "W7-BIZ-203",
+        "W7-BIZ-204",
+        "W7-BIZ-205",
+        "W7-BIZ-217",
+        "W7-FLOW-004",
+        "W7-FLOW-008"
+      ]
+    }
+  },
+  "contracts": [
+    "订单deliveryPlan使用BOM边UUID路径；工程必装/包装/必要加工规则独立，旧单无快照不猜今天结构。",
+    "透明父层不占成品库存/不下总装；物料分析保留完整树，客户交付数量与生产耗用分别沿原权威曲线计算。",
+    "必要加工先仓库发出，再指定车间报工，仓库收回后才完整组件出库；取消开工不等于物理退回。",
+    "实际组件扣库存与商业套数分离，原私有权益与整件加工原订单预留只使用一次；保留原来源和精确数量证据。",
+    "BOM生效交付或加工路径的旧颜色影子、删除颜色/单位和缺失单位阻断，不把旧整数ID猜成UUID关联；非生效参考子层不误算实物。",
+    "浮动树窗使用UtenFloatingWindow与MasterDataTableView、点虚线树；短办理表单使用自有右侧面板。",
+    "WPF上述入口未迁移、保持todo；未开放占位写入口，不以Web/Flutter/PG本地证据推定原生或Win7支持。"
+  ],
+  "sourceSha256": {
+    "lib/shared/delivery/order_delivery_window.dart": "792b013261178425170ac553c9822ffd73e3da05cceb613ae0cf97649e050ae0",
+    "lib/shared/delivery/bom_delivery_rule_window.dart": "3ad173995771476b9cd3675eb23f3806fe5f5f9778b09f4c5bfe47d049b1745e",
+    "lib/features/basic_data/widgets/goods_bom_tab.dart": "713646b6b3fd7d9bdb064443f54b164144342baa75143f41b00d582f9ba15b40",
+    "lib/features/sales/pages/sales_doc_edit_page.dart": "e6f6223e87cae2564ee7fed82eef45e60d7c0b6a6d4463798278e2049456f7a7",
+    "lib/features/sales/pages/sales_doc_detail_page.dart": "8a21132137a91e39cdcc5617f1c5a2df6bed7564d35f63d1154424f8d3f40b81",
+    "lib/features/production/pages/production_material_analysis_page.dart": "a70026c6497b78c830460b8a9bfb63454e5494507d6e230666da3ad0cffb095f",
+    "lib/features/production/delivery_processing/delivery_processing_tasks_button.dart": "45504989709192e64de05490897c2e816f605c715946918959fffe22da6af4ce",
+    "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart": "0e66a4fee223527c1de4559182b2a4b4c1c011eccd3d4bded3c2efcdae8280de",
+    "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart": "6982f3c25104a088984759f1abbf69b1e817b834b228066d5ed12dff2168f51d",
+    "server/src/main/java/com/uten/imp/common/delivery/DeliveryPlan.java": "a6181b39a6dfe698eda34e503ed683ff5f7b91c28c1705c83a2f0d07c39a1bd1",
+    "server/src/main/java/com/uten/imp/common/delivery/DeliveryFrontier.java": "f33547ad7ba914709eae48bd33c25ca463077bac9421e2b8c0fc23619435510b",
+    "server/src/main/java/com/uten/imp/common/delivery/BomReferenceIdentitySql.java": "aed909d411f9421fbfd02598659e5ed168778abb50ed4d018750a43a997125ea",
+    "server/src/main/java/com/uten/imp/common/delivery/DeliveryProcessingTargets.java": "8f6438c1ea0863943675fe341739dcde74b475b693673c9197fc8e731012ff24",
+    "lib/components/feedback/uten_busy_overlay.dart": "d3bf6a942f582144973e776fb7cfe78944b3bc85acb9aa3292d0940185bb4c7a",
+    "lib/shared/widgets/business_precision_dialog.dart": "5428891d86e2182026c229eed6c77fde3a2ef1da2696608f5014aa2333d69255",
+    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentDeliveryService.java": "98fdd8ee3b2f366798575c275c553b1e84d72245aba1f1f5323586f5632eabb1",
+    "server/src/main/java/com/uten/imp/features/production/analysis/SalesDeliveryFulfillmentService.java": "54a095f6d56f3f313e8b121d0fb304d6bf26652eae7bc0bfd91379a6feb1f292",
+    "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingService.java": "3316b40adc607d8343a8aed7a260f65a159fb63ab04918d3db04c7d361d55751",
+    "server/src/main/java/com/uten/imp/features/stock/SalesDeliveryInventoryService.java": "b48a4947fbca854f27706168ad5e5bfde89c2ad337f328103afc973aab6614ce",
+    "server/src/main/java/com/uten/imp/features/stock/SalesDeliveryOrderClaimService.java": "0dfa131b6f896dafd14332314b1035c18a88785c5c023af8e000b8ed6952cbf3"
+  },
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "productionDeployment": false,
+  "validationRecord": "docs/99-项目治理/2026-11-04-订单BOM交付完整链路实施.md",
+  "implementationCommit": "933a0324ed260312037f015a517b1cf4c528af35"
+}

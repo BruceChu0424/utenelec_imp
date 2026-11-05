@@ -358,9 +358,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。；2026-11-03：物料分析主表、汇总及分桶供应方式只读；服务端拒绝改角色且不回写 goods.source_type，历史已下达事实保留。WPF 尚未迁移，保持 todo。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。；2026-11-03：物料分析主表、汇总及分桶供应方式只读；服务端拒绝改角色且不回写 goods.source_type，历史已下达事实保留。WPF 尚未迁移，保持 todo。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。。
 
 ## W7-BIZ-109
 
@@ -481,9 +481,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。。
 
 ## W7-BIZ-111
 
@@ -505,9 +505,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。。
 
 ## W7-BIZ-112
 
@@ -529,9 +529,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。。
 
 ## W7-BIZ-113
 
@@ -601,9 +601,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`。
 
-接续/限制：尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。；2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。；2026-11-01 同责车间表格的销售要求动作改用单行公共控件；WPF 本页仍未迁移，后续迁移须保留完整备注与紧凑行高，不得用固定高度裁掉内容。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。；2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。；2026-11-01 同责车间表格的销售要求动作改用单行公共控件；WPF 本页仍未迁移，后续迁移须保留完整备注与紧凑行高，不得用固定高度裁掉内容。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。。
 
 ## W7-BIZ-116
 

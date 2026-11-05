@@ -32,6 +32,7 @@ class SoftwareDownloadsTransport implements HttpClientAdapter {
   Stream<Uint8List> Function()? streamFactory;
   bool cancellationObserved = false;
   final packageRequested = Completer<void>();
+  final listRequested = Completer<void>();
 
   Map<String, dynamic> installer({
     String id = x64Id,
@@ -64,6 +65,7 @@ class SoftwareDownloadsTransport implements HttpClientAdapter {
   ) async {
     requests.add(options);
     if (options.path == '/client-updates/downloads') {
+      if (!listRequested.isCompleted) listRequested.complete();
       if (delayedList != null) return delayedList!.future;
       return ResponseBody.fromString(
         jsonEncode(listStatus == 200 ? releases : {'code': 'UNAVAILABLE'}),

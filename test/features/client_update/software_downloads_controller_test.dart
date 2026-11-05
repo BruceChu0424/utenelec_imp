@@ -257,7 +257,8 @@ void main() {
       addTearDown(subscription.close);
       final previous = container.read(softwareDownloadsControllerProvider);
       final pending = previous.load();
-      await Future<void>.delayed(Duration.zero);
+      await transport.listRequested.future.timeout(const Duration(seconds: 5));
+      expect(transport.requests, hasLength(1));
       container.read(owner.notifier).state = null;
       await container.pump();
       final next = container.read(softwareDownloadsControllerProvider);

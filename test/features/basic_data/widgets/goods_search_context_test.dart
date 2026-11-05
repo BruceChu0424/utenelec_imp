@@ -116,6 +116,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(_ids(tester), ['new']);
     expect(tester.takeException(), isNull);
+    await _finishHeldReads(tester, api);
   });
 
   testWidgets('普通选择器展开相关与明确分类保持业务根和筛选，旧确认回调失效', (tester) async {
@@ -235,7 +236,14 @@ void main() {
         'cat-b',
         'cat-c',
       ]);
-      expect(find.text('未找到匹配「4*50」的分类'), findsOneWidget);
+      expect(
+        _tree(tester).externalSearchError,
+        failLocation ? isNotNull : isNull,
+      );
+      expect(
+        find.text('未找到匹配「4*50」的分类'),
+        failLocation ? findsNothing : findsOneWidget,
+      );
       await tester.tap(_uncategorizedTile);
       await tester.pump();
       expect(_confirmBar(tester).selectedCount, 1);
@@ -421,6 +429,7 @@ void main() {
     expect(find.byKey(const ValueKey('goods-picker-item-new')), findsOneWidget);
     expect(find.byKey(const ValueKey('goods-picker-item-old')), findsNothing);
     expect(tester.takeException(), isNull);
+    await _finishHeldReads(tester, api);
   });
 
   testWidgets('窄屏大字的范围提示和相关开关可用且不溢出', (tester) async {
@@ -600,6 +609,28 @@ class _DedicatedSource extends UtenGoodsPickerDataSource {
     total: ids.length,
     totalPages: 1,
   );
+}
+
+Future<void> _finishHeldReads(WidgetTester tester, _GoodsApi api) async {
+  // Assertions above deliberately delivered stale responses. Dispose the reader
+  // before releasing any additional adjacent-page request owned by this fake.
+  await tester.pumpWidget(const SizedBox.shrink());
+  api.holdRelated = false;
+  for (final (request, handler) in api.held) {
+    if (!handler.isCompleted) {
+      handler.resolve(
+        Response(
+          requestOptions: request,
+          statusCode: 200,
+          data: _page([], (request.queryParameters['page'] as int?) ?? 1),
+        ),
+      );
+    }
+  }
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 100));
+  api.dio.close(force: true);
+  expect(tester.takeException(), isNull);
 }
 
 class _GoodsApi {

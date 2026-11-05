@@ -790,11 +790,13 @@ class ProcurementInspectionIntegrityPostgresTest {
             jdbc.update("INSERT INTO " + itemTable + "("
                             + "id,bill_no,bill_date,receipt_id,line_no,goods_id,order_item_id,"
                             + "goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,"
-                            + "goods_snapshot_locked_at,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted) "
-                            + "VALUES (?,?,?,?,?,?,?,?,?,'MASTER_AT_APPROVAL',now(),?,1,?,?,?,?, 'NORMAL',FALSE)",
+                            + "goods_snapshot_locked_at,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted"
+                            + (ProcurementInspectionPort.PURCHASE.equals(type) ? ",charged_base_qty,gift_base_qty) " : ",adopted_base_qty) ")
+                            + "VALUES (?,?,?,?,?,?,?,?,?,'MASTER_AT_APPROVAL',now(),?,1,?,?,?,?, 'NORMAL',FALSE"
+                            + (ProcurementInspectionPort.PURCHASE.equals(type) ? ",?,0)" : ",?)"),
                     receiptItemId, receiptNo, billDate, receiptId, index + 1,
                     goodsId,orderItemId, goodsCode, goodsName,unitId,
-                    decimal(receivedQty), decimal(receivedAmount).divide(decimal(receivedQty)), decimal(receivedAmount), decimal(receivedAmount));
+                    decimal(receivedQty), decimal(receivedAmount).divide(decimal(receivedQty)), decimal(receivedAmount), decimal(receivedAmount), decimal(receivedQty));
             jdbc.update("""
                     INSERT INTO procurement_inspection_items (
                         id, receipt_type, receipt_id, receipt_item_id,

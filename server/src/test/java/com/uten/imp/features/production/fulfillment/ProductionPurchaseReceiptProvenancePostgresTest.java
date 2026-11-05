@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
@@ -170,18 +171,33 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                             fixture.otherGoodsId(),
                             fixture.receiptItemId()));
 
-            assertDeferredConstraint(
-                    connection,
-                    "production_purchase_receipt_item_capacity_guard",
-                    null,
-                    () -> execute(
-                            connection,
-                            """
-                            update purchase_receipt_items
-                            set qty = 9
-                            where id = ?
-                            """,
-                            fixture.receiptItemId()));
+            String beforeQuantityChange = scalarString(connection,
+                    "select to_jsonb(item)::text from purchase_receipt_items item where id = ?", fixture.receiptItemId());
+            PSQLException frozen = assertThrows(PSQLException.class, () -> execute(connection,
+                    "update purchase_receipt_items set qty=9,charged_base_qty=9,gift_base_qty=0 where id=?", fixture.receiptItemId()));
+            assertEquals("23514", frozen.getSQLState());
+            assertTrue(frozen.getMessage().contains("posted charged/free input and base facts are immutable"));
+            assertEquals(beforeQuantityChange, scalarString(connection,
+                    "select to_jsonb(item)::text from purchase_receipt_items item where id = ?", fixture.receiptItemId()));
+
+            // The posted-input guard takes precedence. Exercise the actual numeric
+            // capacity function separately over copied current facts, without
+            // disabling any public-table guard.
+            connection.setAutoCommit(false);
+            try {
+                String schema="receipt_capacity_"+UUID.randomUUID().toString().replace("-","");
+                execute(connection,"create schema "+schema);
+                execute(connection,"set local search_path to "+schema+",public");
+                com.uten.imp.support.MigratedProjectionSchema.copyTablesWithDataFromMigratedCatalog(connection,
+                        "purchase_receipt_items","production_material_receipt_allocations");
+                execute(connection,"update purchase_receipt_items set qty=9,charged_base_qty=9,gift_base_qty=0 where id=?",fixture.receiptItemId());
+                PSQLException capacity=assertThrows(PSQLException.class,()->execute(connection,
+                        "select public.fn_assert_purchase_receipt_item_capacity(?)",fixture.receiptItemId()));
+                assertEquals("23514",capacity.getSQLState());
+                assertEquals("production_purchase_receipt_item_capacity_guard",capacity.getServerErrorMessage().getConstraint());
+            } finally {
+                connection.rollback();connection.setAutoCommit(true);
+            }
         }
     }
 
@@ -433,8 +449,8 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     insert into purchase_receipt_items(
                         id, bill_no, bill_date, receipt_id,
                         order_item_id, goods_id, unit_id, unit_rate, qty,
-                        price, amount_original, amount_local, replacement_intent, goods_snapshot_source
-                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
+                        charged_base_qty,gift_base_qty,price, amount_original, amount_local, replacement_intent, goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10, 10,0,0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
                     """,
                     receiptItemId,
                     receiptNo,

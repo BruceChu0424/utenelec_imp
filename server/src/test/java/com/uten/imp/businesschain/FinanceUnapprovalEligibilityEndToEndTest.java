@@ -190,7 +190,8 @@ class FinanceUnapprovalEligibilityEndToEndTest {
 
     @Test void appliedCustomerPrepaymentIsBlockedUntilItsRealApplicationIsReversed() {
         Fixture f=fixture("prepayment-applied");var ar=salesReceivable(f);
-        var receipt=seedApprove(f,()->receipts.create(receipt(f,"40")).getId(),receipts::approve);
+        var request=receipt(f,"40");request.setSalesOrderId(ar.order());
+        var receipt=seedApprove(f,()->receipts.create(request).getId(),receipts::approve);
         UUID source=db.queryForObject("SELECT id FROM ar_ap_ledger WHERE source_doc_id=? AND source_doc_type='DIRECT_RECEIPT' AND NOT is_deleted",UUID.class,receipt.getId());
         harness.loginAs(f.world().superAdminUserId());
         var applied=offsets.apply(new com.uten.imp.features.finance.receivables.CustomerPrepaymentContracts.ApplyRequest(
@@ -222,7 +223,10 @@ class FinanceUnapprovalEligibilityEndToEndTest {
     }
 
     @Test void aNormallyFrozenSupplierMonthBlocksPaymentReversalOnTheActualClosingBusinessDay() {
-        Fixture f=fixture("supplier-closed");var end=java.time.YearMonth.from(BusinessTime.today()).atEndOfMonth();
+        Fixture f=fixture("supplier-closed");
+        // Advance the mocked business calendar to an actual, already occurred
+        // closing day; the real bank-time guard remains enabled.
+        var end=java.time.YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
         try(var calendar=org.mockito.Mockito.mockStatic(BusinessTime.class,org.mockito.Mockito.CALLS_REAL_METHODS)){
             calendar.when(BusinessTime::today).thenReturn(end);
             var request=payment(f,"25");var p=seedApprove(f,()->payments.create(request).getId(),payments::approve);
@@ -269,6 +273,7 @@ class FinanceUnapprovalEligibilityEndToEndTest {
         var world=harness.seedWorld("unapproval-check-"+tag+"-"+UUID.randomUUID()); harness.loginAs(world.superAdminUserId()); harness.seedChartOfAccounts();
         UUID bankStyle=style("ACCOUNT",tag+"-bank"),expenseStyle=style("EXPENSE",tag+"-expense"),incomeStyle=style("INCOME",tag+"-income");
         UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND status='使用' AND NOT is_deleted",UUID.class);
+        UUID prepaymentOrder=com.uten.imp.support.SalesPrepaymentOrderFixture.createApproved(beans,db,world.clientId(),currency,BusinessTime.today());
         UUID bank=bank(currency,bankStyle,tag+"-a"),other=bank(currency,bankStyle,tag+"-b");
         UUID reviewer=harness.createUserWithPerms(world,"preflight-reviewer-"+tag+"-"+world.goodsD(),
                 "finance:view:all","customer_prepayment:view","finance_receipt:view","finance_receipt:approve",
@@ -278,7 +283,7 @@ class FinanceUnapprovalEligibilityEndToEndTest {
                 "finance_other_income:reverse","finance_bank_transfer:reverse");
         db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'grant' FROM permissions WHERE code IN ('finance_order_approval:view','finance_order_approval:approve')",reviewer);
         db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'revoke' FROM permissions WHERE code IN ('finance_receipt:edit','finance_payment:edit','finance_expense:edit','finance_other_income:edit','finance_bank_transfer:edit')",reviewer);
-        return new Fixture(world,reviewer,bank,other,expenseStyle,incomeStyle,currency);
+        return new Fixture(world,reviewer,bank,other,expenseStyle,incomeStyle,currency,prepaymentOrder);
     }
     private UUID style(String category,String tag) {
         UUID id=UUID.randomUUID(); db.update("INSERT INTO payment_styles(id,code,name,category,level,status) VALUES (?,?,?, ?,0,'使用')",id,"RV-"+tag,"审核测试"+tag,category); return id;
@@ -289,13 +294,14 @@ class FinanceUnapprovalEligibilityEndToEndTest {
     private FinanceReceiptSaveRequest receipt(Fixture f,String amount) {
         FinanceReceiptSaveRequest req=ReflectionTestUtils.invokeMethod(harness,"receiptRequest",f.world(),null,f.bank(),f.expenseStyle(),amount,amount,"0","0",BigDecimal.ONE,BusinessTime.today());
         req.setReceiptKind("CUSTOMER_PREPAYMENT"); req.setCurrencyId(f.currency()); req.setExchangeRate(BigDecimal.ONE);
+        req.setSalesOrderId(f.prepaymentOrder());
         req.setAmountOriginal(new BigDecimal(amount));req.setOtherFeeStyleId(null);req.setItems(List.of());return req;
     }
     private FinancePaymentSaveRequest payment(Fixture f,String amount) {
         var req=new FinancePaymentSaveRequest();req.setBillDate(BusinessTime.today());req.setCreateIdempotencyKey("review-payment-"+UUID.randomUUID());
         req.setSupplierId(f.world().supplierId());req.setAccountId(f.bank());req.setCurrencyId(f.currency());req.setExchangeRate(BigDecimal.ONE);
         req.setAmountOriginal(new BigDecimal(amount));req.setAccountCurrencyId(f.currency());req.setAccountAmount(new BigDecimal(amount));
-        req.setBankFeeAccountAmount(BigDecimal.ZERO);req.setBankReference("REVIEW-"+UUID.randomUUID());req.setBankBookedAt(BusinessTime.today().atTime(10,0).atOffset(java.time.ZoneOffset.UTC));
+        req.setBankFeeAccountAmount(BigDecimal.ZERO);req.setBankReference("REVIEW-"+UUID.randomUUID());req.setBankBookedAt(BusinessTime.startOfDay(BusinessTime.today()));
         var line=new com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput();
         line.setAppliedLedgerId(payable(f));line.setSupplierId(f.world().supplierId());line.setAmountOriginal(new BigDecimal(amount));
         req.setItems(List.of(line));return req;
@@ -343,5 +349,5 @@ class FinanceUnapprovalEligibilityEndToEndTest {
         var line=new FinanceBankTransferLineInput();line.setInAccountId(f.otherBank());line.setOccurDate(BusinessTime.today());line.setAmountOriginal(new BigDecimal(amount));req.setItems(List.of(line));return req;
     }
     private void assertBalance(UUID account,String value) { assertThat(db.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,account)).isEqualByComparingTo(value); }
-    private record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID bank,UUID otherBank,UUID expenseStyle,UUID incomeStyle,UUID currency) { }
+    private record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID bank,UUID otherBank,UUID expenseStyle,UUID incomeStyle,UUID currency,UUID prepaymentOrder) { }
 }

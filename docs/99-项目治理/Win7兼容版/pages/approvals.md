@@ -22,17 +22,17 @@
 
 ## W7-BIZ-229 · lib/features/approvals/pages/approval_policy_settings_page.dart
 
-模块 `approvals`；442 行；SHA256 `1c9bc3145700c0377f0df8273011c9a2de01a74d8062541bbea53bfd5d898f59`。
+模块 `approvals`；446 行；SHA256 `c911079d12169ba248576bcc5e6982186aced7c3a78c10ab5528199f6d8c424c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | ApprovalPolicySettingsPage @32 (page-class)<br>_ApprovalPolicySettingsPageState @39 (state-class)<br>_PolicyEditor @218 (supporting-class)<br>_PolicyEditorState @225 (state-class) |
+| 页面/状态类 | ApprovalPolicySettingsPage @32 (page-class)<br>_ApprovalPolicySettingsPageState @39 (state-class)<br>_PolicyEditor @220 (supporting-class)<br>_PolicyEditorState @227 (state-class) |
 | 真实路由绑定 | /approvals/settings；router @751；builder ['ApprovalPolicySettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | approval_policy:manage @93；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @276；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @320；定义 lib/shared/auth/permissions.dart:63 |
+| 权限 | approval_policy:manage @95；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @278；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @322；定义 lib/shared/auth/permissions.dart:63 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/approvals/repositories/approval_policy_repository.dart；接口：/approval-policy/departments |
-| 动作处理 | _edit @60 [method-declaration-candidate] 提示 ['edit']；Future<void> _edit(ApprovalDepartmentPolicy policy) async {<br>UtenCloseButton @73 [action-like-invocation] 提示 ['close']；leading: UtenCloseButton(<br>_edit @166 [action-like-invocation] 提示 ['edit']；? () => _edit(row)<br>_edit @192 [action-like-invocation] 提示 ['edit']；? _edit(row)<br>_reconcile @237 [method-declaration-candidate] 提示 ['reconcile']；Future<void> _reconcile() async {<br>_save @264 [method-declaration-candidate] 提示 ['save']；Future<void> _save() async {<br>save @287 [action-like-invocation] 提示 ['save']；.save(_policy, _selected?.id);<br>UtenCloseButton @331 [action-like-invocation] 提示 ['close']；leading: UtenCloseButton( |
+| 动作处理 | _edit @60 [method-declaration-candidate] 提示 ['edit']；Future<void> _edit(ApprovalDepartmentPolicy policy) async {<br>UtenCloseButton @74 [action-like-invocation] 提示 ['close']；UtenCloseButton(<br>_edit @168 [action-like-invocation] 提示 ['edit']；? () => _edit(row)<br>_edit @194 [action-like-invocation] 提示 ['edit']；? _edit(row)<br>_reconcile @239 [method-declaration-candidate] 提示 ['reconcile']；Future<void> _reconcile() async {<br>_save @266 [method-declaration-candidate] 提示 ['save']；Future<void> _save() async {<br>save @289 [action-like-invocation] 提示 ['save']；.save(_policy, _selected?.id);<br>UtenCloseButton @334 [action-like-invocation] 提示 ['close']；UtenCloseButton( |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/approvalpolicy/DepartmentApprovalPolicyController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

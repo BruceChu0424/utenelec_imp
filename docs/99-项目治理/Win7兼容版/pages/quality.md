@@ -22,7 +22,7 @@
 
 ## W7-BIZ-129 · lib/features/quality/pages/production_fqc_inspections_page.dart
 
-模块 `quality`；697 行；SHA256 `b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e`。
+模块 `quality`；697 行；SHA256 `0c3b878c126bf686fb702475f42cc1448e076d3a6b37f1ffb50a53ce1587c686`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

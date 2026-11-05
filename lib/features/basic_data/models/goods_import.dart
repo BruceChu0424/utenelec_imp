@@ -30,8 +30,9 @@ class GoodsImportError {
   );
 }
 
-/// A source row for preview or correction. Values come only from the file and
-/// its explicit corrections; existing master values are in [GoodsImportChange].
+/// A source row for preview or correction. File values retain their own keys;
+/// `resolvedMouldName` separately identifies the server-resolved mould name.
+/// Existing goods values are in [GoodsImportChange].
 class GoodsImportProblemRow {
   const GoodsImportProblemRow({
     required this.rowNum,

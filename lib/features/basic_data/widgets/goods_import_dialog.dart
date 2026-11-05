@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_drop_target.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -127,70 +128,70 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     // 弹窗整块都是拖放接收区（Web/桌面端）：xlsx 直接拖进来检测。
     return PopScope(
       canPop: !_detecting && !_committing && !_reviewing,
-      child: UtenDropTarget(
-        enabled:
-            !_detecting && !_committing && !_reviewing && !_commitUncertain,
-        hint: '松开鼠标检测 Excel',
-        onFiles: _replaceQueueAndDetect,
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              UtenDialogHeader(
-                icon: Icons.upload_file_outlined,
-                title: Row(
-                  children: [
-                    const Flexible(child: Text('导入货品')),
-                    UtenFieldHintIcon(
-                      info:
-                          '${basicDataL10n(context).importFilesTransactionNote}\n\n'
-                          '选择 .xlsx 文件，核对全部货品后再导入。\n\n'
-                          '${basicDataL10n(context).goodsImportTemplateHint}\n'
-                          '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、币种、'
-                          '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
-                          '${basicDataL10n(context).goodsNameEnImportHint}\n'
-                          '模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
-                          '${basicDataL10n(context).goodsImportMergeHint}\n'
-                          '缺失的分类/颜色/单位会自动新建。\n'
-                          '如从「导出货品」取得文件，导出时请不要设置密码。',
-                      dense: true,
+      child: Stack(
+        children: [
+          UtenDropTarget(
+            enabled:
+                !_detecting && !_committing && !_reviewing && !_commitUncertain,
+            hint: '松开鼠标检测 Excel',
+            onFiles: _replaceQueueAndDetect,
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  UtenDialogHeader(
+                    icon: Icons.upload_file_outlined,
+                    title: Row(
+                      children: [
+                        const Flexible(child: Text('导入货品')),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Flexible(
+                          child: Text(
+                            widget.mode.label,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        UtenFieldHintIcon(
+                          info:
+                              '${basicDataL10n(context).importFilesTransactionNote}\n\n'
+                              '选择 .xlsx 文件，核对全部货品后再导入。\n\n'
+                              '${basicDataL10n(context).goodsImportTemplateHint}\n'
+                              '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、币种、'
+                              '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
+                              '${basicDataL10n(context).goodsNameEnImportHint}\n'
+                              '模具编号按唯一编号关联已有模具，并显示关联模具名称；模具名称仅核对，不能按名称关联。\n'
+                              '所属仓库、生产车间仅识别不导入。\n'
+                              '${basicDataL10n(context).goodsImportMergeHint}\n'
+                              '缺失的分类/颜色/单位会自动新建。\n'
+                              '如从「导出货品」取得文件，导出时请不要设置密码。',
+                          dense: true,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                subtitle: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(UtenRadius.sm),
-                    ),
-                    child: Text(
-                      widget.mode.label,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSecondaryContainer,
-                      ),
+                    showCloseButton: true,
+                    onClose: _detecting || _committing || _reviewing
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: _body(theme),
                     ),
                   ),
-                ),
-                showCloseButton: true,
-                onClose: _detecting || _committing || _reviewing
-                    ? null
-                    : () => Navigator.of(context).pop(),
+                  if (!_detecting && !_committing) _actions(theme),
+                ],
               ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: _body(theme),
-                ),
-              ),
-              if (!_detecting && !_committing) _actions(theme),
-            ],
+            ),
           ),
-        ),
+          if (_detecting || _committing)
+            UtenBusyOverlay(
+              title: _committing ? '正在导入货品' : '正在检查文件',
+              showDoNotLeaveHint: false,
+            ),
+        ],
       ),
     );
   }

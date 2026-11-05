@@ -71,6 +71,27 @@ namespace Uten.Legacy.Tests
                         + "; inline preservation=" + inline + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
                 }
+                if (args.Length == 1 && args[0] == "--table-output-contracts")
+                {
+                    RunUi(() => {
+                        if (System.Windows.Application.Current == null) {
+                            var app = new Uten.Legacy.Desktop.App(); app.InitializeComponent();
+                            app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
+                        }
+                        return 0;
+                    });
+                    int print = RunUi(NativePrintContractChecks.Run);
+                    int export = RunUi(UnitExportUiChecks.Run);
+                    int selection = (int)typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "UnitExportMutationChecks")
+                        .GetMethod("RunSharedSelectionFixture", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+                    int handshake = (int)typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "UnitExportMutationChecks")
+                        .GetMethod("RunSharedCapabilityFixture", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+                    Console.WriteLine("PASS table output contracts; print=" + print + "; export=" + export
+                        + "; shared selection=" + selection
+                        + "; handshake=" + handshake
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--ui-contracts-only")
                 {
                     RunUi(UiContractChecks.Run);

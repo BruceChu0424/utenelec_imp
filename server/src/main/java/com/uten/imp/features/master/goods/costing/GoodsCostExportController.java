@@ -40,6 +40,7 @@ public class GoodsCostExportController {
             @Pattern(regexp = "ALL|MATERIAL|FEES") String section, @Size(max = 5000) List<String> paths,
             @Valid TableColumnProjection columnProjection) {}
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/api/master/goods/cost-sheets/export")
     @PreAuthorize("hasAuthority('goods:cost:view') and hasAuthority('goods:cost:export')")
     public ResponseEntity<byte[]> export(@Valid @RequestBody Request request) {

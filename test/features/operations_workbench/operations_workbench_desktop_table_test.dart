@@ -317,6 +317,9 @@ void main() {
       tableFinder,
     );
     // facets/nullCounts 已按本页列 key 对齐（goods→goodsName）。
+    expect(table.outputSelectionEnabled, isTrue);
+    expect(table.outputIdOf?.call(table.items.first), 't1');
+    expect(table.outputSelectorOf?.call(table.items.first), {'taskId': 't1'});
     expect(table.facets.keys, containsAll(<String>['goodsName', 'status']));
     expect(table.facets['goodsName']?.single.value, 'goods-1');
     expect(table.nullCounts['spec'], 1);

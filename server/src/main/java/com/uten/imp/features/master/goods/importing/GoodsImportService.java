@@ -129,6 +129,8 @@ public class GoodsImportService {
     private com.uten.imp.features.master.lifecycle.MasterObjectAccess bomAccess;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.master.currency.CurrencyRepository currencyRepo;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.mould.MouldRepository mouldRepo;
 
     /**
      * detect -> commit is deliberately a short-lived, single-node capability.
@@ -148,7 +150,7 @@ public class GoodsImportService {
             "cNumber", "series", "model", "spec", "material", "rearInsertCode", "paper", "nameEn",
             "colorName", "unitName", "sourceType", "status", "price", "currencyName", "minOrderQty", "orderMultipleQty");
     private static final Set<String> NUMERIC_IMPORT_FIELDS = Set.of("price", "minOrderQty", "orderMultipleQty");
-    /** Recognized source columns shown in preview without allowing relationship/identity edits. */
+    /** Source columns remain uneditable in preview; mould codes resolve only from the frozen workbook. */
     private static final Set<String> READ_ONLY_FIELDS = Set.of("goodsId", "bomRef", "owningWarehouseName",
             "productionWorkshopName", "mouldCode", "mouldName");
 
@@ -195,15 +197,8 @@ public class GoodsImportService {
         // 备注（2026-09-25 导入导出格式对齐）：GoodsSaveRequest.paper 本就可编辑，
         // 此前登记为 ignored → 导出里的备注列改完再导入会被静默丢弃。接线落库。
         for (String a : new String[]{"备注", "纸样"}) putAlias(a, "paper");
-        // 导出有但 DTO 未开放编辑——预览原文，仍不导入其值。
-        //
-        // 所属仓库 (V587) / 生产车间 (V590, 2026-09-29 前表头叫「归属车间」) / 模具编号、模具名称
-        // (2026-10-19 起导出携带模具名称列)：导出写这些列，
-        // 但导入侧只拿得到「名称/编号」，而在线关系只认 UUID（本文件的 UUID-only 契约），
-        // 按名反查会重蹈按名猜关系的老路，故仅供只读预览，不落值——导出改完再导入，
-        // 这些列的值不会写进新货品。必须登记：把「刻意丢弃」写成明账，避免后来人把它
-        // 当成又一个 V457 式的漏登记去补，也避免别处误把它接成别的字段。真要支持编辑，
-        // 得先给导入一条 UUID 口径的选择通道。
+        // 仓库/车间仍只预览。模具按唯一编号解析后冻结 UUID，名称仅用于核对，
+        // 不按名称猜关系；提交前重新检查编号、身份、名称和状态。
         for (String a : new String[]{"所属仓库", "归属仓库"}) putAlias(a, "owningWarehouseName");
         for (String a : new String[]{"归属车间", "生产车间", "车间"}) putAlias(a, "productionWorkshopName");
         putAlias("模具编号", "mouldCode");
@@ -301,6 +296,7 @@ public class GoodsImportService {
         // 组装信息ID 源货品解析缓存：同编号多行只查一次；行快照缓存同理。
         Map<String, java.util.Optional<Goods>> bomSourceByCode = new HashMap<>();
         Map<UUID, List<GoodsBomItem>> bomSourceRows = new HashMap<>();
+        Map<String, List<com.uten.imp.features.master.mould.Mould>> mouldsByCode = new HashMap<>();
         // 修改/混合模式下带组装信息ID 的行：目标是否已有组装行决定提交是否走 REPLACE（需 goods:bom:delete）。
         Set<UUID> bomRefTargetIds = mode == GoodsImportMode.CREATE_ONLY ? Set.of()
                 : parsed.rows.stream()
@@ -475,6 +471,9 @@ public class GoodsImportService {
                     r.rowNum, "主颜色", r.colorName, colorIndex, willCreateColor, errors);
             PlannedMasterReference unit = preserveLegacyUnit ? null : planNamedMaster(
                     r.rowNum, "单位", r.unitName, unitIndex, willCreateUnit, errors);
+            PlannedMouldReference mould = planMouldReference(r,
+                    existingGoods != null ? existingGoods : restoreGoodsId == null ? null : byId,
+                    mouldsByCode, errors);
             List<GoodsImportReviewRow.Change> changes = List.of();
             String goodsFingerprint = null;
             if (existingGoods != null) {
@@ -504,7 +503,7 @@ public class GoodsImportService {
             UUID bomSourceGoodsId = planBomCopy(r, existingGoods, restoreGoodsId, bomSourceByCode,
                     bomSourceRows, bomRefTargetsWithRows, bomCreateAllowed, bomDeleteAllowed, errors);
             plannedRows.add(new PlannedRow(r.rowNum, category, color, unit, restoreGoodsId,
-                    existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes, bomSourceGoodsId, r.currencyId));
+                    existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes, bomSourceGoodsId, r.currencyId, mould));
             } catch (ApiException failure) {
                 String message = failure.getCode() == ErrorCode.FORBIDDEN || failure.getCode() == ErrorCode.NOT_FOUND
                         ? "该行货品当前不可查看或编辑，请联系管理员核对权限后重新检测"
@@ -622,7 +621,7 @@ public class GoodsImportService {
             // table -> hierarchy dependency when reviewed paths create categories.
             com.uten.imp.features.master.CategorySiblingNameGuard.lockHierarchy(em,
                     com.uten.imp.features.master.CategorySiblingNameGuard.Kind.MATERIAL);
-            em.createNativeQuery("LOCK TABLE colors,units,material_categories,goods IN SHARE ROW EXCLUSIVE MODE NOWAIT").executeUpdate();
+            em.createNativeQuery("LOCK TABLE colors,units,material_categories,goods,moulds IN SHARE ROW EXCLUSIVE MODE NOWAIT").executeUpdate();
         } catch (RuntimeException busy) {
             throw new ApiException(ErrorCode.CONFLICT, "基础资料正在更新，请稍后重新检测后导入");
         }
@@ -660,6 +659,27 @@ public class GoodsImportService {
                 plan.masterFingerprint().getBytes(StandardCharsets.US_ASCII),
                 currentMasters.fingerprint().getBytes(StandardCharsets.US_ASCII))) {
             throw stalePlan("分类、颜色或单位资料在检测后发生了变化");
+        }
+        // Resolve only the UUID frozen during detection, under the same import
+        // lock. Reusing a code after delete/rename must never retarget the import.
+        Set<UUID> checkedMoulds = new HashSet<>();
+        for (int i = 0; i < plan.rows().size(); i++) {
+            PlannedMouldReference reference = plan.rows().get(i).mould();
+            if (reference == null) continue;
+            if (checkedMoulds.add(reference.id())) {
+                var current = mouldRepo.findById(reference.id())
+                        .orElseThrow(() -> stalePlan("模具资料在检测后发生了变化"));
+                em.refresh(current);
+                var sameCode = mouldRepo.findByCodeAndDeletedFalse(reference.code());
+                if (current.isDeleted() || !Objects.equals(reference.code(), current.getCode())
+                        || !Objects.equals(reference.name(), current.getName())
+                        || !Objects.equals(reference.status(), current.getStatus())
+                        || sameCode.size() != 1 || !Objects.equals(sameCode.getFirst().getId(), reference.id())) {
+                    throw stalePlan("模具资料在检测后发生了变化");
+                }
+            }
+            parsed.rows.get(i).mouldId = reference.id();
+            parsed.rows.get(i).resolvedMouldName = reference.name();
         }
 
         boolean hasWork = plan.rows().stream().anyMatch(row -> row.existingGoodsId() == null
@@ -796,6 +816,7 @@ public class GoodsImportService {
             // resolve or write an imported goods relationship.
             if (colorId != null) req.setColorId(colorId);
             if (unitId != null) req.setUnitId(unitId);
+            if (r.mouldId != null) req.setMouldId(r.mouldId);
             UUID goodsId = goodsService.saveImported(req);
             recordCreation(batchId, "GOODS", goodsId);
             if (planned.bomSourceGoodsId() != null) {
@@ -916,6 +937,42 @@ public class GoodsImportService {
     // ============================================================
     // 组装信息ID（2026-10-28）：值=「货品编号-BOM」，导入有值即复制整棵组装信息
     // ============================================================
+
+    private PlannedMouldReference planMouldReference(ParsedRow row, Goods existing,
+            Map<String, List<com.uten.imp.features.master.mould.Mould>> byCode,
+            List<GoodsImportError> errors) {
+        row.mouldId = null;
+        row.resolvedMouldName = null;
+        if (row.mouldCode == null || row.mouldCode.isBlank()) {
+            if (row.mouldName != null && !row.mouldName.isBlank()) {
+                errors.add(new GoodsImportError(row.rowNum, "模具编号", "请填写模具编号，不能仅凭模具名称关联"));
+            }
+            return null;
+        }
+        var matches = byCode.computeIfAbsent(row.mouldCode, mouldRepo::findByCodeAndDeletedFalse);
+        if (matches.size() != 1) {
+            errors.add(new GoodsImportError(row.rowNum, "模具编号",
+                    matches.isEmpty() ? "模具编号「" + row.mouldCode + "」不存在或已删除"
+                            : "模具编号「" + row.mouldCode + "」对应多个模具，请先核对模具资料"));
+            return null;
+        }
+        var mould = matches.getFirst();
+        row.resolvedMouldName = mould.getName();
+        boolean unchanged = existing != null && existing.getMould() != null
+                && Objects.equals(existing.getMould().getId(), mould.getId());
+        if (mould.isDeleted() || !unchanged
+                && ("禁用".equals(mould.getStatus()) || "报废".equals(mould.getStatus()))) {
+            errors.add(new GoodsImportError(row.rowNum, "模具编号", "模具「" + row.mouldCode + "」已删除或停用，不能新选"));
+            return null;
+        }
+        if (row.mouldName != null && !row.mouldName.isBlank()
+                && !Objects.equals(normName(row.mouldName), normName(mould.getName()))) {
+            errors.add(new GoodsImportError(row.rowNum, "模具名称", "模具编号与名称不一致，请核对原文件或清空模具名称后重新检测"));
+            return null;
+        }
+        row.mouldId = mould.getId();
+        return new PlannedMouldReference(mould.getId(), mould.getCode(), mould.getName(), mould.getStatus());
+    }
 
     /**
      * 检测期解析并校验本行「组装信息ID」；返回提交时要复制组装信息的源货品 UUID。
@@ -1130,7 +1187,8 @@ public class GoodsImportService {
                 Map<String, String> edited = corrections.getOrDefault(pr.rowNum, Map.of());
                 values.putAll(edited);
                 // Keep uploaded identity/relationship text visible even when it
-                // is invalid. These keys never enter CORRECTABLE_FIELDS or a save DTO.
+                // is invalid. These keys never enter CORRECTABLE_FIELDS. Only
+                // a verified mould code can produce a frozen UUID for the DTO.
                 for (String field : READ_ONLY_FIELDS) {
                     if (col.containsKey(field)) {
                         Cell source = row.getCell(col.get(field));
@@ -1151,6 +1209,8 @@ public class GoodsImportService {
                     }
                 }
                 pr.code = normCode(values.get("code"));
+                pr.mouldCode = normCode(values.get("mouldCode"));
+                pr.mouldName = trim(values.get("mouldName"));
                 pr.name = normName(values.get("name"));
                 pr.clientGoodsNamePresent = col.containsKey("clientGoodsName") || edited.containsKey("clientGoodsName");
                 pr.clientGoodsName = trim(values.get("clientGoodsName"));
@@ -1514,15 +1574,22 @@ public class GoodsImportService {
                 .map(row -> new GoodsImportProblemRow(row.rowNum, row.code, row.name, row.categoryPath, row.cells)).toList();
     }
 
-    /** Preserve every participating file row for confirmation, without exposing saved master values. */
+    /** Preserve file input; show the resolved mould label under its separate key. */
     private static List<GoodsImportProblemRow> previewRows(Parsed parsed) {
         return previewRows(parsed, Map.of());
     }
 
     private static List<GoodsImportProblemRow> previewRows(Parsed parsed, Map<Integer, List<String>> resolvedSegments) {
         return parsed.rows.stream()
-                .map(row -> new GoodsImportProblemRow(row.rowNum, row.code, row.name, row.categoryPath, row.cells,
+                .map(row -> new GoodsImportProblemRow(row.rowNum, row.code, row.name, row.categoryPath, previewCells(row),
                         resolvedSegments.getOrDefault(row.rowNum, List.of()))).toList();
+    }
+
+    private static Map<String, String> previewCells(ParsedRow row) {
+        if (row.resolvedMouldName == null) return row.cells;
+        Map<String, String> cells = new HashMap<>(row.cells);
+        cells.put("resolvedMouldName", row.resolvedMouldName);
+        return Map.copyOf(cells);
     }
 
     private UUID rememberPlan(GoodsImportMode mode,
@@ -1566,6 +1633,8 @@ public class GoodsImportService {
             }
             if (row.color() != null) bytes += 128 + stringBytes(row.color().name());
             if (row.unit() != null) bytes += 128 + stringBytes(row.unit().name());
+            if (row.mould() != null) bytes += 128 + stringBytes(row.mould().code())
+                    + stringBytes(row.mould().name()) + stringBytes(row.mould().status());
             for (GoodsImportReviewRow.Change change : row.changes()) {
                 bytes += 128 + stringBytes(change.field()) + stringBytes(change.label())
                         + stringBytes(change.oldValue()) + stringBytes(change.newValue());
@@ -1712,6 +1781,15 @@ public class GoodsImportService {
             }
             change(result, "unitId", "单位", old.getUnit() == null ? null : old.getUnit().getName(), unit.name());
         }
+        UUID oldMouldId = old.getMould() == null ? null : old.getMould().getId();
+        if (row.mouldId != null && !Objects.equals(oldMouldId, row.mouldId)) {
+            // Use identity for the difference; equal display names must not hide
+            // a replacement of one mould UUID with another.
+            String oldLabel = old.getMould() == null ? null : old.getMould().getCode() + " " + old.getMould().getName();
+            String incoming = row.mouldCode + " " + Objects.toString(row.resolvedMouldName, "");
+            result.add(new GoodsImportReviewRow.Change("mouldId", "模具", oldLabel, incoming,
+                    oldMouldId == null && old.getMouldLegacyId() == null ? "FILL" : "CONFLICT"));
+        }
         return List.copyOf(result);
     }
 
@@ -1765,6 +1843,7 @@ public class GoodsImportService {
                 case "categoryId" -> request.setCategoryId(categoryId);
                 case "colorId" -> request.setColorId(colorId);
                 case "unitId" -> request.setUnitId(unitId);
+                case "mouldId" -> request.setMouldId(row.mouldId);
                 default -> throw new IllegalStateException("Unsupported goods import field: " + change.field());
             }
         }
@@ -1784,7 +1863,10 @@ public class GoodsImportService {
                 goods.getStatus(), goods.getPrice(), goods.getCurrency() == null ? null : goods.getCurrency().getId(), goods.getMinOrderQty(), goods.getOrderMultipleQty(),
                 goods.getCategory() == null ? null : goods.getCategory().getId(),
                 goods.getColor() == null ? null : goods.getColor().getId(),
-                goods.getUnit() == null ? null : goods.getUnit().getId());
+                goods.getUnit() == null ? null : goods.getUnit().getId(),
+                goods.getMould() == null ? null : goods.getMould().getId(), goods.getMouldLegacyId(),
+                goods.getMould() == null ? null : goods.getMould().getCode(),
+                goods.getMould() == null ? null : goods.getMould().getName());
         StringBuilder text = new StringBuilder();
         for (Object value : values) {
             String string = value == null ? "" : value.toString();
@@ -1944,6 +2026,10 @@ public class GoodsImportService {
         Map<String, String> cells;
         UUID goodsId;
         String code;
+        String mouldCode;
+        String mouldName;
+        UUID mouldId;
+        String resolvedMouldName;
         String name;
         String clientGoodsName;
         boolean clientGoodsNamePresent;
@@ -1994,7 +2080,10 @@ public class GoodsImportService {
             String goodsFingerprint,
             List<GoodsImportReviewRow.Change> changes,
             UUID bomSourceGoodsId,
-            UUID currencyId) {}
+            UUID currencyId,
+            PlannedMouldReference mould) {}
+
+    private record PlannedMouldReference(UUID id, String code, String name, String status) {}
 
     /** New category segments inherit the last persisted ancestor's effective prefix. */
     private static UUID nearestExistingCategoryId(CategoryPathPlan category) {

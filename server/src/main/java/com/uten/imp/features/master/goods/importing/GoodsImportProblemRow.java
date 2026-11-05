@@ -3,7 +3,7 @@ package com.uten.imp.features.master.goods.importing;
 import java.util.Map;
 import java.util.List;
 
-/** File-owned row input for preview and correction; no stored master values. */
+/** File-owned input; the separate resolvedMouldName key contains the resolved reference label. */
 public record GoodsImportProblemRow(int rowNum, String code, String name, String categoryPath,
                                     Map<String, String> cells, List<String> categorySegments) {
     public GoodsImportProblemRow {

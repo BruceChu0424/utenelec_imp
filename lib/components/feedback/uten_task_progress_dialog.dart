@@ -2,8 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_tokens.dart';
-import 'uten_dialog.dart';
+import 'uten_busy_overlay.dart';
+
+class _BlockingTaskSession {
+  bool closed = false;
+}
+
+final _blockingTasks = Expando<_BlockingTaskSession>('uten-blocking-action');
 
 /// Keeps an awaited operation visible and prevents accidental duplicate actions.
 /// The exact route is removed on completion, including when the caller leaves.
@@ -14,11 +19,22 @@ Future<T> runUtenBlockingTask<T>({
   bool Function()? isCurrent,
   Listenable? invalidation,
   ValueChanged<ModalRoute<void>>? onRouteCreated,
+  Object? owner,
 }) async {
+  final existing = owner == null ? null : _blockingTasks[owner];
+  if (existing != null && !existing.closed) {
+    if (isCurrent != null && !isCurrent()) {
+      throw StateError('操作已取消，请重新操作');
+    }
+    return await task();
+  }
+  final session = _BlockingTaskSession();
+  if (owner != null) _blockingTasks[owner] = session;
   final navigator = Navigator.of(context, rootNavigator: true);
   final route = DialogRoute<void>(
     context: context,
     barrierDismissible: false,
+    barrierColor: Colors.transparent,
     builder: (_) =>
         PopScope(canPop: false, child: UtenTaskProgressDialog(title: title)),
   );
@@ -45,6 +61,10 @@ Future<T> runUtenBlockingTask<T>({
     }
     return await task();
   } finally {
+    session.closed = true;
+    if (owner != null && identical(_blockingTasks[owner], session)) {
+      _blockingTasks[owner] = null;
+    }
     invalidation?.removeListener(dismissIfInvalidated);
     if (navigator.mounted && route.isActive) navigator.removeRoute(route);
   }
@@ -56,23 +76,6 @@ class UtenTaskProgressDialog extends StatelessWidget {
   final String title;
 
   @override
-  Widget build(BuildContext context) => UtenAlertDialog(
-    maxWidth: 420,
-    content: Row(
-      children: [
-        const SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(strokeWidth: 3),
-        ),
-        const SizedBox(width: UtenSpacing.s20),
-        Expanded(
-          child: Semantics(
-            liveRegion: true,
-            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-          ),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) =>
+      UtenBusyOverlay(title: title, showDoNotLeaveHint: false);
 }

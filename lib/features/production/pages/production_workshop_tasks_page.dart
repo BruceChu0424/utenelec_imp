@@ -3036,6 +3036,9 @@ class _ProductionWorkshopTasksPageState
                       description: '按计划完工日期加载已完工 / 已取消 / 已撤回工单',
                     )
                   : MasterDataTableView<ProductionExecutionWorkbenchSegment>(
+                      outputSelectionEnabled: true,
+                      outputIdOf: (task) => task.segmentId,
+                      outputSelectorOf: (task) => {'segmentId': task.segmentId},
                       toolbarLeadingActions: [
                         if (_isHistory)
                           UtenHistoryTimeFilter(
@@ -3234,7 +3237,9 @@ class _ProductionWorkshopTasksPageState
                       rowKeyOf: (task) => task.segmentId,
                       // 未齐行的勾选位换成带原因的锁图标（悬停/长按可见），
                       // 不再呈现一个永远点不动的空复选框。
-                      leadingOverlayBuilder: _leadingLockOf,
+                      leadingOverlayBuilder: _selectable
+                          ? _leadingLockOf
+                          : null,
                       unselectableLeadingBuilder: (context, task) => Tooltip(
                         message: _blockedReasonOf(task),
                         child: Icon(
@@ -3264,67 +3269,73 @@ class _ProductionWorkshopTasksPageState
                             );
                         });
                       },
-                      batchActionsBuilder: (_, ids) => [
-                        if (_isPreparing) ...[
-                          // 批量设路线(ADR-096)：勾选多行 → 菜单里点一条路线
-                          // 即提交。勾选多行后在任一勾选行的「下一步」下拉选
-                          // 路线也是对全部勾选行提交(同一套筛选)，本菜单是不
-                          // 经过某一行、直接按路线提交的第二入口。
-                          Builder(
-                            builder: (menuContext) => UtenButton(
-                              key: const Key('workshop-batch-route'),
-                              type: UtenButtonType.danger,
-                              icon: Icons.alt_route_rounded,
-                              onPressed:
-                                  _loading ||
-                                      _navigating ||
-                                      _selectedRouteTasks(ids).isEmpty
-                                  ? null
-                                  : () => _showBatchRouteMenu(
-                                      menuContext,
-                                      _selectedRouteTasks(ids),
+                      batchActionsBuilder: !_selectable
+                          ? null
+                          : (_, ids) => [
+                              if (_isPreparing) ...[
+                                // 批量设路线(ADR-096)：勾选多行 → 菜单里点一条路线
+                                // 即提交。勾选多行后在任一勾选行的「下一步」下拉选
+                                // 路线也是对全部勾选行提交(同一套筛选)，本菜单是不
+                                // 经过某一行、直接按路线提交的第二入口。
+                                Builder(
+                                  builder: (menuContext) => UtenButton(
+                                    key: const Key('workshop-batch-route'),
+                                    type: UtenButtonType.danger,
+                                    icon: Icons.alt_route_rounded,
+                                    onPressed:
+                                        _loading ||
+                                            _navigating ||
+                                            _selectedRouteTasks(ids).isEmpty
+                                        ? null
+                                        : () => _showBatchRouteMenu(
+                                            menuContext,
+                                            _selectedRouteTasks(ids),
+                                          ),
+                                    child: Text(
+                                      '批量设路线(${_selectedRouteTasks(ids).length})',
                                     ),
-                              child: Text(
-                                '批量设路线(${_selectedRouteTasks(ids).length})',
-                              ),
-                            ),
-                          ),
-                          UtenButton(
-                            type: UtenButtonType.danger,
-                            icon: Icons.move_to_inbox_rounded,
-                            onPressed:
-                                _loading ||
-                                    _navigating ||
-                                    _selectedDrawTasks(ids).isEmpty
-                                ? null
-                                : () => _requestDraw(_selectedDrawTasks(ids)),
-                            child: Text(
-                              '批量领料(${_selectedDrawTasks(ids).length})',
-                            ),
-                          ),
-                          UtenButton(
-                            type: UtenButtonType.danger,
-                            icon: Icons.play_circle_fill_rounded,
-                            onPressed:
-                                _loading ||
-                                    _navigating ||
-                                    _selectedStartTasks(ids).isEmpty
-                                ? null
-                                : () => _startTasks(_selectedStartTasks(ids)),
-                            child: Text(
-                              '批量开工(${_selectedStartTasks(ids).length})',
-                            ),
-                          ),
-                        ] else
-                          UtenButton(
-                            type: UtenButtonType.danger,
-                            icon: Icons.fact_check_outlined,
-                            onPressed: ids.isEmpty || _navigating
-                                ? null
-                                : _reportSelected,
-                            child: Text('批量报工(${ids.length})'),
-                          ),
-                      ],
+                                  ),
+                                ),
+                                UtenButton(
+                                  type: UtenButtonType.danger,
+                                  icon: Icons.move_to_inbox_rounded,
+                                  onPressed:
+                                      _loading ||
+                                          _navigating ||
+                                          _selectedDrawTasks(ids).isEmpty
+                                      ? null
+                                      : () => _requestDraw(
+                                          _selectedDrawTasks(ids),
+                                        ),
+                                  child: Text(
+                                    '批量领料(${_selectedDrawTasks(ids).length})',
+                                  ),
+                                ),
+                                UtenButton(
+                                  type: UtenButtonType.danger,
+                                  icon: Icons.play_circle_fill_rounded,
+                                  onPressed:
+                                      _loading ||
+                                          _navigating ||
+                                          _selectedStartTasks(ids).isEmpty
+                                      ? null
+                                      : () => _startTasks(
+                                          _selectedStartTasks(ids),
+                                        ),
+                                  child: Text(
+                                    '批量开工(${_selectedStartTasks(ids).length})',
+                                  ),
+                                ),
+                              ] else
+                                UtenButton(
+                                  type: UtenButtonType.danger,
+                                  icon: Icons.fact_check_outlined,
+                                  onPressed: ids.isEmpty || _navigating
+                                      ? null
+                                      : _reportSelected,
+                                  child: Text('批量报工(${ids.length})'),
+                                ),
+                            ],
                       rowMenuBuilder: _nextStepEntries,
                       onRowTap: _openTaskDetail,
                       canOpenRow: (task) => task.planId.isNotEmpty,

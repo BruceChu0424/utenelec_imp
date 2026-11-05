@@ -33,6 +33,7 @@ public class FulfillmentWorkbenchExportController {
     private final AuditService audit;
     private final ExportLimitPort exportLimits;
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/purchase/export")
     @PreAuthorize("hasAuthority('purchase_report:export') and hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
     public ResponseEntity<byte[]> purchase(
@@ -55,6 +56,7 @@ public class FulfillmentWorkbenchExportController {
         return download(payload, body, "purchase");
     }
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/subcontract/export")
     @PreAuthorize("hasAuthority('subcontract_report:export') and hasAnyAuthority('subcontract_application:view','subcontract_order:view','subcontract_receipt:view','subcontract_return:view','subcontract_material_issue:view','subcontract_material_return:view','subcontract_waste:view')")
     public ResponseEntity<byte[]> subcontract(

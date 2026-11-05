@@ -17,7 +17,7 @@ import java.util.UUID;
  * @param restorableRows       将恢复的已删除货品行数（仅系统标识命中软删行，导入时原 UUID 原编号复活）。
  * @param problemRows          问题行的文件输入，cells 可供逐格修正，不包含系统保存值。
  * @param readyRowNums         本次计划允许提交的正常物理行号，含无需变化的正常行。
- * @param previewRows          本次参与检测的全部文件输入，含正常、问题及无需变化的行；不包含系统保存值。
+ * @param previewRows          全部文件输入，含正常、问题及无需变化的行；resolvedMouldName 独立标注编号解析到的模具名称，不覆盖文件原文。
  */
 public record GoodsImportReport(
         int totalRows,

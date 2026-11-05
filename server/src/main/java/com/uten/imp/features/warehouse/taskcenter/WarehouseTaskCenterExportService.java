@@ -108,6 +108,7 @@ public class WarehouseTaskCenterExportService {
     private static Map<String, Object> valuesOf(WarehouseTaskCenterContracts.Row row, boolean outboundDirection) {
         WarehouseTaskCenterContracts.Line line = row.line();
         Map<String, Object> values = new LinkedHashMap<>();
+        values.put("rowKey", row.rowKey());
         values.put("status", row.statusLabel());
         values.put("billNo", row.billNo());
         values.put("goodsName", line == null ? null : line.goodsName());

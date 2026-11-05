@@ -107,4 +107,19 @@ class ProductionWorkshopTaskExportServiceTest {
         when(task.materialDiscoveryStatus()).thenReturn("PENDING");
         assertEquals("待仓库填写物料", ProductionWorkshopTaskExportService.row(task).get("material"));
     }
+
+    @Test void selectedRowsUseSegmentIdentityWithoutChangingQuantityOrBusinessAuthority() {
+        var first=task(1);
+        var second=task(2);
+        var columns=ProductionWorkshopTaskExportService.columns("IN_PROGRESS");
+        var selector=new ExportRowSelection(new TableColumnProjection("workshop",null,
+                List.of(new TableColumnProjection.Column("name","产品名称",100.0,"text",null)),
+                List.of(Map.of("segmentId",second.segmentId().toString()))));
+        var rows=selector.select(columns,List.of(ProductionWorkshopTaskExportService.row(first),
+                ProductionWorkshopTaskExportService.row(second)));
+        selector.verifyComplete();
+        assertEquals(1,rows.size());
+        assertEquals(second.segmentId().toString(),rows.getFirst().get("segmentId"));
+        assertEquals(second.plannedQty(),rows.getFirst().get("qty"));
+    }
 }

@@ -17,14 +17,26 @@ public class ExportDocumentProjectionService {
     public ExportDocument project(ExportDocument document, TableColumnProjection projection, String sectionName, String scope) {
         if (projection == null) return document;
         validate(projection,scope);
+        var selection=new ExportRowSelection(projection);
         List<ExportDocument.Section> sections = new ArrayList<>();
+        int targets=0;
         for (var section : document.sections()) {
-            if (!section.name().equals(sectionName)) { sections.add(section); continue; }
-            var result=projectSection(section.columns(),section.rows(),projection,scope);
+            if (!section.name().equals(sectionName)) { if(!selection.active())sections.add(section); continue; }
+            targets++;
+            if(selection.active()&&targets>1)throw invalidSelection();
+            var result=projectSection(section.columns(),selection.select(section.columns(),section.rows()),projection,scope);
             sections.add(new ExportDocument.Section(section.name(),result.columns(),result.rows()));
         }
-        return new ExportDocument(document.title(),document.metadata(),sections);
+        selection.verifyComplete();
+        if(selection.active()&&targets!=1)throw invalidSelection();
+        return new ExportDocument(selection.active()?selectedTitle(document.title(),projection):document.title(),
+                selection.active()?selectedMetadata(document.metadata(),projection):document.metadata(),sections);
     }
+    private static String selectedTitle(String title,TableColumnProjection projection) {return title+"（已选 "+projection.rowSelection().size()+" 项）";}
+    private static List<String> selectedMetadata(List<String> original,TableColumnProjection projection) {
+        List<String> result=new ArrayList<>(original);result.add("输出范围：仅选中 "+projection.rowSelection().size()+" 项");return List.copyOf(result);
+    }
+    private static ApiException invalidSelection() {return new ApiException(ErrorCode.VALIDATION_FAILED,"选中行的目标分表不存在或不唯一，请刷新后重选");}
     private static void validate(TableColumnProjection projection,String scope) {
         if (scope == null || !scope.startsWith("view_")) throw new IllegalArgumentException("Frozen document projection requires a display scope");
         if (projection.columns() == null || projection.columns().isEmpty() || projection.columns().size() > 160)
@@ -51,31 +63,46 @@ public class ExportDocumentProjectionService {
     public DocumentPageSink.Consumer stream(DocumentPageSink.Consumer destination,TableColumnProjection projection,String sectionName,String scope) {
         if(projection==null)return destination;
         validate(projection,scope);
+        var selection=new ExportRowSelection(projection);
         return new DocumentPageSink.Consumer() {
             private final Map<String,DocumentPageSink.Section> sources=new HashMap<>();
             private final Map<String,List<ExportColumn>> projectedColumns=new HashMap<>();
-            private boolean begun;
+            private boolean begun,completed,failed;
             @Override
             public void begin(DocumentPageSink.Header header) {
                 if(begun)throw new IllegalStateException("Document projection header already supplied");begun=true;
                 List<DocumentPageSink.Section> sections=new ArrayList<>();
+                int targets=0;
                 for(var section:header.sections()) {
                     sources.put(section.id(),section);
-                    if(!section.name().equals(sectionName)) {sections.add(section);continue;}
+                    if(!section.name().equals(sectionName)) {if(!selection.active())sections.add(section);continue;}
+                    targets++;
+                    if(selection.active()&&targets>1)throw invalidSelection();
                     var selected=projectSection(section.columns(),List.of(),projection,scope).columns();
                     projectedColumns.put(section.id(),selected);
-                    sections.add(new DocumentPageSink.Section(section.id(),section.name(),selected,section.primary(),section.omitIfEmpty()));
+                    sections.add(new DocumentPageSink.Section(section.id(),section.name(),selected,selection.active()||section.primary(),selection.active()?false:section.omitIfEmpty()));
                 }
-                destination.begin(new DocumentPageSink.Header(header.title(),header.metadata(),sections,header.expectedPrimaryRows()));
+                if(selection.active()&&targets!=1)throw invalidSelection();
+                destination.begin(new DocumentPageSink.Header(selection.active()?selectedTitle(header.title(),projection):header.title(),
+                        selection.active()?selectedMetadata(header.metadata(),projection):header.metadata(),sections,
+                        selection.active()?projection.rowSelection().size():header.expectedPrimaryRows()));
             }
             @Override
             public void accept(DocumentPageSink.Page page) {
                 var original=sources.get(page.sectionId());
-                if(!begun||original==null)throw new IllegalStateException("Document projection source section is unknown");
-                if(!projectedColumns.containsKey(page.sectionId())) {destination.accept(page);return;}
-                var selected=projectSection(original.columns(),page.rows(),projection,scope);
+                if(!begun||completed||failed||original==null)throw new IllegalStateException("Document projection source section is unknown or ended");
+                if(!projectedColumns.containsKey(page.sectionId())) {if(!selection.active())destination.accept(page);return;}
+                ExportPayload selected;
+                try {selected=projectSection(original.columns(),selection.select(original.columns(),page.rows()),projection,scope);}
+                catch(RuntimeException failure){failed=true;throw failure;}
                 if(!projectedColumns.get(page.sectionId()).equals(selected.columns()))throw new IllegalStateException("Document projection columns changed");
                 destination.accept(new DocumentPageSink.Page(page.sectionId(),selected.rows()));
+            }
+            @Override public void complete() {
+                if(completed)return;completed=true;
+                if(failed)throw new ApiException(ErrorCode.VALIDATION_FAILED,"选中行输出未完成，不能生成文件，请刷新后重选");
+                if(!begun)throw new IllegalStateException("Document projection header was not supplied");
+                selection.verifyComplete();destination.complete();
             }
         };
     }

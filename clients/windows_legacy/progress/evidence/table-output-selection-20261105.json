@@ -1,0 +1,483 @@
+{
+  "id": "E-TABLE-OUTPUT-SELECTION-20261105",
+  "date": "2026-11-05",
+  "branch": "uimp/table-output-import-trace-20261105",
+  "classification": "frontend+backend+shared-contract",
+  "runtimeBoundary": {
+    "webFlutter": "Same Dart implementation maintained by root; see task coverage document for its separate evidence.",
+    "windowsFlutter": "Same Dart implementation maintained by root; separate native interaction acceptance remains required.",
+    "wpfLegacy": "Existing native unit export and print consumers implemented and verified locally for x86/x64; full ERP and real Win7 acceptance remain incomplete."
+  },
+  "commonEntries": {
+    "native": "Shared/TableOutputScopeDialog.cs; unit cross-page persistent identity selection",
+    "server": "MasterExportSelection + MasterExportSelectionAspect + MasterExportSource; MasterReportExportSource for durable workers"
+  },
+  "nativeConsumers": [
+    "UnitsWorkspaceView.OpenExport -> UnitExportWindow -> UnitExportService.CreateBody / SessionCoordinator.DownloadLegacyUnitExportAsync",
+    "UnitsWorkspaceView.OpenPrint -> UnitPrintWindow -> UnitPrintSnapshot.LoadAsync"
+  ],
+  "serverConsumers": [
+    "goods",
+    "client",
+    "supplier",
+    "account",
+    "currency",
+    "color",
+    "unit",
+    "mould",
+    "warehouse",
+    "settlement_method"
+  ],
+  "contract": {
+    "all": "Null selection means the complete authorized current filter.",
+    "selected": "Server intersects selected UUIDs with the original owning list predicate and requires the exact selected count before mapping or publishing; stale, deleted, forbidden, duplicate or empty selections fail closed.",
+    "transport": "selectedIds in private synchronous request bodies; JSON array string in durable master task parameters.selectedIds. Never URL query, never log business input.",
+    "budgets": "Server accepts 1..50000 unique canonical nonzero UUIDs; raw array <=2000002 UTF8 bytes, durable serialized selected request <=2200000 bytes. Native journal retains 64KiB and <=1000 selected identities with an explicit actionable error; complete current-filter export remains available.",
+    "mouldLargeOutput": "Existing mould durable dataset is retained; workers reuse MasterExportSource streaming cursor and bypass only the synchronous 500-row collection limit via the established page sink. No limit was removed or raised on the legacy synchronous export.",
+    "unknownSubmit": "Frozen selectedIds is included in native submit equivalence and original GET proof; all-row proof cannot settle a selected-row original. No automatic replay.",
+    "history": "A newly chosen output scope never auto-selects a historical artifact. Historical downloads require explicit history selection.",
+    "print": "Reads current authoritative filtered pages and selects cross-page IDs only after completeness and owner checks; no stale row snapshot is printed.",
+    "nativeExportDialog": "Original UnitExportWindow layout retained; only an inline complete-filter/selected-N range row was added beside the existing task and password flow. No separate pre-export scope dialog. Existing native save picker retains path and filename selection."
+  },
+  "nativeVerification": {
+    "latestSource": "MSBuild C#7.3/.NET4.8 Debug x86/x64 /warnaserror; separate UtenBuildScope/output; no global SDK changes.",
+    "fullRunnerPerArchitecture": "Core PASS; goods66/downloads39/publish113/units38/history31/historyUI20/print23/columns55/columnUI9/drafts16/exports22/inline70/updater203/updateOutcomes13. Full runners preceded final history-auto-selection removal; latest focused runs cover that final delta.",
+    "finalFocusedPerArchitecture": "Latest version gate: x86/x64 each print23/export41/shared-selection9/handshake6 PASS; warn-as-error compilation and PE checks passed.",
+    "logs": [
+      "wpf-output-selection-tests-x86.log",
+      "wpf-output-selection-tests-x64.log",
+      "wpf-output-selection-focused-build-x86.log",
+      "wpf-output-selection-focused-build-x64.log",
+      "wpf-output-selection-focused-x86.log",
+      "wpf-output-selection-focused-x64.log",
+      "wpf-output-selection-version-build-x86.log",
+      "wpf-output-selection-version-build-x64.log",
+      "wpf-output-selection-version-x86.log",
+      "wpf-output-selection-version-x64.log"
+    ],
+    "visualReview": "Actual WPF fixture visual tree rendered to build/windows-wpf/table-output-export-x64.png and inspected: scope, password and original task/actions fit without clipping or unnecessary vertical scrolling. This is local fixture evidence, not company/Win7 UAT.",
+    "sharedFixture": "contracts/table-output-selection/v1.json is consumed by Java SelectedExportIdsTest and C# UnitExportMutationChecks; canonical case/zero/empty/duplicate/format rejection matches."
+  },
+  "javaVerification": {
+    "status": "passed",
+    "initial": "28/29 passed including real master UnitController AOP, all 10 master dataset adapters, existing 100000-row source stress. One new test mocked Specification.and incorrectly; replaced by actual specification lambda. No implementation failure was hidden.",
+    "log": "server/output-selection-all-final-v4.log",
+    "priorFinalAttempt": "v3 executed 182 tests: 178 passed, 4 failed. Root fixed three genuine legacy projection hash/3-argument-constructor validation regressions without changing old tests. The new where-used MVC test was corrected to the existing VALIDATION_FAILED HTTP 422 contract. No check was cancelled or failure hidden.",
+    "completedBeforeFinalTypedDelta": "65 tests passed with zero failure/error/skips in 11 classes, including real selected multi-section PDF/XLSX, 50000 raw selectors, 50000 canonical IDs, 100000-row master stream, original document/PDF regressions, duplicate/missing and interruption cleanup.",
+    "totals": {
+      "tests": 183,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "class": "com.uten.imp.audit.AuditQueryServiceTest",
+        "tests": 34,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.audit.AuditSessionTableExportServiceTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.ExportDocumentProjectionServiceTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.MasterExportSelectionTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.MasterExportSourceTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.SelectedExportIdsTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.StreamingDocumentWriterTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.StreamingPdfDocumentTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.TableColumnProjectionImmutabilityTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.export.XlsxSelectedRowsStreamingTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.web.JsonRequestBodyLimitAdviceTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.common.web.OutputSelectionRequestBodyLimitMvcTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.features.finance.gl.FinanceChartDirectoryExportTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.features.master.export.MasterExportSelectionAspectTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+        "tests": 31,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskExportServiceTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "currentInputs": "At v4 completion all 84 source hashes matched; the later capability protocol delta was freshly compiled and verified by its 52-test affected group with three unchanged final input hashes.",
+    "sourceDrift": []
+  },
+  "largeIdentityPredicate": "Master predicates use at most 1024 UUIDs per OR branch. With enabled Hibernate padding the 50000-ID case has a 50176-bind upper bound while retaining the original authorized filter/snapshot/count. Structural and identity-completeness checks are covered; real PostgreSQL execution at 50000 IDs is not claimed.",
+  "deploymentConfiguration": {
+    "production": "UTEN_REPORT_EXPORT_DIRECTORY=/var/lib/uten-imp-report-exports, StateDirectory=uten-imp-report-exports, StateDirectoryMode=0700; systemd owns persistent initialization as uten-imp:uten-imp outside release, web and attachment directories.",
+    "internalTest": "Separate /var/lib/uten-imp-internal-test-report-exports namespace; explicit validators accept only their reviewed private path.",
+    "property": "application.yml bridges the explicit environment variable to uten.report-export.directory. Existing worker queue cleanup, uncertain-publication retention and restart recovery remain authoritative; startup does not clear files.",
+    "gateway": "26 real annotated output paths are source-generated into three Nginx configurations. Exact report-job and anchored export locations allow 16 MiB; global proxy 2 MiB, ordinary Java 1 MiB, tighter master 2.2 MB and original per-environment proxy/rate/header/timeout directives remain in effect.",
+    "verification": "9 Python gateway/storage coupling checks and two environment-validator bash syntax checks passed. nginx executable is absent locally; actual nginx -t, Linux systemd startup, real PostgreSQL 50000-ID execution and production capability/full-output acceptance remain unperformed.",
+    "generator": "deploy/nginx/sync_output_selection_budget.py --check",
+    "log": "output-export-deploy-contract-tests.log",
+    "deployed": false
+  },
+  "references": [
+    "https://www.freedesktop.org/software/systemd/man/latest/systemd.exec#RuntimeDirectory=",
+    "https://docs.hibernate.org/orm/7.1/javadocs/org/hibernate/cfg/QuerySettings.html#IN_CLAUSE_PARAMETER_PADDING",
+    "https://www.postgresql.org/docs/current/limits.html"
+  ],
+  "versionHandshake": {
+    "protocol": "capabilities.selectionVersion=1 is independent of available. Selected output requires selectionVersion>=1. Missing version and old 404/501 preserve explicit all-output compatibility; selected requests are rejected instead of expanding to all.",
+    "native": "Selected actions recheck after confirmation; legacy download also rechecks after path selection. Scope remains unchanged on rejection. Unknown jobs reconcile using the exact original proof; unsupported selected retries cannot produce another mutation.",
+    "javaVerification": "Affected seven-class group: 52 tests, zero failures/errors/skips; real capability HTTP verifies version 1 with storage enabled and disabled. Frozen hashes: build/table-output-final/java-version-inputs.json.",
+    "nativeVerification": "Latest x86/x64 warn-as-error builds and each focused run: print23/export41/shared-selection9/handshake6 PASS.",
+    "logs": [
+      "server/output-selection-version-final.log",
+      "wpf-output-selection-version-build-x86.log",
+      "wpf-output-selection-version-build-x64.log",
+      "wpf-output-selection-version-x86.log",
+      "wpf-output-selection-version-x64.log"
+    ],
+    "scope": "Local protocol gate only. Mixed server versions and atomic rollback acceptance are not claimed; formal activation remains subject to same-source release gates.",
+    "canonical": {
+      "count": 372,
+      "done": 10,
+      "added": [],
+      "removed": [],
+      "protectedFieldDrift": [],
+      "originalNotePrefixFailures": [],
+      "states": {
+        "done": 10,
+        "in_progress": 32,
+        "todo": 282,
+        "implemented": 27,
+        "verified_local": 21
+      },
+      "inventoryShaMatches": true,
+      "commands": [
+        "business_inventory.py --write",
+        "progress_tracker.py sync",
+        "business_inventory.py --check",
+        "progress_tracker.py check"
+      ],
+      "exitCodes": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "unported": [
+    {
+      "task": "W7-BIZ-034",
+      "entry": "product_category_page",
+      "missing": "Native goods export/print/import and corresponding toolbar scope are not migrated; existing native goods view stays read-only."
+    },
+    {
+      "task": "W7-BIZ-031",
+      "entry": "mould_category_page",
+      "missing": "Native mould master/output is not migrated; backend durable mould export does not make WPF entry supported."
+    },
+    {
+      "task": "W7-BIZ-116",
+      "entry": "where_used_report_page",
+      "missing": "Native material where-used scope/title/classification/export entry remains unported."
+    },
+    {
+      "task": "W7-BIZ-216",
+      "entry": "goods_import_preview_page",
+      "missing": "Native goods import preview and mould-code relationship confirmation remain unported."
+    },
+    {
+      "task": "W7-BIZ-005",
+      "entry": "admin_audit_log_page",
+      "missing": "Native audit event/session output remains unported; Flutter uses authorized raw auditId/sessionId."
+    },
+    {
+      "task": "W7-BIZ-087",
+      "entry": "operations_workbench_page",
+      "missing": "Native workbench business/output remains unported; Flutter procurement uses independent taskId output identity."
+    },
+    {
+      "task": "W7-BIZ-154",
+      "entry": "subcontract_decomposition_page",
+      "missing": "Native subcontract task business/output remains unported; Flutter business action selection gates are preserved."
+    }
+  ],
+  "remainingAcceptance": [
+    "Full unit 28-action DoD",
+    "Full native ERP",
+    "Real Win7 SP1 x86/x64 UAT",
+    "Real company dataset and printer UAT",
+    "Formal Setup/update ZIP, signing, upload and deployment"
+  ],
+  "sourceHashes": {
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/TableOutputScopeDialog.cs": "08aca16cf9ce8515a3f5210f32f6de61238413e592ad90430aafcc033d678d7a",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs": "fa0f2b4867615c8a250fb2b551c21cab12a06216c4d596bb29738a0d77c831cb",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportService.cs": "f5351dab4b3f65b48f9806b59c0dfb4f169c7c84a0ba7d6093a495c07d947d9b",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs": "eac74e95580f536cc2a09432a5f689cfc0566294ab416476ce39a79e8077e106",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitPrintSnapshot.cs": "f079c4b3095f029e1f74e7dd7413c936af17fccd3dd967e22147c2e3ff569f36",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitPrintWindow.cs": "32115478f5668fffc9b159c033dc1f1e2d11fd29ef3f117cf14c49b1e9290931",
+    "clients/windows_legacy/Uten.Legacy.Core/UnitExportDownload.cs": "26cdbb277be6ba1030815bd65721c4a11424acb1f8db22510b1996c31ae033a8",
+    "clients/windows_legacy/Uten.Legacy.Core/UnitExportMutationContract.cs": "74b342a03f833e1a44791011cba3d03299703f3a91b587d1ef5ee60841844bb3",
+    "clients/windows_legacy/Uten.Legacy.Core/Tests/UnitExportMutationChecks.cs": "49896808656e36c75aa5b28d3cff57c3a6300eda0c17a963ad350bc372810551",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportUiChecks.cs": "859db320920224357141abfc11d3800d5fd574c21d21dc3ed3c91047be99ae8e",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/NativePrintContractChecks.cs": "bd473dc25298c6c4cafb3f46f26b0537f1f8b2d2f64f2c28a212ebbd91709c10",
+    "clients/windows_legacy/Uten.Legacy.Tests/Program.cs": "bdcde452097b86bb9ba069af8a6de900d77038784695662960a47b00e51b8c07",
+    "server/src/main/java/com/uten/imp/common/export/MasterExportSelection.java": "e4571e055835d88ae4fa3822bfc8df07e8d46f06b8e21a943c7ec43333679128",
+    "server/src/main/java/com/uten/imp/common/export/MasterExportSelectionAspect.java": "d23a3aba1db1b99c214bf9dab0967c023c31e5fdf41e9c7e66f197d91bbc46ca",
+    "server/src/main/java/com/uten/imp/common/export/MasterExportSelectionRequest.java": "b77082b99629eef8a1754e7e81b08321e72b3c65f2d6b74a397867b74bd9dd25",
+    "server/src/main/java/com/uten/imp/common/export/MasterExportSource.java": "b477a91fab0e82309621d5e01c55ff1a7c6f432cd0a50ca115d94511c43c7577",
+    "server/src/main/java/com/uten/imp/features/master/export/MasterReportExportSource.java": "fd7396cb452c9daeabf18fd9329a759ff59d45d14701dc891f86ba47e9009cfd",
+    "clients/windows_legacy/Uten.Legacy.Core/UnitColumnProjectionContract.cs": "36290609bc4e9c9790f35399ea42109f06effff22b5fc4121474ab47f20f78f1",
+    "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj": "bdd40fb9cc3d848c85a8b67e22c806b33d974d7f123e6338f02ff121b30e6ba6",
+    "contracts/table-output-selection/v1.json": "521afe4b8586a2a5ddfc46b71ef6dc73f8dc7dd10682d3c5a665a967a56202d6",
+    "server/src/main/java/com/uten/imp/common/export/DocumentPageSink.java": "fdc1d3bdad2f3e593ad7b8c195d757f61836f9dfdb0f9146028604b38006a8e4",
+    "server/src/main/java/com/uten/imp/common/export/ExportDocumentProjectionService.java": "23880211ee37cedb1db1bb88f2905c49251de0afa65f62f3ab0ce11f97b33815",
+    "server/src/main/java/com/uten/imp/common/export/ExportRowSelection.java": "2fdfa3de767cda53173a394c4c2ffb0c3dfec7fa1dda63161a1f402424f91132",
+    "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java": "904a566b6922b54c2c6557e06672286d6fdd70aa15417c943272e91389564026",
+    "server/src/main/java/com/uten/imp/audit/AuditSessionTableExportService.java": "287344578c79bc6e35949d1e6ddaad78383e8700da519337bd49da6d1e55a308",
+    "lib/features/operations_workbench/pages/operations_workbench_page.dart": "56eca2621a34e778bad713bf37c66a59f2a48ac8480eddd9beab3ae3cc194e99",
+    "lib/features/subcontract/pages/subcontract_decomposition_page.dart": "c6fa06e13be423c1f95b00a30bd4e57e5648c5f1ca091b28d93956bef3baf1ae",
+    "lib/features/admin/pages/audit_overview_widgets.dart": "c4f428909b9a8118f0158e05d428c3ad1ee9107547c1ef1cc94e84fd5f2f1bd0",
+    "server/src/main/java/com/uten/imp/audit/AuditController.java": "4571b03f619ba01c06ed6d7ec22ce844f59a5f5da600d85c38af00273a47e8d7",
+    "server/src/main/java/com/uten/imp/common/export/ExportPasswordRequest.java": "ff0347b7cbb9480620cba3aea4a695c8003ab610397e239d98bac74048a30525",
+    "server/src/main/java/com/uten/imp/common/export/SelectedExportIds.java": "a8245d6671b6b644c601dd2ba0188ddb57aa23b1e1d9a2e74c4685ef3a36dfcb",
+    "server/src/main/java/com/uten/imp/common/export/TableColumnProjection.java": "1add9759138412fddd381fd33c39c672cebcdc93f8f6478952dc760cbe9271b5",
+    "server/src/main/java/com/uten/imp/common/export/XlsxExportService.java": "d569906bd2f7747b00d02c54802d3362462f19721522ee76465257da26d66f66",
+    "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartReports.java": "4045fb27b81f199ff8457e958f36de1c0017d67181b3a624247b939f1fe23792",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java": "556f7a723a96240bad12e22f4c2fd256cdba5e9cf38541a220f4305ba10e4ce9",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java": "f42031bf4452990f2363649f21d17c21361a55edb661915a7986a3620509f8b5",
+    "server/src/main/java/com/uten/imp/features/master/account/AccountController.java": "4515d24f6c5909121e5d12b939ecb5cff848a7b36a76f2e8b0b8fad59f3909ef",
+    "server/src/main/java/com/uten/imp/features/master/client/ClientController.java": "c93901ace2ecd6965bcc2edf21b259e8263bbd413dd7af8527490b0fa8bf875d",
+    "server/src/main/java/com/uten/imp/features/master/color/ColorController.java": "4abe837ba4d91e2c353b77ab4d89937c37eeed583329f30e03a359e37b26a134",
+    "server/src/main/java/com/uten/imp/features/master/currency/CurrencyController.java": "88040c4cadf0ed36fb38f57791fc22b80264167ab01fe89a5518615c1e4aa15f",
+    "server/src/main/java/com/uten/imp/features/master/dto/ContactExportRequest.java": "71d490a2f191fab3ee24ae9850d6dffe2aa7d24e3de10d0ae9a25a7199513a95",
+    "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomController.java": "cb0ccb57f9f0f1fb93cf33919a2677170120b05f3cb5567312fb6856f615e935",
+    "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomExportProjection.java": "87ad7e1e161e3bfad1e031948c8a9c3da32e012e63d83d84c0e061ea8f1d6723",
+    "server/src/main/java/com/uten/imp/features/master/goods/GoodsController.java": "780971fcf3688b7720ae2a82fc54e75625d4cd4d7ce0c9e1246f75ccd6e9f1f5",
+    "server/src/main/java/com/uten/imp/features/master/goods/GoodsExportProjection.java": "5c8aada3b4bebc7900ec0e6e9d7d6442313148f04ebd3aa95772814a4d773f8a",
+    "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsActualCostExportController.java": "40a5f8300d383cc203395609127026850a9df0a7d59d80530d47dd171190aca8",
+    "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostDocumentMapper.java": "7cb2746d535fcde931820854156104dc8e41f38c5e20961594467484cf0b3556",
+    "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostExportController.java": "5471f0c10f0d46a203dd035f66a49858e070fb1474b6940f29cb6d353f5603ff",
+    "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportProblemRow.java": "a233337ac2bc4de4376f386b5345de29467f3f9f9ff69749d7738e77f4787b21",
+    "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportReport.java": "9cafa6295a30a0d0932e9b7be950a562f8b6a06081abecfdc9d3d3dbe8b4794d",
+    "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportService.java": "4d04256730ac511a6c8edd5e3f8cffca0c316371ae67619340d940290f78a144",
+    "server/src/main/java/com/uten/imp/features/master/mould/MouldController.java": "787b8922515eb522036d54f0f343e9afbb011ddb8128efd7d74536414c3a496f",
+    "server/src/main/java/com/uten/imp/features/master/mould/MouldRepository.java": "43fe63e582a0733b18c24af3e0169d66f98e192c38aa7c2f7a9a29ae465958c2",
+    "server/src/main/java/com/uten/imp/features/master/referencemethod/ReferenceMethodController.java": "1c76597467759b1dd1becfe51735a53a5706dfe1ea19fa957047063efaa407ab",
+    "server/src/main/java/com/uten/imp/features/master/supplier/SupplierController.java": "d4c22cf9e746f534bbe7150e9e2b13bd865977ea0070d1f4731d20eea7a9996c",
+    "server/src/main/java/com/uten/imp/features/master/unit/UnitController.java": "eda9bbfed5c59e2acc35e0e2cc5e0b3f84d4a54e4fe709772a5619fbd11a9853",
+    "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseController.java": "d01ded42946f38cb1cd9492dd42c74b26800d4bddd048b2abe727b3afdddf6cf",
+    "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchExportController.java": "35946c6564f4acc0baa3229f887dba51b672076fdf0c2ad3ed770160b6e3abc7",
+    "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskExportService.java": "d7bfc241caa1aedf91dab75356c8094e58862efbab8739f1fe1edba51584af42",
+    "server/src/main/java/com/uten/imp/features/production/report/ProductionReportController.java": "d10330f80d9fc9856d97667e5563cada2681d433af9137e76e97a9aa26807aab",
+    "server/src/main/java/com/uten/imp/features/production/report/ProductionWhereUsedQueryService.java": "6d18a786fdd66971d5dbd13af4d7d5ec82fe7616883f62d86fdd070905fb3e3e",
+    "server/src/main/java/com/uten/imp/features/production/report/WhereUsedExportController.java": "910c3ad77302679172c69798abbc9f90f9e5212be39b9236d98985335c1e1dfa",
+    "server/src/main/java/com/uten/imp/features/production/report/WhereUsedExportService.java": "298c89e2fc303d6a93675e16a833247fd532a788cf3a336629a298f8539b0661",
+    "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java": "307328be8b35043c14886a940f2929706855cc668c92fcfb4c9fd509520bdc18",
+    "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportController.java": "7809f8c94f9d6edfeb7be04a951cba5c2fdd318f8c6842e02c71fea0ce2e3fcb",
+    "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportRequest.java": "ff05dd10dc2d115dbd01a233d9c0288045873db9d04528ea1f25cfc88ce650eb",
+    "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportService.java": "663c2bd395a277d658a60b507e7b73080b4fb62b33ffe32d7da2c97227e3c29c",
+    "server/src/main/java/com/uten/imp/features/sales/report/SalesReportController.java": "0d14caedcb8bc63da3e78f5fb2df43ee618d8fa5de481d757b463ef7768014e3",
+    "server/src/main/java/com/uten/imp/features/stock/ShelfLabelSql.java": "1143c97a82209534721fd241497ad1b34b865ad4c994b49fb660cb6163549793",
+    "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java": "090b2258084794d97e25bb7e7725fe4a2dde548c451fcbe068917811cae532f7",
+    "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java": "859cfd4f89916175a4ea29ad67c8a2201f85730040658ee185982f243f92c58b",
+    "server/src/main/java/com/uten/imp/features/stock/report/StockReportController.java": "b51fc362011747fca224cec7e0de8a886bcab28fed2ec171342d99f4d10f9f50",
+    "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java": "6b2ce305cab2a0934c75aca14f1289dbc18e1cc0085fd10b8217ef5c5c40d317",
+    "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportController.java": "614d6247e058b5094efd3c55758afb6f5bbeed626e380bde6d8e4c0110ac9857",
+    "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java": "baf2af1acb22faf5e84af5b8a9a807a379d3bb7600f15e65b427a52efb51c037",
+    "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterController.java": "f85b43b75a4cce7cea7aee260c68fda2ae3019b31cec515b20dfdf7ba99a1742",
+    "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java": "53622f921b102df7c1c0edad0477903d8fd4d9a1d6492c3903d069ec29f0f5b5",
+    "server/src/test/java/com/uten/imp/audit/AuditSessionTableExportServiceTest.java": "93474eab8d45735b04551218b742a1743de662258b3a987c9b98489103caa016",
+    "server/src/test/java/com/uten/imp/common/export/ExportRowSelectionTest.java": "157644c99ce238fa077594cd118cb74b3111f2b6532a8e60361715019f5b05dd",
+    "server/src/test/java/com/uten/imp/common/export/MasterExportSelectionTest.java": "74ff206adeaf1e5e27ed3ad7849872363c686e31864e24054ac2b04f2e855947",
+    "server/src/test/java/com/uten/imp/common/export/SelectedDocumentProjectionTest.java": "e2479874d629895e05455530f0f10eb76a9f50f8e2ca8d20d632e04127c511f3",
+    "server/src/test/java/com/uten/imp/common/export/SelectedExportIdsTest.java": "5dd482cb46c61546185ca32335e047bf3d1ec7c81d89df96a9506c35050cbc3b",
+    "server/src/test/java/com/uten/imp/common/export/XlsxSelectedRowsStreamingTest.java": "22ce4aa70579388a849c02c2ef5e3877c03b9e509b5c0550c0c823b4315cbabd",
+    "server/src/test/java/com/uten/imp/common/web/OutputSelectionRequestBodyLimitMvcTest.java": "bef3ae3a33c9039ff85d7ef68137c9028ac503f5a97408b1e833e16f6ba01356",
+    "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartDirectoryExportTest.java": "f63f63d3f775af2cef47c4d74c6e96ea0ca1c8d65562d25f6ba67c83bf44bbcb",
+    "server/src/test/java/com/uten/imp/features/master/export/MasterExportSelectionAspectTest.java": "c1b76f94da9f7c4eb48d7cf56ff5ce2310a4731316af39891f35ad1055b1b318",
+    "server/src/test/java/com/uten/imp/features/master/goods/GoodsBomExportProjectionTest.java": "97d9a63f667b1b70d89020e8b07772592c996048b92b291bebc93a77f707f817",
+    "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostDocumentMapperTest.java": "5b1d900510df8549d9407f42c976a2acd91e2df4eb2a58425024469927e25094",
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportCellCorrectionsSafetyTest.java": "6b336ad306f8c9c62abd0ca2e75203518b9dbce286f40d115e4a12bd1df6f2fb",
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportMouldReferenceTest.java": "788bd299cd8397d2487468a70d77e2ec66c6c6ae00490c550505882ece7fe621",
+    "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportPaperTest.java": "c0c7dd0b788d56883658b20f7e65092763c9274f146db164dff3a56bd2459df3",
+    "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryServiceTest.java": "2791330d14ad2d8ae2d1ebc2520f55c1f28f06073efcad7d5615af429d4edd56",
+    "server/src/test/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskExportServiceTest.java": "d99ff6cda98ae2e7e6f92304f554b81060525852d94733559e2c88b0f5238b08",
+    "server/src/test/java/com/uten/imp/features/production/report/ProductionWhereUsedQueryServiceTest.java": "74c00379ef370e2fc10f8f1049b11cad60a2b7d0673ade3750a11187e22d6d9e",
+    "server/src/test/java/com/uten/imp/features/production/report/WhereUsedExportAndReplacementSecurityTest.java": "52500de7eb93fad933d90bf1f8c6cdabe632637bedcccfb9f2dabc0ce6c80f3f",
+    "server/src/test/java/com/uten/imp/features/production/report/WhereUsedExportServiceTest.java": "1ebf69c263cf5edf27b0c53715f361877bcf4fb7abf201db0ea59775e5478847",
+    "server/src/test/java/com/uten/imp/features/reporting/export/MasterReportExportSourceTest.java": "45dc3a40594ac2e10ca7115f9f010e34fc7e207b744259c35061468ee80c2e39",
+    "server/src/test/java/com/uten/imp/features/reporting/export/ReportExportServiceTest.java": "916178a93ecf6e7ae066fdedb8d5d2db3711b33d7e79e3e879bb7672a182e794",
+    "server/src/test/java/com/uten/imp/features/stock/ShelfLabelOutputScopeTest.java": "738ef5f2163f014008b08647c30084101bc3d70193a10547fd1eef498ff753ba",
+    "server/src/test/java/com/uten/imp/features/stock/report/ShelfLabelExportPagingTest.java": "d51958a5c504a69dfb8c3471fd82ab87552b3d9408e7240dc58a0438fbce2870",
+    "server/src/test/java/com/uten/imp/features/stock/report/StockReportWarehouseInventoryScopeTest.java": "1e3b98a0f79d14d9150e8fb48e1dc9741f2fd9e58fe4b7e8b44fd826ce72b6b1",
+    "server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterOutputIdentityTest.java": "43b5e05b9f9ae9740b623602aae8994dc847bcd61ba8fe38a3047c4f8beaddb1",
+    "deploy/nginx/uten-imp-internal-test.conf.example": "6b44940b67e57d8aa830a4831221b4548bbfc96d67f6cf17a8c2d0ef28083c14",
+    "server/src/main/resources/application.yml": "26f4412437d15ce115eef18a194f437bbf9ccbe860bcff31e11a8064153eaec2",
+    "deploy/nginx/test_output_selection_budget.py": "620763e8d8469e2f6244bd3d94cda82026b796318304bd2406573a38b114d332",
+    "deploy/systemd/uten-imp-internal-storage.conf.example": "aedd8cc9856973efea674bb91a91fb9668e8c88e31a1c400d6fc022afd8a4a6a",
+    "deploy/simple/units/uten-imp.service": "bd3846203cec168253aad9fc22d4d727409d3707acf94766ce46e3f552ee9b7c",
+    "deploy/setup/validate-server-env.sh": "ec18329a2d8dfb77855d13678517104e04152648e8004eb3d6523d3f720c5099",
+    "deploy/systemd/uten-imp-internal-test.service.example": "8db7ba20cfd6107285309b0cf7816a462b0df8bb4b518b627c09cea38dbb220e",
+    "deploy/setup/validate-internal-test-server-env.sh": "e310ac5826df80e653656d94352f42dc4e1f78a48b2d0ed235f2952959176899",
+    "deploy/setup/server.env.internal-test.example": "9a7d7db5181a1ba15e6813a4a98dbd3a4dd19e0aeb7ecb249febb63610a785bd",
+    "deploy/systemd/uten-imp.service.example": "94e10c174c1fc0539f8aeaed42cca852c200e3fb5f2fe29d0912432fa554234c",
+    "server/.env.example": "de2826deb67b676c6c11d68366615f251c496c5b57e2c63dc3a6f89c14a3a670",
+    "deploy/nginx/uten-imp-http-lan.conf": "60674fbefd5d486e32e1e9b22865146a3a5569a01508398db9f4cb82a92a9f00",
+    "deploy/nginx/uten-imp.conf.example": "4f02873dfeea9a3b39cf0e2abe91eea15b1d224ddfd89920987a5cf7470d27b9",
+    "deploy/setup/server.env.internal-storage.example": "f4cc79a772cf0a12cd01a05f207616fbbe16fa032560f9418e8054452b425e30",
+    "deploy/simple/RUNBOOK.zh-CN.md": "ba659e17dd3a376d252668b49cdf55ddeeb49c40c8d7a992bddd2a223eaa27b5",
+    "deploy/simple/test_report_export_storage.py": "ca97eb75aa6988c60c7c5cc0639e0227da628cd401d77a8bf217f14f2a9e3d2a",
+    "deploy/nginx/sync_output_selection_budget.py": "5cb8486bc0a5c34536d582ca10cac7181e0892d51d48c35320e40f0dd351a030",
+    "server/src/main/java/com/uten/imp/common/export/OutputSelectionProtocol.java": "097c8e48c9cac999dc195558e1e82d82da6d9ee3cfe59b1057577b97530a2e7b",
+    "server/src/test/java/com/uten/imp/common/export/OutputSelectionCapabilitiesTest.java": "0e3521c31b8d6d3b33352e1cd8d0ce76cdb0f28478f0bc4eba48054fece2cd29"
+  },
+  "flutterTypedCallerVerification": {
+    "tests": 48,
+    "status": "passed",
+    "command": "flutter test test/features/operations_workbench/operations_workbench_desktop_table_test.dart test/features/admin/admin_audit_log_detail_test.dart --no-pub --concurrency=1",
+    "analysis": "Five owned Dart caller/test files: No issues found.",
+    "logs": [
+      "output-typed-caller-tests.log",
+      "output-typed-caller-analyze.log"
+    ],
+    "coverage": "Existing typed procurement desktop table and audit event/session actual page groups, including real output identity/selector properties, narrow layouts, 1.0x/1.25x/1.5x prepend/pagination and privacy/read-scope behavior. Business selection settings preserved."
+  },
+  "postVersionIdentityDelta": {
+    "status": "passed",
+    "uniqueJavaTests": 142,
+    "uiCases": 6,
+    "scope": "six owning report services; hidden physical __lineId, original grain/totals/visible columns preserved; compact numeric selector canonicalization",
+    "evidence": "docs/99-项目治理/表格输出范围-20261105/report-line-identity-validation.json",
+    "sourceSha256": {
+      "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java": "8b71bb6838e97c67429c25127af09010b9905821833e910964644ec56ffc7ec1",
+      "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java": "64cafd56aca77328840ae894f84393249bbc481d6b214033824511fd9103d367",
+      "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java": "4c84166aa91db8326e8fb7fa28753a11f5ec68a719d88d8e81921acf9c6c2178",
+      "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java": "f0ec595e509b37b7066ef8ac1dd85b068e77318a10d0ee7cb090a03a7beb86fb",
+      "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java": "6b2ce305cab2a0934c75aca14f1289dbc18e1cc0085fd10b8217ef5c5c40d317",
+      "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java": "f42031bf4452990f2363649f21d17c21361a55edb661915a7986a3620509f8b5",
+      "server/src/main/java/com/uten/imp/common/export/ExportRowSelection.java": "2fdfa3de767cda53173a394c4c2ffb0c3dfec7fa1dda63161a1f402424f91132",
+      "test/features/report/report_output_selection_callers_test.dart": "865ed56c0a5dc58cb7143e7eef5cd952667cf4345d100c8698159e8194f0e97a"
+    },
+    "previousVersionGateHashes": {
+      "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java": "d68037b4c4fa3e6150abd5276bee758374979716532ad930fcbcaee9883044a0",
+      "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java": "0a170450701565d934171e56f4d0db99a3c0126e82988e46531d7b142af96c72",
+      "server/src/main/java/com/uten/imp/common/export/ExportRowSelection.java": "33b90c6390b33f7745a05fb6aa8afb513a54e6b9557f30b6edc1a1719d43ccc9"
+    }
+  }
+}

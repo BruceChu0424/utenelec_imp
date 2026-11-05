@@ -535,6 +535,7 @@ public class FulfillmentWorkbenchQueryService {
 
     private static Map<String,Object> subcontractExportRow(FulfillmentTaskRow row) {
         Map<String,Object> values = new LinkedHashMap<>();
+        values.put("taskId", row.taskId());
         values.put("status", purchaseStatusLabel(row.displayStage() == null ? row.taskStatus() : row.displayStage()));
         values.put("planNo", row.planNo());
         values.put("docNo", row.actionDocRestricted() ? "无权查看关联单据" : row.actionDocNo());
@@ -572,6 +573,7 @@ public class FulfillmentWorkbenchQueryService {
     }
     private static Map<String,Object> purchaseExportRow(FulfillmentTaskRow row) {
             Map<String, Object> values = new LinkedHashMap<>();
+            values.put("taskId", row.taskId());
             String statusLabel = purchaseStatusLabel(row.displayStage() == null ? row.taskStatus() : row.displayStage());
             String exceptionLabel = purchaseExceptionLabel(row.exceptionCode());
             values.put("status", row.exceptionCode() == null || row.exceptionCode().equals(row.taskStatus())

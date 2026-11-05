@@ -383,6 +383,7 @@ class GoodsImportCellCorrectionsSafetyTest {
         var importer = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(service, repository, null, categories,
                 null, colors, null, units, em, actor, null));
         ReflectionTestUtils.setField(importer, "writeAccess", mock(GoodsMasterWriteAccessPort.class));
+        ReflectionTestUtils.setField(importer, "mouldRepo", mock(com.uten.imp.features.master.mould.MouldRepository.class));
         return new Fixture(importer, service, category, saved);
     }
 

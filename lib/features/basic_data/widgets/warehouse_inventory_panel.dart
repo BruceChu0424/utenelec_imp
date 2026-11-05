@@ -275,7 +275,7 @@ class _WarehouseInventoryPanelState
           sort: sort,
           order: order,
         ),
-        idOf: (row) => '${row.goodsId}|${row.colorId}',
+        idOf: (row) => row.rowKey,
         includeRowIds: false,
         headers: [for (final column in columns) column.label],
         columnKeys: [for (final column in columns) column.key],
@@ -283,6 +283,7 @@ class _WarehouseInventoryPanelState
           for (final column in columns) column.value(row) ?? '',
         ],
         factsOf: (row) => {
+          ...row.identityFields,
           'qty': row.qty?.toString(),
           'weight': row.weight?.toString(),
           if (_canViewCost) 'costPrice': row.costPrice?.toString(),
@@ -480,6 +481,8 @@ class _WarehouseInventoryPanelState
             expensiveRowMounts: false,
             key: const Key('warehouse-inventory-table'),
             tableKey: 'master.warehouse.inventory',
+            idOf: (row) => row.goodsId == null ? null : row.rowKey,
+            outputSelectorOf: (row) => row.identityFields,
             primary: widget.primary,
             bottomContentPadding: widget.bottomContentPadding,
             columns: instantInventoryColumns(
@@ -511,7 +514,6 @@ class _WarehouseInventoryPanelState
                 enabled: _resultsReady,
                 title:
                     '${widget.warehouse.name ?? widget.warehouse.code ?? ''}即时库存',
-                subtitle: '当前筛选的完整结果',
                 loader: _printLoader,
                 type: UtenButtonType.primary,
                 size: UtenButtonSize.large,

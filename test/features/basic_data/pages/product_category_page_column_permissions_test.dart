@@ -60,6 +60,47 @@ Finder _goodsColumnTooltip(String message) => find.descendant(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('导入入口独立于导出权限且快速重复点击只打开一次', (tester) async {
+    await _pumpPage(
+      tester,
+      _FakePlatformTableRepository(),
+      {Perm.goodsView, Perm.goodsImport},
+      identity: const AuthenticatedScope(userId: 'goods-import-entry'),
+    );
+    // The responsive toolbar retains its original controls inside the closed
+    // Uten action panel; exercise that real configured action as well.
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+      find.byType(MasterDataTableView<GoodsListItem>),
+    );
+    final toolbar =
+        table.toolbarLeadingActions!.singleWhere(
+              (action) => action.key == const ValueKey('goods-import'),
+            )
+            as UtenButton;
+    final appBar = tester.widget<ButtonStyleButton>(
+      find.byKey(const ValueKey('goods-import-app-bar')),
+    );
+    toolbar.onPressed!.call();
+    appBar.onPressed!.call();
+    await tester.pumpAndSettle();
+    expect(find.text('选择导入方式'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择导入方式'), findsNothing);
+    appBar.onPressed!.call();
+    await tester.pumpAndSettle();
+    expect(find.text('选择导入方式'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未授权导入时工具条与页头均不开放入口', (tester) async {
+    await _pumpPage(tester, _FakePlatformTableRepository(), {Perm.goodsView});
+    expect(find.byKey(const ValueKey('goods-import')), findsNothing);
+    expect(find.byKey(const ValueKey('goods-import-app-bar')), findsNothing);
+  });
+
   testWidgets('货品默认编号在名称前且未授权价格折扣列不进入表格', (tester) async {
     await _pumpPage(tester, _FakePlatformTableRepository(), {Perm.goodsView});
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(

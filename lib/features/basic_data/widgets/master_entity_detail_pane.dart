@@ -1524,7 +1524,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   /// 四页统一进工具条，卡内带 icon 的旧款随 inCard 退役）。
   List<Widget> _exportButtons() {
     final export = _c.export;
-    if (export == null) return const [];
+    if (export == null) {
+      return _c.toolbarBeforeExportActions?.call(this) ?? const [];
+    }
     return [
       UtenPrintPreviewButton(
         enabled: !_queryPending && _error == null && !_loading && !_listLoading,
@@ -1540,8 +1542,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         type: UtenButtonType.primary,
         size: UtenButtonSize.large,
       ),
-      if (!_inlineEdit.active && _error == null)
-        ...?_c.toolbarBeforeExportActions?.call(this),
+      ...?_c.toolbarBeforeExportActions?.call(this),
       UtenExportButton(
         enabled: !_queryPending && _error == null && !_loading && !_listLoading,
         prepareExport: () async {

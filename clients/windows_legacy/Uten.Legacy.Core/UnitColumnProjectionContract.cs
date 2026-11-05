@@ -9,7 +9,9 @@ namespace Uten.Legacy.Core
         internal static void Validate(MutationJsonNode projection)
         {
             if (projection == null || projection.Value == null) return;
-            var root = projection.Object; MutationJsonTree.Keys(root, "tableKey", "scope", "columns");
+            var root = projection.Object; MutationJsonTree.Keys(root, "tableKey", "scope", "columns", "rowSelection");
+            MutationJsonNode selection;
+            if (root.TryGetValue("rowSelection", out selection) && selection.Value != null) throw new FormatException();
             if (MutationJsonTree.Text(MutationJsonTree.Required(root, "tableKey"), true) != "master.unit"
                 || MutationJsonTree.Text(MutationJsonTree.Required(root, "scope"), true) != "master_unit") throw new FormatException();
             var columns = MutationJsonTree.Required(root, "columns").Array;

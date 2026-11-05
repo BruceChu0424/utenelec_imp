@@ -30,6 +30,7 @@ public final class MasterExportSource {
 
     public static <T> Page<T> page(JpaSpecificationExecutor<T> repository, EntityManager em,
                                   Class<T> type, Specification<T> specification, Pageable pageable, Object filter) {
+        specification = MasterExportSelection.intersect(specification);
         Cursor cursor = CURRENT.get();
         return cursor == null ? repository.findAll(specification, pageable)
                 : cursor.read(repository, em, type, specification, pageable, filter);
@@ -61,6 +62,7 @@ public final class MasterExportSource {
                 if (expected < 0) {
                     expected = result.getTotal();
                     if (expected < 0) throw new IllegalStateException("Master export requires its initial count");
+                    MasterExportSelection.requireComplete(expected);
                     ReportQueryKit.requireExportRowCount(maxRows, expected);
                     if (sink == null && expected > SYNCHRONOUS_MAX_ROWS)
                         throw LegacyExportBudget.tooManyRows();
@@ -129,6 +131,7 @@ public final class MasterExportSource {
                 if (type == null) {
                     type = requestedType; sort = pageable.getSort(); filter = freeze(requestedFilter);
                     total = repository.count(specification);
+                    MasterExportSelection.requireComplete(total);
                     ReportQueryKit.requireExportRowCount(maximum, total);
                     if (synchronous && total > SYNCHRONOUS_MAX_ROWS) throw LegacyExportBudget.tooManyRows();
                     if (total > 0) {
@@ -208,6 +211,7 @@ public final class MasterExportSource {
             fields.add(freeze(projection.tableKey()));
             fields.add(freeze(projection.scope()));
             fields.add(freeze(projection.columns()));
+            fields.add(freeze(projection.rowSelection()));
             return Collections.unmodifiableList(fields);
         }
         if (value instanceof Record record) {

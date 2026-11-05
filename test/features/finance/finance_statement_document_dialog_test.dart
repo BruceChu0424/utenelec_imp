@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -179,6 +180,14 @@ void main() {
           .whereType<UtenPrintPreviewButton>()
           .single;
       expect(button.applyTableProjection, isFalse);
+      expect(button.showOutputScope, isFalse);
+      expect(
+        original.toolbarActions!
+            .whereType<UtenExportButton>()
+            .single
+            .showOutputScope,
+        isFalse,
+      );
       expect(button.exportQuery!['statementReviewId'], 'original');
       final loaded = await tester.runAsync(button.loader);
       expect(loaded!.headers, ['原日期', '订单号', '原数量', '原金额']);

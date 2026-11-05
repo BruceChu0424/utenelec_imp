@@ -528,7 +528,7 @@ class _SubcontractReportTablePageState
         ),
         UtenPrintPreviewButton(
           title: '委外$_title',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（全部筛选结果）',
           loader: _printLoader,
           exportEndpoint: '/subcontract/reports/export',
           exportPermission: Perm.subcontractReportExport,

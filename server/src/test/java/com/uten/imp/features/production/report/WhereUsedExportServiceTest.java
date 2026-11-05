@@ -28,6 +28,15 @@ class WhereUsedExportServiceTest {
     final EntityManager em = mock(EntityManager.class);
     final EmployeeNameResolver employees = mock(EmployeeNameResolver.class);
     final WhereUsedExportService service = new WhereUsedExportService(query, currentUser, em, employees);
+
+    @Test void changedSelectedRowsFailBeforeProducingAFile() {
+        UUID material=UUID.randomUUID(),product=UUID.randomUUID();
+        var filters=Map.of("selectedProductIds","[\""+product+"\"]");
+        when(query.whereUsedExportPage(material,"all",null,null,1,200,null,null,true,filters)).thenReturn(
+                new ReportTableResponse(List.of(ReportColumn.text("goodsName","产品名称")),List.of(),Map.of(),1,200,0,0));
+        assertThrows(ApiException.class,()->service.document(material,"all",null,null,null,null,filters));
+        verifyNoInteractions(em,currentUser,employees);
+    }
     @AfterEach void clear(){TransactionSynchronizationManager.clear();SecurityContextHolder.clearContext();}
     private AuthUser principal(Set<String> permissions){return new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"server-account",permissions,false,true,false);}
     private void snapshot(AuthUser user,boolean active,boolean readOnly,int isolation) {

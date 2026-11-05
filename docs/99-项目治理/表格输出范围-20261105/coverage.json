@@ -1,0 +1,516 @@
+{
+  "date": "2026-11-05",
+  "baseline": "f6e0d8532",
+  "branch": "uimp/table-output-import-trace-20261105",
+  "classification": "frontend+backend+shared-contract+deployment-source-only",
+  "entries": [
+    {
+      "path": "lib/components/print/uten_print_preview.dart",
+      "line": 691,
+      "entry": "showUtenPrintPreview",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/components/print/uten_print_preview.dart",
+      "line": 990,
+      "entry": "printPdfBytes",
+      "scope": "完整业务源文档（申请/报销/组织图）",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/components/print/uten_print_preview.dart",
+      "line": 1091,
+      "entry": "UtenExportButton",
+      "scope": "沿已冻结预览范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/core/print/pdf_printer.dart",
+      "line": 15,
+      "entry": "printPdfBytes",
+      "scope": "完整业务源文档（申请/报销/组织图）",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/admin/pages/admin_audit_log_page.dart",
+      "line": 1731,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/applications/widgets/business_application_print.dart",
+      "line": 260,
+      "entry": "printPdfBytes",
+      "scope": "完整业务源文档（申请/报销/组织图）",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "line": 1578,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "line": 1592,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/color_page.dart",
+      "line": 971,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/color_page.dart",
+      "line": 984,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/currency_page.dart",
+      "line": 1053,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/currency_page.dart",
+      "line": 1066,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/settlement_method_page.dart",
+      "line": 796,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/settlement_method_page.dart",
+      "line": 810,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/unit_page.dart",
+      "line": 948,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/unit_page.dart",
+      "line": 961,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 1671,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 1682,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_preview.dart",
+      "line": 436,
+      "entry": "printPdfBytes",
+      "scope": "BOM全部出现位置冻结范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_preview.dart",
+      "line": 535,
+      "entry": "UtenExportButton",
+      "scope": "沿已冻结预览范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_tab.dart",
+      "line": 4148,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 895,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+      "line": 1209,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_detail_body.dart",
+      "line": 1946,
+      "entry": "showGoodsBomPreview",
+      "scope": "完整业务源文档（申请/报销/组织图）",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "line": 1531,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "line": 1546,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "line": 512,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "line": 522,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/department/widgets/department_org_chart_dialog.dart",
+      "line": 525,
+      "entry": "printPdfBytes",
+      "scope": "完整业务源文档（申请/报销/组织图）",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/department/widgets/department_roster_print.dart",
+      "line": 37,
+      "entry": "showUtenPrintPreview",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/expense/widgets/expense_claim_print.dart",
+      "line": 276,
+      "entry": "printPdfBytes",
+      "scope": "完整业务源文档（申请/报销/组织图）",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "line": 577,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "line": 590,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "line": 958,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "line": 971,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "line": 498,
+      "entry": "showUtenPrintPreview",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "line": 1821,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "line": 1839,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "line": 668,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "line": 682,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_dialog.dart",
+      "line": 402,
+      "entry": "UtenExportButton",
+      "scope": "完整业务模板；保留原结构",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_dialog.dart",
+      "line": 471,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "line": 583,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "完整已确认财务原件；禁止拆合计",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "line": 603,
+      "entry": "UtenExportButton",
+      "scope": "完整已确认财务原件；禁止拆合计",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "line": 1895,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/production/pages/production_plan_summary_sheet_page.dart",
+      "line": 851,
+      "entry": "printPdfBytes",
+      "scope": "完整生产汇总源单",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/production/pages/production_report_page.dart",
+      "line": 541,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/production/pages/production_report_page.dart",
+      "line": 553,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "line": 2877,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/production/pages/where_used_report_page.dart",
+      "line": 1561,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "line": 515,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "line": 527,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/purchase/widgets/purchase_order_batch_export.dart",
+      "line": 24,
+      "entry": "exportOrderDocumentsBatch",
+      "scope": "已确认整单文档包",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 557,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 569,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 969,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/sales/templates/sales_quote_template_download_button.dart",
+      "line": 50,
+      "entry": "UtenExportButton",
+      "scope": "完整业务模板；保留原结构",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_shipment_print.dart",
+      "line": 28,
+      "entry": "showUtenPrintPreview",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "line": 1008,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "line": 1020,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "line": 2275,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "line": 529,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "line": 541,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_order_batch_export.dart",
+      "line": 24,
+      "entry": "exportOrderDocumentsBatch",
+      "scope": "已确认整单文档包",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/pages/workshop_material_count_page.dart",
+      "line": 1265,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "line": 601,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "line": 911,
+      "entry": "printPdfBytes",
+      "scope": "货架真实身份与完整纸面",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "line": 1186,
+      "entry": "UtenExportButton",
+      "scope": "沿已冻结预览范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "line": 547,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "line": 559,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "line": 1315,
+      "entry": "UtenPrintPreviewButton",
+      "scope": "公共完整预览与范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "line": 1327,
+      "entry": "UtenExportButton",
+      "scope": "公共文件设置弹窗内范围",
+      "evidence": "对应实际调用方组及公共回归，见receipt.json；保留原件差异"
+    }
+  ],
+  "rawSourceDownloads": "附件/已确认对账原件/工资条/权限配置归档保持原始文件与校验，未改为明细子集",
+  "nativeEvidence": "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json",
+  "fullErpOrProductionAcceptance": false,
+  "entryCount": 72
+}

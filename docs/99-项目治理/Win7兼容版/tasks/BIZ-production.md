@@ -625,9 +625,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/table-output-selection-20261105.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 Flutter where-used opens the shared goods BOM editor directly and keeps relation history in row context menu. Native where-used, editable BOM navigation and comparison windows remain unported. Preserve permissions, history/current-BOM distinction and shared transaction contract. See E-MOULD-BOM-WINDOWS-20261031.；2026-11-01追加：货品历史按当前价格/成本/折扣及扩展字段查看权，在服务端分页前隐藏无可读差异的记录；详情直读及恢复同样限制。物料反查使用共用货品主档/BOM入口，成功实际变更由同一数据库触发器纳入货品历史。原生全局历史/物料反查仍未迁移；见docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 Flutter where-used opens the shared goods BOM editor directly and keeps relation history in row context menu. Native where-used, editable BOM navigation and comparison windows remain unported. Preserve permissions, history/current-BOM distinction and shared transaction contract. See E-MOULD-BOM-WINDOWS-20261031.；2026-11-01追加：货品历史按当前价格/成本/折扣及扩展字段查看权，在服务端分页前隐藏无可读差异的记录；详情直读及恢复同样限制。物料反查使用共用货品主档/BOM入口，成功实际变更由同一数据库触发器纳入货品历史。原生全局历史/物料反查仍未迁移；见docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-05图5：Flutter物料反查增加当前物料编号/名称、分类子树筛选与已选产品输出；原生该页及输出入口未迁移。后续须沿用服务端materialGoodsId/source/date/categoryId/selectedProductIds权威，不能只凭相同后端标完成。见E-TABLE-OUTPUT-SELECTION-20261105。。
 
 ## W7-BIZ-117
 

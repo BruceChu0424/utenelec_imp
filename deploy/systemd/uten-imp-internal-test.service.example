@@ -17,6 +17,10 @@ User=uten-imp
 Group=uten-imp
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+# Keep candidate/internal-test export artifacts separate from production state.
+StateDirectory=uten-imp-internal-test-report-exports
+StateDirectoryMode=0700
+Environment=UTEN_REPORT_EXPORT_DIRECTORY=/var/lib/uten-imp-internal-test-report-exports
 # Kept with the local media backup namespace, outside signed application releases.
 Environment=UTEN_CLIENT_RELEASES_DIR=/data/uten-imp/attachments/client-releases
 Environment=UTEN_CLIENT_UPDATE_MIN_FREE_BYTES=10737418240

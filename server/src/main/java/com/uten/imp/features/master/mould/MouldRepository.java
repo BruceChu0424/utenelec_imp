@@ -41,6 +41,9 @@ public interface MouldRepository extends JpaRepository<Mould, UUID>, JpaSpecific
     /** 编号查重（仅未软删）—— 手动编号校验用。 */
     boolean existsByCodeAndDeletedFalse(String code);
 
+    /** Import resolves an exact code to one UUID; never guess by the display name. */
+    List<Mould> findByCodeAndDeletedFalse(String code);
+
     /** 编号查重排除自身（编辑改码用）。 */
     boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);
 }

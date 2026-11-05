@@ -3,8 +3,7 @@
 // 清单含整棵 BOM 树（子类/孙类全展开平铺）。层级只用级联序号表达
 // （1 / 3.1 / 3.1.1），不再加缩进与子层星号标记（2026-09-25 口径）；
 // 列集与组装信息表格/导出 Excel 一致（「表格显示啥导出啥」）。
-// 递归展开带环路防护（当前路径上的货品不再展开）与深度上限（10 层），
-// 防止历史脏数据死循环。
+// 完整展开上限与服务端同为 11 层 / 2000 行；环路或越界整次拒绝，不发布局部结果。
 //
 // 弹窗内按 A4 横向比例渲染(多列明细；标题 + 产品名称/型号/备注表头 +
 // 明细表格)。用量两列(ADR-129)：「设计使用数量」与只读「真实使用数量」
@@ -21,12 +20,19 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/data_display/uten_table_output_scope.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/account_action_owner.dart';
+import '../../../shared/platform_tables/table_column_projection.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../models/goods_bom_item.dart';
 import '../repositories/goods_bom_repository.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
@@ -70,6 +76,10 @@ class _PreviewRow {
   ];
 }
 
+const _bomOutputTableKey =
+    'features.basic_data.widgets.goods_bom_tab.GoodsBomTabState.build.1';
+final _openBomPreviews = Expando<bool>();
+
 /// 弹出 A4 产品配件清单预览。
 Future<void> showGoodsBomPreview({
   required BuildContext context,
@@ -77,16 +87,68 @@ Future<void> showGoodsBomPreview({
   String? productName,
   String? productModel,
   String? productCode,
-}) {
-  return showDialog<void>(
-    context: context,
-    builder: (_) => _GoodsBomPreviewDialog(
-      goodsId: goodsId,
-      productName: productName,
-      productModel: productModel,
-      productCode: productCode,
-    ),
-  );
+}) async {
+  if (_openBomPreviews[context] == true) return;
+  _openBomPreviews[context] = true;
+  try {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final boundary = container.read(sensitiveReadBoundaryProvider);
+    final epoch = container.read(exportContextEpochProvider);
+    bool current() =>
+        context.mounted &&
+        boundary == container.read(sensitiveReadBoundaryProvider) &&
+        epoch == container.read(exportContextEpochProvider);
+    final projection = TableColumnProjectionScope.resolve(
+      context,
+      _bomOutputTableKey,
+    );
+    final scope = await showUtenTableOutputScope(
+      context: context,
+      action: '预览打印',
+      selectedCount: projection?.outputSelection.count ?? 0,
+    );
+    if (scope == null || !context.mounted || !current()) return;
+    List<Map<String, String?>>? selectedRows;
+    if (scope == UtenTableOutputScope.selected) {
+      final selected = await UtenBusyOverlay.run(
+        context,
+        title: '正在核对选中组件',
+        action: () => projection!.outputSelection.snapshot(),
+      );
+      if (!context.mounted || !current()) return;
+      if (selected.rows.length != selected.count || selected.count == 0) {
+        throw const FormatException('选中组件缺少完整输出身份，请刷新后重选');
+      }
+      selectedRows = List.unmodifiable(
+        selected.rows.map((row) => Map<String, String?>.unmodifiable(row)),
+      );
+    }
+    final frozen = projection == null
+        ? null
+        : TableColumnProjection(
+            tableKey: projection.tableKey,
+            scope: projection.scope,
+            columns: List.unmodifiable(projection.columns),
+            sourceKeys: Map.unmodifiable(projection.sourceKeys),
+            rowSelection: selectedRows,
+          );
+    if (!context.mounted || !current()) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _GoodsBomPreviewDialog(
+        goodsId: goodsId,
+        productName: productName,
+        productModel: productModel,
+        productCode: productCode,
+        selectedRows: selectedRows,
+        projection: frozen,
+      ),
+    );
+  } catch (error) {
+    if (context.mounted) context.appApiError(error, fallback: '无法打开配件清单预览');
+  } finally {
+    _openBomPreviews[context] = false;
+  }
 }
 
 class _GoodsBomPreviewDialog extends ConsumerStatefulWidget {
@@ -95,12 +157,16 @@ class _GoodsBomPreviewDialog extends ConsumerStatefulWidget {
     this.productName,
     this.productModel,
     this.productCode,
+    this.selectedRows,
+    this.projection,
   });
 
   final String goodsId;
   final String? productName;
   final String? productModel;
   final String? productCode;
+  final List<Map<String, String?>>? selectedRows;
+  final TableColumnProjection? projection;
 
   @override
   ConsumerState<_GoodsBomPreviewDialog> createState() =>
@@ -109,7 +175,11 @@ class _GoodsBomPreviewDialog extends ConsumerStatefulWidget {
 
 class _GoodsBomPreviewDialogState
     extends ConsumerState<_GoodsBomPreviewDialog> {
-  static const int _maxDepth = 10; // 树展开深度上限（防历史脏数据死循环）
+  static const int _maxLevels = 11;
+  static const int _maxRows = 2000;
+  late final AccountActionOwner _owner;
+  bool _printing = false;
+  bool _preparingPrint = false;
 
   List<_PreviewRow>? _rows;
   String? _error;
@@ -117,7 +187,25 @@ class _GoodsBomPreviewDialogState
   @override
   void initState() {
     super.initState();
+    _owner = AccountActionOwner(
+      ref,
+      onInvalidated: () {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final route = ModalRoute.of(context);
+          if (route?.isActive == true) {
+            Navigator.of(context).removeRoute(route!);
+          }
+        });
+      },
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    _owner.dispose();
+    super.dispose();
   }
 
   /// 整树平铺加载：DFS 逐层调 list 接口（懒加载语义与组装信息页签一致）。
@@ -127,6 +215,8 @@ class _GoodsBomPreviewDialogState
     try {
       final repo = ref.read(goodsBomRepositoryProvider);
       final rows = <_PreviewRow>[];
+      final cache = <String, List<GoodsBomItem>>{};
+      final work = UiWorkBudget(isCurrent: () => mounted && _owner.isCurrent);
 
       Future<void> walk(
         String goodsId,
@@ -134,24 +224,69 @@ class _GoodsBomPreviewDialogState
         Set<String> path,
         String prefix,
       ) async {
-        if (depth > _maxDepth) return;
-        final items = await repo.list(goodsId);
+        if (depth >= _maxLevels) {
+          throw const FormatException('BOM 层级超过完整输出上限，请从下层组件分别输出');
+        }
+        final items = cache[goodsId] ??= await repo.list(goodsId);
+        work.ensureCurrent();
         for (var i = 0; i < items.length; i++) {
           final it = items[i];
+          if (path.contains(it.componentGoodsId)) {
+            throw const FormatException('BOM 存在循环引用，本次未生成输出');
+          }
+          if (it.componentCode?.trim().isNotEmpty != true) {
+            throw const FormatException('存在不可见或未编号的组件，无法完整输出');
+          }
+          if (rows.length >= _maxRows) {
+            throw const FormatException('BOM 展开超过 2000 行完整输出上限，请从下层组件分别输出');
+          }
           final seq = prefix.isEmpty ? '${i + 1}' : '$prefix.${i + 1}';
           rows.add(_PreviewRow(it, depth, seq));
-          if (it.hasChildren && !path.contains(it.componentGoodsId)) {
+          if (it.hasChildren) {
             await walk(it.componentGoodsId, depth + 1, {
               ...path,
               it.componentGoodsId,
             }, seq);
           }
+          await work.checkpoint();
         }
       }
 
       await walk(widget.goodsId, 0, {widget.goodsId}, '');
-      if (!mounted) return;
-      setState(() => _rows = rows);
+      if (!mounted || !_owner.isCurrent) return;
+      final requested = widget.selectedRows;
+      if (requested == null) {
+        setState(() => _rows = rows);
+      } else {
+        String identity(String? seq, String? component) => '$seq|$component';
+        final wanted = <String>{};
+        for (final selector in requested) {
+          if (selector['seq']?.isNotEmpty != true ||
+              selector['componentGoodsId']?.isNotEmpty != true ||
+              !wanted.add(
+                identity(selector['seq'], selector['componentGoodsId']),
+              )) {
+            throw const FormatException('选中组件的输出身份无效或重复，请刷新后重选');
+          }
+        }
+        final selected = <_PreviewRow>[];
+        final found = <String>{};
+        for (final row in rows) {
+          final key = identity(row.seq, row.item.componentGoodsId);
+          if (wanted.contains(key)) {
+            if (!found.add(key)) {
+              throw const FormatException('选中组件的输出身份不唯一，请刷新后重选');
+            }
+            selected.add(row);
+          }
+          await work.checkpoint();
+        }
+        if (found.length != wanted.length) {
+          throw const FormatException('选中组件已变化或不在当前结构中，请刷新后重选');
+        }
+        if (!mounted || !_owner.isCurrent) return;
+        setState(() => _rows = selected);
+      }
     } catch (caughtError) {
       if (!mounted) return;
       setState(
@@ -210,7 +345,12 @@ class _GoodsBomPreviewDialogState
   // ---- 打印（pdf 包生成 A4，NotoSansSC 中文字体） ----------------------------
 
   Future<void> _print() async {
-    final rows = _rows ?? const <_PreviewRow>[];
+    if (_printing || !_owner.isCurrent || _rows?.isNotEmpty != true) return;
+    final rows = _rows!;
+    setState(() {
+      _printing = true;
+      _preparingPrint = true;
+    });
     try {
       // UI 使用常用字子集降低首屏体积；打印按需加载完整字体，确保货品名称中的生僻字不丢失。
       final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
@@ -288,8 +428,13 @@ class _GoodsBomPreviewDialogState
           ],
         ),
       );
+      final bytes = await doc.save();
+      if (!mounted || !_owner.isCurrent) return;
+      setState(() => _preparingPrint = false);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !_owner.isCurrent) return;
       await printPdfBytes(
-        await doc.save(),
+        bytes,
         '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}.pdf',
       );
     } catch (caughtError) {
@@ -298,6 +443,13 @@ class _GoodsBomPreviewDialogState
         caughtError,
         fallback: '生成打印件失败，请稍后重试',
       ); // TODO(l10n): 补 arb
+    } finally {
+      if (mounted) {
+        setState(() {
+          _printing = false;
+          _preparingPrint = false;
+        });
+      }
     }
   }
 
@@ -329,66 +481,90 @@ class _GoodsBomPreviewDialogState
     final theme = Theme.of(context);
     final rows = _rows;
     // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region；内嵌表格自带更深 region）。
-    return SelectionArea(
-      child: UtenDialogFrame(
-        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 860,
-            maxHeight: MediaQuery.sizeOf(context).height * 0.92,
-          ),
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                UtenDialogHeader(
-                  title: Text('预览 · $_title'),
-                  icon: Icons.description_outlined,
-                  showCloseButton: true,
-                  onClose: () => Navigator.of(context).pop(),
-                ),
-                const Divider(height: 1),
-                // A4 纸面（灰底 + 白纸卡片，横向可滚动保证窄屏可看全）
-                Expanded(
-                  child: Container(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: _error != null
-                        ? Center(child: Text(_error!))
-                        : rows == null
-                        ? const Center(child: CircularProgressIndicator())
-                        : SingleChildScrollView(
-                            padding: const EdgeInsets.all(UtenSpacing.s16),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: _a4Paper(theme, rows),
-                            ),
-                          ),
-                  ),
-                ),
-                UtenDialogActions(
+    return Stack(
+      children: [
+        SelectionArea(
+          child: UtenDialogFrame(
+            shape: const RoundedRectangleBorder(
+              borderRadius: UtenRadius.xxlAll,
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 860,
+                maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    UtenButton(
-                      icon: Icons.print_outlined,
-                      onPressed: (rows == null || rows.isEmpty) ? null : _print,
-                      child: const Text('打印'), // TODO(l10n): 补 arb
+                    UtenDialogHeader(
+                      title: Text('预览 · $_title'),
+                      icon: Icons.description_outlined,
+                      showCloseButton: true,
+                      onClose: _printing
+                          ? null
+                          : () => Navigator.of(context).pop(),
                     ),
-                    UtenExportButton(
-                      type: UtenButtonType.secondary,
-                      endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
-                      requiredPermission: Perm.goodsExport,
-                      report: '',
-                      queryParams: const {},
-                      filename:
-                          '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}',
-                      label: '下载Excel', // TODO(l10n): 补 arb
+                    const Divider(height: 1),
+                    // A4 纸面（灰底 + 白纸卡片，横向可滚动保证窄屏可看全）
+                    Expanded(
+                      child: Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: _error != null
+                            ? Center(child: Text(_error!))
+                            : rows == null
+                            ? const Center(child: CircularProgressIndicator())
+                            : SingleChildScrollView(
+                                padding: const EdgeInsets.all(UtenSpacing.s16),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: _a4Paper(theme, rows),
+                                ),
+                              ),
+                      ),
+                    ),
+                    UtenDialogActions(
+                      children: [
+                        UtenButton(
+                          icon: Icons.print_outlined,
+                          onPressed: (rows == null || rows.isEmpty || _printing)
+                              ? null
+                              : _print,
+                          child: const Text('打印'), // TODO(l10n): 补 arb
+                        ),
+                        UtenExportButton(
+                          enabled:
+                              rows?.isNotEmpty == true &&
+                              !_printing &&
+                              _error == null,
+                          showOutputScope: false,
+                          frozenProjection: widget.projection,
+                          prepareExport: () async => UtenExportSelection(
+                            stillCurrent: () => mounted && _owner.isCurrent,
+                          ),
+                          type: UtenButtonType.secondary,
+                          endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
+                          requiredPermission: Perm.goodsExport,
+                          report: '',
+                          queryParams: const {},
+                          filename:
+                              '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}',
+                          label: '下载Excel', // TODO(l10n): 补 arb
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+        if ((_error == null && rows == null) || _preparingPrint)
+          UtenBusyOverlay(
+            title: _preparingPrint ? '正在生成打印件' : '正在读取完整配件清单',
+            showDoNotLeaveHint: false,
+          ),
+      ],
     );
   }
 

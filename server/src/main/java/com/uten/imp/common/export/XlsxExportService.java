@@ -36,9 +36,7 @@ public class XlsxExportService {
 
     public byte[] build(List<ExportColumn> columns, List<Map<String,Object>> rows,
                         TableColumnProjection projection, String allowedScope) {
-        if(projection==null)return build(columns,rows);
-        ExportPayload projected=projections.getObject().project(columns,rows,projection,allowedScope);
-        return build(projected.columns(),projected.rows());
+        return build(new ExportPayload(columns,rows,rows.size()),projection,allowedScope);
     }
 
     /** SXSSF 滚动窗口（同时在内存的行数；超出写临时文件）。 */
@@ -117,6 +115,7 @@ public class XlsxExportService {
         private final ExportTemporaryBudget tempBudget;
         private final TableColumnProjection projection;
         private final String allowedScope;
+        private final ExportRowSelection rowSelection;
         private final CellStyle header;
         private final CellStyle number;
         private final CellStyle quantity;
@@ -143,6 +142,7 @@ public class XlsxExportService {
         }
 
         private StreamingWorkbook(TableColumnProjection projection, String allowedScope, ExportTemporaryBudget tempBudget) {
+            this.rowSelection = new ExportRowSelection(projection);
             this.tempBudget = tempBudget;
             workbook = tempBudget == null ? new SXSSFWorkbook(ROW_ACCESS_WINDOW) : new SXSSFWorkbook(ROW_ACCESS_WINDOW) {
                 @Override protected org.apache.poi.xssf.streaming.SheetDataWriter createSheetDataWriter() throws IOException {
@@ -172,6 +172,11 @@ public class XlsxExportService {
 
         public void accept(ExportPayload page) {
             if (finished||closed) throw new IllegalStateException("Workbook is already finished or closed");
+            if (rowSelection.active()) {
+                if (page.layout()!=null) throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"原件请使用完整输出；选中明细请在明细报表中输出");
+                var selectedRows=rowSelection.select(page.columns(),page.rows());
+                page=new ExportPayload(page.columns(),selectedRows,selectedRows.size(),null,page.documentMetadata());
+            }
             ExportPayload selected = projection == null || page.layout()!=null ? page
                     : projections.getObject().project(page.columns(), page.rows(), projection, allowedScope);
             LegacyExportBudget.requireRows((long)rowCount()+selected.rows().size());
@@ -411,6 +416,7 @@ public class XlsxExportService {
             finish(output,LegacyExportBudget::checkpoint);
         }
         private void finish(java.io.OutputStream output,Runnable checkpoint)throws IOException {
+            rowSelection.verifyComplete();
             if (finished || closed || sheets.isEmpty()) throw new IllegalStateException("Workbook is not writable");
             for(var state:sheets.values())if(state.layout!=null) {
                 if(state.layout.footer()!=null)appendSourceFooter(state,checkpoint);

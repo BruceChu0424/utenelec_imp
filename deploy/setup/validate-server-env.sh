@@ -315,6 +315,11 @@ sms_provider="$(env_value UTEN_SMS_PROVIDER)"
   || die 'UTEN_SMS_PROVIDER must be disabled or aliyun in production (never log)'
 
 expect_exact UTEN_STORAGE_PROVIDER internal
+# Older env files inherit the reviewed unit's private StateDirectory. An explicit
+# override must not redirect authorized exports into current/web/attachments.
+if [[ "$(awk -F= '$1 == "UTEN_REPORT_EXPORT_DIRECTORY" { n++ } END { print n + 0 }' "$ENV_FILE")" != 0 ]]; then
+  expect_exact UTEN_REPORT_EXPORT_DIRECTORY /var/lib/uten-imp-report-exports
+fi
 expect_boolean UTEN_ATTACHMENT_UPLOADS_ENABLED
 scanner_provider="$(env_value UTEN_ATTACHMENT_SCANNER_PROVIDER)"
 case "$scanner_provider" in

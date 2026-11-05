@@ -4,6 +4,17 @@ using System.Linq;
 
 namespace Uten.Legacy.Core
 {
+    public sealed class UnitExportCapabilities
+    {
+        public bool Available { get; private set; }
+        public int SelectionVersion { get; private set; }
+        public bool SupportsSelection { get { return SelectionVersion >= 1; } }
+        public UnitExportCapabilities(bool available, int selectionVersion)
+        {
+            if (selectionVersion < 0) throw new ArgumentOutOfRangeException(nameof(selectionVersion));
+            Available = available; SelectionVersion = selectionVersion;
+        }
+    }
     public sealed class MutationExportJob
     {
         public string Id { get; internal set; }
@@ -23,6 +34,15 @@ namespace Uten.Legacy.Core
 
     public sealed partial class SessionCoordinator
     {
+        public static UnitExportCapabilities ParseUnitExportCapabilities(string json)
+        {
+            var values = MutationJsonTree.Parse(json, 65536, true, 256, false, true).Object;
+            var available = MutationJsonTree.Required(values, "available");
+            if (!(available.Value is bool)) throw new FormatException("导出能力格式无效。");
+            MutationJsonNode version; values.TryGetValue("selectionVersion", out version);
+            int selected = version == null || version.Value == null ? 0 : (int)MutationJsonTree.Integer(version, 0, Int32.MaxValue);
+            return new UnitExportCapabilities((bool)available.Value, selected);
+        }
         /// <summary>Pure metadata read. Presence of View.request alone never proves a command.</summary>
         public static MutationExportJob ParseUnitExportJob(string json, string expectedJobId)
         {
@@ -91,7 +111,15 @@ namespace Uten.Legacy.Core
             { MutationJsonNode value; if (values.TryGetValue(key, out value) && value.Value != null) throw new FormatException(); }
             MutationJsonNode projection; values.TryGetValue("columnProjection", out projection); UnitColumnProjectionContract.Validate(projection);
             var parameters = MutationJsonTree.Required(values, "parameters").Object;
-            MutationJsonTree.Keys(parameters, "filter");
+            MutationJsonTree.Keys(parameters, "filter", "selectedIds");
+            MutationJsonNode selected;
+            if (parameters.TryGetValue("selectedIds", out selected))
+            {
+                var ids = MutationJsonTree.Parse(MutationJsonTree.Text(selected, true, 40002), 40002).Array;
+                if (ids.Count == 0 || ids.Count > 1000 || ids.Any(value => MutationJsonTree.Uuid(value) != MutationJsonTree.Text(value, true, 36))
+                    || ids.Select(MutationJsonTree.Uuid).Distinct(StringComparer.Ordinal).Count() != ids.Count)
+                    throw new FormatException();
+            }
             var filterText = MutationJsonTree.Text(MutationJsonTree.Required(parameters, "filter"), true, 60000);
             var filter = MutationJsonTree.Parse(filterText, 65536).Object;
             MutationJsonTree.Keys(filter, "keyword", "nullFields", "code", "name", "status", "dimension");
@@ -118,7 +146,13 @@ namespace Uten.Legacy.Core
             MutationJsonNode a, b; left.TryGetValue("columnProjection", out a); right.TryGetValue("columnProjection", out b);
             return MutationJsonTree.Uuid(left["id"]) == MutationJsonTree.Uuid(right["id"])
                 && (string)left["parameters"].Object["filter"].Value == (string)right["parameters"].Object["filter"].Value
+                && SameSelection(left["parameters"].Object, right["parameters"].Object)
                 && UnitColumnProjectionContract.Equivalent(a, b);
+        }
+        private static bool SameSelection(Dictionary<string, MutationJsonNode> left, Dictionary<string, MutationJsonNode> right)
+        {
+            MutationJsonNode a, b; left.TryGetValue("selectedIds", out a); right.TryGetValue("selectedIds", out b);
+            return a == null ? b == null : b != null && Equals(a.Value, b.Value);
         }
         internal static MutationExportJob ReadJob(MutationRequest request, string json)
         {

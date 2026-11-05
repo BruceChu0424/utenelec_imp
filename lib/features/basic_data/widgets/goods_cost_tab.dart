@@ -265,6 +265,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   String? _automaticResumeId;
   String? _actualExecutionScope;
   bool _busy = false, _loading = true, _calculating = false, _dirty = false;
+  bool _downloadPreparing = false;
   bool _booting = false, _startupFailed = false;
   bool _replacingFees = false, _lossPolicySaving = false;
   bool _showSettings = false,
@@ -875,11 +876,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<UtenExportSelection?> _prepareDownload(String? initialFormat) async {
-    if (!_canDownload) return null;
+    if (!_canDownload || _downloadPreparing) return null;
     var format = initialFormat ?? 'xlsx';
     var advanced = false;
     var section = _bodyTab == 1 ? 'FEES' : 'ALL';
-    var selectedOnly = false;
+    final feeView = _bodyTab == 1;
     final ready = await _dialogWhenRemoved<bool>(
       context: context,
       builder: (dialog) => StatefulBuilder(
@@ -907,6 +908,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
                 if (advanced) ...[
                   UtenDropdownField(
                     label: _l.costSource,
+                    info: '导出选中项时，以当前物料表或费用表为准；此项用于导出全部。',
                     value: section,
                     allowClear: false,
                     items: [
@@ -919,14 +921,6 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
                     ],
                     onChanged: (v) => update(() => section = v!),
                   ),
-                  if (_selectedPaths.isNotEmpty)
-                    CheckboxListTile(
-                      title: Text(
-                        '${_l.quoteTemplateDownloadSelected} (${_selectedPaths.length})',
-                      ),
-                      value: selectedOnly,
-                      onChanged: (v) => update(() => selectedOnly = v == true),
-                    ),
                 ],
               ],
             ),
@@ -948,15 +942,35 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       return null;
     }
     GoodsCostSnapshot? snapshot = _historical;
-    snapshot ??= await _action(() async {
-      var sheet = _sheet;
-      if (sheet == null || _dirty) sheet = await _saveCurrent();
-      if (!_capability.canExportSheet(serverAllowed: sheet.canExport)) {
-        throw StateError(_l.costNoPermission);
+    if (snapshot == null) {
+      setState(() => _downloadPreparing = true);
+      try {
+        snapshot = await _action(() async {
+          var sheet = _sheet;
+          if (sheet == null || _dirty) sheet = await _saveCurrent();
+          if (!_capability.canExportSheet(serverAllowed: sheet.canExport)) {
+            throw StateError(_l.costNoPermission);
+          }
+          return _repository.snapshot(
+            sheet.id,
+            sheet.version,
+            const Uuid().v4(),
+          );
+        });
+      } finally {
+        if (mounted) {
+          setState(() => _downloadPreparing = false);
+          // The existing file options must open after the preparation mask retires.
+          await WidgetsBinding.instance.endOfFrame;
+        }
       }
-      return _repository.snapshot(sheet.id, sheet.version, const Uuid().v4());
-    });
-    if (snapshot == null) return null;
+    }
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        !_canDownload ||
+        snapshot == null) {
+      return null;
+    }
     return UtenExportSelection(
       extension: format,
       filename: 'cost_${_sheet?.number ?? snapshot.id}',
@@ -965,7 +979,20 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         'snapshotId': snapshot.id,
         'format': format,
         'section': section,
-        if (selectedOnly) 'paths': _selectedPaths.toList(),
+      },
+      bodyForSelection: (rows) {
+        if (feeView) {
+          if (rows.any((row) => row['rowKey']?.isNotEmpty != true)) {
+            throw const FormatException('选中费用缺少原始身份，请刷新后重新选择');
+          }
+          return {'section': 'FEES'};
+        }
+        final paths = [for (final row in rows) row['rowKey']];
+        if (paths.any((path) => path == null || path.isEmpty) ||
+            paths.toSet().length != paths.length) {
+          throw const FormatException('选中物料路径已变化，请刷新后重新选择');
+        }
+        return {'section': 'MATERIAL', 'paths': paths.cast<String>()};
       },
     );
   }
@@ -1008,6 +1035,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     return withFormDraft(
       Column(
         children: [
+          if (_downloadPreparing && formDraftIdentityIsCurrent && _canDownload)
+            const UtenBusyOverlay(title: '正在准备成本下载', showDoNotLeaveHint: false),
           if (_lossPolicySaving)
             const UtenBusyOverlay(
               title: '正在保存委外损耗默认值',

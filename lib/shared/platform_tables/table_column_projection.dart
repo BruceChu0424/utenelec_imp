@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart' show setEquals;
+import '../../components/data_display/uten_table_output_scope.dart';
 
 /// The exact visible table header shared by screen, download and print preview.
 /// Keys are stable schema IDs. Labels and formulas are descriptive; servers must
@@ -41,6 +43,8 @@ class TableColumnProjection {
     this.scope,
     required this.columns,
     this.sourceKeys = const {},
+    this.outputSelection = const UtenTableOutputSelection(),
+    this.rowSelection,
   });
   final String tableKey;
   final String? scope;
@@ -48,10 +52,13 @@ class TableColumnProjection {
 
   /// Client-only lookup also covers hidden fact columns used by calculations.
   final Map<String, String> sourceKeys;
+  final UtenTableOutputSelection outputSelection;
+  final List<Map<String, String?>>? rowSelection;
   Map<String, dynamic> toJson() => {
     'tableKey': tableKey,
     if (scope != null) 'scope': scope,
     'columns': columns.map((c) => c.toJson()).toList(growable: false),
+    if (rowSelection != null) 'rowSelection': rowSelection,
   };
 }
 
@@ -90,18 +97,26 @@ class TableColumnProjectionController extends ChangeNotifier {
     TableColumnProjection projection, {
     Object? contextOwner,
   }) {
+    if (_closed) return;
     _owners[owner] = contextOwner;
     final previous = _tables[owner];
-    if (_closed ||
-        (jsonEncode(previous?.toJson()) == jsonEncode(projection.toJson()) &&
-            jsonEncode(previous?.sourceKeys) ==
-                jsonEncode(projection.sourceKeys) &&
+    if ((jsonEncode(previous?.toJson()) == jsonEncode(projection.toJson()) &&
+        jsonEncode(previous?.sourceKeys) == jsonEncode(projection.sourceKeys) &&
+        setEquals(
+          previous?.outputSelection.ids,
+          projection.outputSelection.ids,
+        ) &&
+        jsonEncode(previous?.outputSelection.rows) ==
+            jsonEncode(projection.outputSelection.rows) &&
+        jsonEncode(previous?.outputSelection.displayRows) ==
+            jsonEncode(projection.outputSelection.displayRows) &&
+        jsonEncode(
+              previous?.columns.map((column) => column.sourceKey).toList(),
+            ) ==
             jsonEncode(
-                  previous?.columns.map((column) => column.sourceKey).toList(),
-                ) ==
-                jsonEncode(
-                  projection.columns.map((column) => column.sourceKey).toList(),
-                ))) {
+              projection.columns.map((column) => column.sourceKey).toList(),
+            ))) {
+      _tables[owner] = projection;
       return;
     }
     _tables[owner] = projection;

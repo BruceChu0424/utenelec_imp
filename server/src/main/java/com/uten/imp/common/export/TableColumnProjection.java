@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Objects;
 
 /** Shared screen/preview/download projection. Definition payloads are descriptive, never authoritative. */
-@JsonPropertyOrder({"tableKey", "scope", "columns"})
+@JsonPropertyOrder({"tableKey", "scope", "columns", "rowSelection"})
 public final class TableColumnProjection {
     @Size(max=300)
     private final String tableKey;
@@ -20,18 +20,33 @@ public final class TableColumnProjection {
     private final String scope;
     @NotEmpty @Size(max=160)
     private final List<@Valid Column> columns;
+    @Size(max=50000)
+    private final List<java.util.Map<String,String>> rowSelection;
 
     @JsonCreator
     public TableColumnProjection(@JsonProperty("tableKey") @Size(max=300) String tableKey,
             @JsonProperty("scope") @Pattern(regexp="[a-z][a-z0-9_]{0,99}") String scope,
-            @JsonProperty("columns") @NotEmpty @Size(max=160) List<@Valid Column> columns) {
+            @JsonProperty("columns") @NotEmpty @Size(max=160) List<@Valid Column> columns,
+            @JsonProperty("rowSelection") @Size(max=50000) List<java.util.Map<String,String>> rowSelection) {
         // Preserve malformed/null entries for the shared validator while
         // freezing the caller's list before authorization and publication.
         this.tableKey = tableKey;
         this.scope = scope;
         this.columns = columns == null ? null
                 : Collections.unmodifiableList(new ArrayList<>(columns));
+        this.rowSelection = rowSelection == null ? null : rowSelection.stream()
+                .map(row -> row == null ? null : Collections.unmodifiableMap(new java.util.LinkedHashMap<>(row))).toList();
     }
+
+    public TableColumnProjection(@Size(max=300) String tableKey,
+            @Pattern(regexp="[a-z][a-z0-9_]{0,99}") String scope,
+            @NotEmpty @Size(max=160) List<@Valid Column> columns) {
+        this(tableKey,scope,columns,null);
+    }
+
+    @JsonProperty("rowSelection")
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public List<java.util.Map<String,String>> rowSelection() { return rowSelection; }
 
     @JsonProperty("tableKey")
     @Size(max=300)
@@ -57,14 +72,16 @@ public final class TableColumnProjection {
         return this == other || other instanceof TableColumnProjection that
                 && Objects.equals(tableKey, that.tableKey)
                 && Objects.equals(scope, that.scope)
-                && Objects.equals(columns, that.columns);
+                && Objects.equals(columns, that.columns)
+                && Objects.equals(rowSelection, that.rowSelection);
     }
 
     @Override
     public int hashCode() {
         int hash = Objects.hashCode(tableKey);
         hash = 31 * hash + Objects.hashCode(scope);
-        return 31 * hash + Objects.hashCode(columns);
+        hash = 31 * hash + Objects.hashCode(columns);
+        return rowSelection == null ? hash : 31 * hash + Objects.hashCode(rowSelection);
     }
 
     @Override

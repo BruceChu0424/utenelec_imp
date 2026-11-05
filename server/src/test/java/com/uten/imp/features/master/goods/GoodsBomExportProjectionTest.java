@@ -18,6 +18,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * 的最小回环表头 + 文件可读性底线）必须在服务端补齐、排最前。
  */
 class GoodsBomExportProjectionTest {
+    @Test void requiredImportColumnsDoNotDiscardTheFrozenRowSelection() {
+        var rows = List.of(java.util.Map.of("seq", "2.1", "componentGoodsId", "component-uuid"));
+        var projection = new TableColumnProjection("bom", null, List.of(col("qty", "用量")), rows);
+        assertEquals(rows, GoodsBomExportProjection.forImportTemplate(projection).rowSelection());
+        assertEquals(rows, GoodsExportProjection.forImportTemplate(projection).rowSelection());
+    }
 
     private static TableColumnProjection.Column col(String key, String label) {
         return new TableColumnProjection.Column(key, label, 120d, "text", null);

@@ -41,6 +41,16 @@ class ReportExportServiceTest {
         return new ReportExportRepository.Job(request.id(),owner,1,1,mapper.writeValueAsString(request),"PENDING",false,0,0,
                 OffsetDateTime.now(),null,null,null,null,null,0,ReportExportBuildIdentity.CONTRACT,"fixture-build","a".repeat(64));
     }
+    @Test void initializedPersistentStateEnablesCapabilityAndRestartDoesNotClearExistingArtifacts() throws Exception {
+        Path state=directory.resolve("private-export-state");
+        var configured=new ReportExportService(repository,users,restorer,mapper,buildIdentity,rateLimiter,readScopes,projectionAccess,state.toString());
+        assertFalse(configured.available());
+        java.nio.file.Files.createDirectory(state);
+        assertTrue(configured.available(),"the startup-owned private state directory enables durable output");
+        Path retained=state.resolve("original-task.xlsx");java.nio.file.Files.writeString(retained,"fixture-artifact");
+        var restarted=new ReportExportService(repository,users,restorer,mapper,buildIdentity,rateLimiter,readScopes,projectionAccess,state.toString());
+        assertTrue(restarted.available());assertEquals("fixture-artifact",java.nio.file.Files.readString(retained));
+    }
     @Test void sameIdentityAndConditionsRecoverTheOriginalTaskWithoutAnotherInsert() throws Exception {
         var request=request(UUID.randomUUID());when(repository.find(request.id())).thenReturn(Optional.of(job(request)));
         assertEquals(request.id(),service.submit(request).id());

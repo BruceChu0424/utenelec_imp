@@ -3,6 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/export/master_export_job.dart';
 
 void main() {
+  test('selected master UUIDs stay outside the typed business filter', () {
+    final result = masterExportJobParameters(
+      'mould',
+      {'categoryId': 'tree', 'status': '使用'},
+      {
+        'selectedIds': ['id-a', 'id-b'],
+      },
+    );
+    expect(result['selectedIds'], '["id-a","id-b"]');
+    expect(jsonDecode(result['filter'] as String), {
+      'categoryId': 'tree',
+      'status': '使用',
+    });
+  });
+
   test(
     'account asynchronous exports retain the same private bank and exact balance scope',
     () {

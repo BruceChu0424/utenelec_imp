@@ -38,6 +38,10 @@ class StockReportWarehouseInventoryScopeTest {
         var service = new StockReportService(mock(EntityManager.class), settings, query, mock(StockCostMasker.class));
         when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(1000);
         var row = mock(InstantInventoryRow.class);
+        UUID goods = UUID.randomUUID();
+        UUID color = UUID.randomUUID();
+        when(row.getGoodsId()).thenReturn(goods);
+        when(row.getColorId()).thenReturn(color);
         when(row.getOwningWarehouseName()).thenReturn("主档归属仓");
         when(query.instantInventoryRows(any(), anyInt(), eq(500), eq("name"), eq("asc")))
                 .thenReturn(new PageResponse<>(Collections.nCopies(500, row), 1, 500, 501, 2))
@@ -63,5 +67,8 @@ class StockReportWarehouseInventoryScopeTest {
                     assertThat(column.type()).isEqualTo(ExportColumn.TEXT);
                 });
         assertThat(payload.rows()).allSatisfy(value -> assertThat(value).containsEntry("owningWarehouse", "主档归属仓"));
+        assertThat(payload.rows()).allSatisfy(value -> assertThat(value)
+                .containsEntry("goodsId", goods).containsEntry("colorId", color));
+        assertThat(payload.columns()).noneMatch(column -> column.key().equals("goodsId") || column.key().equals("colorId"));
     }
 }

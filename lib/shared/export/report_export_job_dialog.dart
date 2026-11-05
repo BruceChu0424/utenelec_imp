@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/business_precision_coordinator.dart';
@@ -44,6 +46,8 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
   ReportExportJob? _job;
   List<ReportExportJob> _recent = const [];
   bool _busy = false;
+  bool _blockingBusy = false;
+  bool _previousTask = false;
   bool _retired = false;
   String? _error;
 
@@ -71,15 +75,20 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
       _unresolved = null;
       _unresolvedPrecision = null;
       _busy = false;
+      _blockingBusy = false;
       _error = '账号、权限或服务器已变化，请关闭后重新打开导出';
     });
   }
 
-  Future<void> _perform(Future<void> Function() action) async {
+  Future<void> _perform(
+    Future<void> Function() action, {
+    bool blocking = true,
+  }) async {
     if (!_current || _busy) return;
     _poll?.cancel();
     setState(() {
       _busy = true;
+      _blockingBusy = blocking;
       _error = null;
     });
     try {
@@ -98,7 +107,10 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
       }
     } finally {
       if (_current) {
-        setState(() => _busy = false);
+        setState(() {
+          _busy = false;
+          _blockingBusy = false;
+        });
       } else if (mounted) {
         _retire();
       }
@@ -108,12 +120,14 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
   Future<void> _restore() => _perform(() async {
     final precision = widget.store.readPrecisionResume();
     if (precision != null) {
+      _previousTask = true;
       _unresolvedPrecision = precision;
       await _verifyPrecisionReceipt();
       return;
     }
     final pending = widget.store.read();
     if (pending != null) {
+      _previousTask = true;
       _unresolved = pending;
       await _accept(await widget.client.read(pending.id));
       return;
@@ -131,13 +145,19 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
     if (_recent.isEmpty) await _create(widget.request);
   });
 
-  Future<void> _create(ReportExportJobRequest request) async {
+  Future<void> _create(
+    ReportExportJobRequest request, {
+    bool currentScope = false,
+  }) async {
     if (!_current) return;
     // Retain the original request before sending. A lost receipt must never
     // turn into a fresh ID on retry, dialog reopen or application reload.
     await widget.store.save(request);
     if (!_current) return;
     _unresolved = request;
+    _job = null;
+    _recent = const [];
+    if (currentScope) _previousTask = false;
     await _accept(await widget.client.create(request));
   }
 
@@ -166,19 +186,19 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
           if (mounted) _retire();
           return;
         }
-        _verify();
+        _verify(blocking: false);
       });
     }
   }
 
-  Future<void> _verify() => _perform(() async {
+  Future<void> _verify({bool blocking = true}) => _perform(() async {
     if (_unresolvedPrecision != null) {
       await _verifyPrecisionReceipt();
       return;
     }
     final id = _unresolved?.id ?? _job?.id;
     if (id != null) await _accept(await widget.client.read(id));
-  });
+  }, blocking: blocking);
   Future<void> _verifyPrecisionReceipt() async {
     final request = _unresolvedPrecision;
     if (request == null) {
@@ -238,9 +258,11 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
         !required.selectionRejected) {
       throw StateError('本项原精度仍待核对，请核查原任务，不循环重新选择');
     }
-    final choice = await BusinessPrecisionCoordinator.instance.ask(
-      required,
-      isCurrent: () => _current,
+    final choice = await UtenBusyOverlay.yieldWhile(
+      () => BusinessPrecisionCoordinator.instance.ask(
+        required,
+        isCurrent: () => _current,
+      ),
     );
     if (!_current || choice == null) {
       return;
@@ -256,7 +278,7 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
       ...widget.request.json,
       'id': const Uuid().v4(),
     });
-    await _create(request);
+    await _create(request, currentScope: true);
   });
 
   Future<void> _download() => _perform(() async {
@@ -275,8 +297,17 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
     final unresolved = _unresolved;
     final unresolvedPrecision = _unresolvedPrecision;
     final scheme = Theme.of(context).colorScheme;
-    return UtenAlertDialog(
-      title: const Text('报表导出任务'),
+    final dialog = UtenAlertDialog(
+      title: Row(
+        children: [
+          Flexible(child: Text(_previousTask ? '原导出任务' : '报表导出任务')),
+          if (_previousTask)
+            const UtenFieldHintIcon(
+              info: '原任务仍按当时的范围生成，下载不会改成本次刚选择的范围。需要本次范围时，核对原任务后使用「按当前筛选新建」。',
+              dense: true,
+            ),
+        ],
+      ),
       showCloseButton: true,
       onClose: () => Navigator.of(context).pop(),
       content: Column(
@@ -320,10 +351,10 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _busy
                     ? null
-                    : () => _perform(
-                        () async =>
-                            _accept(await widget.client.read(recent.id)),
-                      ),
+                    : () => _perform(() async {
+                        _previousTask = true;
+                        await _accept(await widget.client.read(recent.id));
+                      }),
               ),
           ],
           if (_error != null) ...[
@@ -389,6 +420,13 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
             onPressed: _busy ? null : _newExport,
             child: const Text('按当前筛选新建'),
           ),
+      ],
+    );
+    return Stack(
+      children: [
+        dialog,
+        if (_blockingBusy && !_retired)
+          const UtenBusyOverlay(title: '正在处理导出任务', showDoNotLeaveHint: false),
       ],
     );
   }

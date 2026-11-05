@@ -957,7 +957,7 @@ class _FinanceArApOverviewPageState
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '应收应付',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（全部筛选结果）',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
           exportPermission: Perm.financeReportExport,

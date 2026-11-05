@@ -359,6 +359,34 @@ server {
     # Encrypted workbook endpoints build the complete response before sending
     # the first byte. Match the client's two-minute download budget without
     # weakening ordinary API timeouts.
+    # BEGIN generated output selection request budget
+    # Route allowlist comes from JsonBodyLimit POST output controllers.
+    # Spring retains tighter DTO, identity, row, authority and field limits.
+    location = /api/report-export-jobs {
+        client_max_body_size 16m;
+        limit_req zone=uten_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+    location ~ "^(?:/api/admin/audit-logs/export|/api/finance/reports/export|/api/master/accounts/export|/api/master/clients/export|/api/master/colors/export|/api/master/currencies/export|/api/master/goods/cost-sheets/actual/export|/api/master/goods/cost-sheets/export|/api/master/goods/export|/api/master/goods/[^/]+/bom/export|/api/master/moulds/export|/api/master/reference-methods/settlement-admin/export|/api/master/suppliers/export|/api/master/units/export|/api/master/warehouses/export|/api/operations/workbench/purchase/export|/api/operations/workbench/subcontract/export|/api/production/reports/export|/api/production/reports/where-used/export|/api/purchase/reports/export|/api/sales/reports/export|/api/stock/reports/export|/api/subcontract/reports/export|/api/warehouse/task-center/inbound/export|/api/warehouse/task-center/outbound/export)$" {
+        client_max_body_size 16m;
+        limit_req zone=uten_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 120s;
+    }
+    # END generated output selection request budget
+
     location ~ ^/api/.*/export$ {
         limit_req zone=uten_api_ip burst=500 nodelay;
         proxy_pass http://uten_imp_backend;

@@ -498,6 +498,7 @@ public class FinanceReportController {
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('finance_report:export')")
     public ResponseEntity<byte[]> export(
@@ -510,6 +511,7 @@ public class FinanceReportController {
         return exportResponse(report,payload,body.password(),body.columnProjection());
     }
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping(value="/export",params="report=ar-ap/overview")
     @PreAuthorize("hasAuthority('finance_report:export')")
     public ResponseEntity<byte[]> overviewExport(@RequestParam String report,

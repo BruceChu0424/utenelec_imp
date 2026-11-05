@@ -1649,6 +1649,10 @@ class _DesktopTaskTable extends StatelessWidget {
       // 勾选门控会让部分行的 idOf 返回 null，行键不能跟着回落下标
       // （筛选/刷新后行复用会错位），恒用任务 id 做行键。
       rowKeyOf: (item) => item.taskId,
+      outputSelectionEnabled:
+          data.department == OperationsWorkbenchDepartment.purchase,
+      outputSelectorOf: (item) => {'taskId': item.taskId},
+      outputIdOf: (item) => item.taskId,
       selectedIds: selectable ? selectedIds : const <String>{},
       onSelectedIdsChanged: selectable ? onSelectedIdsChanged : null,
       columns: [

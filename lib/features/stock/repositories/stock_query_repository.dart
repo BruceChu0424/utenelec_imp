@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/stock_inventory/instant_inventory_repository.dart';
 import '../models/stock_query.dart';
@@ -156,6 +157,21 @@ class StockQueryRepository {
       },
     );
     return list.map(ShelfLabelRow.fromJson).toList();
+  }
+
+  /// 已分层库行（去重排序；残值不含）：库行下拉数据源。
+  Future<List<ShelfLabelRow>> shelfLabelsForOutput({
+    required Map<String, dynamic> query,
+  }) async {
+    final list = await api.getList(
+      '${ApiEndpoints.stockShelfLabels}/output',
+      query: query,
+    );
+    return mapInUiSlices(
+      list,
+      ShelfLabelRow.fromJson,
+      budget: UiWorkBudget(debugLabel: 'shelf-label-output-models'),
+    );
   }
 
   /// 已分层库行（去重排序；残值不含）：库行下拉数据源。

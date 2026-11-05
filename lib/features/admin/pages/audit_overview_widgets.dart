@@ -1081,6 +1081,9 @@ class _AuditEventTable extends StatelessWidget {
       tableKey:
           'features.admin.pages.audit_overview_widgets.AuditEventTable.build.1',
       key: const Key('audit-event-table'),
+      idOf: (row) => row.id.toString(),
+      outputSelectionEnabled: true,
+      outputSelectorOf: (row) => {'auditId': row.id.toString()},
       embedded: true,
       expensiveRowMounts: false,
       rowsController: rowsController,
@@ -1339,6 +1342,9 @@ class _AuditSessionTable extends StatelessWidget {
       tableKey:
           'features.admin.pages.audit_overview_widgets.AuditSessionTable.build.1',
       key: const Key('audit-session-table'),
+      idOf: (row) => row.sessionId,
+      outputSelectionEnabled: true,
+      outputSelectorOf: (row) => {'sessionId': row.sessionId},
       embedded: true,
       expensiveRowMounts: false,
       rowsController: rowsController,

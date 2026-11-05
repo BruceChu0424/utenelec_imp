@@ -107,6 +107,9 @@ install -d -o root -g root -m 0700 /srv/uten-backup/pre-activation
 findmnt /var/lib/uten-imp-media >/dev/null || echo '附件卷还没挂载: 先挂载, 再执行下面两行'
 install -d -o uten-imp -g uten-imp -m 0700 /var/lib/uten-imp-media/attachments
 install -d -o uten-imp -g uten-imp -m 0700 /var/log/uten-imp
+# 后台导出独立于附件/版本目录。新单元的 StateDirectory 会在每次启动前
+# 自动创建并校正 /var/lib/uten-imp-report-exports，归 uten-imp:uten-imp、0700。
+# 不手工放入 current/web/attachments，也不从发布清理脚本删除此目录。
 
 # 3. 数据库先按下文的独立安装/现有主机协议准备。
 #    不在这里创建应用账号拥有的数据库，不将密码放进 shell 命令。
@@ -163,6 +166,20 @@ bash deploy/simple/install-server-operations.sh deploy/simple
 当前独立 migrator 固定连接同机 `127.0.0.1:5432/uten_imp`、使用 `uten_migrator`，从 `UTEN_MIGRATOR_DB_PASSWORD` 读取专用密码（20–512 位字母数字）。激活前只检查变量存在、格式和该角色真实连接/DDL权限，不打印密码。应用角色与迁移角色分离，数据库名、主机或端口不符合这一部署协议时先修正部署方案，不能等到停服后才发现凭据缺失。
 
 **因为连接串写死, 不要在服务器上拿它对副本库"演练"**(改 `UTEN_DB_URL` 无效, 会直接迁正式库; 2026-09-24 v2.0.0 发版踩过)。迁移演练在开发机克隆库上做: pg_dump 服务器库 → 本机恢复 → 用待发布 JAR 起实例指向克隆库。
+
+### 后台表格导出目录（首次安装与升级都核对）
+
+兼容回退门也必须核对：新服务能力响应含 `selectionVersion=1`，表示支持本次选中范围合同，与任务目录是否启用独立。`available=true` 不能代替该版本声明。旧服务缺少版本时，新客户端仅保留用户明确选择的全部输出；选中导出须拒绝而不回退全量。版本 1 且 `available=false` 可执行有界同步选中输出，超过同步预算的全量输出仍须修复后台目录。动作前重读版本不是混合版本服务器或原子回滚验收，正式激活继续遵守同审核源码和完整发布门。
+
+`application.yml` 将 `UTEN_REPORT_EXPORT_DIRECTORY` 明确映射到 `uten.report-export.directory`。现役 Simple 单元及生产 systemd 示例使用独立持久目录 `/var/lib/uten-imp-report-exports`；`StateDirectory=uten-imp-report-exports` 和 `StateDirectoryMode=0700` 在 `ExecStartPre` 与 Java 启动前创建该目录、设置为 `uten-imp:uten-imp`，并仅为此状态目录开放 `ProtectSystem=strict` 写入。原有服务 `UMask`、附件卷和日志边界继续生效。封闭内测使用独立 `/var/lib/uten-imp-internal-test-report-exports`，不共享生产文件。
+
+升级时保留现有数据库、JWT、历史 PGP 等密钥及完整原配置；核对新单元与 `server.env` 的同名非秘密配置一致。未写该变量的旧配置继承新单元默认值，显式配置必须与对应单元目录一致。此目录不能放在 `current`、`releases/<version>`、Web 静态根或附件原件目录，也不能用 `RuntimeDirectory` 代替。重启和版本切换保留原任务文件；过期产物、取消和不确定发布文件仅由既有后台任务生命周期按数据库权威清理，不在启动时清空，不纳入客户端旧包或服务端版本删除范围。
+
+部署后在服务器只读核对 `systemctl show uten-imp -p StateDirectory -p StateDirectoryMode` 及 `stat -c '%U:%G:%a' /var/lib/uten-imp-report-exports`（应为 `uten-imp:uten-imp:700`），再由有导出权限的会话检查 `/api/report-export-jobs/capabilities` 返回 `available=true`，以超过 500 行的模具完整导出、取消、服务重启后原任务核对和权限退役下载拒绝作为现场验收。路径或目录缺失时不得把同步 500 行限制当作全量导出成功；先修复配置，不能移除同步预算、扩大程序目录写权限或公开导出文件。本地 `.env.example` 默认不启用此目录；开发验证需显式创建私有目录并设置变量。
+
+大批选中身份也需要经过网关和 MVC 的实际正文边界。三份 Nginx 配置的带标记输出块由 `python deploy/nginx/sync_output_selection_budget.py` 从真实 `JsonBodyLimit` 输出 Controller 生成；源码变更后用同命令 `--check` 核对。只有精确后台任务地址及固定输出路由允许 16 MiB，普通代理仍为 2 MiB；Spring 普通 JSON 仍为 1 MiB，主档选择另有更紧 2.2 MB 边界。生成块复用该配置原有 API 上游、限流、请求头与导出超时，不暴露私有目录，也不记录请求正文。应用源码、对应环境 Nginx 配置及新 systemd 单元应一起审查；现场安装后仍须实际执行 `nginx -t`，不能以本机结构测试代替。
+
+目录创建、属主、模式及 `ProtectSystem` 例外遵循 [systemd.exec 目录管理合同](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec#RuntimeDirectory=)。本轮仅补配置与文档源码，没有执行服务器安装、重启或部署；`available=true` 和真实全量导出的现网结果须另按授权验收。
 
 ### 员工六位数字工号：仅首次上线执行一次
 

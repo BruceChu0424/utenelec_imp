@@ -2244,6 +2244,8 @@ class _SubcontractDecompositionPageState
       idOf: (task) => task.id,
       // idOf 会返回 null 的锁行仍要有稳定行键(否则回落下标键)。
       rowKeyOf: (task) => task.taskId,
+      outputSelectorOf: (task) => {'taskId': task.taskId},
+      outputIdOf: (task) => task.taskId,
       // 锁行的勾选位换锁图标，悬浮说明为什么不能下单(缺 BOM / 等物料齐套)。
       unselectableLeadingBuilder: (context, task) => Tooltip(
         message: subcontractTaskLockReason(task),

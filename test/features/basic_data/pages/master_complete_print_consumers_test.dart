@@ -227,6 +227,8 @@ void main() {
         expect(find.text('预览打印'), findsWidgets);
         await tester.tap(find.text('预览打印').first);
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+        await tester.pumpAndSettle();
         expect(find.textContaining('共 601 行'), findsWidgets);
         expect(
           fixture.calls
@@ -245,6 +247,8 @@ void main() {
       final fixture = _Fixture('goods')..holdSecond = Completer<void>();
       final container = await _pump(tester, fixture);
       await tester.tap(find.text('预览打印').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('table-output-all')));
       await tester.pump(const Duration(milliseconds: 100));
       container.read(readScopeRevisionProvider.notifier).state++;
       await tester.pump();

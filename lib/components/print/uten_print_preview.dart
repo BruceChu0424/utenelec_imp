@@ -1,4 +1,5 @@
 import 'package:uten_imp/core/ui/human_error_message.dart';
+import 'dart:convert';
 // 通用「预览 → 打印」组件（所有表格页共用，对齐货品资料 BOM 预览体验）。
 //
 // 用法：AppBar 放 UtenPrintPreviewButton（通常在 UtenExportButton 旁），点击弹 A4 纸面预览：
@@ -32,6 +33,8 @@ import '../feedback/uten_busy_overlay.dart';
 import 'source_paper_pdf_preview.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 import '../data_display/uten_selection_lifecycle.dart';
+import '../data_display/uten_table_output_scope.dart';
+import '../../shared/export/master_export_job.dart';
 
 /// 打印表格数据：表头 + 行（均为显示就绪字符串）。
 class UtenPrintTable {
@@ -383,6 +386,8 @@ Future<String> buildUtenPrintSelectionText(
 }
 
 /// 弹出通用 A4 打印预览。
+final _openPrintOutputs = Expando<bool>('uten-print-output');
+
 Future<void> showUtenPrintPreview({
   required BuildContext context,
   required String title,
@@ -397,58 +402,222 @@ Future<void> showUtenPrintPreview({
   String? exportPermission,
   String? tableKey,
   bool applyTableProjection = true,
-}) {
+  bool showOutputScope = true,
+}) async {
   context = UtenAppBarActionScope.actionContextOf(context);
-  final projection = applyTableProjection
-      ? TableColumnProjectionScope.resolve(context, tableKey)
-      : null;
-  if (applyTableProjection &&
-      TableColumnProjectionScope.hasCurrentTables(context) &&
-      projection == null) {
-    context.appError('当前页面有多张表格，请明确选择要预览的表头');
-    return Future<void>.value();
-  }
-  ProviderContainer? container;
+  if (_openPrintOutputs[context] == true) return;
+  _openPrintOutputs[context] = true;
   try {
-    container = ProviderScope.containerOf(context, listen: false);
-  } on StateError {
-    // Standalone paper previews also work outside the authenticated app shell.
-  }
-  final readBoundary = container?.read(sensitiveReadBoundaryProvider);
-  final readRevision = container?.read(readScopeRevisionProvider);
-  PlatformTableRepository? repository;
-  if (projection?.columns.any((column) => column.key.startsWith('platform:')) ==
-      true) {
+    final projection = applyTableProjection
+        ? TableColumnProjectionScope.resolve(context, tableKey)
+        : null;
+    if (applyTableProjection &&
+        TableColumnProjectionScope.hasCurrentTables(context) &&
+        projection == null) {
+      context.appError('当前页面有多张表格，请明确选择要预览的表头');
+      return;
+    }
+    ProviderContainer? container;
     try {
-      repository = container?.read(platformTableRepositoryProvider);
+      container = ProviderScope.containerOf(context, listen: false);
     } on StateError {
-      /* Standalone projections fail visibly if required dynamic data has no repository. */
+      // Standalone paper previews also work outside the authenticated app shell.
+    }
+    final readBoundary = container?.read(sensitiveReadBoundaryProvider);
+    final readRevision = container?.read(readScopeRevisionProvider);
+    var selection =
+        projection?.outputSelection ?? const UtenTableOutputSelection();
+    final outputScope = showOutputScope
+        ? await showUtenTableOutputScope(
+            context: context,
+            action: '打印',
+            selectedCount: selection.count,
+          )
+        : UtenTableOutputScope.all;
+    if (outputScope == null || !context.mounted) return;
+    if (container != null &&
+        (readBoundary != container.read(sensitiveReadBoundaryProvider) ||
+            readRevision != container.read(readScopeRevisionProvider))) {
+      return;
+    }
+    final selectedOnly = outputScope == UtenTableOutputScope.selected;
+    if (selectedOnly) {
+      selection = await UtenBusyOverlay.run(
+        context,
+        title: '正在读取选中记录',
+        action: selection.snapshot,
+      );
+      if (!context.mounted) return;
+      if (container != null &&
+          (readBoundary != container.read(sensitiveReadBoundaryProvider) ||
+              readRevision != container.read(readScopeRevisionProvider))) {
+        return;
+      }
+    }
+
+    final selectedBody = <String, dynamic>{
+      ...?exportBody,
+      if (selectedOnly && masterExportJobReport(exportEndpoint ?? '') != null)
+        'selectedIds': selection.ids.toList(growable: false),
+    };
+    final selectedProjection = projection == null
+        ? null
+        : TableColumnProjection(
+            tableKey: projection.tableKey,
+            scope: projection.scope,
+            columns: projection.columns,
+            sourceKeys: projection.sourceKeys,
+            rowSelection:
+                selectedOnly &&
+                    masterExportJobReport(exportEndpoint ?? '') == null
+                ? selection.rows
+                : null,
+          );
+    PlatformTableRepository? repository;
+    if (projection?.columns.any(
+          (column) => column.key.startsWith('platform:'),
+        ) ==
+        true) {
+      try {
+        repository = container?.read(platformTableRepositoryProvider);
+      } on StateError {
+        /* Standalone projections fail visibly if required dynamic data has no repository. */
+      }
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (_) {
+        final dialog = _UtenPrintPreviewDialog(
+          title: title,
+          subtitle: subtitle,
+          loader: () async {
+            final table = await loader();
+            return selectedOnly
+                ? await selectUtenPrintRows(table, selection)
+                : table;
+          },
+          authorizePrint: authorizePrint,
+          exportEndpoint: exportEndpoint,
+          exportReport: exportReport,
+          exportQuery: exportQuery,
+          exportBody: selectedBody,
+          exportFilename: exportFilename,
+          exportPermission: exportPermission,
+          projection: selectedProjection,
+          repository: repository,
+          providerContainer: container,
+          readBoundary: readBoundary,
+          readRevision: readRevision,
+        );
+        return container == null
+            ? dialog
+            : UncontrolledProviderScope(container: container, child: dialog);
+      },
+    );
+  } on UiWorkCancelled {
+    // A closed or superseded source never opens a late preview.
+  } on FormatException catch (error) {
+    if (context.mounted) context.appError(error.message);
+  } finally {
+    _openPrintOutputs[context] = false;
+  }
+}
+
+Future<UtenPrintTable> selectUtenPrintRows(
+  UtenPrintTable table,
+  UtenTableOutputSelection selection,
+) async {
+  final indices = <int>[];
+  final work = UiWorkBudget();
+  final ids = table.rowIds;
+  final sourceIds = ids?.toSet() ?? const <String?>{};
+  final hasRecordIds =
+      selection.rows.isNotEmpty &&
+      selection.rows.every((row) => row['@id']?.isNotEmpty == true);
+  final selectedSourceIds = hasRecordIds
+      ? {for (final row in selection.rows) row['@id']!}
+      : selection.ids;
+  final useIds =
+      ids != null &&
+      ids.length == table.rows.length &&
+      ids.every((id) => id != null && id.isNotEmpty) &&
+      (hasRecordIds || selection.ids.any(sourceIds.contains));
+  final raw =
+      table.factValues != null &&
+      selection.rows.isNotEmpty &&
+      !selection.rows.first.containsKey('@id');
+  final selectors = raw ? selection.rows : selection.displayRows;
+  final keys =
+      selectors.isEmpty
+            ? <String>[]
+            : selectors.first.keys
+                  .where(
+                    (key) => raw || (table.columnKeys?.contains(key) ?? false),
+                  )
+                  .toList()
+        ..sort();
+  final wanted = <String, int>{};
+  String signature(Map<String, String?> row) =>
+      jsonEncode([for (final key in keys) row[key]]);
+  if (!useIds) {
+    if (selectors.length != selection.count || keys.isEmpty) {
+      throw const FormatException('选中记录缺少完整输出身份，请刷新后重选');
+    }
+    for (var i = 0; i < selectors.length; i++) {
+      final key = signature(selectors[i]);
+      if (wanted.containsKey(key)) {
+        throw const FormatException('选中行的输出身份重复，请刷新后重选');
+      }
+      wanted[key] = i;
+      await work.checkpoint();
     }
   }
-  return showDialog<void>(
-    context: context,
-    builder: (_) {
-      final dialog = _UtenPrintPreviewDialog(
-        title: title,
-        subtitle: subtitle,
-        loader: loader,
-        authorizePrint: authorizePrint,
-        exportEndpoint: exportEndpoint,
-        exportReport: exportReport,
-        exportQuery: exportQuery,
-        exportBody: exportBody,
-        exportFilename: exportFilename,
-        exportPermission: exportPermission,
-        projection: projection,
-        repository: repository,
-        providerContainer: container,
-        readBoundary: readBoundary,
-        readRevision: readRevision,
-      );
-      return container == null
-          ? dialog
-          : UncontrolledProviderScope(container: container, child: dialog);
-    },
+  final found = <Object>{};
+  for (var index = 0; index < table.rows.length; index++) {
+    Object? identity;
+    if (useIds) {
+      if (selectedSourceIds.contains(ids[index])) identity = ids[index];
+    } else {
+      final values = raw
+          ? table.factValues![index]
+          : <String, String?>{
+              for (var col = 0; col < (table.columnKeys?.length ?? 0); col++)
+                table.columnKeys![col]: table.rows[index][col],
+            };
+      if (raw || keys.every(values.containsKey)) {
+        identity = wanted[signature(values)];
+      }
+    }
+    if (identity != null) {
+      if (!found.add(identity)) {
+        throw const FormatException('选中行的输出身份不唯一，请刷新后重选');
+      }
+      indices.add(index);
+    }
+    await work.checkpoint();
+  }
+  if (indices.length != selection.count) {
+    throw const FormatException('选中记录已变化或不属于当前筛选，请刷新后重选');
+  }
+  if ((table.documentMetadata['paperLayout'] != null ||
+          table.documentMetadata['reviewId'] != null) &&
+      indices.length != table.rows.length) {
+    throw const FormatException('原件需要完整输出；选中明细请在明细报表中打印');
+  }
+  return UtenPrintTable(
+    headers: table.headers,
+    columnKeys: table.columnKeys,
+    rows: [for (final i in indices) table.rows[i]],
+    rowIds: ids == null ? null : [for (final i in indices) ids[i]],
+    factValues: table.factValues == null
+        ? null
+        : [for (final i in indices) table.factValues![i]],
+    columnWidths: table.columnWidths,
+    pageHeader: table.pageHeader,
+    pageFooter: table.pageFooter,
+    headerGroups: table.headerGroups,
+    documentMetadata: table.documentMetadata,
+    repeatColumnHeaders: table.repeatColumnHeaders,
   );
 }
 
@@ -469,6 +638,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
     this.exportPermission,
     this.tableKey,
     this.applyTableProjection = true,
+    this.showOutputScope = true,
     this.label = '预览打印',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
@@ -490,6 +660,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
   final String? exportPermission;
   final String? tableKey;
   final bool applyTableProjection;
+  final bool showOutputScope;
 
   /// 按钮文字（默认"预览打印"）。
   final String label;
@@ -531,6 +702,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
               exportPermission: exportPermission,
               tableKey: tableKey,
               applyTableProjection: applyTableProjection,
+              showOutputScope: showOutputScope,
             ),
       child: Text(label),
     );
@@ -586,6 +758,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   ProviderSubscription<int>? _revisionSubscription;
   int _contextVersion = 0;
   bool _invalidated = false;
+  bool _loading = true;
   bool _printing = false;
   bool _preparingSourcePdf = false;
   Uint8List? _sourcePdfBytes;
@@ -627,6 +800,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     setState(() {
       _contextVersion++;
       _invalidated = true;
+      _loading = false;
       _printing = false;
       _preparingSourcePdf = false;
       _sourcePdfBytes = null;
@@ -794,6 +968,8 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
         _sourcePdfBytes = null;
         _error = humanErrorMessage(error) ?? '加载数据失败，请重试';
       }); // TODO(l10n): 补 arb
+    } finally {
+      if (_isCurrent(version)) setState(() => _loading = false);
     }
   }
 
@@ -841,7 +1017,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   }
 
   void _cancelSourceRead() {
-    if (!_preparingSourcePdf) return;
+    if (!_loading && !_preparingSourcePdf) return;
     _contextVersion++;
     _invalidated = true;
     _pdfGenerator.dispose();
@@ -913,16 +1089,13 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                                   ),
                                   if (widget.exportEndpoint != null)
                                     UtenExportButton(
+                                      showOutputScope: false,
+                                      frozenProjection: widget.projection,
                                       endpoint: widget.exportEndpoint!,
                                       report: widget.exportReport ?? '',
                                       queryParams:
                                           widget.exportQuery ?? const {},
-                                      bodyParams: {
-                                        ...?widget.exportBody,
-                                        if (widget.projection != null)
-                                          'columnProjection': widget.projection!
-                                              .toJson(),
-                                      },
+                                      bodyParams: {...?widget.exportBody},
                                       filename:
                                           widget.exportFilename ?? widget.title,
                                       requiredPermission:
@@ -952,12 +1125,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                                 child: Text(_error!),
                               )
                             : table == null
-                            ? const SizedBox(
-                                height: 160,
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              )
+                            ? const SizedBox(height: 160)
                             : _sourcePdfBytes != null
                             ? SourcePaperPdfPreview(
                                 bytes: _sourcePdfBytes!,
@@ -984,11 +1152,17 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
             },
           ),
         ),
-        if (_preparingSourcePdf || _printing)
+        if (_loading || _preparingSourcePdf || _printing)
           UtenBusyOverlay(
-            title: _preparingSourcePdf ? '正在生成原件预览' : '正在准备打印',
+            title: _preparingSourcePdf
+                ? '正在生成原件预览'
+                : _loading
+                ? '正在读取打印结果'
+                : '正在准备打印',
             showDoNotLeaveHint: false,
-            onCancel: _preparingSourcePdf ? _cancelSourceRead : null,
+            onCancel: _loading || _preparingSourcePdf
+                ? _cancelSourceRead
+                : null,
             cancelLabel: '取消读取',
           ),
       ],

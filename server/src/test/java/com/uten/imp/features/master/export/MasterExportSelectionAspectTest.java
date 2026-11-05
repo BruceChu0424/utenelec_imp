@@ -1,0 +1,33 @@
+package com.uten.imp.features.master.export;
+
+import com.uten.imp.application.port.ExportLimitPort;
+import com.uten.imp.audit.*;
+import com.uten.imp.common.export.*;
+import com.uten.imp.features.master.unit.*;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import org.junit.jupiter.api.Test;
+import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import java.util.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class MasterExportSelectionAspectTest {
+    @Test void realUnitControllerExportBindsSelectionAndCleansScopeOnFailure() {
+        var service = mock(UnitService.class); var user = mock(SecurityContextCurrentUser.class);
+        var limits = mock(ExportLimitPort.class); when(limits.exportMaxRows()).thenReturn(100000);
+        var target = new UnitController(service, mock(AuditDetailViewRecorder.class), mock(XlsxExportService.class),
+                mock(WorkbookDownloadService.class), mock(AuditService.class), user, limits);
+        var factory = new AspectJProxyFactory(target); factory.addAspect(new MasterExportSelectionAspect());
+        UnitController controller = factory.getProxy(); UUID id = UUID.randomUUID();
+        when(service.export(any(), anyInt())).thenAnswer(call -> {
+            assertThat(MasterExportSelection.current()).containsExactly(id);
+            throw new IllegalStateException("fixture generation failure");
+        });
+        assertThatThrownBy(() -> controller.export(null, null, null, null, null, null,
+                new ExportPasswordRequest(null, null, List.of(id))))
+                .isInstanceOf(IllegalStateException.class).hasMessage("fixture generation failure");
+        verify(service).export(any(), eq(100000));
+        assertThat(MasterExportSelection.current()).isNull();
+    }
+}

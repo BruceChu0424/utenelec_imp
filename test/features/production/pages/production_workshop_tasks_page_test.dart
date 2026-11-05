@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'dart:async';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -113,6 +114,8 @@ void main() {
     (tester) async {
       const capture = bool.fromEnvironment('UTEN_WORKSHOP_EXPORT_CAPTURE');
       final captureKey = GlobalKey();
+      final projections = TableColumnProjectionController();
+      addTearDown(projections.dispose);
       if (capture) await loadAuditScreenshotFonts(tester);
       await tester.binding.setSurfaceSize(const Size(1800, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -133,8 +136,10 @@ void main() {
           ],
           child: MaterialApp.router(
             theme: capture ? auditScreenshotTheme(buildLightTheme()) : null,
-            builder: (context, child) =>
-                RepaintBoundary(key: captureKey, child: child!),
+            builder: (context, child) => TableColumnProjectionScope(
+              controller: projections,
+              child: RepaintBoundary(key: captureKey, child: child!),
+            ),
             routerConfig: router,
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
@@ -165,6 +170,28 @@ void main() {
               MasterDataTableView<ProductionExecutionWorkbenchSegment>,
             ),
           );
+      expect(
+        table.selectable,
+        isFalse,
+        reason: 'export permission grants no workshop mutations',
+      );
+      expect(table.outputSelectionEnabled, isTrue);
+      expect(table.batchActionsBuilder, isNull);
+      expect(table.leadingOverlayBuilder, isNull);
+      final task = table.items.first;
+      expect(table.idOf!(task), isNull);
+      expect(table.outputIdOf!(task), task.segmentId);
+      expect(table.outputSelectorOf!(task), {'segmentId': task.segmentId});
+      await tester.tap(find.text(task.productName!));
+      await tester.pumpAndSettle();
+      final selection = await tester.runAsync(
+        () => projections.tables.single.outputSelection.snapshot(),
+      );
+      expect(selection!.ids, {task.segmentId});
+      expect(selection.rows, [
+        {'segmentId': task.segmentId},
+      ]);
+      expect(find.textContaining('批量报工'), findsNothing);
       table.onFilterChanged('segment', 'ZX00000001');
       await tester.pumpAndSettle();
       expect(button().queryParams['segmentCode'], 'ZX00000001');

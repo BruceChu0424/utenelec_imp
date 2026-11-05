@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "encoding": "utf16-length-prefixed-fee-key-and-nullable-target-path",
+  "fees": [
+    {"feeKey": "same:费用", "targetPath": "root/一", "rowKey": "7:same:费用6:root/一"},
+    {"feeKey": "same:费用", "targetPath": null, "rowKey": "7:same:费用-"},
+    {"feeKey": "same:费用", "targetPath": "", "rowKey": "7:same:费用0:"},
+    {"feeKey": "COLUMN:inspect:edge-a", "targetPath": "edge-a", "rowKey": "21:COLUMN:inspect:edge-a6:edge-a"}
+  ]
+}

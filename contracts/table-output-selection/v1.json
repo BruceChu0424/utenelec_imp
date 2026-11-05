@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "all": "Missing selectedIds means the complete current authorized filter; explicit empty is invalid.",
+  "serverMaxSelectedIds": 50000,
+  "nativeJournalMaxSelectedIds": 1000,
+  "selectionVersion": 1,
+  "handshakeCases": [
+    {"name":"old-jobs", "status":200, "body":{"available":true}, "available":true, "selectionAllowed":false},
+    {"name":"old-sync", "status":200, "body":{"available":false}, "available":false, "selectionAllowed":false},
+    {"name":"old-missing-capability", "status":404, "body":null, "available":false, "selectionAllowed":false},
+    {"name":"v1-jobs", "status":200, "body":{"available":true,"selectionVersion":1}, "available":true, "selectionAllowed":true},
+    {"name":"v1-sync", "status":200, "body":{"available":false,"selectionVersion":1}, "available":false, "selectionAllowed":true},
+    {"name":"future-compatible", "status":200, "body":{"available":true,"selectionVersion":2}, "available":true, "selectionAllowed":true}
+  ],
+  "cases": [
+    {"name":"all", "raw":null, "valid":true},
+    {"name":"one", "raw":"[\"12345678-1234-1234-1234-123456789abc\"]", "valid":true},
+    {"name":"two-cross-page", "raw":"[\"12345678-1234-1234-1234-123456789abc\",\"77777777-7777-7777-7777-777777777777\"]", "valid":true},
+    {"name":"empty", "raw":"[]", "valid":false},
+    {"name":"duplicate", "raw":"[\"12345678-1234-1234-1234-123456789abc\",\"12345678-1234-1234-1234-123456789abc\"]", "valid":false},
+    {"name":"zero", "raw":"[\"00000000-0000-0000-0000-000000000000\"]", "valid":false},
+    {"name":"noncanonical-case", "raw":"[\"12345678-1234-1234-1234-123456789ABC\"]", "valid":false},
+    {"name":"not-an-array", "raw":"{}", "valid":false},
+    {"name":"not-an-id", "raw":"[\"material-name\"]", "valid":false}
+  ]
+}

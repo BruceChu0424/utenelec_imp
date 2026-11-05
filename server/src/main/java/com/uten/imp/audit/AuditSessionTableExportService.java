@@ -60,6 +60,7 @@ public class AuditSessionTableExportService {
     private void append(List<Map<String,Object>> rows,List<AuditSessionRow> source) {
         for(var item:source) {
             Map<String,Object> row=new LinkedHashMap<>();
+            row.put("sessionId",item.sessionId());
             row.put("actor",item.actorDisplay());row.put("login",time(item.loginAt()));
             row.put("status",item.statusLabel());row.put("device",item.deviceLabel());
             row.put("operations",item.operationCount());row.put("failures",item.failureCount());

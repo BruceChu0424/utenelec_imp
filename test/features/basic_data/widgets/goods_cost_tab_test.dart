@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
@@ -18,6 +20,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../support/uten_test_actions.dart';
+import '../../../support/output_selection_wire_api.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -25,7 +28,9 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_repository.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
+import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
@@ -551,6 +556,20 @@ class _ProjectedCosts extends _Costs {
   @override
   Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async =>
       GoodsCostCalculation(result(input));
+}
+
+class _OutputSelectionCosts extends _ProjectedCosts {
+  int snapshotsCreated = 0;
+  Completer<GoodsCostSnapshot>? pendingSnapshot;
+  @override
+  Future<GoodsCostSnapshot> snapshot(String id, int version, String key) async {
+    snapshotsCreated++;
+    if (pendingSnapshot != null) return pendingSnapshot!.future;
+    return GoodsCostSnapshot({
+      'id': 'selected-output-snapshot',
+      'calculation': result(initial()),
+    });
+  }
 }
 
 class _CountedProjectedCosts extends _ProjectedCosts {
@@ -1274,6 +1293,7 @@ Future<void> _pump(
   double textScale = 1,
   TargetPlatform? platform,
   bool expandTree = true,
+  ApiClient? wireApi,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -1283,10 +1303,15 @@ Future<void> _pump(
   });
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
+  final wireProjection = wireApi == null
+      ? null
+      : TableColumnProjectionController();
+  if (wireProjection != null) addTearDown(wireProjection.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         goodsCostRepositoryProvider.overrideWithValue(repo),
+        if (wireApi != null) apiClientProvider.overrideWithValue(wireApi),
         platformTableRepositoryProvider.overrideWithValue(_CostPlatform()),
         currencyRepositoryProvider.overrideWithValue(
           currencies ?? _Currencies(),
@@ -1316,7 +1341,12 @@ Future<void> _pump(
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
+          child: wireProjection == null
+              ? child!
+              : TableColumnProjectionScope(
+                  controller: wireProjection,
+                  child: child!,
+                ),
         ),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -1421,6 +1451,213 @@ TextField _costInput(WidgetTester tester, Finder formField) =>
     );
 
 void main() {
+  for (final fees in [false, true]) {
+    testWidgets(
+      'selected cost caller wire reaches version1 gated download ($fees)',
+      (tester) async {
+        final api = OutputSelectionWireApi();
+        await _pump(tester, _OutputSelectionCosts(), wireApi: api);
+        if (fees) {
+          await _more(tester, '工序与费用');
+          final grid = tester.widget<UtenEditableGrid<GoodsCostFeeRow>>(
+            find.byWidgetPredicate(
+              (widget) => widget is UtenEditableGrid<GoodsCostFeeRow>,
+            ),
+          );
+          grid.controller.selectOnly(grid.controller.rows.single);
+        } else {
+          final table = tester
+              .widget<MasterDataTableView<Map<String, dynamic>>>(
+                find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+              );
+          table.onSelectedIdsChanged!({'edge-a'});
+        }
+        await tester.pumpAndSettle();
+        await tapUtenTestAction(tester, find.byKey(const Key('cost-download')));
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenBusyOverlay), findsNothing);
+        await tester.tap(find.widgetWithText(TextButton, '确认'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('uten-export-filename')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('table-output-selected')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('直接下载'));
+        await tester.pumpAndSettle();
+        expect(api.capabilityReads, [OutputSelectionWireApi.capabilitiesPath]);
+        expect(api.downloads, hasLength(1));
+        final body = api.downloads.single.body;
+        expect(
+          api.downloads.single.path,
+          '${DioGoodsCostRepository.base}/export',
+        );
+        expect(body['snapshotId'], 'selected-output-snapshot');
+        expect(body['section'], fees ? 'FEES' : 'MATERIAL');
+        expect(body['paths'], fees ? isNull : ['edge-a']);
+        final projection = body['columnProjection'] as Map<String, dynamic>;
+        expect(projection['rowSelection'], [
+          {'rowKey': fees ? '21:COLUMN:inspect:edge-a6:edge-a' : 'edge-a'},
+        ]);
+        expect(
+          projection['tableKey'],
+          fees ? 'master.goods.cost.fees' : 'master.goods.cost.items.simple',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets(
+    'cost download preparation masks only the actual snapshot wait once',
+    (tester) async {
+      final repo = _OutputSelectionCosts()
+        ..pendingSnapshot = Completer<GoodsCostSnapshot>();
+      await _pump(tester, repo);
+      final download = tester.widget<UtenExportButton>(
+        find.byKey(const Key('cost-download')),
+      );
+      final preparing = download.prepareExport!();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(repo.snapshotsCreated, 0);
+      await tester.tap(find.widgetWithText(TextButton, '确认'));
+      // Preparation starts after the original option route fully leaves its overlay.
+      for (var frame = 0; frame < 60 && repo.snapshotsCreated == 0; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.pump();
+      expect(repo.snapshotsCreated, 1);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(
+        await download.prepareExport!(),
+        isNull,
+        reason: '准备期间重复调用不重建选项或重发快照',
+      );
+      repo.pendingSnapshot!.complete(
+        GoodsCostSnapshot({
+          'id': 'pending-output-snapshot',
+          'calculation': repo.result(repo.initial()),
+        }),
+      );
+      await tester.pumpAndSettle();
+      final selection = await preparing;
+      expect(selection!.bodyParams['snapshotId'], 'pending-output-snapshot');
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(repo.snapshotsCreated, 1);
+      final reopened = download.prepareExport!();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      await tester.tap(find.widgetWithText(TextButton, '取消'));
+      await tester.pumpAndSettle();
+      expect(await reopened, isNull);
+      expect(repo.snapshotsCreated, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  test('cost output fee identities consume the shared UTF-16 contract', () {
+    final shared =
+        jsonDecode(
+              File(
+                'contracts/table-output-cost-identities.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    for (final sample
+        in (shared['fees'] as List).cast<Map<String, dynamic>>()) {
+      final row = GoodsCostFeeRow({
+        'key': sample['feeKey'],
+        'targetPath': sample['targetPath'],
+      });
+      expect(row.outputRowKey, sample['rowKey']);
+      row.dispose();
+    }
+  });
+
+  for (final fees in [false, true]) {
+    testWidgets(
+      'cost output keeps format and sections while sharing the selected range ($fees)',
+      (tester) async {
+        final repo = _OutputSelectionCosts();
+        await _pump(tester, repo);
+        Map<String, String?> selector;
+        if (fees) {
+          await _more(tester, '工序与费用');
+          final grid = tester.widget<UtenEditableGrid<GoodsCostFeeRow>>(
+            find.byWidgetPredicate(
+              (widget) => widget is UtenEditableGrid<GoodsCostFeeRow>,
+            ),
+          );
+          final row = grid.controller.rows.single;
+          grid.controller.selectOnly(row);
+          await tester.pumpAndSettle();
+          selector = grid.outputSelectorOf!(row);
+          expect(selector, {'rowKey': '21:COLUMN:inspect:edge-a6:edge-a'});
+        } else {
+          final table = tester
+              .widget<MasterDataTableView<Map<String, dynamic>>>(
+                find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+              );
+          table.onSelectedIdsChanged!({'edge-a'});
+          await tester.pumpAndSettle();
+          selector = table.outputSelectorOf!(table.items.first);
+          expect(selector, {'rowKey': 'edge-a'});
+        }
+        final download = tester.widget<UtenExportButton>(
+          find.byKey(const Key('cost-download')),
+        );
+        final preparing = download.prepareExport!();
+        await tester.pumpAndSettle();
+        final format = tester
+            .widgetList<UtenDropdownField>(
+              find.descendant(
+                of: find.byType(AlertDialog),
+                matching: find.byType(UtenDropdownField),
+              ),
+            )
+            .singleWhere((field) => field.label == '文件格式');
+        expect(format.items.map((item) => item.value), ['xlsx', 'pdf']);
+        await tester.tap(find.text('高级选项'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byType(CheckboxListTile),
+          findsNothing,
+          reason: '选中范围只在公共文件名/路径/密码弹窗选择',
+        );
+        final section = tester
+            .widgetList<UtenDropdownField>(
+              find.descendant(
+                of: find.byType(AlertDialog),
+                matching: find.byType(UtenDropdownField),
+              ),
+            )
+            .singleWhere((field) => field.label == '来源');
+        expect(section.items.map((item) => item.value), [
+          'ALL',
+          'MATERIAL',
+          'FEES',
+        ]);
+        await tester.tap(find.widgetWithText(TextButton, '确认'));
+        await tester.pumpAndSettle();
+        final selection = (await preparing)!;
+        expect(selection.extension, 'xlsx');
+        expect(selection.bodyParams['section'], fees ? 'FEES' : 'ALL');
+        expect(selection.bodyParams.containsKey('paths'), isFalse);
+        expect(selection.bodyParams['snapshotId'], 'selected-output-snapshot');
+        expect(
+          selection.bodyForSelection!([selector]),
+          fees
+              ? {'section': 'FEES'}
+              : {
+                  'section': 'MATERIAL',
+                  'paths': ['edge-a'],
+                },
+        );
+        expect(repo.snapshotsCreated, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'cost snapshots have real kind facets, numeric versions and Beijing date headers',
     (tester) async {

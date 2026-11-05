@@ -31,6 +31,13 @@ namespace Uten.Legacy.Desktop.Features.Units
                 int count = 0; Action<bool, string> check = (value, label) => { if (!value) throw new InvalidOperationException("Unit export UI: " + label); count++; };
                 FrozenFilterAndDownload(check); LostReplyReconcilesWithoutAnotherPost(check); LegacyIsOnlyCapabilityFallback(check);
                 CancelledSaveChoosesNoDownload(check); ForbiddenRetiresVisibleData(check);
+                SelectedScopeReachesJobAndLegacyBody(check);
+                ScopeDialogCountsAndCancellation(check);
+                HistoricalScopeRequiresExplicitChoice(check);
+                ScopeIsIntegratedAndUnknownRequestKeepsItsFrozenChoice(check);
+                OldServerNeverExpandsSelectedOutput(check);
+                RollbackBeforeSelectedActionIsRechecked(check);
+                UnknownSelectedTaskKeepsOriginalProofWhenServerVersionRetires(check);
                 return count;
             }
             finally { SynchronizationContext.SetSynchronizationContext(before); }
@@ -53,6 +60,145 @@ namespace Uten.Legacy.Desktop.Features.Units
                 check(password.Password.Length == 0 && fixture.DownloadBody.Contains("fixture-download-secret"), "password transmitted only for download then cleared");
                 var owner = fixture.Session.CaptureMutationOwner();
                 check(fixture.State.Store.ListJournal(owner).All(record => !record.BodyJson.Contains("fixture-download-secret")), "password absent from durable job journal");
+                window.Close();
+            }
+        }
+        private static void SelectedScopeReachesJobAndLegacyBody(Action<bool, string> check)
+        {
+            string id = "12345678-1234-1234-1234-123456789abc";
+            using (var fixture = new Fixture())
+            {
+                var window = fixture.Open(new UnitQuery(keyword: "selected-filter"), new[] { id });
+                Pump(() => Button(window, "生成当前筛选").IsEnabled); Click(Button(window, "生成当前筛选"));
+                Pump(() => fixture.Creates == 1 && Button(window, "下载Excel").IsEnabled);
+                var parameters = (Dictionary<string, object>)Parse(fixture.OriginalBody)["parameters"];
+                check((string)parameters["selectedIds"] == "[\"" + id + "\"]", "selected UUID remains a private frozen job parameter");
+                check(((string)parameters["filter"]).Contains("selected-filter"), "selected export retains original current filter");
+                window.Close();
+            }
+            using (var fixture = new Fixture())
+            {
+                fixture.Available = false;
+                var window = fixture.Open(new UnitQuery(), new[] { id });
+                Pump(() => Button(window, "下载Excel").IsEnabled); Click(Button(window, "下载Excel"));
+                Pump(() => File.Exists(fixture.Output));
+                check(fixture.LegacyBody.Contains(id) && !fixture.LegacyPath.Contains(id), "legacy selection is body-only and never expands to all rows");
+                window.Close();
+            }
+        }
+        private static void ScopeDialogCountsAndCancellation(Action<bool, string> check)
+        {
+            var empty = new TableOutputScopeDialog(null, "导出", 0, 205);
+            check(!Button(empty, "仅选中（0 项）").IsEnabled && Button(empty, "全部（205 项）").IsEnabled,
+                "scope dialog explicitly shows full result and zero selected count");
+            empty.Close(); check(empty.SelectedOnly == null, "closing a scope dialog is cancellation, never implicit all");
+            var selected = new TableOutputScopeDialog(null, "打印", 2, 205);
+            Button(selected, "仅选中（2 项）").RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            check(selected.SelectedOnly == true, "scope choice retains actual selected count and explicit selected-only decision");
+        }
+        private static void HistoricalScopeRequiresExplicitChoice(Action<bool, string> check)
+        {
+            using (var fixture = new Fixture())
+            {
+                fixture.JobId = Guid.NewGuid().ToString("D");
+                fixture.OriginalBody = UnitExportService.CreateBody(fixture.JobId, new UnitQuery(), UnitColumnProjection.Default);
+                var window = fixture.Open(new UnitQuery(), new[] { "12345678-1234-1234-1234-123456789abc" });
+                Pump(() => Button(window, "生成当前筛选").IsEnabled);
+                check(!Button(window, "下载Excel").IsEnabled, "new selected scope never silently downloads historical all-row artifact");
+                var history = Visual<DataGrid>((DependencyObject)window.Content, value => true); history.SelectedIndex = 0;
+                check(Button(window, "下载Excel").IsEnabled, "historical scope remains available only by explicit history selection");
+                window.Close();
+            }
+        }
+        private static void ScopeIsIntegratedAndUnknownRequestKeepsItsFrozenChoice(Action<bool, string> check)
+        {
+            string id = "12345678-1234-1234-1234-123456789abc";
+            using (var fixture = new Fixture())
+            {
+                var window = fixture.Open(new UnitQuery(), new[] { id }, 205, false);
+                Pump(() => Button(window, "生成当前筛选").IsEnabled);
+                var all = Visual<RadioButton>((DependencyObject)window.Content, value => Equals(value.Content, "全部（205 项）"));
+                var selected = Visual<RadioButton>((DependencyObject)window.Content, value => Equals(value.Content, "仅选中（1 项）"));
+                check(all?.IsChecked == true && selected?.IsEnabled == true, "scope and selected count live in original password/export window with default complete filter");
+                var visual = (FrameworkElement)window.Content;
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(visual.ActualWidth),
+                    (int)Math.Ceiling(visual.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(visual);
+                var image = new System.Windows.Media.Imaging.PngBitmapEncoder();image.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                string screenshot = Path.Combine("build","windows-wpf","table-output-export-" + (Environment.Is64BitProcess ? "x64" : "x86") + ".png");
+                Directory.CreateDirectory(Path.GetDirectoryName(screenshot));using(var output=File.Create(screenshot))image.Save(output);
+                selected.IsChecked = true; fixture.LoseSubmitReply = true; Click(Button(window, "生成当前筛选"));
+                Pump(() => Button(window, "核对原任务").IsEnabled);
+                check(!all.IsEnabled && !selected.IsEnabled && fixture.OriginalBody.Contains(id), "unknown task freezes selected scope until original request reconciliation");
+                window.Close();
+            }
+            using (var fixture = new Fixture())
+            {
+                var window = fixture.Open(new UnitQuery(), new[] { id }, 205, true);
+                Pump(() => Button(window, "生成当前筛选").IsEnabled); Click(Button(window, "生成当前筛选"));
+                Pump(() => Button(window, "下载Excel").IsEnabled);
+                Visual<RadioButton>((DependencyObject)window.Content, value => Equals(value.Content, "全部（205 项）")).IsChecked = true;
+                check(!Button(window, "下载Excel").IsEnabled && Button(window, "生成当前筛选").IsEnabled,
+                    "changing scope cannot silently reuse an old artifact and requires a new frozen task");
+                window.Close();
+            }
+        }
+        private static void OldServerNeverExpandsSelectedOutput(Action<bool,string> check)
+        {
+            string id="12345678-1234-1234-1234-123456789abc";
+            foreach(int mode in new[]{0,1,2})
+            using(var fixture=new Fixture())
+            {
+                fixture.SelectionVersion=null;fixture.Available=mode==0;fixture.CapabilityMissing=mode==2;
+                var window=fixture.Open(new UnitQuery(),new[]{id},205,true);
+                var all=Visual<RadioButton>((DependencyObject)window.Content,value=>Equals(value.Content,"全部（205 项）"));
+                var selected=Visual<RadioButton>((DependencyObject)window.Content,value=>Equals(value.Content,"仅选中（1 项）"));
+                Pump(()=>all.IsEnabled&&fixture.CapabilityReads>0);
+                check(!selected.IsEnabled&&!Button(window,"生成当前筛选").IsEnabled&&!Button(window,"下载Excel").IsEnabled,
+                    "old server cannot generate or download a new selected scope mode "+mode);
+                check(fixture.Creates==0&&fixture.LegacyReads==0&&fixture.Picker.Calls==0,"unsupported scope publishes no task or file and never opens save picker");
+                all.IsChecked=true;
+                if(mode==0){Click(Button(window,"生成当前筛选"));Pump(()=>fixture.Creates==1&&Button(window,"下载Excel").IsEnabled);check(!fixture.OriginalBody.Contains("selectedIds"),"explicit old-server all scope retains durable compatibility");}
+                else{Click(Button(window,"下载Excel"));Pump(()=>File.Exists(fixture.Output)&&Button(window,"下载Excel").IsEnabled);check(!fixture.LegacyBody.Contains("selectedIds"),"explicit old-server all scope retains legacy compatibility");}
+                window.Close();
+            }
+        }
+        private static void RollbackBeforeSelectedActionIsRechecked(Action<bool,string> check)
+        {
+            string id="12345678-1234-1234-1234-123456789abc";
+            using(var fixture=new Fixture())
+            {
+                fixture.Available=false;var window=fixture.Open(new UnitQuery(),new[]{id});
+                Pump(()=>Button(window,"下载Excel").IsEnabled);fixture.SelectionVersion=null;
+                Click(Button(window,"下载Excel"));Pump(()=>fixture.CapabilityReads>=2&&!Button(window,"下载Excel").IsEnabled
+                    &&Visual<RadioButton>((DependencyObject)window.Content,value=>Equals(value.Content,"全部（当前筛选）")).IsEnabled);
+                check(fixture.LegacyReads==0&&fixture.Picker.Calls==0&&!File.Exists(fixture.Output),"selected legacy action rechecks a rolled-back server before delivery");
+                window.Close();
+            }
+            using(var fixture=new Fixture())
+            {
+                var window=fixture.Open(new UnitQuery(),new[]{id});Pump(()=>Button(window,"生成当前筛选").IsEnabled);fixture.SelectionVersion=null;
+                Click(Button(window,"生成当前筛选"));Pump(()=>fixture.CapabilityReads>=2&&!Button(window,"生成当前筛选").IsEnabled
+                    &&Visual<RadioButton>((DependencyObject)window.Content,value=>Equals(value.Content,"全部（当前筛选）")).IsEnabled);
+                check(fixture.Creates==0,"selected job action rechecks rolled-back protocol before any mutation");window.Close();
+            }
+        }
+        private static void UnknownSelectedTaskKeepsOriginalProofWhenServerVersionRetires(Action<bool,string> check)
+        {
+            using(var fixture=new Fixture())
+            {
+                fixture.LoseSubmitReply=true;string id="12345678-1234-1234-1234-123456789abc";
+                var window=fixture.Open(new UnitQuery(),new[]{id});Pump(()=>Button(window,"生成当前筛选").IsEnabled);
+                Click(Button(window,"生成当前筛选"));Pump(()=>Button(window,"核对原任务").IsEnabled);
+                string frozen=fixture.OriginalBody;fixture.SelectionVersion=null;
+                Click(Button(window,"按原任务再次确认"));Pump(()=>fixture.CapabilityReads>=3&&!Button(window,"按原任务再次确认").IsEnabled&&Button(window,"核对原任务").IsEnabled);
+                check(fixture.Creates==1&&fixture.OriginalBody==frozen,"retired selection version cannot replay or replace the original unknown selected task");
+                check(Button(window,"核对原任务").IsEnabled,"unsupported new selection still permits readonly original-request reconciliation");
+                Click(Button(window,"核对原任务"));Pump(()=>
+                    fixture.State.Store.ListJournal(fixture.Session.CaptureMutationOwner()).Single(row=>row.Action==MutationAction.UnitExportSubmit).State==MutationJournalState.Confirmed
+                    &&Visual<RadioButton>((DependencyObject)window.Content,value=>Equals(value.Content,"全部（当前筛选）")).IsEnabled);
+                var journal=fixture.State.Store.ListJournal(fixture.Session.CaptureMutationOwner());
+                check(journal.Single(row=>row.Action==MutationAction.UnitExportSubmit).State==MutationJournalState.Confirmed
+                    &&fixture.Creates==1&&fixture.OriginalBody==frozen,"exact original selected proof can settle unknown without another mutation");
                 window.Close();
             }
         }
@@ -154,8 +300,11 @@ namespace Uten.Legacy.Desktop.Features.Units
             internal readonly Picker Picker = new Picker();
             internal readonly byte[] Workbook = new byte[1024];
             internal readonly HashSet<string> CreatedIdentities = new HashSet<string>();
-            internal string JobId, OriginalBody, DownloadBody, LegacyPath;
+            internal string JobId, OriginalBody, DownloadBody, LegacyPath, LegacyBody;
             internal int Creates, Downloads, Authorizations, LegacyReads;
+            internal int CapabilityReads;
+            internal int? SelectionVersion=1;
+            internal bool CapabilityMissing;
             internal bool Available = true, LoseSubmitReply, IncludeProof = true, Forbidden;
             internal string Output { get { return Picker.Output; } }
             internal Fixture()
@@ -166,9 +315,9 @@ namespace Uten.Legacy.Desktop.Features.Units
                 Session = new SessionCoordinator(config, new Handler(Serve), new MemoryStore(), State.Store);
                 Session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
             }
-            internal UnitExportWindow Open(UnitQuery query)
+            internal UnitExportWindow Open(UnitQuery query, IReadOnlyList<string> selectedIds = null, long? totalCount = null, bool selectedOnly = true)
             {
-                var window = new UnitExportWindow(null, Session, query, UnitColumnProjection.Default, new UnitReadOwner(Session), Picker);
+                var window = new UnitExportWindow(null, Session, query, UnitColumnProjection.Default, new UnitReadOwner(Session), Picker, selectedIds, totalCount, selectedOnly);
                 var content = (FrameworkElement)window.Content; content.Measure(new Size(900, 800)); content.Arrange(new Rect(0, 0, 900, content.DesiredSize.Height)); content.UpdateLayout();
                 Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() => window.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent))));
                 return window;
@@ -180,7 +329,13 @@ namespace Uten.Legacy.Desktop.Features.Units
                     return Json("{\"accessToken\":\"access.fixture\",\"refreshToken\":\"refresh.fixture\",\"expiresIn\":900,\"user\":{\"id\":\"export-ui-user\",\"loginAccount\":\"fixture\","
                         + "\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":[\"unit:view\",\"unit:export\"],\"businessDatasetId\":\"00000000-0000-0000-0000-000000000001\",\"businessResetGeneration\":0}}");
                 if (Forbidden) return Json("{\"code\":\"FORBIDDEN\",\"message\":\"fixture revoked\"}", HttpStatusCode.Forbidden);
-                if (path.EndsWith("/capabilities")) return Json("{\"available\":" + (Available ? "true" : "false") + "}");
+                if (path.EndsWith("/capabilities")) {
+                    CapabilityReads++;
+                    if(CapabilityMissing)return Json("{\"code\":\"NOT_FOUND\",\"message\":\"old server\"}",HttpStatusCode.NotFound);
+                    var value=new Dictionary<string,object>{{"available",Available}};
+                    if(SelectionVersion.HasValue)value.Add("selectionVersion",SelectionVersion.Value);
+                    return Json(new JavaScriptSerializer().Serialize(value));
+                }
                 if (path == "/api/report-export-jobs" && request.Method == HttpMethod.Post)
                 {
                     Creates++; string body = await request.Content.ReadAsStringAsync(); var parsed = Parse(body); JobId = (string)parsed["id"];
@@ -193,7 +348,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 if (path.EndsWith("/download-authorization")) { Authorizations++; return Json("{\"authorized\":true}"); }
                 if (path.EndsWith("/download") || path == "/api/master/units/export")
                 {
-                    if (path.EndsWith("/download")) Downloads++; else { LegacyReads++; LegacyPath = request.RequestUri.PathAndQuery; }
+                    if (path.EndsWith("/download")) Downloads++; else { LegacyReads++; LegacyPath = request.RequestUri.PathAndQuery; LegacyBody = await request.Content.ReadAsStringAsync(); }
                     DownloadBody = await request.Content.ReadAsStringAsync();
                     var content = new ByteArrayContent(Workbook); content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
                     return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };

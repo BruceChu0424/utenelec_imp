@@ -8,6 +8,7 @@ import '../../../components/inputs/uten_field_hint_icon.dart';
 // → POST /sales/shipments/batch 同客户合并一张出货草稿。
 // 返回生成的出货单张数（null=取消）。
 import 'package:flutter/material.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -380,9 +381,13 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
           _toast('已选订单已不可操作，请刷新核对');
           return;
         }
-        final raw = (_qtyRaw[id] ?? _num(line.reservedQty)).trim();
+        final raw =
+            (_qtyRaw[id] ??
+                    line.availableShipmentQtyExact ??
+                    _num(line.availableShipmentQty))
+                .trim();
         final qty = double.tryParse(raw);
-        final reserved = line.reservedQty ?? 0;
+        final reserved = line.availableShipmentQty ?? 0;
         if (qty == null ||
             !qty.isFinite ||
             qty <= 0 ||
@@ -390,8 +395,14 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
           _toast('订单 ${line.billNo} 的本次数量要大于 0');
           return;
         }
-        if (qty > reserved) {
-          _toast('订单 ${line.billNo} 本次数量超过可发 ${_num(reserved)}');
+        final exactRequested = financeAmountUnits(raw);
+        final exactAvailable = financeAmountUnits(
+          line.availableShipmentQtyExact,
+        );
+        if (exactRequested == null ||
+            exactAvailable == null ||
+            exactRequested > exactAvailable) {
+          _toast('订单 ${line.billNo} 本次数量超过可建出货单上限 ${_num(reserved)}');
           return;
         }
         final weightText = (_weightRaw[id] ?? '').trim();
@@ -401,7 +412,11 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
           _toast('订单 ${line.billNo} 的实际重量要大于 0');
           return;
         }
-        lines.add({'orderItemId': id, 'qty': qty, 'weight': ?weight});
+        lines.add({
+          'orderItemId': id,
+          'qty': line.isBomDelivery ? raw : qty,
+          'weight': ?weight,
+        });
       }
       _retainedLines = lines;
       _retainedDate = ChinaDateTime.formatDate(ChinaDateTime.today());
@@ -592,7 +607,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
               loading: _loading,
               error: _error,
               onRetry: () => _load(page?.page ?? 1),
-              emptyMessage: '暂无可发货的订单行（有可发数量的订单行才会显示在这里）',
+              emptyMessage: '暂无可发或可创建备货出货单的订单行',
               padding: const EdgeInsets.all(UtenSpacing.s8),
               separatorBuilder: (_, _) => const Divider(height: 1),
             ),
@@ -692,7 +707,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                   ],
                 ),
                 Text(
-                  '${names.goods(l.goodsId)} · 可发 ${_num(l.reservedQty)}${l.writable ? '' : ' · 只读'}',
+                  '${names.goods(l.goodsId)} · 可建出货单 ${_num(l.availableShipmentQty)}${l.writable ? '' : ' · 只读'}',
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 Wrap(
@@ -703,7 +718,9 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                       width: 120,
                       child: _BatchShipNumberField(
                         key: ValueKey('sales-batch-qty-${l.orderItemId}'),
-                        value: _qtyRaw[l.orderItemId] ?? _num(l.reservedQty),
+                        value:
+                            _qtyRaw[l.orderItemId] ??
+                            _num(l.availableShipmentQty),
                         onChanged: (value) => _qtyRaw[l.orderItemId] = value,
                         enabled: checked && l.writable && _canEditSelection,
                         style: theme.textTheme.bodySmall,
@@ -793,7 +810,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
               ),
               Expanded(
                 child: Text(
-                  '可发 ${_num(l.reservedQty)}',
+                  '${l.isBomDelivery ? '可建备货单' : '可发'} ${_num(l.availableShipmentQty)}',
                   style: theme.textTheme.labelMedium?.copyWith(
                     fontWeight: FontWeight.w400,
                   ),
@@ -804,7 +821,10 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                 width: 90,
                 child: _BatchShipNumberField(
                   key: ValueKey('sales-batch-qty-${l.orderItemId}'),
-                  value: _qtyRaw[l.orderItemId] ?? _num(l.reservedQty),
+                  value:
+                      _qtyRaw[l.orderItemId] ??
+                      l.availableShipmentQtyExact ??
+                      _num(l.availableShipmentQty),
                   onChanged: (value) => _qtyRaw[l.orderItemId] = value,
                   enabled: checked && l.writable && _canEditSelection,
                   keyboardType: const TextInputType.numberWithOptions(

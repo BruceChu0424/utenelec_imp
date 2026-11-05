@@ -34,6 +34,8 @@ class SalesOrderProgressRow {
     this.shipmentPendingFinanceQty = 0,
     this.shipmentFinanceRejectedQty = 0,
     this.shipmentApprovedQty = 0,
+    this.deliveryDraftQty,
+    this.hasDeliveryDraft = false,
   });
 
   final String orderId;
@@ -92,6 +94,8 @@ class SalesOrderProgressRow {
 
   /// 财务已放行、等仓库确认出库。
   final double shipmentApprovedQty;
+  final double? deliveryDraftQty;
+  final bool hasDeliveryDraft;
 
   /// 在途出货合计（含退回件，它仍占着预留）。
   double get shipmentInFlightQty =>
@@ -101,7 +105,8 @@ class SalesOrderProgressRow {
       shipmentApprovedQty;
 
   /// 是否有可发货量（reserved_qty>0）。
-  bool get shippable => !historyReadOnly && reservedQty > 0.0001;
+  bool get shippable =>
+      !historyReadOnly && (reservedQty > 0.0001 || hasDeliveryDraft);
 
   /// 订单未交数量；分批可发不代表订单已经完成。
   double get remainingQty =>
@@ -139,6 +144,8 @@ class SalesOrderProgressRow {
             (json['shipmentFinanceRejectedQty'] as num?)?.toDouble() ?? 0,
         shipmentApprovedQty:
             (json['shipmentApprovedQty'] as num?)?.toDouble() ?? 0,
+        deliveryDraftQty: (json['deliveryDraftQty'] as num?)?.toDouble(),
+        hasDeliveryDraft: json['hasDeliveryDraft'] == true,
       );
 }
 

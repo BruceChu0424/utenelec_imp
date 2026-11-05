@@ -26,6 +26,21 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MasterReferenceValidationAdapterTest {
+    @Test
+    void admittedDocumentContinuationKeepsActiveUnitRulesWithoutGrantingAnArbitraryGoodsPicker() throws Exception {
+        EntityManager em=mock(EntityManager.class);OwnerVisibility visibility=mock(OwnerVisibility.class);
+        UUID goods=UUID.randomUUID(),unit=UUID.randomUUID();
+        tupleQuery(em,new Object[]{false,UUID.randomUUID(),unit,false,"使用",false,"使用"});
+        when(visibility.evaluate("goods","goods:view:all"))
+                .thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(UUID.randomUUID())));
+        MasterReferenceValidationAdapter adapter=adapter(em,visibility,true);
+        assertEquals(unit,adapter.resolveAdmittedSourceGoodsUnit(goods,unit,BigDecimal.ONE,1).unitId());
+        assertEquals(ErrorCode.NOT_FOUND,assertThrows(ApiException.class,
+                ()->adapter.resolveVisibleActiveGoodsUnit(goods,unit,BigDecimal.ONE,1)).getCode());
+        tupleQuery(em,new Object[]{false,UUID.randomUUID(),unit,false,"禁用",false,"使用"});
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,
+                ()->adapter.resolveAdmittedSourceGoodsUnit(goods,unit,BigDecimal.ONE,1)).getCode());
+    }
 
     @Test
     void rejectsGoodsOwnedOutsideTheCurrentScope() throws Exception {

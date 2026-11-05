@@ -48,6 +48,13 @@ public interface MasterReferenceValidationPort {
             BigDecimal unitRate,
             int lineNo);
 
+    /** Internal continuation of an already-authorized immutable document source, never a new goods picker. */
+    default ResolvedLineUnit resolveAdmittedSourceGoodsUnit(UUID goodsId,UUID unitId,BigDecimal unitRate,int lineNo) {
+        return resolveVisibleActiveGoodsUnit(goodsId,unitId,unitRate,lineNo);
+    }
+    /** Same active-state facts; caller already owns the original business source admission. */
+    default void requireAdmittedSourceActiveGoods(UUID goodsId) { requireVisibleActiveGoods(goodsId); }
+
     record ResolvedLineUnit(UUID unitId, BigDecimal unitRate) {
     }
 }

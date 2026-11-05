@@ -49,7 +49,21 @@ public record OrderProgressRow(
         double shipmentPendingFinanceQty,
         double shipmentFinanceRejectedQty,
         double shipmentApprovedQty,
-        boolean legacyImported, String managerReviewState, String managerRejectReason) {
+        boolean legacyImported, String managerReviewState, String managerRejectReason,
+        java.math.BigDecimal deliveryDraftQty, boolean hasDeliveryDraft) {
+
+    public OrderProgressRow(String orderId,String billNo,String billDate,String deliverDate,String clientName,
+            double orderQty,double producedQty,double shippedQty,double reservedQty,double plannedQty,double unplannedQty,
+            Double productionPct,String stage,boolean financeConfirmed,boolean financeRejected,String financeRejectedReason,
+            String financeRejectedByName,OffsetDateTime financeRejectedAt,boolean stopped,boolean closed,double shipmentDraftQty,
+            double shipmentPendingFinanceQty,double shipmentFinanceRejectedQty,double shipmentApprovedQty,boolean legacyImported,
+            String managerReviewState,String managerRejectReason) {
+        this(orderId,billNo,billDate,deliverDate,clientName,orderQty,producedQty,shippedQty,reservedQty,plannedQty,unplannedQty,
+                productionPct,stage,financeConfirmed,financeRejected,financeRejectedReason,financeRejectedByName,financeRejectedAt,
+                stopped,closed,shipmentDraftQty,shipmentPendingFinanceQty,shipmentFinanceRejectedQty,shipmentApprovedQty,
+                legacyImported,managerReviewState,managerRejectReason,java.math.BigDecimal.ZERO,false);
+    }
+    public String getDeliveryDraftQtyExact() { return com.uten.imp.common.util.DecimalText.of(deliveryDraftQty); }
 
     @com.fasterxml.jackson.annotation.JsonProperty("historyReadOnly")
     public boolean historyReadOnly() {

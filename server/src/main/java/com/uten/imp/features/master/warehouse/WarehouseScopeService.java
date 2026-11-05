@@ -33,7 +33,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class WarehouseScopeService {
+public class WarehouseScopeService implements com.uten.imp.application.port.WarehouseUseValidationPort {
 
     private final WarehouseRepository repo;
 

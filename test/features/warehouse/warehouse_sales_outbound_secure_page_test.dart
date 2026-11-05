@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -24,6 +25,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
+import 'package:uten_imp/shared/measurement/weight_prefs.dart';
+import 'package:uten_imp/shared/measurement/weight_params.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import 'outbound_weight_fakes.dart';
@@ -492,16 +495,27 @@ void main() {
       final weightInput = find.byKey(const ValueKey('weight-cell-input'));
       expect(weightInput, findsOneWidget);
       expect(tester.widget<TextField>(weightInput).decoration!.hintText, '重量');
+      final expectedWeight =
+          ProviderScope.containerOf(tester.element(weightInput))
+              .read(warehouseWeightUnitsPrefsProvider)
+              .entry
+              .format(
+                weights.byGoods['screw']!.expectedKgFor(10)!,
+                withSymbol: false,
+              );
       final reference = find.ancestor(
         of: weightInput,
         matching: find.byWidgetPredicate(
           (widget) =>
-              widget is Tooltip &&
-              (widget.message?.contains('应称 0.02') ?? false),
+              widget is UtenEditorTooltip &&
+              (widget.message?.contains('应称 $expectedWeight') ?? false),
         ),
       );
       expect(reference, findsOneWidget);
-      expect(tester.widget<Tooltip>(reference).message, contains('尚未实称'));
+      expect(
+        tester.widget<UtenEditorTooltip>(reference).message,
+        contains('尚未实称'),
+      );
 
       await tester.enterText(
         find.byKey(const ValueKey('weight-cell-input')),
@@ -524,7 +538,7 @@ void main() {
       // 只提醒不拦截: 照样能确认出库。
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();
-      expect(gateway.selectedWeights, {'line-1': 0.03});
+      expect(gateway.selectedWeights, {'line-1': '0.03'});
       expect(tester.takeException(), isNull);
     },
   );
@@ -712,6 +726,7 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     Map<String, String?>? lineWarehouses,
     Map<String, Object?>? lineWeights,
     List<String>? itemIds,
+    List<Map<String, dynamic>>? deliveryComponents,
   }) async {
     selectedLineWarehouses = lineWarehouses;
     selectedPlaces = stockPlaces;

@@ -8,7 +8,7 @@ public final class ExactBodyReadRoutes {
         return "POST".equals(method) && path != null && path.matches(
                 "^/api/(?:master/(?:clients|suppliers)/search-context"
                         + "|business-references/(?:clients|suppliers)/(?:search-context|search)"
-                        + "|sales/orders/shippable-lines/selection"
+                        + "|sales/orders/(?:shippable-lines/selection|delivery-preview)"
                         + "|quality/pending-disposals/query)$");
     }
 }

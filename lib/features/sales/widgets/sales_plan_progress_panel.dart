@@ -261,9 +261,11 @@ class _SalesPlanProgressPanelState
           ..sort((a, b) => a.orderItemId.compareTo(b.orderItemId));
     final entries = <String>[];
     for (final line in selected) {
-      final available = line.shippableQty ?? 0;
+      final available = line.availableShipmentQty ?? 0;
       if (available <= 0) continue;
-      entries.add('${line.orderItemId}:${_fmt(available)}');
+      entries.add(
+        '${line.orderItemId}:${line.availableShipmentQtyExact ?? _fmt(available)}',
+      );
     }
     if (entries.isEmpty) {
       context.appWarning('请先勾选本次可发数量大于 0 的产品');
@@ -550,15 +552,16 @@ class _ProgressList extends ConsumerWidget {
       ),
       MasterColumnDef(
         key: 'available',
-        label: '本次可发',
+        label: lines.any((line) => line.isBomDelivery) ? '可发/可建备货' : '本次可发',
         width: 140,
         type: 'number',
         sortable: true,
-        exactValueOf: (line) => line.shippableQty?.toString(),
-        info: '可用于新建出货单的合格实物量，已扣除正在办理的出货；实际发货数量在出货单中填写。',
-        value: (line) => _qtyWithUnit(line.shippableQty, line.unitName),
+        exactValueOf: (line) => line.availableShipmentQtyExact,
+        info:
+            '整装显示已扣除办理中出货的合格实物量；按BOM交付显示服务端可创建备货单上限，不代表散件已齐套或可出库。最终加工、库存及出库由仓库核对。',
+        value: (line) => _qtyWithUnit(line.availableShipmentQty, line.unitName),
         cellBuilder: (context, line) => Text(
-          _qtyWithUnit(line.shippableQty, line.unitName),
+          '${_qtyWithUnit(line.availableShipmentQty, line.unitName)}${line.isBomDelivery ? ' (可建备货)' : ''}',
           style: TextStyle(
             fontWeight: FontWeight.w700,
             color: theme.colorScheme.error,
@@ -594,7 +597,8 @@ class _ProgressList extends ConsumerWidget {
     onFilterChanged: (_, _) {},
     selectable: canShip,
     selectedIds: selected,
-    idOf: (line) => (line.shippableQty ?? 0) > 0 ? line.orderItemId : null,
+    idOf: (line) =>
+        (line.availableShipmentQty ?? 0) > 0 ? line.orderItemId : null,
     rowKeyOf: (line) => line.orderItemId,
     // 单击行只切换勾选（embedded+selectable 语义），进度弹窗只由
     // 「查看进度」列按钮触发——2026-09-12 反馈「单击选中别弹窗」。
@@ -650,7 +654,7 @@ class _ProgressList extends ConsumerWidget {
                   Checkbox(
                     key: ValueKey('sales-progress-select-${l.orderItemId}'),
                     value: selected.contains(l.orderItemId),
-                    onChanged: busy || (l.shippableQty ?? 0) <= 0
+                    onChanged: busy || (l.availableShipmentQty ?? 0) <= 0
                         ? null
                         : (checked) {
                             final next = Set<String>.of(selected);
@@ -690,7 +694,12 @@ class _ProgressList extends ConsumerWidget {
               children: [
                 _num(theme, '订货', l.qty),
                 _num(theme, '已备货', l.preparation?.preparedQty),
-                _num(theme, '本次可发', l.shippableQty, highlight: true),
+                _num(
+                  theme,
+                  l.isBomDelivery ? '可建备货单' : '本次可发',
+                  l.availableShipmentQty,
+                  highlight: true,
+                ),
                 _num(theme, '办理中', l.pendingShipmentQty),
                 _num(theme, '已排', l.plannedQty, highlight: true),
                 // V545：剩余未排量（服务端派生）——部分排产时销售一眼看到还差多少没排。
@@ -700,7 +709,9 @@ class _ProgressList extends ConsumerWidget {
                 _num(theme, '剩余', _remaining(l.qty, l.shippedQty)),
               ],
             ),
-            if (canShip && showSelection && (l.shippableQty ?? 0) > 0) ...[
+            if (canShip &&
+                showSelection &&
+                (l.availableShipmentQty ?? 0) > 0) ...[
               const SizedBox(height: UtenSpacing.s8),
               Text(
                 '发货数量在「去发货」打开的出货单中填写',

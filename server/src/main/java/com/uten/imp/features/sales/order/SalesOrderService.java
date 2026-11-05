@@ -83,6 +83,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesOrderService {
+    private SalesOrderDeliveryService deliveryService;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setDeliveryService(SalesOrderDeliveryService service) { deliveryService = service; }
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.application.port.SalesManagerReviewNoticePort managerNotices;
     @org.springframework.beans.factory.annotation.Autowired
@@ -347,7 +350,7 @@ public class SalesOrderService {
                        i.unit_id, i.unit_rate, i.qty, i.shipped_qty,
                        GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) AS available_to_draft,
                        i.price,
-                       o.owner_employee_id
+                       o.owner_employee_id, CAST(i.delivery_plan AS text)
                 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
                 JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = i.order_id
                 LEFT JOIN clients shippable_client ON shippable_client.id = o.client_id
@@ -367,7 +370,7 @@ public class SalesOrderService {
                   AND COALESCE(o.finance_rejected, false) = false
                   AND COALESCE(o.is_deleted,false) = false AND COALESCE(i.is_deleted,false) = false
                   AND GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) > 0
-                """.formatted(physicalShipmentReservationSql("i"),physicalShipmentReservationSql("i")) + " AND " + ownerScope.predicate();
+                """.formatted(shipmentDraftCapacitySql("i"),shipmentDraftCapacitySql("i")) + " AND " + ownerScope.predicate();
         Map<String, Object> parameters = new LinkedHashMap<>();
         if (ownerScope.parameterName() != null) parameters.put(ownerScope.parameterName(), ownerScope.owners());
         if (!keyword.isEmpty()) {
@@ -399,13 +402,15 @@ public class SalesOrderService {
         boolean canViewPrices = priceMasker.canView();
         List<com.uten.imp.features.sales.order.dto.OrderShippableLine> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
+            var deliveryPlan = r.length > 14 ? parseDeliveryPlan(r[14]) : com.uten.imp.common.delivery.DeliveryPlan.assembled();
             out.add(new com.uten.imp.features.sales.order.dto.OrderShippableLine(
                     (UUID) r[0], (UUID) r[1], (String) r[2], (UUID) r[3],
                     r[4] == null ? null : localDate(r[4]),
                     (UUID) r[5], (UUID) r[6], (UUID) r[7],
                     (BigDecimal) r[8], (BigDecimal) r[9], (BigDecimal) r[10],
-                    (BigDecimal) r[11], canViewPrices ? (BigDecimal) r[12] : null,
-                    canCreateShipment && accessPolicy.canWrite((UUID) r[13], writeScope)));
+                    deliveryPlan.requiresPhysicalFulfillment() ? BigDecimal.ZERO : (BigDecimal) r[11], canViewPrices ? (BigDecimal) r[12] : null,
+                    canCreateShipment && accessPolicy.canWrite((UUID) r[13], writeScope), deliveryPlan,
+                    deliveryPlan.requiresPhysicalFulfillment() ? (BigDecimal) r[11] : BigDecimal.ZERO, deliveryPlan.requiresPhysicalFulfillment()));
         }
         return out;
     }
@@ -522,7 +527,11 @@ public class SalesOrderService {
                     shipmentPendingFinanceQty,
                     shipmentFinanceRejectedQty,
                     shipmentApprovedQty,
-                    legacyImported, managerState, row.length > 26 ? pgStr(row, 26) : null);
+                    legacyImported, managerState, row.length > 26 ? pgStr(row, 26) : null,
+                    financeConfirmed && !financeRejected && !managerRejected && !stopped && !closed && !draft && !legacyImported
+                            ? row.length > 27 ? (BigDecimal) row[27] : BigDecimal.ZERO : BigDecimal.ZERO,
+                    financeConfirmed && !financeRejected && !managerRejected && !stopped && !closed && !draft && !legacyImported
+                            && row.length > 28 && Boolean.TRUE.equals(row[28]));
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -796,10 +805,15 @@ public class SalesOrderService {
                        ship.approved_qty AS shipment_approved_qty,
                        o.status AS bill_status,
                        COALESCE(SUM(GREATEST(%s,0)),0) AS outstanding_qty,
-                       fn_imported_business_document('sales_orders',o.id) AS legacy_imported, o.manager_review_state, o.manager_reject_reason
+                       fn_imported_business_document('sales_orders',o.id) AS legacy_imported, o.manager_review_state, o.manager_reject_reason,
+                       CASE WHEN COUNT(DISTINCT COALESCE(i.unit_id::text,'UNKNOWN:'||i.goods_id::text))
+                           FILTER(WHERE %s)>1 THEN NULL
+                         ELSE COALESCE(SUM(%s),0) END AS delivery_draft_qty,
+                       COALESCE(BOOL_OR((%s)>0),false) AS has_delivery_draft
                 """.formatted(taskResponsibility ? physicalShipmentReservationSql("i") : "i.reserved_qty",
                         SalesOrderChainSql.unplannedQtySql("i"),
-                        SalesOrderChainSql.outstandingSql("i")) + base + "\n" + """
+                        SalesOrderChainSql.outstandingSql("i"), physicalDeliveryPredicate("i"), bomDeliveryDraftCapacitySql("i"),
+                        bomDeliveryDraftCapacitySql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,
@@ -1031,7 +1045,7 @@ public class SalesOrderService {
                              AND NOT shipment.is_deleted AND shipment.status=0
                              AND NOT COALESCE(shipment.rejected,FALSE)),0) pending_shipment_qty,
                        %s AS physical_reserved_qty,
-                       COALESCE(i.returned_qty,0), COALESCE(i.flag_qty,0)
+                       COALESCE(i.returned_qty,0), COALESCE(i.flag_qty,0), CAST(i.delivery_plan AS text)
                 FROM sales_order_items i
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -1198,6 +1212,13 @@ public class SalesOrderService {
         }
         List<com.uten.imp.features.sales.order.dto.PlanProgressLine> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
+            var deliveryPlan=r.length>18?parseDeliveryPlan(r[18]):com.uten.imp.common.delivery.DeliveryPlan.assembled();
+            boolean active=order.getStatus()==STATUS_APPROVED && !order.isStopped() && !order.isClosed()
+                    && order.isFinanceConfirmed() && !order.isFinanceRejected();
+            BigDecimal deliveryDraftQty=active && deliveryPlan.requiresPhysicalFulfillment()
+                    ? nz((BigDecimal)r[7]).subtract(nz((BigDecimal)r[11])).add(nz((BigDecimal)r[16]))
+                        .subtract(nz((BigDecimal)r[17])).subtract(nz((BigDecimal)r[14])).max(BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
             out.add(new com.uten.imp.features.sales.order.dto.PlanProgressLine(
                     (UUID) r[0], r[1] == null ? null : ((Number) r[1]).intValue(),
                     (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
@@ -1214,20 +1235,42 @@ public class SalesOrderService {
                     byItem.getOrDefault((UUID) r[0], List.of()),
                     SalesOrderPreparationProgress.of((BigDecimal) r[7], (BigDecimal) r[17],
                             (BigDecimal) r[11], (BigDecimal) r[16], (BigDecimal) r[15],
-                            supplySourcesByItem.getOrDefault((UUID) r[0], List.of()))));
+                            supplySourcesByItem.getOrDefault((UUID) r[0], List.of())),
+                    deliveryPlan,deliveryDraftQty,deliveryPlan.requiresPhysicalFulfillment()));
         }
         return out;
     }
 
     private static String physicalShipmentReservationSql(String item) {
         return """
+                CASE WHEN %2$s THEN 0 ELSE
                 GREATEST(LEAST(COALESCE(%1$s.reserved_qty,0),
                     GREATEST(%1$s.qty-COALESCE(%1$s.shipped_qty,0)+COALESCE(%1$s.returned_qty,0)-COALESCE(%1$s.flag_qty,0),0),
                     COALESCE((SELECT SUM(GREATEST(reservation.qty-reservation.consumed_qty-reservation.released_qty,0))
                         FROM stock_reservations reservation WHERE reservation.order_item_id=%1$s.id
                           AND NOT reservation.is_deleted AND reservation.status=0),0)
-                        /COALESCE(NULLIF(%1$s.unit_rate,0),1)),0)
-                """.formatted(item);
+                        /COALESCE(NULLIF(%1$s.unit_rate,0),1)),0) END
+                """.formatted(item,physicalDeliveryPredicate(item));
+    }
+
+    private static String shipmentDraftCapacitySql(String item) {
+        return "CASE WHEN "+physicalDeliveryPredicate(item)+" THEN GREATEST("
+                +SalesOrderChainSql.outstandingSql(item)+",0) ELSE "+physicalShipmentReservationSql(item)+" END";
+    }
+    private static String bomDeliveryDraftCapacitySql(String item) {
+        return "CASE WHEN "+physicalDeliveryPredicate(item)+" THEN GREATEST("
+                +SalesOrderChainSql.outstandingSql(item)+"-COALESCE((SELECT SUM(si.qty) FROM sales_shipment_items si "
+                +"JOIN sales_shipments s ON s.id=si.shipment_id WHERE si.order_item_id="+item+".id "
+                +"AND NOT si.is_deleted AND NOT s.is_deleted AND s.status=0 AND NOT COALESCE(s.rejected,false)),0),0) ELSE 0 END";
+    }
+    private static String physicalDeliveryPredicate(String item) {
+        return "(COALESCE("+item+".delivery_plan->>'mode','ASSEMBLED')='BOM' OR COALESCE("
+                +item+".delivery_plan @> '{\"processes\":[{\"required\":true}]}'::jsonb,false))";
+    }
+    private com.uten.imp.common.delivery.DeliveryPlan parseDeliveryPlan(Object json) {
+        if(json==null)return com.uten.imp.common.delivery.DeliveryPlan.assembled();
+        if(deliveryService==null)throw new ApiException(ErrorCode.CONFLICT,"交付方案服务不可用，请重试");
+        return deliveryService.parsePlan(json);
     }
 
     /**
@@ -1713,6 +1756,7 @@ public class SalesOrderService {
             requireSafeCommercialLine(line, authoritativePrice);
             requireOrderableClientPrice(line, quoted, authoritativePrice, fileCurrency, lineIndex + 1);
             target.setExtraColumns(resolveOrderColumns(line, quoted, kept, masked));
+            applyDeliveryForSave(line, target, kept);
             applyRejectedRevisionLine(
                     order,
                     target,
@@ -1830,6 +1874,9 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         referenceValidator.validateStoredOrder(o.getClientId(), items);
+        if (deliveryService != null) deliveryService.validateApproval(items);
+        else if (items.stream().anyMatch(it -> SalesOrderDeliveryService.effective(it.getDeliveryPlan()).isBom()))
+            throw new ApiException(ErrorCode.CONFLICT, "交付方案服务不可用，不能审核散件交付订单");
         // 销售订单只确认币种；汇率在 SHIPPED 正式立账时由财务主档提供。
         requireActiveCurrency(o.getCurrencyId(), ErrorCode.CONFLICT);
         requireSafeStoredCommercialOrder(o, items);
@@ -1937,6 +1984,14 @@ public class SalesOrderService {
                 .toList());
         Map<String, BigDecimal> pool = new HashMap<>();
         for (SalesOrderItem it : items) {
+            if (SalesOrderDeliveryService.effective(it.getDeliveryPlan()).requiresPhysicalFulfillment()) {
+                // No finished-product root is physically made or reserved by a component delivery order.
+                it.setReservedQty(BigDecimal.ZERO);
+                it.setChainStatus(SalesChainStatus.deriveOnChain((short) 0, it.getQty(), it.getShippedQty(),
+                        it.getReturnedQty(), it.getFlagQty(), BigDecimal.ZERO, it.getPlannedQty(), it.getProducedQty()));
+                itemRepo.save(it);
+                continue;
+            }
             BigDecimal rate = it.getUnitRate() != null && it.getUnitRate().signum() > 0
                     ? it.getUnitRate() : BigDecimal.ONE;
             BigDecimal needQty = outstanding(
@@ -2011,6 +2066,10 @@ public class SalesOrderService {
             if (l.getNewQty() == null || l.getNewQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "新数量必须大于 0");
             }
+            if (!SalesOrderDeliveryService.effective(it.getDeliveryPlan()).equals(com.uten.imp.common.delivery.DeliveryPlan.assembled())) {
+                if (deliveryService == null) throw new ApiException(ErrorCode.CONFLICT,"交付方案服务不可用，请重试");
+                deliveryService.resolveOrderItem(it,l.getNewQty());
+            }
             BigDecimal floor = minimumOrderQty(
                     it.getShippedQty(), it.getReturnedQty(), it.getFlagQty());
             if (l.getNewQty().compareTo(floor) < 0) {
@@ -2020,6 +2079,8 @@ public class SalesOrderService {
             if (l.getNewQty().compareTo(nz(it.getQty())) != 0) {
                 actualQtyChanged = true;
                 assertNoActiveShipmentWork(List.of(it.getId()), "修改订单数量");
+                if(l.getNewQty().compareTo(nz(it.getQty()))<0 && SalesOrderDeliveryService.effective(it.getDeliveryPlan()).requiresPhysicalFulfillment())
+                    deliveryService.requireUncommittedDecrease(it.getId());
             }
             if (nz(it.getPlannedQty()).signum() > 0
                     || nz(it.getProducedQty()).signum() > 0
@@ -2051,7 +2112,7 @@ public class SalesOrderService {
             if (chained) {
                 if (delta.signum() > 0) {
                     // 增量：能留多少留多少，剩余缺口自动回到调度待排产列表
-                    BigDecimal take = delta.multiply(rate).min(
+                    BigDecimal take = SalesOrderDeliveryService.effective(it.getDeliveryPlan()).requiresPhysicalFulfillment() ? BigDecimal.ZERO : delta.multiply(rate).min(
                             reservationService.globalAvailableBase(it.getGoodsId(), it.getColorId())
                                     .max(BigDecimal.ZERO));
                     if (take.signum() > 0) {
@@ -2061,7 +2122,7 @@ public class SalesOrderService {
                     }
                 } else {
                     // 减量：先释放预留，再回退排产分摊（新→旧）
-                    BigDecimal cut = delta.negate();
+                    BigDecimal cut = remainingReductionAfterUncommitted(it,delta.negate());
                     BigDecimal relRow = cut.min(reserved);
                     if (relRow.signum() > 0) {
                         reservationService.releaseForOrderItem(it.getId(), relRow.multiply(rate));
@@ -2535,6 +2596,13 @@ public class SalesOrderService {
      * segment ownership is immutable.  A quantity decrease must not
      * shrink or soft-delete a plan link after a V1 package was confirmed.
      */
+    static BigDecimal remainingReductionAfterUncommitted(SalesOrderItem item,BigDecimal reduction) {
+        if(!SalesOrderDeliveryService.effective(item.getDeliveryPlan()).requiresPhysicalFulfillment())return reduction;
+        BigDecimal uncommitted=outstanding(item.getQty(),item.getShippedQty(),item.getReturnedQty(),item.getFlagQty())
+                .subtract(nz(item.getReservedQty())).subtract(nz(item.getPlannedQty()).subtract(nz(item.getProducedQty())).max(BigDecimal.ZERO))
+                .max(BigDecimal.ZERO);
+        return reduction.subtract(reduction.min(uncommitted));
+    }
     private void requireNoFrozenExecutionAllocationDecrease(
             com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest request,
             Map<UUID, SalesOrderItem> items) {
@@ -2859,6 +2927,7 @@ public class SalesOrderService {
             BigDecimal amountOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(authoritativeOrderAmount(
                     l.getQty(), authoritativePrice, normalizedDiscount), columns);
             SalesOrderItem it = new SalesOrderItem();
+            applyDeliveryForSave(l, it, kept);
             it.setExtraColumns(columns);
             it.setOrderId(o.getId());
             it.setBillNo(o.getBillNo());
@@ -3323,8 +3392,20 @@ public class SalesOrderService {
                 it.getReservedQty(), it.getPlannedQty(), it.getProducedQty(), it.getChainStatus(), null,
                 it.getPriority(), it.getClientGoodsName(), it.getClientPrice(), null, false);
         dto.setExtraColumns(it.getExtraColumns());
+        dto.setDeliveryPlan(SalesOrderDeliveryService.effective(it.getDeliveryPlan()));
         dto.setGoodsNameEn(it.getGoodsNameEnSnapshot());
         return dto;
+    }
+
+    private void applyDeliveryForSave(OrderItemLine requested, SalesOrderItem target, SalesOrderItem retained) {
+        if (deliveryService != null) { deliveryService.applyForSave(requested, target, retained); return; }
+        // Keeps source-compatible isolated tests working without admitting unvalidated configured intent.
+        var plan = requested.getDeliveryPlan() == null
+                ? retained == null ? com.uten.imp.common.delivery.DeliveryPlan.assembled()
+                    : SalesOrderDeliveryService.effective(retained.getDeliveryPlan()) : requested.getDeliveryPlan();
+        if (!plan.equals(com.uten.imp.common.delivery.DeliveryPlan.assembled()))
+            throw new ApiException(ErrorCode.CONFLICT, "交付方案服务不可用，请重新打开页面");
+        target.setDeliveryPlan(plan);
     }
 
     private OrderCostItemDto toCostDto(SalesOrderCostItem c) {

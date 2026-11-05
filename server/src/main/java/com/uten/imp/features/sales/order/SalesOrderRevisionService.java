@@ -55,6 +55,8 @@ public class SalesOrderRevisionService {
                             '换算率', i.unit_rate, '数量', i.qty, '单价', i.price,
                             '折扣', i.discount, '原币金额', i.amount_original,
                             '扩展列', i.extra_columns,
+                            '交付方案', i.delivery_plan,
+                            '交付BOM快照', i.delivery_bom_snapshot,
                             '英文名称', i.goods_name_en_snapshot,
                             '客户编号', i.client_no, '客户型号', i.client_model,
                             '客户文件品名', i.client_goods_name, '客户文件单价', i.client_price,
@@ -212,7 +214,7 @@ public class SalesOrderRevisionService {
                     ? line.path("行号").intValue() : null,
                     nullableText(line.path("货品").path("code")),
                     nullableText(line.path("货品").path("name")), Map.copyOf(values),
-                    snapshotColumns(line.path("扩展列"))));
+                    snapshotColumns(line.path("扩展列")), line.has("交付方案") ? line.get("交付方案").deepCopy() : null));
         });
         lines.sort(Comparator.comparing(RevisionLine::lineNo, Comparator.nullsLast(Integer::compareTo))
                 .thenComparing(RevisionLine::itemId));
@@ -292,7 +294,13 @@ public class SalesOrderRevisionService {
             String changedByName, OffsetDateTime changedAt) {}
 
     public record RevisionLine(String itemId, Integer lineNo, String goodsCode, String goodsName,
-            Map<String, String> values, List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {}
+            Map<String, String> values, List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns,
+            JsonNode deliveryPlan) {
+        public RevisionLine(String itemId, Integer lineNo, String goodsCode, String goodsName,
+                Map<String,String> values, List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {
+            this(itemId,lineNo,goodsCode,goodsName,values,extraColumns,null);
+        }
+    }
 
     public record RevisionDiff(List<RevisionLine> beforeItems, List<RevisionLine> afterItems,
             List<String> changedItemIds, List<FieldChange> headerChanges, boolean baselineComplete) {}

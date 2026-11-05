@@ -12,6 +12,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.Pick;
 
 /** 仓库一步确认出库请求（V582：targetStatus 只接受 SHIPPED）。 */
 @Getter
@@ -33,6 +34,9 @@ public class WarehouseWorkTransitionRequest {
 
     @Size(min = 1, max = com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES)
     private List<@NotNull UUID> itemIds;
+
+    @Size(max = 10000)
+    private List<@NotNull @Valid Pick> deliveryComponents;
 
     /**
      * 逐行出库证据：实际库位 + 实际发出仓(V631) + 出库实称净重(ADR-135)。warehouseId 为空时依次取

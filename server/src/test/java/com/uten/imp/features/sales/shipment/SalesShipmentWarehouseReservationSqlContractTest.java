@@ -92,8 +92,9 @@ class SalesShipmentWarehouseReservationSqlContractTest {
         assertThat(source.substring(confirm, end)).doesNotContain("setWeight(");
 
         int apply = source.indexOf("private StockService.PostedMovement applyMovement(");
-        int applyEnd = source.indexOf("private static BigDecimal shipmentBaseQty(", apply);
+        int applyEnd = source.indexOf("private Map<UUID,BigDecimal> shipmentBaseQuantities(", apply);
         assertThat(apply).isGreaterThanOrEqualTo(0);
+        assertThat(applyEnd).isGreaterThan(apply);
         assertThat(source.substring(apply, applyEnd))
                 .contains("CapturedWeight.measured(measuredKg)")
                 .doesNotContain("it.getWeight()");

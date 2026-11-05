@@ -118,6 +118,56 @@ class _ExistingSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  testWidgets('同货品不同交付配置分别保留并透传保存', (tester) async {
+    final plan = <String, dynamic>{
+      'version': 1,
+      'mode': 'BOM',
+      'packaging': 'BULK',
+      'nodeModes': [
+        {
+          'path': ['edge-a'],
+          'mode': 'CHILDREN',
+        },
+      ],
+      'processes': [
+        {
+          'path': ['edge-a', 'edge-part'],
+          'operation': 'LASER',
+          'required': true,
+        },
+      ],
+      'bomFingerprint': 'server-fingerprint',
+    };
+    final api = await _pumpEditor(tester, [
+      {
+        'id': 'it-1',
+        'goodsId': 'goods-1',
+        'unitId': 'unit-box',
+        'unitRate': 1,
+        'qty': 10,
+        'price': 10,
+      },
+      {
+        'id': 'it-2',
+        'goodsId': 'goods-1',
+        'unitId': 'unit-box',
+        'unitRate': 1,
+        'qty': 10,
+        'price': 10,
+        'deliveryPlan': plan,
+      },
+    ]);
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('发现重复货品'), findsNothing);
+    final items = (api.lastPutBody!['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items, hasLength(2));
+    expect(items[0]['deliveryPlan'], isNull);
+    expect(items[1]['deliveryPlan'], plan);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('1000行保存校验定位离屏数量错误且不提交', (tester) async {
     final api = await _pumpEditor(tester, [
       for (var index = 0; index < 1000; index++)

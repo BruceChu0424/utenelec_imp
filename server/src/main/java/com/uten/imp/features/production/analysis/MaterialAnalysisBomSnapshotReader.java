@@ -29,7 +29,9 @@ import java.util.UUID;
  * ({@code MaterialAnalysisService.bomNodes}); no usage rule is re-derived here.</p>
  *
  * <p>ADR-131: 整批领料的料 (组件发料方式 PERIODIC) 的边整体不进快照, 由车间内料仓按期盘点计耗;
- * 「有没有下层」只数按单边 (fn_goods_has_order_bom), 校验同样不看这些边。</p>
+ * 「有没有下层」只数按单边 (fn_goods_has_order_bom), 校验同样不看这些边。
+ * 唯一例外是订单BOM交付的透明父层：直属交付件即使采用 PERIODIC 也必须纳入；
+ * 整件交付边界以下仍沿用原按单耗用规则。</p>
  */
 final class MaterialAnalysisBomSnapshotReader {
     private final EntityManager em;
@@ -48,13 +50,14 @@ final class MaterialAnalysisBomSnapshotReader {
         for (int i = 0; i < sources.size(); i++) {
             if (i > 0) roots.append(',');
             roots.append("(CAST(:source").append(i).append(" AS uuid),CAST(:goods")
-                    .append(i).append(" AS uuid))");
+                    .append(i).append(" AS uuid),CAST(:delivery").append(i).append(" AS jsonb))");
         }
         Query query = em.createNativeQuery(TREE_SQL.formatted(roots, EDGE_USAGE_LATERAL));
         for (int i = 0; i < sources.size(); i++) {
             var source = sources.get(i);
             query.setParameter("source" + i, source.analysisItemId())
-                    .setParameter("goods" + i, source.goodsId());
+                    .setParameter("goods" + i, source.goodsId())
+                    .setParameter("delivery" + i, source.bomDelivery() ? source.deliveryPlanJson() : MaterialAnalysisDeliverySnapshot.ASSEMBLED);
         }
         Map<UUID, List<Object[]>> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
@@ -162,7 +165,7 @@ final class MaterialAnalysisBomSnapshotReader {
      * LATERAL 读取，与递归边读取一样不把无关的历史 BOM 拉进来。
      */
     private static final String TREE_SQL = """
-                WITH RECURSIVE roots(analysis_item_id, goods_id) AS (%1$s), exp AS (
+                WITH RECURSIVE roots(analysis_item_id, goods_id, delivery_plan) AS (%1$s), exp AS (
                     SELECT roots.analysis_item_id AS source_id, b.id AS bom_item_id, b.goods_id AS parent_goods_id,
                            b.component_goods_id AS goods_id,
                            resolved_color.id AS color_id,
@@ -174,18 +177,25 @@ final class MaterialAnalysisBomSnapshotReader {
                            component_unit.name AS unit_name,
                            GREATEST(COALESCE(component.min_qty,0),0)::numeric AS safety_stock,
                            component.source_type,
-                           fn_goods_has_order_bom(b.component_goods_id) AS has_children,
+                           CASE WHEN delivery.context THEN EXISTS(SELECT 1 FROM goods_bom_items nested
+                               JOIN goods nested_goods ON nested_goods.id=nested.component_goods_id AND NOT nested_goods.is_deleted
+                               WHERE nested.goods_id=b.component_goods_id AND NOT nested.is_deleted)
+                               ELSE fn_goods_has_order_bom(b.component_goods_id) END AS has_children,
                            b.control_stage, b.consumption_basis,
-                           b.basis_output_qty, b.allow_partial_package, b.hard_gate
+                           b.basis_output_qty, b.allow_partial_package, b.hard_gate,
+                           roots.delivery_plan,delivery.context AS delivery_context
                     FROM roots
                     JOIN LATERAL (
                         SELECT edge.* FROM goods_bom_items edge
                         WHERE edge.goods_id = roots.goods_id AND edge.is_deleted = FALSE
                         OFFSET 0
                     ) b ON TRUE
+                    CROSS JOIN LATERAL (SELECT COALESCE(roots.delivery_plan->>'mode'='BOM',FALSE)
+                        AND EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(roots.delivery_plan->'nodeModes','[]'::jsonb)) choice
+                            WHERE choice->>'mode'='CHILDREN' AND choice->'path'=to_jsonb(ARRAY[b.id])) AS context) delivery
                     JOIN goods component ON component.id = b.component_goods_id
                                          AND component.is_deleted = FALSE
-                                         AND component.issue_method <> 'PERIODIC'
+                                         AND (component.issue_method <> 'PERIODIC' OR roots.delivery_plan->>'mode'='BOM')
                     LEFT JOIN colors resolved_color ON resolved_color.id =
                         COALESCE(b.color_id, component.color_id)
                                                     AND resolved_color.is_deleted = FALSE
@@ -203,18 +213,25 @@ final class MaterialAnalysisBomSnapshotReader {
                            component_unit.name,
                            GREATEST(COALESCE(component.min_qty,0),0)::numeric,
                            component.source_type,
-                           fn_goods_has_order_bom(b.component_goods_id),
+                           CASE WHEN delivery.context THEN EXISTS(SELECT 1 FROM goods_bom_items nested
+                               JOIN goods nested_goods ON nested_goods.id=nested.component_goods_id AND NOT nested_goods.is_deleted
+                               WHERE nested.goods_id=b.component_goods_id AND NOT nested.is_deleted)
+                               ELSE fn_goods_has_order_bom(b.component_goods_id) END,
                            b.control_stage, b.consumption_basis,
-                           b.basis_output_qty, b.allow_partial_package, b.hard_gate
+                           b.basis_output_qty, b.allow_partial_package, b.hard_gate,
+                           exp.delivery_plan,delivery.context
                     FROM exp
                     JOIN LATERAL (
                         SELECT edge.* FROM goods_bom_items edge
                         WHERE edge.goods_id = exp.goods_id AND edge.is_deleted = FALSE
                         OFFSET 0
                     ) b ON TRUE
+                    CROSS JOIN LATERAL (SELECT exp.delivery_context
+                        AND EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(exp.delivery_plan->'nodeModes','[]'::jsonb)) choice
+                            WHERE choice->>'mode'='CHILDREN' AND choice->'path'=to_jsonb(exp.bom_path||b.id)) AS context) delivery
                     JOIN goods component ON component.id = b.component_goods_id
                                          AND component.is_deleted = FALSE
-                                         AND component.issue_method <> 'PERIODIC'
+                                         AND (component.issue_method <> 'PERIODIC' OR exp.delivery_context)
                     LEFT JOIN colors resolved_color ON resolved_color.id =
                         COALESCE(b.color_id, component.color_id)
                                                     AND resolved_color.is_deleted = FALSE
@@ -267,21 +284,9 @@ final class MaterialAnalysisBomSnapshotReader {
      * 每条边自己的问题代号(逗号分隔，没问题为 NULL)。锚点与递归两段共用同一表达式，
      * 判定口径与原先的 invalid 布尔完全一致，只是把「哪一条」「为什么」一并带出来。
      */
-    private static final String EDGE_PROBLEMS = """
-                NULLIF(concat_ws(',',
-                    CASE WHEN b.qty <= 0 THEN 'QTY' END,
-                    CASE WHEN component.is_deleted THEN 'COMPONENT_DELETED' END,
-                    CASE WHEN component.unit_id IS NULL THEN 'UNIT_MISSING'
-                         WHEN component_unit.id IS NULL THEN 'UNIT_DELETED' END,
-                    CASE WHEN COALESCE(b.color_id, component.color_id) IS NOT NULL
-                              AND resolved_color.id IS NULL
-                         THEN CASE WHEN b.color_id IS NOT NULL THEN 'ROW_COLOR_DELETED'
-                                   ELSE 'COMPONENT_COLOR_DELETED' END END,
-                    CASE WHEN b.color_id IS NULL
-                              AND NULLIF(b.color_legacy_id,0) IS NOT NULL THEN 'ROW_COLOR_LEGACY' END,
-                    CASE WHEN component.color_id IS NULL
-                              AND NULLIF(component.color_legacy_id,0) IS NOT NULL THEN 'COMPONENT_COLOR_LEGACY' END
-                ), '')""";
+    private static final String EDGE_PROBLEMS = "NULLIF(concat_ws(',',CASE WHEN b.qty <= 0 THEN 'QTY' END,"
+            + com.uten.imp.common.delivery.BomReferenceIdentitySql.edgeProblems("b","component","component_unit","resolved_color")
+            + "),'')";
 
     private static final String VALIDATION_SQL = """
                 WITH RECURSIVE roots(goods_id) AS (

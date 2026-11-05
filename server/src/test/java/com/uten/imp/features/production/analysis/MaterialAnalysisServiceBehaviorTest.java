@@ -650,7 +650,7 @@ class MaterialAnalysisServiceBehaviorTest {
         Query snapshot = query(Collections.singletonList(new Object[]{
                 itemId, "EDGE_RULE",
                 null, bomItemId, componentId, null, componentUnitId, 1, bomItemId.toString(),
-                storedStage, "PER_UNIT", BigDecimal.ONE, true, true, "EDGE_RULE", storedSuggestion, true,
+                storedStage, "PER_UNIT", BigDecimal.ONE, true, true, false, false, "[]", "EDGE_RULE", storedSuggestion, true,
                 BigDecimal.ONE
         }));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {

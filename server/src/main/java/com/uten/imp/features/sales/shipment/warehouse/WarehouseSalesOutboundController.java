@@ -107,4 +107,34 @@ public class WarehouseSalesOutboundController {
             @Valid @RequestBody WarehouseWorkTransitionRequest request) {
         return service.transition(id, request);
     }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.sales.shipment.SalesShipmentService shipments;
+    @GetMapping("/{id}/delivery-requests/{requestId}")
+    public Map<String,Object> deliveryRequest(@PathVariable UUID id,@PathVariable UUID requestId){
+        service.detail(id);
+        return shipments.deliveryWarehouseRequestOutcome(id,requestId);
+    }
+
+    @PostMapping("/{id}/delivery-components/{componentId}/processing-issue")
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
+    public com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.Component issueForProcessing(@PathVariable UUID id,
+            @PathVariable UUID componentId,@Valid @RequestBody com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.ProcessingWarehouseAction request){
+        service.detail(id);
+        return shipments.processingWarehouseWork(id,componentId,"ISSUE",request);
+    }
+    @PostMapping("/{id}/delivery-components/{componentId}/processing-receive")
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
+    public com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.Component receiveProcessing(@PathVariable UUID id,
+            @PathVariable UUID componentId,@Valid @RequestBody com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.ProcessingWarehouseAction request){
+        service.detail(id);
+        return shipments.processingWarehouseWork(id,componentId,"RECEIVE",request);
+    }
+    @PostMapping("/{id}/delivery-components/{componentId}/processing-cancel-issue")
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
+    public com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.Component cancelProcessingIssue(@PathVariable UUID id,
+            @PathVariable UUID componentId,@Valid @RequestBody com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.ProcessingWarehouseAction request){
+        service.detail(id);
+        return shipments.processingWarehouseWork(id,componentId,"CANCEL_ISSUE",request);
+    }
 }

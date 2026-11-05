@@ -35,6 +35,7 @@ import '../providers/warehouse_count_refresh.dart';
 import '../widgets/outbound_weight_columns.dart';
 import '../widgets/warehouse_sales_outbound_table_columns.dart';
 import '../widgets/warehouse_sales_picking_fields.dart';
+import '../widgets/warehouse_delivery_components_table.dart';
 
 class WarehouseSalesOutboundDetailPage extends ConsumerStatefulWidget {
   const WarehouseSalesOutboundDetailPage({super.key, required this.id});
@@ -85,7 +86,13 @@ class _WarehouseSalesOutboundDetailPageState
   @override
   Widget? get formDraftSubmissionRecoveryAction => UtenButton(
     icon: Icons.refresh_rounded,
-    onPressed: _acting || _loading ? null : _verifySubmission,
+    onPressed: _acting || _loading
+        ? null
+        : () => UtenBusyOverlay.run(
+            context,
+            title: '正在核对出库结果',
+            action: _verifySubmission,
+          ),
     child: const Text('核对出库结果'),
   );
 
@@ -224,6 +231,11 @@ class _WarehouseSalesOutboundDetailPageState
     }
   }
 
+  Future<void> _refreshFromButton() async {
+    if (_loading || _acting || _confirming) return;
+    await UtenBusyOverlay.run(context, title: '正在刷新销售出库详情', action: _load);
+  }
+
   Future<void> _runAction(WarehouseSalesOutboundAction action) async {
     if (_acting ||
         _confirming ||
@@ -293,6 +305,7 @@ class _WarehouseSalesOutboundDetailPageState
                 stockPlaces: _picking?.stockPlaces,
                 lineWarehouses: _picking?.lineWarehouses,
                 lineWeights: _picking?.lineWeights,
+                deliveryComponents: _picking?.deliveryComponentsPayload,
               ),
         ),
       );
@@ -445,7 +458,7 @@ class _WarehouseSalesOutboundDetailPageState
                 label: '刷新',
                 icon: Icons.refresh_rounded,
                 isLoading: _loading && detail != null,
-                onPressed: _loading || _acting ? null : _load,
+                onPressed: _loading || _acting ? null : _refreshFromButton,
               ),
             ],
           ),
@@ -495,71 +508,88 @@ class _WarehouseSalesOutboundDetailPageState
                             ),
                           ),
                           // body：明细表占满内滚（primary 拾取联动控制器）。
-                          body: MasterDataTableView<WarehouseSalesOutboundTableRow>(
-                            tableKey:
-                                'features.warehouse.pages.warehouse_sales_outbound_detail_page.WarehouseSalesOutboundDetailPageState.build.1',
-                            key: const Key(
-                              'warehouse-sales-outbound-detail-table',
-                            ),
-                            primary: true,
-                            bottomContentPadding:
-                                UtenFloatingActionGroup.scrollClearance,
-                            columns: warehouseSalesOutboundTableColumns(
-                              context: context,
-                              l10n:
-                                  Localizations.of<AppLocalizations>(
-                                    context,
-                                    AppLocalizations,
-                                  ) ??
-                                  AppLocalizationsZh(),
-                              rows: rows,
-                              // V631：发出仓按行在表格里选，预填建议仓。
-                              draftOf: (_) => _picking,
-                              onDraftChanged: () {
-                                setState(() {});
-                                ensureOutboundWeightParams(
-                                  _weightCache,
-                                  _picking?.weights.values ??
-                                      const <OutboundWeightEntry>[],
-                                );
-                              },
-                              stockPlaceControllerOf:
-                                  detail.header.allows(
-                                    WarehouseSalesOutboundAction
-                                        .confirmShipment,
-                                  )
-                                  ? (row) => _picking?.places[row.line.id]
-                                  : null,
-                              editingEnabled:
-                                  !_acting && !_confirming && !_needsReview,
-                              weightParams: _weightCache,
-                              weightEntryUnit: weightUnits.entry,
-                            ),
-                            toolbarActions: weightEntries.isEmpty
-                                ? null
-                                : const [WeightEntryUnitButton()],
-                            summaryBar: rows.isEmpty
-                                ? null
-                                : OutboundWeightSummaryBar(
-                                    entries: weightEntries,
-                                    params: _weightCache,
-                                    productsOf: () => [
-                                      for (final row in rows)
-                                        OutboundProductQuantity(
-                                          goodsId: row.line.goodsId,
-                                          quantity: row.line.quantity,
-                                          unitId: row.line.unitId,
-                                          unitName: row.line.unitName,
-                                        ),
-                                    ],
+                          body: WarehouseDeliveryComponentsTabs(
+                            details: [detail],
+                            draftOf: (_) => _picking,
+                            editingEnabled:
+                                !_loading &&
+                                !_acting &&
+                                !_confirming &&
+                                !_needsReview,
+                            onChanged: () => setState(() {}),
+                            onFactsChanged: () => _load(),
+                            checkpointInput: saveFormDraftNow,
+                            commercial:
+                                MasterDataTableView<
+                                  WarehouseSalesOutboundTableRow
+                                >(
+                                  tableKey:
+                                      'features.warehouse.pages.warehouse_sales_outbound_detail_page.WarehouseSalesOutboundDetailPageState.build.1',
+                                  key: const Key(
+                                    'warehouse-sales-outbound-detail-table',
                                   ),
-                            items: rows,
-                            rowKeyOf: (row) => row.key,
-                            facets: const {},
-                            nullCounts: const {},
-                            filters: const {},
-                            onFilterChanged: (_, _) {},
-                            emptyMessage: '该任务暂无出库明细',
+                                  primary: true,
+                                  bottomContentPadding:
+                                      UtenFloatingActionGroup.scrollClearance,
+                                  columns: warehouseSalesOutboundTableColumns(
+                                    context: context,
+                                    l10n:
+                                        Localizations.of<AppLocalizations>(
+                                          context,
+                                          AppLocalizations,
+                                        ) ??
+                                        AppLocalizationsZh(),
+                                    rows: rows,
+                                    // V631：发出仓按行在表格里选，预填建议仓。
+                                    draftOf: (_) => _picking,
+                                    onDraftChanged: () {
+                                      setState(() {});
+                                      ensureOutboundWeightParams(
+                                        _weightCache,
+                                        _picking?.weights.values ??
+                                            const <OutboundWeightEntry>[],
+                                      );
+                                    },
+                                    stockPlaceControllerOf:
+                                        detail.header.allows(
+                                          WarehouseSalesOutboundAction
+                                              .confirmShipment,
+                                        )
+                                        ? (row) => _picking?.places[row.line.id]
+                                        : null,
+                                    editingEnabled:
+                                        !_acting &&
+                                        !_confirming &&
+                                        !_needsReview,
+                                    weightParams: _weightCache,
+                                    weightEntryUnit: weightUnits.entry,
+                                  ),
+                                  toolbarActions: weightEntries.isEmpty
+                                      ? null
+                                      : const [WeightEntryUnitButton()],
+                                  summaryBar: rows.isEmpty
+                                      ? null
+                                      : OutboundWeightSummaryBar(
+                                          entries: weightEntries,
+                                          params: _weightCache,
+                                          productsOf: () => [
+                                            for (final row in rows)
+                                              OutboundProductQuantity(
+                                                goodsId: row.line.goodsId,
+                                                quantity: row.line.quantity,
+                                                unitId: row.line.unitId,
+                                                unitName: row.line.unitName,
+                                              ),
+                                          ],
+                                        ),
+                                  items: rows,
+                                  rowKeyOf: (row) => row.key,
+                                  facets: const {},
+                                  nullCounts: const {},
+                                  filters: const {},
+                                  onFilterChanged: (_, _) {},
+                                  emptyMessage: '该任务暂无出库明细',
+                                ),
                           ),
                         ),
                       ),

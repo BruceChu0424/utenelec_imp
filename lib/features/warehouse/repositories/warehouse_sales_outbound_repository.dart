@@ -42,6 +42,7 @@ abstract interface class WarehouseSalesOutboundGateway {
     Map<String, String?>? lineWarehouses,
     Map<String, Object?>? lineWeights,
     List<String>? itemIds,
+    List<Map<String, dynamic>>? deliveryComponents,
   });
 }
 
@@ -124,6 +125,7 @@ class WarehouseSalesOutboundRepository
     Map<String, String?>? lineWarehouses,
     Map<String, Object?>? lineWeights,
     List<String>? itemIds,
+    List<Map<String, dynamic>>? deliveryComponents,
   }) async {
     final lineIds = <String>{
       ...?stockPlaces?.keys,
@@ -133,6 +135,7 @@ class WarehouseSalesOutboundRepository
     final body = <String, dynamic>{
       'targetStatus': targetStatus.trim().toUpperCase(),
       'itemIds': ?itemIds,
+      'deliveryComponents': ?deliveryComponents,
       if (stockPlaces != null || lineWarehouses != null || lineWeights != null)
         'stockPlaces': [
           for (final lineId in lineIds)

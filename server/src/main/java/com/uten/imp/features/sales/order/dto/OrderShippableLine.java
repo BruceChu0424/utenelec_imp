@@ -23,5 +23,16 @@ public record OrderShippableLine(
         BigDecimal reservedQty,
         BigDecimal price,
         /** Current caller may use this row as a source for a shipment. */
-        boolean writable
-) {}
+        boolean writable,
+        com.uten.imp.common.delivery.DeliveryPlan deliveryPlan,
+        BigDecimal deliveryDraftQty,
+        boolean physicalReadinessUnknown
+) {
+    public OrderShippableLine(UUID orderItemId,UUID orderId,String billNo,UUID clientId,LocalDate deliverDate,
+            UUID goodsId,UUID colorId,UUID unitId,BigDecimal unitRate,BigDecimal qty,BigDecimal shippedQty,
+            BigDecimal reservedQty,BigDecimal price,boolean writable) {
+        this(orderItemId,orderId,billNo,clientId,deliverDate,goodsId,colorId,unitId,unitRate,qty,shippedQty,
+                reservedQty,price,writable,com.uten.imp.common.delivery.DeliveryPlan.assembled(),BigDecimal.ZERO,false);
+    }
+    public String getDeliveryDraftQtyExact() { return com.uten.imp.common.util.DecimalText.of(deliveryDraftQty); }
+}

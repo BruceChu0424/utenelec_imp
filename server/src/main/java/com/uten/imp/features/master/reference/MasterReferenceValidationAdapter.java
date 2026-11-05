@@ -163,8 +163,22 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
             UUID unitId,
             BigDecimal unitRate,
             int lineNo) {
+        return resolveGoodsUnit(goodsId,unitId,unitRate,lineNo,true);
+    }
+
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY)
+    public ResolvedLineUnit resolveAdmittedSourceGoodsUnit(UUID goodsId,UUID unitId,BigDecimal unitRate,int lineNo) {
+        return resolveGoodsUnit(goodsId,unitId,unitRate,lineNo,false);
+    }
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void requireAdmittedSourceActiveGoods(UUID goodsId) {
+        lockGoodsQuantityBasis(java.util.Collections.singleton(goodsId));requireGoods(goodsId,false);
+    }
+    private ResolvedLineUnit resolveGoodsUnit(UUID goodsId,UUID unitId,BigDecimal unitRate,int lineNo,boolean requireVisibility) {
         lockGoodsQuantityBasis(java.util.Collections.singleton(goodsId));
-        GoodsReference goods = requireGoods(goodsId);
+        GoodsReference goods = requireGoods(goodsId,requireVisibility);
         if (goods.baseUnitId() == null || goods.baseUnitDeleted() || goods.baseUnitDisabled()) {
             throw conflict(prefix(lineNo) + "货品未维护有效基本单位");
         }
@@ -203,6 +217,9 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     }
 
     private GoodsReference requireGoods(UUID goodsId) {
+        return requireGoods(goodsId,true);
+    }
+    private GoodsReference requireGoods(UUID goodsId,boolean requireVisibility) {
         if (goodsId == null) throw validation("缺少货品");
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT g.is_deleted,
@@ -220,7 +237,7 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
             throw notFound("货品不存在");
         }
         Object[] row = rows.getFirst();
-        if (goodsOwnerScopeEnabled) {
+        if (requireVisibility && goodsOwnerScopeEnabled) {
             requireVisibleOwner(
                     (UUID) row[1],
                     ownerVisibility.evaluate("goods", "goods:view:all"),

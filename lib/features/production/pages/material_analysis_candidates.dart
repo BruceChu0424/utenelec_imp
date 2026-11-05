@@ -1299,6 +1299,16 @@ abstract class _MaterialAnalysisCandidatesState
       value: (line) => line.spec,
     ),
     MasterColumnDef(
+      key: 'deliveryPlan',
+      label: '交付方式',
+      width: 180,
+      value: (line) => orderDeliveryLabel(line.deliveryPlan),
+      cellBuilder: (_, line) => Tooltip(
+        message: line.deliveryPlan?.summary ?? '按原成品整装交付',
+        child: Text(orderDeliveryLabel(line.deliveryPlan)),
+      ),
+    ),
+    MasterColumnDef(
       key: 'remainingQty',
       label: '待排数量',
       width: 110,

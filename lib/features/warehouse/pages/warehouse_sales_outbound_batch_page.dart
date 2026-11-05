@@ -43,6 +43,7 @@ import '../repositories/warehouse_sales_outbound_repository.dart';
 import '../widgets/outbound_weight_columns.dart';
 import '../widgets/warehouse_sales_outbound_table_columns.dart';
 import '../widgets/warehouse_sales_picking_fields.dart';
+import '../widgets/warehouse_delivery_components_table.dart';
 
 /// Review multiple documents, then explicitly perform one warehouse stage.
 /// Each command retains its own existing server transaction and result.
@@ -162,7 +163,13 @@ class _WarehouseSalesOutboundBatchPageState
 
   @override
   Widget? get formDraftSubmissionRecoveryAction => UtenButton(
-    onPressed: _saving || _loading ? null : _verifySubmission,
+    onPressed: _saving || _loading
+        ? null
+        : () => UtenBusyOverlay.run(
+            context,
+            title: '正在核对出库结果',
+            action: _verifySubmission,
+          ),
     icon: Icons.refresh_rounded,
     child: const Text('核对出库结果'),
   );
@@ -295,6 +302,11 @@ class _WarehouseSalesOutboundBatchPageState
     super.dispose();
   }
 
+  Future<void> _refreshFromButton() async {
+    if (_loading || _saving || _confirming) return;
+    await UtenBusyOverlay.run(context, title: '正在刷新销售出库任务', action: _load);
+  }
+
   Future<void> _load({bool preserveInputs = true}) async {
     if (!mounted || _saving || _confirming || _attempted) return;
     final version = ++_loadVersion;
@@ -413,6 +425,11 @@ class _WarehouseSalesOutboundBatchPageState
           header: detail.header,
           lines: detail.lines
               .where((line) => selection.contains(line.id))
+              .toList(),
+          deliveryComponents: detail.deliveryComponents
+              .where(
+                (component) => selection.contains(component.shipmentItemId),
+              )
               .toList(),
           shipAddress: detail.shipAddress,
           contactPhone: detail.contactPhone,
@@ -674,6 +691,8 @@ class _WarehouseSalesOutboundBatchPageState
                 stockPlaces: _picking[reviewed.header.id]?.stockPlaces,
                 lineWarehouses: _picking[reviewed.header.id]?.lineWarehouses,
                 lineWeights: _picking[reviewed.header.id]?.lineWeights,
+                deliveryComponents:
+                    _picking[reviewed.header.id]?.deliveryComponentsPayload,
                 itemIds: widget.selectedItemIds == null
                     ? null
                     : reviewed.lines.map((line) => line.id).toList(),
@@ -768,7 +787,9 @@ class _WarehouseSalesOutboundBatchPageState
                   label: l10n.commonRefresh,
                   icon: Icons.refresh_rounded,
                   isLoading: _loading,
-                  onPressed: _loading || _saving || _confirming ? null : _load,
+                  onPressed: _loading || _saving || _confirming
+                      ? null
+                      : _refreshFromButton,
                 ),
             ],
           ),
@@ -894,99 +915,118 @@ class _WarehouseSalesOutboundBatchPageState
                                   const SizedBox(height: UtenSpacing.s12),
                                   WeightParamsLoadNotice(cache: _weightCache),
                                   Expanded(
-                                    child:
-                                        MasterDataTableView<
-                                          WarehouseSalesOutboundTableRow
-                                        >(
-                                          tableKey:
-                                              'features.warehouse.pages.warehouse_sales_outbound_batch_page.WarehouseSalesOutboundBatchPageState.build.1',
-                                          key: const Key(
-                                            'warehouse-sales-outbound-batch-table',
-                                          ),
-                                          primary: true,
-                                          columns:
-                                              warehouseSalesOutboundTableColumns(
-                                                context: context,
-                                                l10n: l10n,
-                                                rows: rows,
-                                                // V631：发出仓按行在表格里选，批量核对不再逐单选仓。
-                                                draftOf: (row) =>
-                                                    _picking[row
-                                                        .detail
-                                                        .header
-                                                        .id],
-                                                onDraftChanged: () {
-                                                  setState(() {});
-                                                  ensureOutboundWeightParams(
-                                                    _weightCache,
-                                                    _weightEntries,
-                                                  );
-                                                },
-                                                stockPlaceControllerOf: (row) =>
-                                                    _picking[row
+                                    child: WarehouseDeliveryComponentsTabs(
+                                      details: _details ?? const [],
+                                      draftOf: (id) => _picking[id],
+                                      editingEnabled:
+                                          !_loading &&
+                                          !_attempted &&
+                                          !_saving &&
+                                          !_confirming,
+                                      onChanged: () => setState(() {}),
+                                      onFactsChanged: () => _load(),
+                                      checkpointInput: saveFormDraftNow,
+                                      commercial:
+                                          MasterDataTableView<
+                                            WarehouseSalesOutboundTableRow
+                                          >(
+                                            tableKey:
+                                                'features.warehouse.pages.warehouse_sales_outbound_batch_page.WarehouseSalesOutboundBatchPageState.build.1',
+                                            key: const Key(
+                                              'warehouse-sales-outbound-batch-table',
+                                            ),
+                                            primary: true,
+                                            columns:
+                                                warehouseSalesOutboundTableColumns(
+                                                  context: context,
+                                                  l10n: l10n,
+                                                  rows: rows,
+                                                  // V631：发出仓按行在表格里选，批量核对不再逐单选仓。
+                                                  draftOf: (row) =>
+                                                      _picking[row
+                                                          .detail
+                                                          .header
+                                                          .id],
+                                                  onDraftChanged: () {
+                                                    setState(() {});
+                                                    ensureOutboundWeightParams(
+                                                      _weightCache,
+                                                      _weightEntries,
+                                                    );
+                                                  },
+                                                  stockPlaceControllerOf:
+                                                      (row) =>
+                                                          _picking[row
+                                                                  .detail
+                                                                  .header
+                                                                  .id]
+                                                              ?.places[row
+                                                              .line
+                                                              .id],
+                                                  editingEnabled:
+                                                      !_attempted &&
+                                                      !_saving &&
+                                                      !_confirming,
+                                                  includeShipment: true,
+                                                  weightParams: _weightCache,
+                                                  weightEntryUnit:
+                                                      weightUnits.entry,
+                                                  resultOf: (row) =>
+                                                      _unknownShipment ==
+                                                          row.detail.header.id
+                                                      ? '结果待核对'
+                                                      : _completed.contains(
+                                                          row.detail.header.id,
+                                                        )
+                                                      ? row
                                                             .detail
                                                             .header
-                                                            .id]
-                                                        ?.places[row.line.id],
-                                                editingEnabled:
-                                                    !_attempted &&
-                                                    !_saving &&
-                                                    !_confirming,
-                                                includeShipment: true,
-                                                weightParams: _weightCache,
-                                                weightEntryUnit:
-                                                    weightUnits.entry,
-                                                resultOf: (row) =>
-                                                    _unknownShipment ==
-                                                        row.detail.header.id
-                                                    ? '结果待核对'
-                                                    : _completed.contains(
-                                                        row.detail.header.id,
-                                                      )
-                                                    ? row
-                                                          .detail
-                                                          .header
-                                                          .statusLabel
-                                                    : _failedId ==
-                                                          row.detail.header.id
-                                                    ? '办理受阻'
-                                                    : row
-                                                          .detail
-                                                          .header
-                                                          .statusLabel,
-                                              ),
-                                          toolbarActions: weightEntries.isEmpty
-                                              ? null
-                                              : const [WeightEntryUnitButton()],
-                                          summaryBar: rows.isEmpty
-                                              ? null
-                                              : OutboundWeightSummaryBar(
-                                                  entries: weightEntries,
-                                                  params: _weightCache,
-                                                  productsOf: () => [
-                                                    for (final row in rows)
-                                                      OutboundProductQuantity(
-                                                        goodsId:
-                                                            row.line.goodsId,
-                                                        quantity:
-                                                            row.line.quantity,
-                                                        unitId: row.line.unitId,
-                                                        unitName:
-                                                            row.line.unitName,
-                                                      ),
-                                                  ],
+                                                            .statusLabel
+                                                      : _failedId ==
+                                                            row.detail.header.id
+                                                      ? '办理受阻'
+                                                      : row
+                                                            .detail
+                                                            .header
+                                                            .statusLabel,
                                                 ),
-                                          items: rows,
-                                          bottomContentPadding:
-                                              UtenFloatingActionGroup
-                                                  .scrollClearance,
-                                          rowKeyOf: (row) => row.key,
-                                          facets: const {},
-                                          nullCounts: const {},
-                                          filters: const {},
-                                          onFilterChanged: (_, _) {},
-                                          emptyMessage: l10n.commonNoData,
-                                        ),
+                                            toolbarActions:
+                                                weightEntries.isEmpty
+                                                ? null
+                                                : const [
+                                                    WeightEntryUnitButton(),
+                                                  ],
+                                            summaryBar: rows.isEmpty
+                                                ? null
+                                                : OutboundWeightSummaryBar(
+                                                    entries: weightEntries,
+                                                    params: _weightCache,
+                                                    productsOf: () => [
+                                                      for (final row in rows)
+                                                        OutboundProductQuantity(
+                                                          goodsId:
+                                                              row.line.goodsId,
+                                                          quantity:
+                                                              row.line.quantity,
+                                                          unitId:
+                                                              row.line.unitId,
+                                                          unitName:
+                                                              row.line.unitName,
+                                                        ),
+                                                    ],
+                                                  ),
+                                            items: rows,
+                                            bottomContentPadding:
+                                                UtenFloatingActionGroup
+                                                    .scrollClearance,
+                                            rowKeyOf: (row) => row.key,
+                                            facets: const {},
+                                            nullCounts: const {},
+                                            filters: const {},
+                                            onFilterChanged: (_, _) {},
+                                            emptyMessage: l10n.commonNoData,
+                                          ),
+                                    ),
                                   ),
                                 ],
                               ),

@@ -3,6 +3,8 @@ import '../../../components/feedback/uten_progress_timeline.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
+import '../../../shared/delivery/order_delivery_plan.dart';
+import '../../../shared/delivery/order_delivery_window.dart';
 // 销售订货单财务审核详情页（V300 专用审核视图，与销售端订单详情分离）。
 //
 // 设计目标（对齐大公司审批中心：SAP/Oracle 审批详情 = 单据信息 + 风险快照 + 双决策）：
@@ -1374,6 +1376,22 @@ class _FinanceSalesOrderReviewPageState
               width: 125,
               type: 'number',
               value: (it) => formatExactQtyWithUnit(it.qty, it.unitName),
+            ),
+            MasterColumnDef<SalesOrderFinanceReviewLine>(
+              key: 'deliveryPlan',
+              label: '交付方式',
+              width: 210,
+              value: (item) => orderDeliveryLabel(item.deliveryPlan),
+              cellBuilder: (_, item) => OrderDeliveryPlanCell(
+                plan: item.deliveryPlan,
+                orderId: widget.id,
+                orderItemId: item.itemId,
+                readContext: widget.managerReview ? 'MANAGER' : 'FINANCE',
+                goodsId: item.goodsId,
+                goodsName: item.goodsName ?? '货品',
+                quantity: item.qty ?? '1',
+                unitId: item.unitId,
+              ),
             ),
             // 实际重量列已下线（2026-09-04：单位已表达重量，销售订单编辑不再录入）。
             // 2026-10-10 金额带单位口径：币种后缀进数值（0.5 元 / 1500 美金），列头

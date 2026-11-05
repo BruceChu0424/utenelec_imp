@@ -6,6 +6,7 @@ import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/widgets/sales_document_layout.dart';
+import '../../../shared/delivery/order_delivery_plan.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -69,6 +70,8 @@ Set<String> _changedColumns(
       after.goodsCode != null &&
       before.goodsCode != after.goodsCode)
     'goodsCode',
+  if (before.deliveryPlan?.signature != after.deliveryPlan?.signature)
+    'deliveryPlan',
 };
 
 class SalesOrderRevisionTable extends StatelessWidget {
@@ -158,6 +161,16 @@ class SalesOrderRevisionTable extends StatelessWidget {
                     label: '编号',
                     width: 130,
                     value: (row) => row.goodsCode ?? '—',
+                  ),
+                  MasterColumnDef<SalesOrderRevisionLine>(
+                    key: 'deliveryPlan',
+                    label: '交付方式',
+                    width: 210,
+                    value: (row) =>
+                        row.deliveryPlan?.summary ??
+                        row.values['交付方式'] ??
+                        orderDeliveryLabel(null),
+                    info: '按该次历史快照显示，不用当前BOM反推旧值。',
                   ),
                   for (final (key, label, width) in fields)
                     if (show(key))

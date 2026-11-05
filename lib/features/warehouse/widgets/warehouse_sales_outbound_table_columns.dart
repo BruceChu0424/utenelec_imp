@@ -52,6 +52,36 @@ String warehouseSalesOutboundReviewSnapshot(WarehouseSalesOutboundDetail d) =>
       d.contactPhone,
       d.logisticsNo,
       d.parcelCount,
+      for (final component in d.deliveryComponents)
+        [
+          component.id,
+          component.shipmentItemId,
+          component.orderItemId,
+          component.path,
+          component.goodsId,
+          component.colorId,
+          component.unitId,
+          component.quantity,
+          component.originalQuantity,
+          component.processingIssuedAt,
+          component.processingReceivedAt,
+          component.processingWorkshopId,
+          component.operations,
+          component.processingTargets.map((target) => target.data).toList(),
+          component.processedQty,
+          component.processingEvidence,
+          component.revision,
+          component.warehouseId,
+          component.stockPlace,
+          component.movementId,
+          for (final choice in component.warehouseChoices)
+            [
+              choice.warehouseId,
+              choice.availableQty,
+              choice.canFulfill,
+              choice.requiresSourceCheck,
+            ],
+        ],
       for (final line in d.lines)
         [
           line.id,
@@ -63,6 +93,7 @@ String warehouseSalesOutboundReviewSnapshot(WarehouseSalesOutboundDetail d) =>
               choice.availableQty,
               choice.requiredQty,
               choice.canFulfill,
+              choice.requiresSourceCheck,
             ],
           line.lineNumber,
           line.goodsId,
@@ -108,6 +139,7 @@ warehouseSalesOutboundTableColumns({
   WeightUnit weightEntryUnit = WeightUnit.kg,
 }) {
   String? warehouseText(WarehouseSalesOutboundTableRow row) {
+    if (row.detail.isComponentParent(row.line.id)) return '按实际交付散件逐行确定';
     final draft = draftOf?.call(row);
     if (draft != null && draft.selectable) {
       return draft.warehouseNameOf(row.line.id);
@@ -274,6 +306,9 @@ warehouseSalesOutboundTableColumns({
         info: '已预填建议发出仓(表头仓能发则表头仓，否则首个能发出本行的仓)；各行可分别从不同仓发出，可发量已扣安全库存与其它预留。',
         value: (row) => warehouseText(row) ?? '—',
         cellBuilder: (context, row) {
+          if (row.detail.isComponentParent(row.line.id)) {
+            return const Text('按实际交付散件逐行确定');
+          }
           final draft = draftOf(row);
           if (draft == null || !draft.selectable) {
             return Text(warehouseText(row) ?? '—');
@@ -337,6 +372,9 @@ warehouseSalesOutboundTableColumns({
             row.line.actualStockPlace ??
             '',
         cellBuilder: (context, row) {
+          if (row.detail.isComponentParent(row.line.id)) {
+            return const Text('见实际交付散件');
+          }
           final controller = stockPlaceControllerOf(row);
           if (controller == null) return Text(row.line.actualStockPlace ?? '—');
           return TextField(

@@ -69,6 +69,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 SET root_material_id=gen_random_uuid()
                 WHERE analysis_id=:analysisId AND is_deleted=FALSE
                   AND root_material_id IS NULL
+                  AND COALESCE(delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
                   AND source_type IN ('SALES_ORDER_ITEM','REWORK','TRIAL','SAMPLE','STOCK','OTHER')
                 """).setParameter("analysisId", analysisId).executeUpdate();
         em.createNativeQuery("""
@@ -102,6 +103,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales ON sales.id=item.sales_order_item_id
                 WHERE item.analysis_id=:analysisId AND item.root_material_id IS NOT NULL
                   AND item.is_deleted=FALSE
+                  AND COALESCE(item.delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
                 ON CONFLICT (id) DO UPDATE
                 SET source_suggestion=EXCLUDED.source_suggestion,updated_at=now(),updated_by=:actorId
                 WHERE production_material_analysis_materials.source_suggestion
@@ -115,6 +117,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT item.id FROM production_material_analysis_items item
                 WHERE item.analysis_id=:id AND item.root_material_id IS NOT NULL AND item.is_deleted=FALSE
+                  AND COALESCE(item.delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
                   AND EXISTS (SELECT 1 FROM goods_bom_items bom JOIN goods child
                     ON child.id=bom.component_goods_id AND child.is_deleted=FALSE
                       AND COALESCE(child.auto_created,FALSE)=FALSE
@@ -237,6 +240,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                       AND fn_warehouse_is_good_stock_leaf(physical.warehouse_id)
                 ) balance ON TRUE
                 WHERE item.analysis_id=:analysisId AND item.is_deleted=FALSE
+                  AND COALESCE(item.delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
                 ORDER BY item.line_priority,item.id
                 """).setParameter("analysisId", analysisId).setParameter("overrides", overrides.toString()))) {
             UUID materialId = (UUID) row[1];

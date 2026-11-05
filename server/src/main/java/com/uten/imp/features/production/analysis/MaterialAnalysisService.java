@@ -65,6 +65,7 @@ public class MaterialAnalysisService {
 
     private static final ObjectReader PLAN_REFERENCES_READER = new ObjectMapper()
             .readerFor(new TypeReference<List<PlanReference>>() { });
+    private static final ObjectMapper DELIVERY_JSON = new ObjectMapper();
 
     static final String STATUS_ACTIVE = "ACTIVE";
     static final String STATUS_PARTIAL = "PARTIALLY_PLANNED";
@@ -96,6 +97,12 @@ public class MaterialAnalysisService {
     private final ProductionMutationFootprintPort mutationFootprints;
     @org.springframework.beans.factory.annotation.Autowired
     private MaterialAnalysisRootSupplyService rootSupply;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.delivery.BomDeliveryService deliveryBoms;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.SalesOrderDeliverySourcePort deliverySources;
+    @org.springframework.beans.factory.annotation.Autowired
+    private SalesDeliveryCustodyCoverage deliveryCustody;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService> reservationPreviewReadiness;
     @org.springframework.beans.factory.annotation.Autowired
@@ -1173,7 +1180,7 @@ public class MaterialAnalysisService {
                        COALESCE(i.deliver_date,o.deliver_date),
                        active_analysis.analysis_id,
                        active_analysis.status,
-                       active_analysis.version
+                       active_analysis.version, i.delivery_plan::text
                 FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                 JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i ON i.order_id = o.id AND i.is_deleted = FALSE
                 JOIN goods g ON g.id = i.goods_id AND g.is_deleted = FALSE
@@ -1231,7 +1238,8 @@ public class MaterialAnalysisService {
                     string(row[9]), string(row[10]), uuid(row[11]), string(row[12]),
                     uuid(row[13]), string(row[14]), decimal(row[15]), decimal(row[16]),
                     decimal(row[17]), decimal(row[18]), date(row[19]),
-                    uuid(row[20]), string(row[21]), longValue(row[22])));
+                    uuid(row[20]), string(row[21]), longValue(row[22]),
+                    MaterialAnalysisDeliverySnapshot.plan(row.length>23?string(row[23]):null)));
         }
         List<SalesCandidateOrder> items = orderIds.stream().map(builders::get).filter(Objects::nonNull)
                 .map(CandidateOrderBuilder::build).toList();
@@ -1538,6 +1546,28 @@ public class MaterialAnalysisService {
 
     private RefreshOutcome refreshLockedOutcome(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine,
             boolean autoConfirmRoutes) {
+        return refreshLockedOutcome(analysisId, typedOutputByMaterialLine, autoConfirmRoutes, false);
+    }
+
+    /** Physical fulfillment/reversal cannot reinterpret a frozen, already executed recipe. */
+    void refreshFrozenForDelivery(UUID analysisId) {
+        mutationLocks.requireAnalysesCovered(List.of(analysisId));
+        AnalysisHeader header = lockHeader(analysisId);
+        if ("COMPLETED".equals(header.status())) {
+            String projected=string(em.createNativeQuery("SELECT fn_material_analysis_fulfillment_status(:id)")
+                    .setParameter("id",analysisId).getSingleResult());
+            if (List.of(STATUS_ACTIVE,STATUS_PARTIAL).contains(projected)) {
+                em.createNativeQuery("UPDATE production_material_analyses SET status=:status,updated_at=now() WHERE id=:id AND status='COMPLETED'")
+                        .setParameter("status",projected).setParameter("id",analysisId).executeUpdate();
+                header=lockHeader(analysisId);
+            }
+        }
+        if (!isOpenForFulfillment(header)) return;
+        refreshLockedOutcome(analysisId, Map.of(), false, true);
+    }
+
+    private RefreshOutcome refreshLockedOutcome(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine,
+            boolean autoConfirmRoutes, boolean frozenDelivery) {
         AnalysisHeader header = lockHeader(analysisId);
         if (!isOpenForFulfillment(header)) {
             throw conflict("物料分析已结束，不能刷新");
@@ -1552,6 +1582,7 @@ public class MaterialAnalysisService {
         // 委托；归还后 exact 权益回到原始物料节点，投影保持单份数据）。
         stockEntitlement.restoreAllMakeDelegations(analysisId);
         reconcileSupplyActionStatuses(analysisId);
+        MaterialAnalysisDeliverySnapshot.freeze(em, analysisId);
         if (rootSupply != null) rootSupply.ensureRootNodes(analysisId);
         // Root routes determine whether their children need manufacturing preparation.
         // Confirm decisive master routes before expanding/allocating the BOM, using the
@@ -1559,7 +1590,7 @@ public class MaterialAnalysisService {
         int autoConfirmedRoots = autoConfirmRoutes
                 ? autoConfirmDecisiveRootRoutes(analysisId) : 0;
         RefreshTree tree = refreshTree(analysisId, true, typedOutputByMaterialLine,
-                MaterialAnalysisIssuePreviewOverlay.NONE);
+                MaterialAnalysisIssuePreviewOverlay.NONE, frozenDelivery);
         List<BomNode> nodes = tree.nodes();
         List<SourceLine> sources = tree.sources();
         MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS);
@@ -1631,7 +1662,7 @@ public class MaterialAnalysisService {
         // 分配读写入后的路线；选用量用的路线若已被这次写入改掉，按写入后的路线再选一次用量，
         // 同一次刷新里需求与分配看同一条路线。结构与建议已写好，第二遍只改用量列，不会再清确认。
         if (usageRoutesChanged(nodes, tree.usageRoutes(), loadEffectiveRoutes(analysisId))) {
-            tree = refreshTree(analysisId, true, typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE);
+            tree = refreshTree(analysisId, true, typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE, frozenDelivery);
             nodes = tree.nodes();
             sources = tree.sources();
             snapshotRows = nodeSnapshotRows(tree, availability);
@@ -1850,6 +1881,12 @@ public class MaterialAnalysisService {
      */
     private RefreshTree refreshTree(UUID analysisId, boolean lockSales,
             Map<UUID, BigDecimal> typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay overlay) {
+        return refreshTree(analysisId, lockSales, typedOutputByMaterialLine, overlay, false);
+    }
+
+    private RefreshTree refreshTree(UUID analysisId, boolean lockSales,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay overlay,
+            boolean frozenDelivery) {
         List<SourceLine> sources = loadSourceLines(analysisId, lockSales, overlay);
         // Existing fulfillment belongs to the admitted analysis snapshot. A later
         // sales amendment must not roll back a real receipt merely because new
@@ -1857,7 +1894,7 @@ public class MaterialAnalysisService {
         // for their selected source lines before creating any new commitment.
         // 已有节点沿用快照锁定的用量，只按当前路线重新选择(ADR-129 §2.5)。
         BomUsageContext usageContext = bomUsageContext(analysisId);
-        List<BomNode> nodes = loadBomTrees(sources, usageContext);
+        List<BomNode> nodes = frozenDelivery ? frozenDeliveryNodes(analysisId, sources) : loadBomTrees(sources, usageContext);
         Map<UUID, SourceLine> sourcesById = sources.stream()
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId, overlay);
@@ -1902,6 +1939,30 @@ public class MaterialAnalysisService {
         return new RefreshTree(sources, sourcesById, nodes, usageContext.routes());
     }
 
+    private List<BomNode> frozenDeliveryNodes(UUID analysisId, List<SourceLine> sources) {
+        Map<UUID,SourceLine> sourceById=sources.stream().collect(Collectors.toMap(SourceLine::analysisItemId,s->s));
+        List<MaterialRow> stored=loadStoredMaterialRows(analysisId).stream().filter(row->row.depth()>0).toList();
+        Set<String> parents=stored.stream().filter(row->row.parentNodeKey()!=null)
+                .map(row->nodeRef(row.analysisItemId(),row.parentNodeKey())).collect(Collectors.toSet());
+        Map<String,BomNode> built=new LinkedHashMap<>();
+        for(MaterialRow row:stored) {
+            SourceLine source=sourceById.get(row.analysisItemId());
+            if(source==null)throw conflict("冻结分析来源不完整，不能回写实际交付进度");
+            BomNode parent=row.parentNodeKey()==null?null:built.get(nodeRef(row.analysisItemId(),row.parentNodeKey()));
+            if(row.depth()>1&&parent==null)throw conflict("冻结BOM路径不完整，不能回写实际交付进度");
+            BigDecimal parentOutput=parent==null?source.plannedOutputQty().multiply(source.unitRate()):parent.snapshotRequiredQty();
+            BigDecimal required=MaterialConsumptionMath.required(parentOutput,row.bomQty(),row.consumptionBasis(),row.basisOutputQty(),row.allowPartialPackage());
+            UUID edgeId=UUID.fromString(row.nodeKey().substring(row.nodeKey().lastIndexOf('/')+1));
+            BomNode node=new BomNode(row.analysisItemId(),edgeId,row.depth()==1?source.goodsId():row.parentGoodsId(),row.goodsId(),row.colorId(),row.unitId(),row.depth(),
+                    row.nodeKey(),row.parentNodeKey(),row.parentPerProductQty(),row.usage(),row.perProductQty(),required,
+                    row.goodsCode(),row.goodsName(),row.spec(),row.colorName(),row.unitName(),row.safetyStockQty(),row.suggestion(),
+                    parents.contains(nodeRef(row.analysisItemId(),row.nodeKey())),row.controlStage(),row.consumptionBasis(),row.basisOutputQty(),
+                    row.allowPartialPackage(),row.hardGate(),List.of(),row.deliveryContext(),row.deliveryFrontier(),row.deliveryOperations());
+            built.put(nodeRef(row.analysisItemId(),row.nodeKey()),node);
+        }
+        return List.copyOf(built.values());
+    }
+
     /** 刷新第二段(纯计算): 每个节点的库存/在途/缺口初值。 */
     private List<NodeSnapshotRow> nodeSnapshotRows(RefreshTree tree, AvailabilitySnapshot availability) {
         List<NodeSnapshotRow> snapshotRows = new ArrayList<>(tree.nodes().size());
@@ -1913,20 +1974,37 @@ public class MaterialAnalysisService {
             InboundValue inbound = availability.inboundOnOrBefore(
                     key, source.deliveryDate());
             BigDecimal available = stock.availableAfterSafety(node.safetyStock());
-            BigDecimal required = node.snapshotRequiredQty();
+            BigDecimal required = node.deliveryContext() ? BigDecimal.ZERO : node.snapshotRequiredQty();
             BigDecimal shortage = required.subtract(available)
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
             // 初始快照与 computeAllocationSnapshot 权威口径一致：MAKE 与有子层的
             // SUBCONTRACT(领直属物料发外, ADR-143)都可能下层未齐；随后权威重算会覆盖本值。
-            boolean lowerPending = node.hasChildren()
+            boolean lowerPending = !node.deliveryContext() && node.hasChildren()
                     && ("MAKE".equals(node.suggestion())
                         || "SUBCONTRACT".equals(node.suggestion()))
                     && shortage.signum() > 0;
-            snapshotRows.add(new NodeSnapshotRow(node, required, available,
-                    stock.reserved(), inbound.qty(), shortage, inbound.expectedDate(),
+            snapshotRows.add(new NodeSnapshotRow(node, required, node.deliveryContext() ? BigDecimal.ZERO : available,
+                    node.deliveryContext() ? BigDecimal.ZERO : stock.reserved(),
+                    node.deliveryContext() ? BigDecimal.ZERO : inbound.qty(), shortage,
+                    node.deliveryContext() ? null : inbound.expectedDate(),
                     lowerPending));
         }
         return snapshotRows;
+    }
+
+    private static boolean directDemandNode(BomNode node) {
+        return !node.deliveryContext() && (node.depth() == 1 || node.deliveryFrontier());
+    }
+
+    private static String deliveryOperationJson(List<String> operations) {
+        try { return DELIVERY_JSON.writeValueAsString(operations); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException(ex); }
+    }
+
+    static List<String> deliveryOperations(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try { return DELIVERY_JSON.readValue(json, new TypeReference<List<String>>() { }); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw conflict("加工要求快照不正确"); }
     }
 
     private static String nodeRef(UUID analysisItemId, String nodeKey) {
@@ -1984,6 +2062,9 @@ public class MaterialAnalysisService {
             structure("basis_output_qty", "numeric", BomNode::basisOutputQty),
             structure("allow_partial_package", "boolean", BomNode::allowPartialPackage),
             structure("hard_gate", "boolean", BomNode::hardGate),
+            structure("delivery_context", "boolean", BomNode::deliveryContext),
+            structure("delivery_frontier", "boolean", BomNode::deliveryFrontier),
+            structure("delivery_operations", "varchar", node -> deliveryOperationJson(node.deliveryOperations())),
             usage("bom_qty", "numeric", BomNode::bomQty),
             usage("parent_per_product_qty", "numeric", BomNode::parentPerProductQty),
             structure("calculation_mode", "varchar", node -> "EDGE_RULE"),
@@ -2833,7 +2914,7 @@ public class MaterialAnalysisService {
         Map<String, NodeSnapshotRow> inputsByNode = inputs.stream().collect(Collectors.toMap(
                 row -> nodeAllocationKey(row.node()), row -> row));
         Map<UUID, List<BomNode>> directBySource = nodes.stream()
-                .filter(node -> node.depth() == 1)
+                .filter(MaterialAnalysisService::directDemandNode)
                 .collect(Collectors.groupingBy(BomNode::analysisItemId,
                         LinkedHashMap::new, Collectors.toList()));
         Map<MaterialDimension, BigDecimal> stockAfterSafety = availableAfterSafety(
@@ -2928,21 +3009,21 @@ public class MaterialAnalysisService {
         for (BomNode node : nodes) {
             NodeAllocation allocation = allocations.getOrDefault(
                     nodeAllocationKey(node), NodeAllocation.ZERO);
-            BigDecimal startAllocated = node.depth() == 1 && node.hardGate()
+            BigDecimal startAllocated = directDemandNode(node) && node.hardGate()
                     && STAGE_START.equals(node.controlStage())
                     ? hardAllocations.getOrDefault(
                             nodeAllocationKey(node), NodeAllocation.ZERO).allocatedQty()
                     : BigDecimal.ZERO.setScale(4);
-            BigDecimal finishAllocated = node.depth() == 1 && productionGate(node)
+            BigDecimal finishAllocated = directDemandNode(node) && productionGate(node)
                     ? finishAllocation.nodeAllocations().getOrDefault(
                             nodeAllocationKey(node), NodeAllocation.ZERO).allocatedQty()
                     : BigDecimal.ZERO.setScale(4);
-            BigDecimal shipAllocated = node.depth() == 1 && node.hardGate()
+            BigDecimal shipAllocated = directDemandNode(node) && node.hardGate()
                     && HARD_COMMITMENT_STAGES.contains(node.controlStage())
                     ? node.requiredForOutput(shipAllocation.readyByItem().getOrDefault(
                             node.analysisItemId(), BigDecimal.ZERO.setScale(4)))
                     : BigDecimal.ZERO.setScale(4);
-            if (node.depth() > 1) {
+            if (!directDemandNode(node) && node.depth() > 1) {
                 startAllocated = allocation.allocatedQty();
                 finishAllocated = allocation.allocatedQty();
                 shipAllocated = allocation.allocatedQty();
@@ -2953,7 +3034,7 @@ public class MaterialAnalysisService {
             // 只是给计划员看的诊断信号，不阻断「下达委外/下达车间」。
             String effectiveRoute = effectiveRoutes.getOrDefault(
                     nodeKey, node.suggestion());
-            boolean lowerPending = node.hasChildren()
+            boolean lowerPending = !node.deliveryContext() && node.hasChildren()
                     && ("MAKE".equals(effectiveRoute)
                         || "SUBCONTRACT".equals(effectiveRoute))
                     && !delegatedMakeNodes.contains(nodeKey)
@@ -2961,7 +3042,7 @@ public class MaterialAnalysisService {
                     && nestedDiagnostic.hasUncoveredDirectChild(node);
             NodeSnapshotRow input = inputsByNode.get(nodeKey);
             allocationRows.add(new NodeAllocationRow(
-                    node.analysisItemId(), node.nodeKey(), node.snapshotRequiredQty(),
+                    node.analysisItemId(), node.nodeKey(), node.deliveryContext() ? BigDecimal.ZERO : node.snapshotRequiredQty(),
                     allocation.allocatedQty(), startAllocated, finishAllocated, shipAllocated,
                     allocation.shortageQty(), lowerPending, input.available(), input.reserved(),
                     node.safetyStock(), input.inbound(), input.expectedReadyDate()));
@@ -3523,8 +3604,10 @@ public class MaterialAnalysisService {
                 ORDER BY demand.id,material.path,material.node_key
                 """.formatted(SAME_MAIN_WAREHOUSES_CTE)).setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId));
-        return rows.stream().map(row -> new FormalMaterialCoverage(uuid(row[0]),uuid(row[1]),string(row[2]),
-                decimal(row[3]),row[4]==null ? null : decimal(row[4]))).toList();
+        List<FormalMaterialCoverage> result=new ArrayList<>(rows.stream().map(row -> new FormalMaterialCoverage(uuid(row[0]),uuid(row[1]),string(row[2]),
+                decimal(row[3]),row[4]==null ? null : decimal(row[4]))).toList());
+        if(deliveryCustody!=null)result.addAll(deliveryCustody.read(analysisId));
+        return List.copyOf(result);
     }
 
     private static List<FormalMaterialCoverage> previewFormalCoverage(List<FormalMaterialCoverage> existing,
@@ -3894,7 +3977,7 @@ public class MaterialAnalysisService {
             Map<String, ParentSupplyCommitment> parentSupply,
             BorrowTuning tuning) {
         Map<UUID, List<BomNode>> directBySource = nodes.stream()
-                .filter(node -> node.depth() == 1)
+                .filter(MaterialAnalysisService::directDemandNode)
                 .collect(Collectors.groupingBy(BomNode::analysisItemId,
                         LinkedHashMap::new, Collectors.toList()));
         StagePlan stagePlan = allocateNestedStages(
@@ -3911,7 +3994,7 @@ public class MaterialAnalysisService {
         // before diagnosing descendants, otherwise separate pools can display
         // the same stock on a direct material and another product's child.
         Map<String, NodeAllocation> fixedDirectAllocations = new LinkedHashMap<>();
-        nodes.stream().filter(node -> node.depth() == 1
+        nodes.stream().filter(node -> directDemandNode(node)
                         && node.hardGate() && !STAGE_REFERENCE.equals(node.controlStage()))
                 .forEach(node -> fixedDirectAllocations.put(nodeAllocationKey(node),
                         allocations.getOrDefault(nodeAllocationKey(node), NodeAllocation.ZERO)));
@@ -4036,7 +4119,7 @@ public class MaterialAnalysisService {
         while (!ready.isEmpty()) {
             BomNode node = ready.remove();
             BigDecimal required = node.snapshotRequiredQty();
-            if (node.depth() > 1) {
+            if (node.depth() > 1 && !node.deliveryFrontier()) {
                 String parentKey = node.analysisItemId() + "|" + node.parentNodeKey();
                 NodeAllocation parent = allocations.get(parentKey);
                 BomNode parentNode = adjustedByKey.get(parentKey);
@@ -4052,8 +4135,9 @@ public class MaterialAnalysisService {
                 // 已领给车间/委外商的料由正式覆盖逐种抵扣，不从父件产出里扣。
                 BigDecimal parentOutput = parentPlannedOutput(
                         parent, parentSupply.get(parentKey));
-                required = expandsChildren
-                        && !STAGE_REFERENCE.equals(parentNode.controlStage())
+                required = parentNode.deliveryContext()
+                        ? node.requiredForParentOutput(parentNode.snapshotRequiredQty())
+                        : expandsChildren && !STAGE_REFERENCE.equals(parentNode.controlStage())
                         ? node.requiredForParentOutput(parentOutput)
                         : BigDecimal.ZERO.setScale(4);
             }
@@ -4061,7 +4145,8 @@ public class MaterialAnalysisService {
             String key = nodeAllocationKey(adjusted);
             NodeAllocation fixed = fixedDirectAllocations.getOrDefault(key, NodeAllocation.ZERO);
             BigDecimal protectedAllocation = fixed.allocatedQty();
-            BigDecimal residual = required.subtract(protectedAllocation).max(BigDecimal.ZERO);
+            BigDecimal demand = node.deliveryContext() ? BigDecimal.ZERO : required;
+            BigDecimal residual = demand.subtract(protectedAllocation).max(BigDecimal.ZERO);
             BigDecimal available = pool.getOrDefault(
                     adjusted.dimension(), BigDecimal.ZERO.setScale(4));
             // 借用调节：借入节点先用池外锁定量（secured），再用池中余量；
@@ -4081,7 +4166,7 @@ public class MaterialAnalysisService {
             tuning.consumeSecuredDiagnostic(key, additionalAllocation.min(securedUse));
             adjustedByKey.put(key, adjusted);
             allocations.put(key, new NodeAllocation(
-                    allocated, required.subtract(allocated).max(BigDecimal.ZERO)));
+                    allocated, demand.subtract(allocated).max(BigDecimal.ZERO)));
             ready.addAll(childrenByParent.getOrDefault(key, List.of()));
         }
         if (adjustedByKey.size() != nodes.size()) {
@@ -6042,7 +6127,7 @@ public class MaterialAnalysisService {
                        g.owning_warehouse_id, owning_warehouse.name,
                        g.owning_workshop_department_id, owning_workshop.name,
                        COALESCE(planned_surplus.qty, 0),
-                       COALESCE(root_subcontract.qty, 0)
+                       COALESCE(root_subcontract.qty, 0), ai.delivery_plan_snapshot::text
                 FROM production_material_analysis_items ai
                 JOIN goods g ON g.id = ai.goods_id
                 JOIN units u ON u.id = ai.unit_id
@@ -6220,15 +6305,44 @@ public class MaterialAnalysisService {
         // BUY roots own external supply; child items only anchor plans and never
         // duplicate the material tree retained on their original source item.
         List<SourceLine> roots = sources.stream()
-                .filter(source -> !"BUY".equals(source.rootRoute()))
+                .filter(source -> source.bomDelivery() || !"BUY".equals(source.rootRoute()))
                 .filter(source -> !SOURCE_MAKE_COMPONENT.equals(source.sourceType()))
                 .toList();
         Map<UUID, List<Object[]>> rows = new MaterialAnalysisBomSnapshotReader(em).read(roots);
         Set<String> outboundNodes = subcontractOutboundNodes(roots, rows, usageContext.routes());
         List<BomNode> result = new ArrayList<>();
+        Map<List<Object>, com.uten.imp.common.delivery.DeliveryBom.Preview> deliveryReads = new HashMap<>();
+        var admitted = deliverySources == null ? Map.<UUID, com.uten.imp.common.delivery.DeliveryBom.AdmittedSource>of()
+                : deliverySources.admittedSources(roots.stream().filter(SourceLine::bomDelivery)
+                        .map(SourceLine::salesOrderItemId).distinct().toList());
         for (SourceLine source : roots) {
-            result.addAll(bomNodes(source, rows.getOrDefault(source.analysisItemId(), List.of()),
-                    usageContext, outboundNodes));
+            com.uten.imp.common.delivery.DeliveryBom.Preview delivery = null;
+            if (source.bomDelivery() && deliveryBoms != null) {
+                // Invocation-local recipe/permission proof: repeated order lines keep distinct
+                // quantities and paths without rereading the same unchanged BOM hundreds of times.
+                var saved = admitted.get(source.salesOrderItemId());
+                var frozenPlan = MaterialAnalysisDeliverySnapshot.plan(source.deliveryPlanJson());
+                if (saved == null || saved.frozenSnapshot() == null || !Objects.equals(saved.goodsId(), source.goodsId())
+                        || !Objects.equals(saved.unitId(), source.unitId())
+                        || saved.unitRate() == null || saved.unitRate().compareTo(source.unitRate()) != 0
+                        || !Objects.equals(saved.deliveryPlan(), frozenPlan)) {
+                    throw conflict("销售来源的交付身份或方案已变化，请重新确认物料分析");
+                }
+                // The source has already passed production admission. Continue against its
+                // persisted recipe proof without granting arbitrary goods-picker visibility.
+                var key = java.util.Arrays.<Object>asList(source.goodsId(), source.unitId(), source.unitRate(),
+                        source.deliveryPlanJson(), saved.frozenSnapshot().bomFingerprint());
+                delivery = deliveryReads.computeIfAbsent(key, ignored -> deliveryBoms.requireResolvedAdmitted(
+                        new com.uten.imp.common.delivery.DeliveryBom.AdmittedSource(source.goodsId(), source.unitId(),
+                                source.unitRate(), source.requestedQty(), frozenPlan, saved.frozenSnapshot()), true));
+                var snapshot = new com.uten.imp.common.delivery.DeliveryBom.Snapshot(1,
+                        source.goodsId(), delivery.bomFingerprint(), delivery.root());
+                delivery = com.uten.imp.common.delivery.DeliveryFrontier.resolve(snapshot,
+                        source.requestedQty().multiply(source.unitRate()), delivery.deliveryPlan());
+                if (!delivery.issues().isEmpty()) throw conflict(delivery.issues().getFirst().message());
+            }
+            result.addAll(MaterialAnalysisDeliverySnapshot.project(source, bomNodes(source,
+                    rows.getOrDefault(source.analysisItemId(), List.of()), usageContext, outboundNodes), delivery));
         }
         return List.copyOf(result);
     }
@@ -6906,7 +7020,8 @@ public class MaterialAnalysisService {
                        g.owning_warehouse_id, owning_warehouse.name,
                        g.owning_workshop_department_id, owning_workshop.name,
                        m.design_bom_qty, m.actual_bom_qty, m.usage_basis,
-                       m.usage_reason, m.usage_sample_count, m.usage_defect_rate
+                       m.usage_reason, m.usage_sample_count, m.usage_defect_rate,
+                       m.delivery_context, m.delivery_frontier, m.delivery_operations::text
                 FROM production_material_analysis_materials m
                 JOIN goods g ON g.id = m.goods_id
                 JOIN units u ON u.id = m.unit_id
@@ -9425,8 +9540,43 @@ public class MaterialAnalysisService {
              * 顶层委外件未结委外申请的计划产出(基本单位，ADR-143 §4.5)：申请量 + 公共超量
              * − 合格入库回厂量，只算我方领直属物料发外的份额；非委外顶层为 0。
              */
-            BigDecimal rootSubcontractOutputBaseQty) implements MaterialAnalysisPlanSource {
+            BigDecimal rootSubcontractOutputBaseQty,
+            String deliveryPlanJson) implements MaterialAnalysisPlanSource {
+        SourceLine(
+            UUID analysisItemId, String sourceType, UUID salesOrderItemId,
+            UUID salesOrderId, String salesOrderNo, LocalDate orderDate,
+            LocalDate deliveryDate, String clientName,
+            UUID goodsId, String goodsCode, String goodsName, String spec,
+            UUID colorId, String colorName, UUID unitId, String unitName,
+            BigDecimal unitRate, BigDecimal requestedQty, BigDecimal submittedQty,
+            BigDecimal approvedQty,
+            BigDecimal salesQty, BigDecimal shippedQty, BigDecimal returnedQty,
+            BigDecimal flagQty, BigDecimal reservedQty, BigDecimal plannedQty,
+            BigDecimal producedQty, BigDecimal activeDraftQty,
+            Short orderStatus, boolean orderStopped, boolean orderClosed,
+            boolean orderDeleted, boolean orderItemDeleted,
+            String sourceRef, String sourceReason, int allocationPriority,
+            BigDecimal readyNowQty, BigDecimal readyByDateQty,
+            BigDecimal readyStartQty, BigDecimal readyFinishQty,
+            BigDecimal readyShipQty, UUID parentAnalysisLineId,
+            String parentGoodsName, boolean orderFinanceConfirmed,
+            UUID rootMaterialLineId, BigDecimal rootFulfilledQty, String rootRoute,
+            /** V587 货品主档「所属仓库」，与落点仓/分析范围仓无关；未登记为 null。 */
+            UUID owningWarehouseId, String owningWarehouseName,
+            /** V590 货品主档「归属生产车间」（最近一次排产确认/改派学习回写）。 */
+            UUID owningWorkshopId, String owningWorkshopName,
+            /** 已下达且仍有效的计划里超出需求的公共备货产出合计（ADR-099）。 */
+            BigDecimal plannedSurplusQty,
+            /**
+             * 顶层委外件未结委外申请的计划产出(基本单位，ADR-143 §4.5)：申请量 + 公共超量
+             * − 合格入库回厂量，只算我方领直属物料发外的份额；非委外顶层为 0。
+             */
+            BigDecimal rootSubcontractOutputBaseQty) {
+            this(analysisItemId, sourceType, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, salesQty, shippedQty, returnedQty, flagQty, reservedQty, plannedQty, producedQty, activeDraftQty, orderStatus, orderStopped, orderClosed, orderDeleted, orderItemDeleted, sourceRef, sourceReason, allocationPriority, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, parentAnalysisLineId, parentGoodsName, orderFinanceConfirmed, rootMaterialLineId, rootFulfilledQty, rootRoute, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, plannedSurplusQty, rootSubcontractOutputBaseQty, null);
+        }
+
         @Override public UUID analysisLineId() { return analysisItemId; }
+        boolean bomDelivery() { return SOURCE_SALES.equals(sourceType) && MaterialAnalysisDeliverySnapshot.bom(deliveryPlanJson); }
         SourceLine(
             UUID analysisItemId, String sourceType, UUID salesOrderItemId,
             UUID salesOrderId, String salesOrderNo, LocalDate orderDate,
@@ -9473,7 +9623,8 @@ public class MaterialAnalysisService {
                     row.length > 49 ? uuid(row[49]) : null,
                     row.length > 50 ? string(row[50]) : null,
                     row.length > 51 ? decimal(row[51]) : BigDecimal.ZERO,
-                    row.length > 52 ? decimal(row[52]) : BigDecimal.ZERO);
+                    row.length > 52 ? decimal(row[52]) : BigDecimal.ZERO,
+                    row.length > 53 ? string(row[53]) : null);
         }
 
         /** 下达预览(ADR-116): 叠上本批计划/锚点配额差与重算后的齐套列; 其余字段原样。 */
@@ -9494,7 +9645,7 @@ public class MaterialAnalysisService {
                     parentAnalysisLineId, parentGoodsName, orderFinanceConfirmed,
                     rootMaterialLineId, rootFulfilledQty, rootRoute,
                     owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName,
-                    plannedSurplusQty.add(delta.surplus()), rootSubcontractOutputBaseQty);
+                    plannedSurplusQty.add(delta.surplus()), rootSubcontractOutputBaseQty, deliveryPlanJson);
         }
 
         BigDecimal remainingAnalysisQty() {
@@ -9594,12 +9745,12 @@ public class MaterialAnalysisService {
             boolean rootRoutePending = rootMaterialLineId != null && rootRoute == null;
             boolean canSchedule = planningBlockedReason == null
                     && remaining.signum() > 0 && !externalRoot && !rootRoutePending
-                    && !SOURCE_AGGREGATE_MAKE.equals(sourceType);
+                    && !SOURCE_AGGREGATE_MAKE.equals(sourceType) && !bomDelivery();
             // ADR-099：需求已全部转入计划的自制行仍可再下一批纯公共备货产出
             // (V577 合法形态)——用户口径「父层级那里还是可以追加下单, 多下的属于公共的」。
             boolean canIssueSurplus = planningBlockedReason == null
                     && remaining.signum() == 0 && !externalRoot && !rootRoutePending
-                    && !SOURCE_AGGREGATE_MAKE.equals(sourceType);
+                    && !SOURCE_AGGREGATE_MAKE.equals(sourceType) && !bomDelivery();
             return new ProductView(analysisItemId, sourceType, sourceRef, sourceReason,
                     salesOrderItemId,
                     salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName,
@@ -9608,6 +9759,7 @@ public class MaterialAnalysisService {
                     remaining, allocationPriority,
                     canSchedule, remaining,
                     planningBlockedReason != null ? planningBlockedReason
+                            : bomDelivery() ? "本单按BOM层级交付，根产品无需总装，请按交付件下达"
                             : canSchedule ? null : rootRoutePending
                             ? "根产品供料路线未确认，请先确认为自制再下达车间"
                             : externalRoot
@@ -9625,7 +9777,8 @@ public class MaterialAnalysisService {
                     planState.responsibleName(), rootMaterialLineId,
                     owningWarehouseId, owningWarehouseName,
                     owningWorkshopId, owningWorkshopName,
-                    issuedPlanQty(), canIssueSurplus,planState.workshopId(),planState.responsibleId(),planState.planReferences());
+                    issuedPlanQty(), canIssueSurplus,planState.workshopId(),planState.responsibleId(),planState.planReferences(),
+                    MaterialAnalysisDeliverySnapshot.plan(deliveryPlanJson));
         }
     }
 
@@ -9710,7 +9863,22 @@ public class MaterialAnalysisService {
             String unitName, BigDecimal safetyStock, String suggestion,
             boolean hasChildren, String controlStage, String consumptionBasis,
             BigDecimal basisOutputQty, boolean allowPartialPackage,
+            boolean hardGate, List<BigDecimal> outputBatches,
+            boolean deliveryContext, boolean deliveryFrontier, List<String> deliveryOperations) {
+        BomNode(
+            UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
+            UUID goodsId, UUID colorId, UUID unitId, int depth,
+            String nodeKey, String parentNodeKey,
+            BigDecimal parentPerProductQty, BomUsage usage,
+            BigDecimal perProductQty, BigDecimal snapshotRequiredQty,
+            String goodsCode, String goodsName, String spec, String colorName,
+            String unitName, BigDecimal safetyStock, String suggestion,
+            boolean hasChildren, String controlStage, String consumptionBasis,
+            BigDecimal basisOutputQty, boolean allowPartialPackage,
             boolean hardGate, List<BigDecimal> outputBatches) {
+            this(analysisItemId, bomItemId, parentGoodsId, goodsId, colorId, unitId, depth, nodeKey, parentNodeKey, parentPerProductQty, usage, perProductQty, snapshotRequiredQty, goodsCode, goodsName, spec, colorName, unitName, safetyStock, suggestion, hasChildren, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, outputBatches, false, false, List.of());
+        }
+
         /** 用量只有设计值的节点。 */
         BomNode(UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
                 UUID goodsId, UUID colorId, UUID unitId, int depth,
@@ -9764,14 +9932,22 @@ public class MaterialAnalysisService {
                     parentPerProductQty, usage, perProductQty, requiredQty,
                     goodsCode, goodsName, spec, colorName, unitName, safetyStock,
                     suggestion, hasChildren, controlStage, consumptionBasis,
-                    basisOutputQty, allowPartialPackage, hardGate,outputBatches);
+                    basisOutputQty, allowPartialPackage, hardGate,outputBatches, deliveryContext, deliveryFrontier, deliveryOperations);
         }
         BomNode withOutputBatches(List<BigDecimal> batches) {
             return new BomNode(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
                     nodeKey,parentNodeKey,parentPerProductQty,usage,perProductQty,snapshotRequiredQty,
                     goodsCode,goodsName,spec,colorName,unitName,safetyStock,suggestion,
                     hasChildren,controlStage,consumptionBasis,basisOutputQty,allowPartialPackage,
-                    hardGate,List.copyOf(batches));
+                    hardGate,List.copyOf(batches), deliveryContext, deliveryFrontier, deliveryOperations);
+        }
+        BomNode withDelivery(boolean context, boolean frontier, List<String> operations,
+                BigDecimal parentPer, BomUsage deliveryUsage, BigDecimal per, BigDecimal required) {
+            return new BomNode(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
+                    nodeKey,parentNodeKey,parentPer,deliveryUsage,per,required,
+                    goodsCode,goodsName,spec,colorName,unitName,context?BigDecimal.ZERO:safetyStock,suggestion,
+                    hasChildren,context?STAGE_REFERENCE:controlStage,consumptionBasis,basisOutputQty,
+                    allowPartialPackage,context?false:hardGate,outputBatches,context,frontier,List.copyOf(operations));
         }
         String path() {
             return nodeKey;
@@ -9915,8 +10091,35 @@ public class MaterialAnalysisService {
             /** V587 货品主档「所属仓库」，与落点仓/分析范围仓无关；未登记为 null。 */
             UUID owningWarehouseId, String owningWarehouseName,
             /** V590 货品主档「归属生产车间」（最近一次排产确认/改派学习回写）。 */
-            UUID owningWorkshopId, String owningWorkshopName)
+            UUID owningWorkshopId, String owningWorkshopName,
+            boolean deliveryContext, boolean deliveryFrontier, List<String> deliveryOperations)
             implements MaterialAnalysisRouteAutoConfirm.Candidate {
+        MaterialRow(
+            UUID id, UUID analysisItemId, String nodeKey,
+            UUID goodsId, String goodsCode,
+            String goodsName, String spec, UUID colorId, String colorName,
+            UUID unitId, String unitName, int depth, String path,
+            String parentNodeKey, UUID parentGoodsId,
+            String controlStage, String consumptionBasis, BigDecimal basisOutputQty,
+            boolean allowPartialPackage, boolean hardGate,
+            BigDecimal bomQty, BigDecimal parentPerProductQty,
+            BigDecimal perProductQty,
+            /** 快照锁定的设计/真实使用数量与采用依据(ADR-129)；顶层供给行只有默认的 DESIGN。 */
+            BomUsage usage,
+            BigDecimal requiredQty, BigDecimal availableQty,
+            BigDecimal allocatedAvailableQty, BigDecimal reservedQty,
+            BigDecimal safetyStockQty, BigDecimal inboundQty, BigDecimal shortageQty,
+            LocalDate expectedReadyDate, String suggestion, String confirmedRoute,
+            String routeReason,
+            boolean lowerLevelPending,
+            BigDecimal minOrderQty, BigDecimal orderMultipleQty,
+            /** V587 货品主档「所属仓库」，与落点仓/分析范围仓无关；未登记为 null。 */
+            UUID owningWarehouseId, String owningWarehouseName,
+            /** V590 货品主档「归属生产车间」（最近一次排产确认/改派学习回写）。 */
+            UUID owningWorkshopId, String owningWorkshopName) {
+            this(id, analysisItemId, nodeKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, depth, path, parentNodeKey, parentGoodsId, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, usage, requiredQty, availableQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, expectedReadyDate, suggestion, confirmedRoute, routeReason, lowerLevelPending, minOrderQty, orderMultipleQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, false, false, List.of());
+        }
+
         static MaterialRow from(Object[] row) {
             return new MaterialRow(uuid(row[0]), uuid(row[1]), string(row[2]),
                     uuid(row[3]), string(row[4]), string(row[5]), string(row[6]),
@@ -9935,7 +10138,10 @@ public class MaterialAnalysisService {
                     row.length > 37 ? uuid(row[37]) : null,
                     row.length > 38 ? string(row[38]) : null,
                     row.length > 39 ? uuid(row[39]) : null,
-                    row.length > 40 ? string(row[40]) : null);
+                    row.length > 40 ? string(row[40]) : null,
+                    row.length > 47 && Boolean.TRUE.equals(row[47]),
+                    row.length > 48 && Boolean.TRUE.equals(row[48]),
+                    row.length > 49 ? MaterialAnalysisService.deliveryOperations(string(row[49])) : List.of());
         }
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
@@ -9958,7 +10164,7 @@ public class MaterialAnalysisService {
                     required, available, allocated, reserved, safety, inbound, shortage,
                     expectedReady, suggestion, confirmedRoute, routeReason, lowerPending,
                     minOrderQty, orderMultipleQty, owningWarehouseId, owningWarehouseName,
-                    owningWorkshopId, owningWorkshopName);
+                    owningWorkshopId, owningWorkshopName, deliveryContext, deliveryFrontier, deliveryOperations);
         }
         MaterialView toView(List<WarehouseBreakdown> breakdown,
                             List<DownstreamReference> references,
@@ -10070,7 +10276,7 @@ public class MaterialAnalysisService {
                     plannedOutputQty == null ? BigDecimal.ZERO : plannedOutputQty,
                     netShortage, sourceRequiredQty, planningUncovered,
                     aggregateDelegatedShare, aggregateTargetMaterialLineId, null, null, List.of(), BigDecimal.ZERO, null, null, null, null, null, List.of(),
-                    false, null);
+                    false, null, deliveryContext, deliveryFrontier, deliveryOperations);
         }
 
         @Override public String actionGroupKey() {
@@ -10082,7 +10288,7 @@ public class MaterialAnalysisService {
         }
 
         @Override public boolean actionable() {
-            return requiredQty.signum() > 0 && (depth == 0 || shortageQty.signum() > 0);
+            return !deliveryContext && requiredQty.signum() > 0 && (depth == 0 || shortageQty.signum() > 0);
         }
 
         String materialKey() {

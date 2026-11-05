@@ -38,6 +38,8 @@ public class WarehouseSalesOutboundProjectionService {
 
     private final SalesShipmentService shipments;
     private final EntityManager entityManager;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService deliveryComponents;
 
     public WarehouseSalesOutboundProjectionService(
             SalesShipmentService shipments,
@@ -257,7 +259,9 @@ public class WarehouseSalesOutboundProjectionService {
                 source.getHandedOverAt(),
                 source.getWarehouseExceptionReason(),
                 allowedTargets,
-                lines);
+                lines,
+                deliveryComponents==null?List.of():deliveryComponents.components(source.getId(),
+                        allowedTargets.contains(SalesShipment.WORK_SHIPPED)));
     }
 
     /**

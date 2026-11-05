@@ -75,6 +75,9 @@ class UtenBusyOverlay extends StatefulWidget {
   /// 盖住后弹出的对话框——请求在等密码、遮罩在等请求，整页卡死。让位期间对话框自带的
   /// 模态屏障照样挡住底下页面。
   static Future<T> yieldWhile<T>(Future<T> Function() body) async {
+    // Previously inserted owners may not have mounted until this frame ends.
+    // The modal body starts afterwards, so its own new waiting layer stays visible.
+    await WidgetsBinding.instance.endOfFrame;
     // Yield the operations which were already waiting. A newly started task
     // inside the modal (for example password verification) owns its own mask.
     final owners = Set<_UtenBusyOverlayState>.of(_active);

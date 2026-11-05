@@ -39,12 +39,12 @@ final class _MaterialTableRow {
     this.hasChildren = false,
     this.ancestorContinuations = const [],
     this.isLastChild = false,
-    this.contextOnly = false,
+    bool contextOnly = false,
     this.rootAnalysisLineId,
     this.parentMaterialLineId,
     this.childCount,
     this.productOrdinal,
-  });
+  }) : _filterContextOnly = contextOnly;
 
   final _MaterialTableRowKind kind;
   final String key;
@@ -65,7 +65,10 @@ final class _MaterialTableRow {
 
   /// 只读上下文：表头筛选未命中、仅因子孙命中而保留的祖先。无勾选/下拉/
   /// 行菜单，不计入业务数量。
-  final bool contextOnly;
+  final bool _filterContextOnly;
+  bool get deliveryContext =>
+      material?.deliveryContext == true || product?.isDeliveryContext == true;
+  bool get contextOnly => _filterContextOnly || deliveryContext;
   final String? rootAnalysisLineId;
   final String? parentMaterialLineId;
 
@@ -2158,6 +2161,26 @@ abstract class _MaterialAnalysisMaterialTableState
       cellBuilder: (_, row) => _materialTableIdentityCell(theme, row),
     ),
     MasterColumnDef(
+      key: 'deliveryPlan',
+      label: '交付要求',
+      width: 190,
+      value: (row) {
+        if (row.deliveryContext) return '按下级交付，无需该层组装';
+        final material = row.material;
+        final operations = material?.deliveryOperations ?? const <String>[];
+        if (operations.isNotEmpty) {
+          return operations
+              .map((value) => value == 'LASER' ? '激光打印' : value)
+              .join('、');
+        }
+        if (material?.deliveryFrontier == true) return '本单交付件';
+        return row.product == null
+            ? null
+            : orderDeliveryLabel(row.product!.deliveryPlan);
+      },
+      info: '交付方式来自销售订单确认的BOM路径。本层不组装时只保留结构上下文；必要加工与下级组件生产继续执行。',
+    ),
+    MasterColumnDef(
       key: 'salesRequirements',
       label: AppLocalizations.of(context).productionSalesRequirements,
       width: 190,
@@ -2747,6 +2770,7 @@ abstract class _MaterialAnalysisMaterialTableState
         ? null
         : _aggregateTable.issuedBreakdown(aggregate);
     final cell = UtenTreeTableCell.compact(
+      dotted: true,
       key: ValueKey('material-table-tree-${row.key}'),
       toggleKey: ValueKey('material-table-toggle-${row.key}'),
       depth: row.depth,
@@ -7466,6 +7490,7 @@ abstract class _MaterialAnalysisMaterialTableState
       row.material?.confirmedRoute != MaterialSupplyRoute.make;
 
   String? _materialTableStatusText(_MaterialTableRow row) {
+    if (row.deliveryContext) return '按交付方案无需该层组装';
     if (row.contextOnly) return '上级路径上下文（只读）';
     final block = row.group == null
         ? _analysis?.planningBlockedReason(
@@ -7612,7 +7637,7 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     if (row.contextOnly) {
       return Text(
-        '上级路径上下文（只读）',
+        row.deliveryContext ? '按交付方案无需该层组装' : '上级路径上下文（只读）',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),

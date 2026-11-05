@@ -32,6 +32,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesManagerReviewService implements com.uten.imp.application.port.SalesManagerReviewCatchUpPort {
+    private com.uten.imp.features.sales.order.SalesOrderDeliveryService deliveryService;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setDeliveryService(com.uten.imp.features.sales.order.SalesOrderDeliveryService service) { deliveryService=service; }
     public static final String ORDER_TARGET = "SALES_ORDER_MANAGER_REVIEW";
     private final EntityManager em;
     private final SalesOrderRepository orders;
@@ -224,6 +227,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         return new FinanceBatchConfirmResult(ids.size(),ids.size(),0,ids);
     }
     private void approve(SalesOrder order,String remark) {
+        if (deliveryService!=null) deliveryService.validateOrderApproval(order.getId());
         order.getManagerReview().approve(currentUser.requireEmployeeId(),remark);
         order.setFinanceReviewRevision(order.getFinanceReviewRevision()+1);
         orders.saveAndFlush(order); event(order,"APPROVED",remark);

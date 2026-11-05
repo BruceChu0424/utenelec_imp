@@ -119,6 +119,8 @@ public class SalesShipmentService {
 
     private final SalesShipmentRepository shipmentRepo;
     private final SalesShipmentItemRepository itemRepo;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private SalesShipmentDeliveryService deliveryFulfillment;
     private final StockService stockService;
     // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -622,8 +624,18 @@ public class SalesShipmentService {
         for(var line:req.getLines()) validateBatchSourceLine(req,line,byId.get(line.getOrderItemId()),writeScope);
         // Existing unkeyed callers retain their old grouping; current UI always
         // supplies a stable intent key for idempotency and source splitting.
-        Map<UUID,Map<UUID,BigDecimal>> physicalSplits = batchKey == null ? null
-                : new SalesShipmentBatchAllocation(em).allocate(req);
+        Map<UUID,Map<UUID,BigDecimal>> physicalSplits = null;
+        if(batchKey!=null){
+            var physicalRequest=new com.uten.imp.features.sales.shipment.dto.BatchShipRequest();
+            org.springframework.beans.BeanUtils.copyProperties(req,physicalRequest);
+            physicalRequest.setLines(req.getLines().stream().filter(line->deliveryFulfillment==null
+                    ||!deliveryFulfillment.isBom(line.getOrderItemId())).toList());
+            physicalSplits=physicalRequest.getLines().isEmpty()?new LinkedHashMap<>():new LinkedHashMap<>(new SalesShipmentBatchAllocation(em).allocate(physicalRequest));
+            for(var line:req.getLines())if(deliveryFulfillment!=null&&deliveryFulfillment.isBom(line.getOrderItemId())){
+                Map<UUID,BigDecimal> split=new LinkedHashMap<>();split.put(req.getWarehouseId(),line.getQty());
+                physicalSplits.put(line.getOrderItemId(),split);
+            }
+        }
         // 分组键包含客户、原始 owner 与所有会影响应收的商业条款。
         Map<BatchGroupKey, List<ShipmentItemLine>> grouped = new LinkedHashMap<>();
         Map<BatchGroupKey, CommercialTerms> termsByGroup = new HashMap<>();
@@ -729,6 +741,7 @@ public class SalesShipmentService {
         requireExpectedRevision(s,req.getExpectedRevision());
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         customerInventory.requireNoUnreleased(id);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireCanRevise(id);
         if (req.getShipmentKind()!=null && !s.getShipmentKind().equals(CustomerShipmentPolicy.requestedKind(req.getShipmentKind()))) {
             throw new ApiException(ErrorCode.CONFLICT,"出货类型不能在编辑时更换，请按实际业务新建");
         }
@@ -780,12 +793,14 @@ public class SalesShipmentService {
         }
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         customerInventory.requireNoUnreleased(id);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireNoProcessing(id);
         if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())
                 && !SalesShipment.WORK_CANCELLED.equals(s.getWarehouseWorkStatus())) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "出货单已确认出库，不可删除；纠错请走销售退货");
         }
         String fromStatus = s.getWarehouseWorkStatus();
+        if(deliveryFulfillment!=null)deliveryFulfillment.cancelPrepared(id);
         revokeForCommercialChange(s,"销售取消未出库发货");
         OffsetDateTime now = OffsetDateTime.now();
         UUID actor = currentUser.requireEmployeeId();
@@ -1035,6 +1050,7 @@ public class SalesShipmentService {
         SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_REVERSE_AUTHORITY);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         requireFinanceAuditEditableState(s);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireNoProcessing(id);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         if (s.getFinanceAudit() == null || s.getFinanceAudit() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "该出货单尚未财务审核，不能反审");
@@ -1319,6 +1335,7 @@ public class SalesShipmentService {
         assertStoredOrderLinks(s, items, true, WAREHOUSE_WORK_AUTHORITY);
         assertStoredShipmentPolicy(items);
         assertFinanceAudited(s);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requirePickingWarehouseScope(items,req);
         if(req.getWarehouseId()!=null) {
             if(!s.isWarehouseChosenAtPick() && !req.getWarehouseId().equals(s.getWarehouseId()))
                 throw new ApiException(ErrorCode.CONFLICT,"该出货单已按原来源仓完成财审，请按原仓核对；需要换仓时先撤回重审");
@@ -1328,6 +1345,7 @@ public class SalesShipmentService {
         Map<UUID,String> stockPlaces=warehouseStockPlaces(req,items);
         // V631：发出仓按行落定（行指定 > 本次默认仓 > 行已落定 > 单据表头仓），一行缺仓就拒绝；
         // 推迟选仓的单据表头仓取第一行的发出仓——V582 出库事件仍按表头仓取证。
+        if(deliveryFulfillment!=null)deliveryFulfillment.resolveCommercialWarehouses(s,items,req);
         Map<UUID,UUID> lineWarehouses=resolveLineWarehouses(s,req,items);
         if(s.getWarehouseId()==null) s.setWarehouseId(lineWarehouses.get(items.getFirst().getId()));
         directCommercial.validateStored(s,items);
@@ -1337,7 +1355,7 @@ public class SalesShipmentService {
         // 再由 approveLocked 在同一事务真正扣账。两段共用同一批 goods/color 互斥锁，
         // 并发的第二张单会排队后按已扣减的余额重算，不存在"都校验通过再一起扣"的窗口。
         if (CustomerShipmentPolicy.direct(s)) customerInventory.reservePicking(id,s.getReviewRevision(),customerInventoryLines(items,baseQuantities));
-        else assertWarehousePickCapacity(items,baseQuantities);
+        else assertWarehousePickCapacity(items.stream().filter(it->!isBomDelivery(it)).toList(),baseQuantities);
         // ADR-135：出库实称重量(千克)只进库存重量账和本次出库事件证据, 从不写回销售明细。
         // 放在可发量校验之后、交接事实之前: 它的查询不会让交接字段提前落盘。
         Map<UUID,BigDecimal> lineWeights=warehouseLineWeights(s.getId(),req);
@@ -1353,6 +1371,7 @@ public class SalesShipmentService {
         recordWarehouseEvent(
                 s, current, SalesShipment.WORK_SHIPPED, reason, actor, now, stockPlaces, lineWarehouses,
                 lineWeights);
+        if(deliveryFulfillment!=null)deliveryFulfillment.post(s,items,req,now);
         ShipmentDetail shipped = approveLocked(s, lineWeights, WAREHOUSE_WORK_AUTHORITY);
         // 「待出库」待办到此办结（原来挂在开始拣货那一跳）。
         chainNotice.resolveReviewNotices("SALES_SHIPMENT", id, "WAREHOUSE_SHIPPED");
@@ -1382,6 +1401,28 @@ public class SalesShipmentService {
         }
         requireWarehouseTransition(
                 current, SalesShipment.WORK_PENDING_PICK, target);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
+    public SalesShipmentDeliveryService.Component processingWarehouseWork(UUID shipmentId,UUID componentId,String action,
+            SalesShipmentDeliveryService.ProcessingWarehouseAction request){
+        tx.bind();
+        SalesShipment shipment=requireWritableShipmentForUpdate(shipmentId,WAREHOUSE_WORK_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",shipment);
+        if(shipment.getStatus()==null||shipment.getStatus()!=STATUS_DRAFT||shipment.isRejected()
+                ||!SalesShipment.WORK_PENDING_PICK.equals(shipment.getWarehouseWorkStatus()))
+            throw new ApiException(ErrorCode.CONFLICT,"仅有效待出库备货单可办理加工实物");
+        assertFinanceAudited(shipment);
+        if(deliveryFulfillment==null)throw new ApiException(ErrorCode.CONFLICT,"交付作业服务暂不可用");
+        return deliveryFulfillment.warehouseProcessing(shipmentId,componentId,action,request,currentUser.requireEmployeeId());
+    }
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    public Map<String,Object> deliveryWarehouseRequestOutcome(UUID shipmentId,UUID requestId){
+        requireReadableShipment(shipmentId);
+        if(deliveryFulfillment==null)return Map.of("found",false);
+        return deliveryFulfillment.warehouseRequestOutcome(shipmentId,requestId);
     }
 
     /**
@@ -1776,8 +1817,17 @@ public class SalesShipmentService {
             if (it.getWarehouseId() == null) it.setWarehouseId(s.getWarehouseId());
         }
         Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items,false);
+        Set<UUID> bomDeliveryIds=deliveryFulfillment==null?Set.of():deliveryFulfillment.bomItemIds(items);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requirePosted(id,bomDeliveryIds);
         if (CustomerShipmentPolicy.direct(s)) customerInventory.consumeShipment(id,customerInventoryLines(items,baseQuantities));
         for (SalesShipmentItem it : items) {
+            if(bomDeliveryIds.contains(it.getId())) {
+                validateShippable(it);
+                addShippedQty(it.getOrderItemId(),it.getQty());
+                updateDeliveryChain(it.getOrderItemId());
+                recalcOrderClosed(it.getOrderItemId());
+                continue;
+            }
             if (it.getOrderItemId() != null) {
                 validateShippable(it); // 超发硬校验（未发余量 + 链上行预留量）
                 // 消耗预留（FIFO + 行锁；链上行才有预留，无预留时实耗 0 不报错——历史单兼容）
@@ -2175,6 +2225,7 @@ public class SalesShipmentService {
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
         taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
         customerInventory.requireNoUnreleased(id);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireNoProcessing(id);
         requireLegacyShipmentMutable(s);
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿(待备货)出货单可驳回；已审核请走红冲");
@@ -2191,7 +2242,10 @@ public class SalesShipmentService {
         lockStoredOrderTargets(items);
         assertStoredOrderLinks(s, items, true, REJECT_AUTHORITY);
         Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items,false);
+        Set<UUID> physicalDeliveryItems=deliveryFulfillment==null?Set.of():deliveryFulfillment.bomItemIds(items);
+        if(deliveryFulfillment!=null)deliveryFulfillment.cancelPrepared(id);
         for (SalesShipmentItem it : items) {
+            if(physicalDeliveryItems.contains(it.getId()))continue;
             if (it.getOrderItemId() == null || chainStatusOf(it.getOrderItemId()) <= 0) continue;
             // 释放该行对应预留（货损/丢失/找不到 → 这批货不再属于该订单）
             reservationService.releaseForOrderItem(it.getOrderItemId(), requireBaseQuantity(baseQuantities,it));
@@ -2253,12 +2307,20 @@ public class SalesShipmentService {
             s.setArPosted(false);
         }
 
-        Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items,true);
+        Set<UUID> bomReverseIds=deliveryFulfillment==null?Set.of():deliveryFulfillment.bomItemIds(items);
+        Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items.stream().filter(it->!bomReverseIds.contains(it.getId())).toList(),true);
         // 2. 反向库存（type=3 dir=+1 倒回）+ 回减 shipped_qty
         // 反向只翻 direction；amountLocal 必须传正数（StockService.recordMovement 内部乘 direction 取符号）。
         // 若再 negate() 金额 → (-amt)×(+1) 与原 (+amt)×(-1) 同号 → 库存金额无法回滚（design §一决策）。
         OffsetDateTime now = OffsetDateTime.now();
+        if(deliveryFulfillment!=null&&!bomReverseIds.isEmpty())deliveryFulfillment.reverse(s.getId(),now);
         for (SalesShipmentItem it : items) {
+            if(bomReverseIds.contains(it.getId())){
+                addShippedQty(it.getOrderItemId(),it.getQty().negate());
+                updateDeliveryChain(it.getOrderItemId());
+                recalcOrderClosed(it.getOrderItemId());
+                continue;
+            }
             applyMovement(s, it, StockService.DIR_IN, now, null, null,requireBaseQuantity(baseQuantities,it));
             if (weightObservations != null) {
                 weightObservations.reverseBySourceItem(
@@ -2459,10 +2521,22 @@ public class SalesShipmentService {
         }
         short chain = r[5] == null ? 0 : ((Number) r[5]).shortValue();
         BigDecimal reserved = toBd(r[4]);
-        if (chain > 0 && it.getQty().compareTo(reserved) > 0) {
+        if (!isBomDelivery(it) && chain > 0 && it.getQty().compareTo(reserved) > 0) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "发货数量超过可发货数量(预留 " + reserved.stripTrailingZeros().toPlainString() + ")");
         }
+    }
+
+    private boolean isBomDelivery(SalesShipmentItem item) {
+        return deliveryFulfillment!=null&&deliveryFulfillment.isBom(item.getOrderItemId());
+    }
+    private void updateDeliveryChain(UUID orderItemId){
+        em.createNativeQuery("""
+            UPDATE sales_order_items SET chain_status=CASE
+             WHEN qty-shipped_qty+returned_qty-flag_qty<=0 THEN 9
+             WHEN shipped_qty-returned_qty>0 THEN 8 ELSE 2 END,
+             updated_at=now() WHERE id=:id
+            """).setParameter("id",orderItemId).executeUpdate();
     }
 
     /** 订单行链路状态（0=未上链/历史行）。 */
@@ -2894,6 +2968,13 @@ public class SalesShipmentService {
             BigDecimal reserved = row[1] == null ? BigDecimal.ZERO : (BigDecimal) row[1];
             int chainStatus = ((Number) row[2]).intValue();
             BigDecimal drafted = row[3] == null ? BigDecimal.ZERO : (BigDecimal) row[3];
+            if(deliveryFulfillment!=null&&deliveryFulfillment.isBom(id)) {
+                BigDecimal outstanding=(BigDecimal)em.createNativeQuery("SELECT GREATEST(qty-shipped_qty+returned_qty-flag_qty,0) FROM sales_order_items WHERE id=:id")
+                        .setParameter("id",id).getSingleResult();
+                if(drafted.add(requested.getOrDefault(id,BigDecimal.ZERO)).compareTo(outstanding)>0)
+                    throw new ApiException(ErrorCode.CONFLICT,"该订单的未发组合数量已被其它出货草稿占用");
+                continue;
+            }
             // deliberately did not invent reservations for migrated open
             // orders. A new warehouse task must not silently turn that
             // unknown history into a hard promise. LEGACY_PENDING drafts are
@@ -3366,6 +3447,7 @@ public class SalesShipmentService {
         for (SalesShipmentItem old:existing.values()) if (!retained.contains(old.getId())) {
             old.setDeleted(true);old.setDeletedAt(OffsetDateTime.now());itemRepo.save(old);
         }
+        if(deliveryFulfillment!=null)deliveryFulfillment.synchronize(s,itemRepo.findByShipmentIdOrderByLineNoAsc(s.getId()));
         return out;
     }
 
@@ -3708,7 +3790,8 @@ public class SalesShipmentService {
                 throw new ApiException(ErrorCode.BUSINESS, "本次数量必须大于 0(订单 " + r[9] + ")");
             }
             com.uten.imp.features.stock.dto.WeightInput.rawKg(line.getWeight(),"本次销售单声明重量");
-            if (reserved.signum() <= 0 || line.getQty().compareTo(reserved) > 0) {
+            if ((deliveryFulfillment==null||!deliveryFulfillment.isBom(line.getOrderItemId()))
+                    && (reserved.signum() <= 0 || line.getQty().compareTo(reserved) > 0)) {
                 throw new ApiException(ErrorCode.BUSINESS,
                         "订单 " + r[9] + " 可发预留不足(可发 " + reserved.stripTrailingZeros().toPlainString() + ")，请刷新后重试");
             }

@@ -533,7 +533,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       if (canShip) ...[
         const UtenMenuDivider(),
         UtenMenuItem(
-          label: '去发货',
+          label: r.hasDeliveryDraft ? '创建备货出货单' : '去发货',
           icon: Icons.local_shipping_outlined,
           onTap: () => _ship(r),
         ),

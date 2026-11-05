@@ -65,6 +65,15 @@ public class SalesOrderItem extends com.uten.imp.common.columns.ExtraColumnEntit
     @Column(name = "unit_rate", precision = 18, scale = 6)
     private BigDecimal unitRate;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "delivery_plan", nullable = false, columnDefinition = "jsonb")
+    private com.uten.imp.common.delivery.DeliveryPlan deliveryPlan = com.uten.imp.common.delivery.DeliveryPlan.assembled();
+
+    /** Server-read immutable recipe snapshot associated with delivery_plan.bomFingerprint. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "delivery_bom_snapshot", columnDefinition = "jsonb")
+    private com.uten.imp.common.delivery.DeliveryBom.Snapshot deliveryBomSnapshot;
+
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty;
 

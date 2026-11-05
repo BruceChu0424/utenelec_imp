@@ -861,6 +861,9 @@ public class SalesReturnService {
         }
 
         var writeScope = accessPolicy.scope();
+        Set<UUID> componentSources=outIds.isEmpty()?Set.of():Set.copyOf(com.uten.imp.common.util.NativeQueryResults.typedRows(
+            em.createNativeQuery("SELECT DISTINCT shipment_item_id FROM sales_shipment_delivery_components WHERE shipment_item_id IN(:ids)")
+                .setParameter("ids",outIds),UUID.class));
         List<UUID> sourceOwners = new ArrayList<>();
         UUID commonShipmentId = null;
         String commonShipmentNo = null;
@@ -869,6 +872,8 @@ public class SalesReturnService {
                 Object[] out = outById.get(line.getOutItemId());
                 UUID owner = (UUID) out[6];
                 accessPolicy.requireWritable(owner, "无权引用该销售出货行", writeScope);
+                if(componentSources.contains(line.getOutItemId()))throw new ApiException(ErrorCode.CONFLICT,
+                        "该出货按实际交付件扣库，不能把商业成品行当作整件退入库存；请先按原散件清单核对实际退回物料与质检处置，不能直接生成成品库存");
                 sourceOwners.add(owner);
                 UUID shipmentId = (UUID) out[9];
                 if (commonShipmentId == null) {

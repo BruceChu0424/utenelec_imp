@@ -7,6 +7,8 @@ import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
+import '../../../shared/delivery/order_delivery_plan.dart';
+import '../../../shared/delivery/order_delivery_window.dart';
 // 销售单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/反审/编辑/删除）。
 //
 // 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅反审；反审(-1)→只读。操作按 edit 权限。
@@ -2475,6 +2477,34 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                     value: (it) =>
                         names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
                   ),
+                if (isOrder)
+                  MasterColumnDef<SalesDocItem>(
+                    key: 'deliveryPlan',
+                    label: '交付方式',
+                    width: 210,
+                    value: (item) => orderDeliveryLabel(item.deliveryPlan),
+                    info: '此列保留本单交付配置；查看窗口只读。历史交付配置不按当前BOM静默重算。',
+                    cellBuilder: (_, item) => OrderDeliveryPlanCell(
+                      plan: item.deliveryPlan,
+                      orderId: _detail!.id,
+                      orderItemId: item.id,
+                      goodsId: item.goodsId,
+                      goodsName: salesGoodsNameLabel(
+                        item,
+                        names.goods(item.goodsId),
+                      ),
+                      quantity:
+                          item.exactDecimals['qty'] ??
+                          item.qty?.toString() ??
+                          '1',
+                      unitId: item.unitId,
+                      unitRate:
+                          item.exactDecimals['unitRate'] ??
+                          item.unitRate?.toString(),
+                      isCurrent: () =>
+                          mounted && _detail?.items.contains(item) == true,
+                    ),
+                  ),
                 MasterColumnDef(
                   key: 'price',
                   label: '单价',
@@ -3324,7 +3354,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               onDisabledTap: count == 0
                   ? () => context.appWarning('请先勾选要发货的产品')
                   : null,
-              child: Text(count > 0 ? '去发货($count)' : '去发货'),
+              child: Text(
+                _detail?.items.any(
+                          (item) =>
+                              item.deliveryPlan?.requiresPhysicalFulfillment ==
+                              true,
+                        ) ==
+                        true
+                    ? (count > 0 ? '创建出货单($count)' : '创建出货单')
+                    : (count > 0 ? '去发货($count)' : '去发货'),
+              ),
             ),
         ].where((child) => child is! SizedBox).toList();
         return UtenFloatingActionGroup(children: group);

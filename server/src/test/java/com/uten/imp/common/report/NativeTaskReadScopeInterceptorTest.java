@@ -80,4 +80,50 @@ class NativeTaskReadScopeInterceptorTest {
             assertThat(request.getAttribute(ReadScopePublication.ATTRIBUTE)).isInstanceOf(ReadScopePublication.Proof.class);
         }
     }
+
+    @Test void deliveryProcessingReadsUseTaskScopesWithoutGoodsPickerRightsOrCommandClassification() {
+        var authority=org.mockito.Mockito.mock(com.uten.imp.security.ReadScopeVersionAuthority.class);
+        var users=org.mockito.Mockito.mock(com.uten.imp.security.SecurityContextCurrentUser.class);
+        var subject=new com.uten.imp.security.AuthUser(java.util.UUID.randomUUID(),java.util.UUID.randomUUID(),
+                "workshop-reader",java.util.Set.of("production_execution:view"),false,true,false);
+        org.mockito.Mockito.when(users.get()).thenReturn(java.util.Optional.of(subject));
+        org.mockito.Mockito.when(authority.scopeFor("native_workshop_tasks",subject,false)).thenReturn("a".repeat(64));
+        org.mockito.Mockito.when(authority.scopeFor("native_warehouse_tasks",subject,false)).thenReturn("b".repeat(64));
+        var interceptor=new NativeTaskReadScopeInterceptor(authority,users);
+        String base="/api/production/delivery-processing-tasks";
+        for(String path:List.of(base,base+"/"+ID,base+"/"+ID+"/warehouses",base+"/"+ID+"/requests/"+ID)) {
+            assertThat(NativeTaskReadScopeInterceptor.profile(path)).as(path).isEqualTo("native_workshop_tasks");
+            var request=new org.springframework.mock.web.MockHttpServletRequest("GET",path);
+            interceptor.preHandle(request,new org.springframework.mock.web.MockHttpServletResponse(),null);
+            assertThat(request.getAttribute(ReadScopePublication.ATTRIBUTE))
+                    .isEqualTo(new ReadScopePublication.Proof("native_workshop_tasks",subject,"a".repeat(64),false));
+        }
+        String receipt="/api/warehouse/sales-outbound/"+ID+"/delivery-requests/"+ID;
+        var request=new org.springframework.mock.web.MockHttpServletRequest("GET",receipt);
+        interceptor.preHandle(request,new org.springframework.mock.web.MockHttpServletResponse(),null);
+        assertThat(request.getAttribute(ReadScopePublication.ATTRIBUTE))
+                .isEqualTo(new ReadScopePublication.Proof("native_warehouse_tasks",subject,"b".repeat(64),false));
+        org.mockito.Mockito.verify(authority,org.mockito.Mockito.times(4)).scopeFor("native_workshop_tasks",subject,false);
+        org.mockito.Mockito.verify(authority).scopeFor("native_warehouse_tasks",subject,false);
+        org.mockito.Mockito.verifyNoMoreInteractions(authority);
+        for(String suffix:List.of("assignment","start","reports","cancel-start","warehouses/save","requests/"+ID+"/confirm"))
+            assertThat(NativeTaskReadScopeInterceptor.profile(base+"/"+ID+"/"+suffix)).as(suffix).isNull();
+    }
+
+    @Test void processingAndReceiptReadPathsCannotFenceAMutationWithTheSameUrl() {
+        var authority=org.mockito.Mockito.mock(com.uten.imp.security.ReadScopeVersionAuthority.class);
+        var users=org.mockito.Mockito.mock(com.uten.imp.security.SecurityContextCurrentUser.class);
+        var interceptor=new NativeTaskReadScopeInterceptor(authority,users);
+        for(String path:List.of("/api/production/delivery-processing-tasks",
+                "/api/production/delivery-processing-tasks/"+ID+"/warehouses",
+                "/api/production/delivery-processing-tasks/"+ID+"/requests/"+ID,
+                "/api/warehouse/sales-outbound/"+ID+"/delivery-requests/"+ID)) {
+            for(String method:List.of("POST","PUT","PATCH","DELETE")) {
+                var request=new org.springframework.mock.web.MockHttpServletRequest(method,path);
+                interceptor.preHandle(request,new org.springframework.mock.web.MockHttpServletResponse(),null);
+                assertThat(request.getAttribute(ReadScopePublication.ATTRIBUTE)).as(method+" "+path).isNull();
+            }
+        }
+        org.mockito.Mockito.verifyNoInteractions(authority,users);
+    }
 }

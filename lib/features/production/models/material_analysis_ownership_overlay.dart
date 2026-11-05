@@ -145,6 +145,9 @@ ProductionMaterialAnalysisMaterial _materialWithOwnership(
   unitName: current.unitName,
   level: current.level,
   nodeRole: current.nodeRole,
+  deliveryContext: current.deliveryContext,
+  deliveryFrontier: current.deliveryFrontier,
+  deliveryOperations: current.deliveryOperations,
   path: current.path,
   parentGoodsId: current.parentGoodsId,
   parentNodeKey: current.parentNodeKey,
@@ -248,6 +251,7 @@ ProductionMaterialAnalysisProduct _productWithOwnership(
 ) => ProductionMaterialAnalysisProduct(
   analysisLineId: current.analysisLineId,
   sourceType: current.sourceType,
+  deliveryPlan: current.deliveryPlan,
   quantityFactsExact: current.quantityFactsExact,
   rootMaterialLineId: current.rootMaterialLineId,
   sourceRef: current.sourceRef,

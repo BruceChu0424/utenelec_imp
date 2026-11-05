@@ -26,6 +26,10 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private UUID unitId;
     private BigDecimal unitRate;
 
+    /** Null from an older client preserves an existing line's intent; a new line defaults to assembled. */
+    @jakarta.validation.Valid
+    private com.uten.imp.common.delivery.DeliveryPlan deliveryPlan;
+
     @NotNull
     private BigDecimal qty;
 

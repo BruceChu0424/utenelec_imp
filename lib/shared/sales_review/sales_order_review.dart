@@ -1,5 +1,6 @@
 import '../models/progress_timeline_event.dart';
 import '../business_columns/business_column.dart';
+import '../delivery/order_delivery_plan.dart';
 // 销售订货单财务确认任务模型（V294 闸门，V300 补驳回与审核详情）。
 //
 // 后端 SalesOrderFinanceConfirmService 返回的待确认列表行：已审核但未财务确认的
@@ -476,6 +477,7 @@ class SalesOrderRevisionLine {
     this.lineNo,
     this.goodsCode,
     this.goodsName,
+    this.deliveryPlan,
     required this.values,
   });
 
@@ -484,6 +486,7 @@ class SalesOrderRevisionLine {
   final int? lineNo;
   final String? goodsCode;
   final String? goodsName;
+  final OrderDeliveryPlan? deliveryPlan;
 
   /// Display values come directly from typed immutable snapshots, not diff prose.
   final Map<String, String?> values;
@@ -495,6 +498,7 @@ class SalesOrderRevisionLine {
         lineNo: _int(json['lineNo']),
         goodsCode: _string(json['goodsCode']),
         goodsName: _string(json['goodsName']),
+        deliveryPlan: OrderDeliveryPlan.read(json['deliveryPlan']),
         values: json['values'] is Map
             ? (json['values'] as Map).map(
                 (key, value) => MapEntry(key.toString(), value?.toString()),
@@ -576,6 +580,8 @@ class SalesOrderFinanceReviewLine {
     this.lineNo,
     this.goodsCode,
     this.goodsName,
+    this.goodsId,
+    this.deliveryPlan,
     this.colorName,
     this.unitId,
     this.unitName,
@@ -599,6 +605,8 @@ class SalesOrderFinanceReviewLine {
   final int? lineNo;
   final String? goodsCode;
   final String? goodsName;
+  final String? goodsId;
+  final OrderDeliveryPlan? deliveryPlan;
   final String? colorName;
 
   /// 来源报价行的单价与财务核定折扣(ADR-134)；非报价转入行为 null。
@@ -631,6 +639,8 @@ class SalesOrderFinanceReviewLine {
       lineNo: _int(json['lineNo']),
       goodsCode: _string(json['goodsCode']),
       goodsName: _string(json['goodsName']),
+      goodsId: _string(json['goodsId']),
+      deliveryPlan: OrderDeliveryPlan.read(json['deliveryPlan']),
       colorName: _string(json['colorName']),
       unitId: _string(json['unitId']),
       unitName: _string(json['unitName']),

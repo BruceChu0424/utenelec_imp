@@ -59,8 +59,10 @@ class MaterialAnalysisMaterialDefaults {
     'actionable',
     'lowerLevelPending',
     'bomMissing',
+    'deliveryContext',
+    'deliveryFrontier',
   };
-  static const _textLists = {'path', 'notifiedTargets'};
+  static const _textLists = {'path', 'notifiedTargets', 'deliveryOperations'};
   static const _objectLists = {
     'borrowRefs',
     'crossReallocationRefs',

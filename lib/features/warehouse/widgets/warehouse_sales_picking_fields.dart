@@ -31,8 +31,9 @@ class WarehouseSalesPickingDraft {
       places[line.id] = TextEditingController(
         text: line.actualStockPlace ?? line.currentStockPlaceHint ?? '',
       );
-      if (detail.header.warehouseWorkStatus ==
-          WarehouseSalesOutboundStatus.pendingPick) {
+      if (!detail.isComponentParent(line.id) &&
+          detail.header.warehouseWorkStatus ==
+              WarehouseSalesOutboundStatus.pendingPick) {
         weights[line.id] = OutboundWeightEntry(
           goodsId: line.goodsId,
           colorId: line.colorId,
@@ -43,6 +44,17 @@ class WarehouseSalesPickingDraft {
         );
       }
     }
+    for (final component in detail.deliveryComponents) {
+      componentWarehouses[component.id] =
+          component.warehouseId ??
+          component.warehouseChoices
+              .where((choice) => choice.selectableForComponent)
+              .firstOrNull
+              ?.warehouseId;
+      componentPlaces[component.id] = TextEditingController(
+        text: component.stockPlace ?? '',
+      );
+    }
   }
 
   final WarehouseSalesOutboundDetail detail;
@@ -50,6 +62,43 @@ class WarehouseSalesPickingDraft {
   /// 逐行发出仓当前选择(行 id → 仓 id)。
   final Map<String, String?> warehouses = {};
   final Set<String> confirmedWarehouses = {};
+  final Map<String, String?> componentWarehouses = {};
+  final Set<String> confirmedComponentWarehouses = {};
+  final Map<String, TextEditingController> componentPlaces = {};
+  final Map<String, String> componentErrors = {};
+  final Map<String, Map<String, dynamic>> componentRequests = {};
+  final Map<String, String> _acceptedComponentQuantities = {};
+  void adoptComponentResult(WarehouseDeliveryComponent updated) {
+    final original = detail.deliveryComponents
+        .where((component) => component.id == updated.id)
+        .firstOrNull;
+    if (original == null ||
+        original.goodsId != updated.goodsId ||
+        original.path.join('/') != updated.path.join('/')) {
+      throw const FormatException('加工交接回执的散件身份已变化，请核对原请求');
+    }
+    _acceptedComponentQuantities[updated.id] = updated.quantity;
+    _componentInputRevision.value++;
+  }
+
+  final _componentInputRevision = ValueNotifier<int>(0);
+  void changeComponentWarehouse(String componentId, String? warehouseId) {
+    componentWarehouses[componentId] = warehouseId;
+    confirmedComponentWarehouses.add(componentId);
+    componentErrors.remove(componentId);
+    error = null;
+    _componentInputRevision.value++;
+  }
+
+  void setComponentRequest(String componentId, Map<String, dynamic>? request) {
+    if (request == null) {
+      componentRequests.remove(componentId);
+    } else {
+      componentRequests[componentId] = Map<String, dynamic>.from(request);
+    }
+    _componentInputRevision.value++;
+  }
+
   final Map<String, TextEditingController> places = {};
 
   /// 逐行实称重量(行 id → 录入状态)；只在待确认出库时有。
@@ -75,15 +124,47 @@ class WarehouseSalesPickingDraft {
   String? error;
 
   Map<String, String> get stockPlaces => {
-    for (final entry in places.entries) entry.key: entry.value.text.trim(),
+    for (final entry in places.entries)
+      if (!detail.isComponentParent(entry.key))
+        entry.key: entry.value.text.trim(),
   };
 
-  Map<String, String?> get lineWarehouses => Map.unmodifiable(warehouses);
+  Map<String, String?> get lineWarehouses => Map.unmodifiable({
+    for (final entry in warehouses.entries)
+      if (!detail.isComponentParent(entry.key)) entry.key: entry.value,
+  });
+  List<Map<String, dynamic>> get deliveryComponentsPayload => [
+    for (final component in detail.deliveryComponents)
+      {
+        'componentId': component.id,
+        'warehouseId': componentWarehouses[component.id],
+        'stockPlace': componentPlaces[component.id]?.text.trim() ?? '',
+      },
+  ];
 
   /// Input only. Current quantities, inventory and allowed actions are always
   /// loaded again from the task; suggested weights are not manual input.
   Map<String, dynamic> captureInput() => {
     'shipmentId': detail.header.id,
+    'componentRequests': {
+      for (final entry in componentRequests.entries) entry.key: entry.value,
+    },
+    'components': [
+      for (final component in detail.deliveryComponents)
+        {
+          'id': component.id,
+          'goodsId': component.goodsId,
+          'quantity':
+              _acceptedComponentQuantities[component.id] ?? component.quantity,
+          'revision': component.revision,
+          'path': component.path,
+          'warehouseId': componentWarehouses[component.id],
+          'warehouseConfirmed': confirmedComponentWarehouses.contains(
+            component.id,
+          ),
+          'place': componentPlaces[component.id]?.text ?? '',
+        },
+    ],
     'rows': [
       for (final line in detail.lines)
         {
@@ -105,6 +186,49 @@ class WarehouseSalesPickingDraft {
   };
 
   void restoreInput(Map<String, dynamic> data) {
+    final rawRequests = data['componentRequests'];
+    if (rawRequests is Map) {
+      for (final entry in rawRequests.entries) {
+        if (entry.value is! Map) {
+          throw const FormatException('加工交接草稿的请求记录损坏，请保留原草稿');
+        }
+        final request = Map<String, dynamic>.from(entry.value as Map);
+        if (request['shipmentId'] != detail.header.id ||
+            request['componentId'] != entry.key ||
+            !detail.deliveryComponents.any(
+              (component) => component.id == entry.key,
+            ) ||
+            !const {
+              'ISSUE',
+              'RECEIVE',
+              'CANCEL_ISSUE',
+            }.contains(request['action']) ||
+            request['body'] is! Map ||
+            (request['body'] as Map)['requestId'] is! String) {
+          throw const FormatException('加工交接草稿与当前出库任务身份不一致，请保留原记录');
+        }
+        componentRequests[entry.key.toString()] = request;
+      }
+    }
+    final componentRows = data['components'] as List? ?? const [];
+    final componentById = {
+      for (final row in componentRows.whereType<Map<Object?, Object?>>())
+        row['id']: row,
+    };
+    if (componentById.length != detail.deliveryComponents.length) {
+      throw const FormatException('实际交付散件已变化，请保留草稿并重新核对');
+    }
+    for (final component in detail.deliveryComponents) {
+      final row = componentById[component.id];
+      if (row == null ||
+          row['goodsId'] != component.goodsId ||
+          row['quantity'] != component.quantity ||
+          row['path'] is! List ||
+          (row['path'] as List).map((value) => value.toString()).join('/') !=
+              component.path.join('/')) {
+        throw const FormatException('散件身份、路径或数量已变化，请保留草稿并重新核对');
+      }
+    }
     final rows = data['rows'];
     if (data['shipmentId'] != detail.header.id ||
         rows is! List ||
@@ -121,6 +245,14 @@ class WarehouseSalesPickingDraft {
           row['quantity'] != line.quantity) {
         throw const FormatException('出库任务的货品或数量已变化，请保留草稿并重新核对');
       }
+    }
+    for (final component in detail.deliveryComponents) {
+      final row = componentById[component.id]!;
+      if (row['warehouseConfirmed'] == true) {
+        componentWarehouses[component.id] = row['warehouseId'] as String?;
+        confirmedComponentWarehouses.add(component.id);
+      }
+      componentPlaces[component.id]?.text = row['place'] as String? ?? '';
     }
     for (final line in detail.lines) {
       final row = byId[line.id]!;
@@ -158,7 +290,9 @@ class WarehouseSalesPickingDraft {
   }
 
   Iterable<Listenable> get inputListenables => [
+    _componentInputRevision,
     ...places.values,
+    ...componentPlaces.values,
     for (final entry in weights.values) entry.weight,
   ];
 
@@ -199,8 +333,14 @@ class WarehouseSalesPickingDraft {
 
   bool validate() {
     lineErrors.clear();
+    componentErrors.clear();
+    if (componentRequests.isNotEmpty) {
+      error = '存在尚未核对结果的加工交接，请先核对原请求';
+      return false;
+    }
     if (selectable) {
       for (final line in detail.lines) {
+        if (detail.isComponentParent(line.id)) continue;
         final selected = warehouses[line.id];
         if (selected == null) {
           lineErrors[line.id] = '请选择本行的实际发出仓';
@@ -216,6 +356,29 @@ class WarehouseSalesPickingDraft {
               '该仓可发 ${choice.availableQty ?? '0'}，不足本行 ${choice.requiredQty ?? line.quantity ?? '0'}';
         }
       }
+      for (final component in detail.deliveryComponents) {
+        final selected = componentWarehouses[component.id];
+        final choice = component.warehouseChoices
+            .where((entry) => entry.warehouseId == selected)
+            .firstOrNull;
+        if (selected == null ||
+            choice == null ||
+            !choice.selectableForComponent) {
+          componentErrors[component.id] = '请选择可核对本单实物来源的散件发出仓';
+        }
+        if (!component.processingComplete) {
+          componentErrors[component.id] = '必要加工尚未完成，请先核对加工记录';
+        }
+        if (component.operations.isNotEmpty &&
+            component.hasProcessingLifecycle &&
+            component.processingReceivedAt == null) {
+          componentErrors[component.id] = '加工物料尚未由仓库收回，不能直接出库';
+        }
+      }
+    }
+    if (componentErrors.isNotEmpty) {
+      error = componentErrors.values.first;
+      return false;
     }
     if (lineErrors.isEmpty) {
       error = null;
@@ -236,6 +399,10 @@ class WarehouseSalesPickingDraft {
   }
 
   void dispose() {
+    _componentInputRevision.dispose();
+    for (final controller in componentPlaces.values) {
+      controller.dispose();
+    }
     for (final controller in places.values) {
       controller.dispose();
     }

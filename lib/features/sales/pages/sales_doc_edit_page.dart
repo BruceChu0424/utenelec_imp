@@ -300,6 +300,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   String? _financeRejectedByName;
 
   final _grid = UtenEditableGridController<SalesGridRow>();
+  final _deliveryWindows = <SalesGridRow>{};
   final _scrollCtl = ScrollController();
 
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
@@ -1070,6 +1071,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           initialize: (row, it) {
             row
               ..documentItemId = it.id
+              ..deliveryPlan = it.deliveryPlan
               // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
               ..goods = ref
                   .read(salesMasterNameServiceProvider)
@@ -1278,6 +1280,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           names.goodsOptionOf(item.goodsId)!,
         );
         row.unitRateExact = item.exactDecimals['unitRate'];
+        row.qty.text = prefill.exactQuantities[item.id] ?? row.qty.text;
         row.price.text =
             financeExactTrimmed(
               item.exactDecimals['price'] ?? item.price?.toString(),
@@ -1333,6 +1336,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
     var replacedQuoteLine = false;
     void fill(SalesGridRow target, GoodsListItem g) {
+      if (target.goods?.id != g.id) target.deliveryPlan = null;
       // 报价核定(折扣锁定)的行重新选了同一个货品(同颜色同单位)：什么都不动，
       // 否则单价预览、折扣会被当前标价覆盖，保存时与报价核定的条件对不上。
       if (target.quoteDiscountLocked) {
@@ -1954,6 +1958,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           '${r.unitRateExact ?? r.unitRate ?? 1}|'
           '${financeExactTrimmed(r.discount.text) ?? r.discount.text.trim()}|'
           '${r.clientPrice ?? ''}|${r.extraColumnsSignature}|'
+          '${r.deliveryPlan?.signature ?? ''}|'
           '${r.extraColumnsPreventMerge ? identityHashCode(r) : ''}',
       identityLabel: (r) {
         final parts = <String>[
@@ -2140,6 +2145,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         if (weight != null) 'weight': weightText,
         // 行备注：5 类单据通用（空文本不传，后端按 null 处理）。
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
+        if (widget.docType == SalesDocType.order)
+          'deliveryPlan': r.deliveryPlan?.toJson(),
       };
       if (_hasClientPricing) body.addAll(_clientLineFields(r));
       switch (widget.docType) {
@@ -3568,7 +3575,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         item.id: '${item.name}(${item.code})',
     };
     return PopScope(
-      canPop: !_saving && _uncertainShipmentBody == null,
+      canPop:
+          !_saving &&
+          _uncertainShipmentBody == null &&
+          _deliveryWindows.isEmpty,
       child: Scaffold(
         appBar: UtenAppBar(
           title: compact
@@ -3577,7 +3587,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                     : '编辑${_cfg.shortLabel}')
               : (widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}'),
           leading: UtenBackButton(
-            enabled: !(_saving || _uncertainShipmentBody != null),
+            enabled:
+                !(_saving || _uncertainShipmentBody != null) &&
+                _deliveryWindows.isEmpty,
             onPressed: () =>
                 popOrBackTo(context, defaultPath: SalesRoutePath.hub),
           ),
@@ -4550,6 +4562,22 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                           clientFileCurrency:
                                               _clientFileCurrency,
                                           priceMasked: _priceMasked,
+                                          deliveryEditingCurrent: (row) =>
+                                              mounted &&
+                                              formDraftIdentityIsCurrent &&
+                                              !_saving &&
+                                              !_hasCreatedDocuments &&
+                                              _grid.rows.contains(row),
+                                          onDeliveryWindowChanged: (row, open) {
+                                            if (!mounted) return;
+                                            setState(() {
+                                              open
+                                                  ? _deliveryWindows.add(row)
+                                                  : _deliveryWindows.remove(
+                                                      row,
+                                                    );
+                                            });
+                                          },
                                         ),
                                         createBlankRow: () =>
                                             inheritBusinessColumns(
@@ -4685,7 +4713,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         floatingActionButton: _loading || _initializationError != null
             ? null
             : UtenEditFloatingActions(
-                onCancel: _uncertainShipmentBody != null
+                onCancel:
+                    _uncertainShipmentBody != null ||
+                        _deliveryWindows.isNotEmpty
                     ? null
                     : () =>
                           popOrBackTo(context, defaultPath: SalesRoutePath.hub),
@@ -4693,12 +4723,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                 // 有内容才转红可点——与财审页「未选中灰/选中红」同款。
                 onSave:
                     !_guidedBusy &&
+                        _deliveryWindows.isEmpty &&
                         (_hasCreatedDocuments ||
                             _hasGoodsRows ||
                             _uncertainShipmentBody != null)
                     ? _save
                     : null,
-                saveDisabledHint: _uncertainShipmentBody != null
+                saveDisabledHint: _deliveryWindows.isNotEmpty
+                    ? '请先确认或取消交付方式设置'
+                    : _uncertainShipmentBody != null
                     ? null
                     : '请先在明细表选择货品',
                 saving: _saving,

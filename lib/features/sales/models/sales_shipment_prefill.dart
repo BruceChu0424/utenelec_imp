@@ -1,20 +1,25 @@
 import 'sales_doc.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 /// Read-only navigation intent. Opening a prefilled page never creates a draft.
 class SalesShipmentPrefill {
   SalesShipmentPrefill({
     required this.orderId,
     required Map<String, double> quantities,
-  }) : quantities = Map.unmodifiable(quantities);
+    Map<String, String> exactQuantities = const {},
+  }) : quantities = Map.unmodifiable(quantities),
+       exactQuantities = Map.unmodifiable(exactQuantities);
 
   final String orderId;
   final Map<String, double> quantities;
+  final Map<String, String> exactQuantities;
 
   factory SalesShipmentPrefill.parse(String orderId, String? rawItems) {
     if (orderId.trim().isEmpty || rawItems == null || rawItems.isEmpty) {
       throw const FormatException('请返回订单产品进度，重新选择本次发货产品');
     }
     final quantities = <String, double>{};
+    final exactQuantities = <String, String>{};
     for (final item in rawItems.split(',')) {
       final parts = item.split(':');
       if (parts.length != 2 ||
@@ -28,10 +33,12 @@ class SalesShipmentPrefill {
         throw const FormatException('本次发货数量必须大于 0');
       }
       quantities[parts.first] = quantity;
+      exactQuantities[parts.first] = parts.last;
     }
     return SalesShipmentPrefill(
       orderId: orderId.trim(),
       quantities: quantities,
+      exactQuantities: exactQuantities,
     );
   }
 
@@ -49,11 +56,16 @@ class SalesShipmentPrefill {
       final line = progress
           .where((line) => line.orderItemId == entry.key)
           .firstOrNull;
+      final requested = financeAmountUnits(
+        exactQuantities[entry.key] ?? entry.value.toString(),
+      );
+      final available = financeAmountUnits(line?.availableShipmentQtyExact);
       if (!sourceIds.contains(entry.key) ||
           line == null ||
-          line.shippableQty == null ||
-          entry.value > line.shippableQty! + 0.000001) {
-        throw const FormatException('所选产品的可发数量已变化，请返回订单刷新后重新选择');
+          requested == null ||
+          available == null ||
+          requested > available) {
+        throw const FormatException('所选产品的可发或可建备货单数量已变化，请返回订单刷新后重新选择');
       }
     }
   }

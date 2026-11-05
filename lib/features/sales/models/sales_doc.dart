@@ -3,6 +3,7 @@ import '../../../shared/models/customer_actual_receipt_context.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/business_columns/business_column.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/delivery/order_delivery_plan.dart';
 // 销售单据模型（5 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
 //
 // 5 单据差异由 doc_type 决定可选字段是否非空（报价无仓库/币种；退货明细有 outItemId+
@@ -577,6 +578,10 @@ class ShippableLine {
     this.qty,
     this.shippedQty,
     this.reservedQty,
+    this.deliveryPlan,
+    this.deliveryDraftQty,
+    this.deliveryDraftQtyExact,
+    this.physicalReadinessUnknown = false,
     this.price,
     this.writable = false,
   });
@@ -593,6 +598,16 @@ class ShippableLine {
   final double? qty;
   final double? shippedQty;
   final double? reservedQty;
+  final OrderDeliveryPlan? deliveryPlan;
+  final double? deliveryDraftQty;
+  final String? deliveryDraftQtyExact;
+  final bool physicalReadinessUnknown;
+  bool get isBomDelivery => deliveryPlan?.requiresPhysicalFulfillment == true;
+  double? get availableShipmentQty =>
+      isBomDelivery ? deliveryDraftQty : reservedQty;
+  String? get availableShipmentQtyExact => isBomDelivery
+      ? deliveryDraftQtyExact ?? exactNumberDisplay(deliveryDraftQty)
+      : exactNumberDisplay(reservedQty);
   final double? price;
   final bool writable;
 
@@ -609,6 +624,10 @@ class ShippableLine {
     qty: (json['qty'] as num?)?.toDouble(),
     shippedQty: (json['shippedQty'] as num?)?.toDouble(),
     reservedQty: (json['reservedQty'] as num?)?.toDouble(),
+    deliveryPlan: OrderDeliveryPlan.read(json['deliveryPlan']),
+    deliveryDraftQty: (json['deliveryDraftQty'] as num?)?.toDouble(),
+    deliveryDraftQtyExact: json['deliveryDraftQtyExact']?.toString(),
+    physicalReadinessUnknown: json['physicalReadinessUnknown'] == true,
     price: (json['price'] as num?)?.toDouble(),
     writable: (json['writable'] as bool?) ?? false,
   );
@@ -881,6 +900,7 @@ class SalesDocItem {
     this.materialPrice,
     this.dieCastPrice,
     this.remark,
+    this.deliveryPlan,
     // 业务链（订货行）：可发/已排/已产 + 链路状态（系统回写，只读）
     this.reservedQty,
     this.plannedQty,
@@ -954,6 +974,7 @@ class SalesDocItem {
   final double? materialPrice;
   final double? dieCastPrice;
   final String? remark;
+  final OrderDeliveryPlan? deliveryPlan;
   // 业务链字段（详见构造函数注释）
   final double? reservedQty;
   final double? plannedQty;
@@ -1015,6 +1036,7 @@ class SalesDocItem {
     materialPrice: (json['materialPrice'] as num?)?.toDouble(),
     dieCastPrice: (json['dieCastPrice'] as num?)?.toDouble(),
     remark: json['remark'] as String?,
+    deliveryPlan: OrderDeliveryPlan.read(json['deliveryPlan']),
     reservedQty: (json['reservedQty'] as num?)?.toDouble(),
     plannedQty: (json['plannedQty'] as num?)?.toDouble(),
     producedQty: (json['producedQty'] as num?)?.toDouble(),
@@ -1441,6 +1463,10 @@ class OrderPlanProgressLine {
     this.qty,
     this.reservedQty,
     this.shippableQty,
+    this.deliveryPlan,
+    this.deliveryDraftQty,
+    this.deliveryDraftQtyExact,
+    this.physicalReadinessUnknown = false,
     this.pendingShipmentQty,
     this.plannedQty,
     this.producedQty,
@@ -1474,6 +1500,16 @@ class OrderPlanProgressLine {
 
   /// Qualified stock available for a new shipment after existing drafts/tasks.
   final double? shippableQty;
+  final OrderDeliveryPlan? deliveryPlan;
+  final double? deliveryDraftQty;
+  final String? deliveryDraftQtyExact;
+  final bool physicalReadinessUnknown;
+  bool get isBomDelivery => deliveryPlan?.requiresPhysicalFulfillment == true;
+  double? get availableShipmentQty =>
+      isBomDelivery ? deliveryDraftQty : shippableQty;
+  String? get availableShipmentQtyExact => isBomDelivery
+      ? deliveryDraftQtyExact ?? exactNumberDisplay(deliveryDraftQty)
+      : exactNumberDisplay(shippableQty);
   final double? pendingShipmentQty;
   final double? plannedQty;
   final double? producedQty;
@@ -1523,6 +1559,10 @@ class OrderPlanProgressLine {
       qty: (j['qty'] as num?)?.toDouble(),
       reservedQty: (j['reservedQty'] as num?)?.toDouble(),
       shippableQty: (j['shippableQty'] as num?)?.toDouble(),
+      deliveryPlan: OrderDeliveryPlan.read(j['deliveryPlan']),
+      deliveryDraftQty: (j['deliveryDraftQty'] as num?)?.toDouble(),
+      deliveryDraftQtyExact: j['deliveryDraftQtyExact']?.toString(),
+      physicalReadinessUnknown: j['physicalReadinessUnknown'] == true,
       pendingShipmentQty: (j['pendingShipmentQty'] as num?)?.toDouble(),
       plannedQty: (j['plannedQty'] as num?)?.toDouble(),
       producedQty: (j['producedQty'] as num?)?.toDouble(),

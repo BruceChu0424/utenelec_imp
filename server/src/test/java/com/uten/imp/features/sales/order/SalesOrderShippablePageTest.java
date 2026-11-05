@@ -29,6 +29,7 @@ class SalesOrderShippablePageTest {
     @Mock EntityManager em;
     @Mock SalesDocumentAccessPolicy accessPolicy;
     @Mock SalesPriceMasker priceMasker;
+    @Mock SalesOrderDeliveryService deliveryService;
     @InjectMocks SalesOrderService service;
     private final UUID writer = UUID.randomUUID(), readOnly = UUID.randomUUID();
     private final OwnerScope scope = new OwnerScope(false, Set.of(writer, readOnly), Set.of(writer));
@@ -107,6 +108,23 @@ class SalesOrderShippablePageTest {
         assertThatThrownBy(() -> service.shippableLinesPage(new ShippableLineFilter("x".repeat(201), null), 1, 100))
                 .isInstanceOf(ApiException.class).hasMessageContaining("200");
         verifyNoInteractions(em);
+    }
+
+    @Test void componentDeliveryExposesOnlyDraftCapacityAndNeverInventsRootPhysicalStock() {
+        service.setDeliveryService(deliveryService);
+        scope(); Query count=query(),rows=query();when(em.createNativeQuery(anyString())).thenReturn(count,rows);
+        when(count.getSingleResult()).thenReturn(1L);
+        Object[] bom=java.util.Arrays.copyOf(row(writer),15);bom[11]=new BigDecimal("75");bom[14]="server-plan";
+        var plan=new com.uten.imp.common.delivery.DeliveryPlan(1,com.uten.imp.common.delivery.DeliveryPlan.Mode.BOM,
+                com.uten.imp.common.delivery.DeliveryPlan.Packaging.ORIGINAL,List.of(),List.of(),"fingerprint");
+        when(deliveryService.parsePlan("server-plan")).thenReturn(plan);
+        when(rows.getResultList()).thenReturn(Collections.singletonList(bom));
+        var result=service.shippableLinesPage(null,1,20).getItems().getFirst();
+        assertThat(result.reservedQty()).isZero();assertThat(result.deliveryDraftQty()).isEqualByComparingTo("75");
+        assertThat(result.getDeliveryDraftQtyExact()).isEqualTo("75");assertThat(result.physicalReadinessUnknown()).isTrue();
+        assertThat(result.deliveryPlan()).isEqualTo(plan);
+        verify(em,times(2)).createNativeQuery(argThat(sql -> sql.contains("AS available_to_draft")
+                &&sql.contains("delivery_plan->>'mode'")&&sql.contains("draft.allocated_qty")));
     }
 
     private void scope() {

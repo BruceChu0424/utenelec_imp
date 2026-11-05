@@ -15,6 +15,7 @@ bool isReadOnlyPost(String path) =>
     _materialAggregatePreview.hasMatch(_apiPath(Uri.parse(path).path)) ||
     _materialOperationVerify.hasMatch(_apiPath(Uri.parse(path).path)) ||
     const {
+      '/sales/orders/delivery-preview',
       '/finance/statement-documents/metadata',
       '/finance/statement-documents/preview',
       '/finance/statement-documents/settlement-preview',

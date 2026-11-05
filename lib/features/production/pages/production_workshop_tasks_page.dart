@@ -38,6 +38,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../delivery_processing/delivery_processing_tasks_button.dart';
 
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
@@ -2872,6 +2873,7 @@ class _ProductionWorkshopTasksPageState
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
+          const DeliveryProcessingTasksButton(),
           UtenExportButton(
             key: const Key('workshop-tasks-export'),
             endpoint: '/production/reports/export',

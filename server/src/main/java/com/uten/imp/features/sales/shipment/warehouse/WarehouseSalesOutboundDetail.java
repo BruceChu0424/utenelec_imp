@@ -29,10 +29,21 @@ public record WarehouseSalesOutboundDetail(
         OffsetDateTime handedOverAt,
         String warehouseExceptionReason,
         List<String> allowedWarehouseTargets,
-        List<WarehouseSalesOutboundLine> lines) {
+        List<WarehouseSalesOutboundLine> lines,
+        List<com.uten.imp.features.sales.shipment.SalesShipmentDeliveryService.Component> deliveryComponents) {
+    public WarehouseSalesOutboundDetail(UUID id, String billNo, LocalDate billDate, UUID clientId,
+            String clientName, UUID warehouseId, String warehouseName, String shipAddress, String contactPhone,
+            String logisticsNo, Integer parcelCount, String warehouseWorkStatus, OffsetDateTime warehouseWorkUpdatedAt,
+            OffsetDateTime pickingStartedAt, OffsetDateTime pickedAt, OffsetDateTime handedOverAt,
+            String warehouseExceptionReason, List<String> allowedWarehouseTargets, List<WarehouseSalesOutboundLine> lines) {
+        this(id,billNo,billDate,clientId,clientName,warehouseId,warehouseName,shipAddress,contactPhone,logisticsNo,
+                parcelCount,warehouseWorkStatus,warehouseWorkUpdatedAt,pickingStartedAt,pickedAt,handedOverAt,
+                warehouseExceptionReason,allowedWarehouseTargets,lines,List.of());
+    }
     public WarehouseSalesOutboundDetail {
         allowedWarehouseTargets = allowedWarehouseTargets == null
                 ? List.of() : List.copyOf(allowedWarehouseTargets);
         lines = lines == null ? List.of() : List.copyOf(lines);
+        deliveryComponents = deliveryComponents == null ? List.of() : List.copyOf(deliveryComponents);
     }
 }

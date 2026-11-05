@@ -44,6 +44,7 @@ class UtenTreeTableCell extends StatelessWidget {
     double guideBleed = compactCellVerticalPadding,
     Color? guideColor,
     Color? toggleColor,
+    bool dotted = false,
   }) : this(
          key: key,
          depth: depth,
@@ -74,6 +75,7 @@ class UtenTreeTableCell extends StatelessWidget {
          guideBleed: guideBleed,
          guideColor: guideColor,
          toggleColor: toggleColor,
+         dotted: dotted,
        );
 
   static const double compactIndent = UtenSpacing.s24;
@@ -122,6 +124,7 @@ class UtenTreeTableCell extends StatelessWidget {
     this.guideBleed = 0,
     this.guideColor,
     this.toggleColor,
+    this.dotted = false,
     this.indent = _treeIndent,
     this.mutedToggleWhenChildless = false,
     this.desktopToggleExtent = _treeToggleExtent,
@@ -224,6 +227,9 @@ class UtenTreeTableCell extends StatelessWidget {
   /// （圆底偏深一律反白）；无下级行的灰色占位图标不受影响。与 [guideColor]
   /// 配对使用时整棵子树「连线 + 箭头圆底」同色。默认 null 照旧轮换。
   final Color? toggleColor;
+
+  /// Uses the shared branch geometry with fine dotted rails when requested.
+  final bool dotted;
 
   /// 每级缩进宽度，默认 16。2026-10-10 物料分析口径「下面的箭头跟线挨在
   /// 一起」：连线与圆底按子树上色后，16px 缩进里祖先竖线离箭头圆底只剩
@@ -396,6 +402,7 @@ class UtenTreeTableCell extends StatelessWidget {
                 ancestorContinuations: ancestorContinuations,
                 isLastChild: isLastChild,
                 hasExpandedChildren: hasExpandedChildren,
+                dotted: dotted,
               ),
             ),
           Row(

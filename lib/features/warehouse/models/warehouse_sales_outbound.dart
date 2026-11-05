@@ -1,4 +1,5 @@
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/delivery/delivery_processing_target.dart';
 
 const Set<String> warehouseSalesOutboundForbiddenKeys = {
   'financeAudit',
@@ -136,6 +137,7 @@ class WarehouseSalesOutboundDetail {
   const WarehouseSalesOutboundDetail({
     required this.header,
     required this.lines,
+    this.deliveryComponents = const [],
     this.shipAddress,
     this.contactPhone,
     this.logisticsNo,
@@ -155,6 +157,11 @@ class WarehouseSalesOutboundDetail {
   /// V631 起发出仓按行落定(见 [WarehouseSalesOutboundLine.warehouseChoices])，
   /// 表头 [WarehouseSalesOutboundSummary.warehouseId] 只是默认/主发出仓。
   final List<WarehouseSalesOutboundLine> lines;
+  final List<WarehouseDeliveryComponent> deliveryComponents;
+
+  bool isComponentParent(String shipmentItemId) => deliveryComponents.any(
+    (component) => component.shipmentItemId == shipmentItemId,
+  );
 
   factory WarehouseSalesOutboundDetail.fromJson(Map<String, dynamic> json) {
     return WarehouseSalesOutboundDetail(
@@ -168,8 +175,98 @@ class WarehouseSalesOutboundDetail {
       lines: _objectList(
         json['lines'],
       ).map(WarehouseSalesOutboundLine.fromJson).toList(growable: false),
+      deliveryComponents: _objectList(
+        json['deliveryComponents'],
+      ).map(WarehouseDeliveryComponent.fromJson).toList(growable: false),
     );
   }
+}
+
+class WarehouseDeliveryComponent {
+  WarehouseDeliveryComponent.fromJson(Map<String, dynamic> json)
+    : id = _requiredId(json['id']),
+      shipmentItemId = _requiredId(json['shipmentItemId']),
+      orderItemId = _text(json['orderItemId']),
+      goodsId = _requiredId(json['goodsId']),
+      goodsCode = _text(json['goodsCode']),
+      goodsName = _text(json['goodsName']),
+      unitId = _text(json['unitId']),
+      unitName = _text(json['unitName']),
+      colorId = _text(json['colorId']),
+      quantity = _decimalText(json['quantityExact'] ?? json['quantity']) ?? '0',
+      originalQuantity = _decimalText(json['originalQuantityExact']),
+      processingIssuedAt = _text(json['processingIssuedAt']),
+      processingReceivedAt = _text(json['processingReceivedAt']),
+      processingWorkshopId = _text(json['processingWorkshopId']),
+      hasProcessingLifecycle =
+          json.containsKey('processingIssuedAt') ||
+          json.containsKey('processingReceivedAt') ||
+          json.containsKey('processingWorkshopId') ||
+          json.containsKey('originalQuantityExact'),
+      processedQty =
+          _decimalText(json['processedQtyExact'] ?? json['processedQty']) ??
+          '0',
+      processingEvidence = _text(json['processingEvidence']),
+      revision = _integer(json['revision']) ?? 0,
+      warehouseId = _text(json['warehouseId']),
+      stockPlace = _text(json['stockPlace']),
+      movementId = _text(json['movementId']),
+      path = [
+        for (final value in json['path'] as List? ?? const []) value.toString(),
+      ],
+      operations = [
+        for (final value in json['operations'] as List? ?? const [])
+          value.toString(),
+      ],
+      processingTargets = DeliveryProcessingTarget.read(
+        json['processingTargets'],
+      ),
+      warehouseChoices = [
+        for (final choice in _objectList(json['warehouseChoices']))
+          WarehouseSalesWarehouseChoice.fromJson({
+            ...choice,
+            'requiredQty':
+                choice['requiredQty'] ??
+                json['quantityExact'] ??
+                json['quantity'],
+            'canFulfill':
+                choice['canFulfill'] ??
+                warehouseDeliveryQuantityCovers(
+                  choice['availableQtyExact'] ?? choice['availableQty'],
+                  json['quantityExact'] ?? json['quantity'],
+                ),
+          }),
+      ];
+  final String id, shipmentItemId, goodsId, quantity, processedQty;
+  final String? originalQuantity,
+      processingIssuedAt,
+      processingReceivedAt,
+      processingWorkshopId;
+  final bool hasProcessingLifecycle;
+  final String? orderItemId, goodsCode, goodsName, unitId, unitName, colorId;
+  final String? processingEvidence, warehouseId, stockPlace, movementId;
+  final int revision;
+  final List<String> path, operations;
+  final List<DeliveryProcessingTarget> processingTargets;
+  final List<WarehouseSalesWarehouseChoice> warehouseChoices;
+  bool get processingComplete =>
+      operations.isEmpty ||
+      warehouseDeliveryQuantityCovers(processedQty, quantity);
+  String get processingLabel => operations.isEmpty
+      ? '无追加加工'
+      : processingReceivedAt != null
+      ? '加工已收回'
+      : processingIssuedAt != null
+      ? (processingComplete ? '待仓库加工收回' : '已发至加工')
+      : processingComplete
+      ? '加工已确认'
+      : '待${operations.map((value) => value == 'LASER' ? '激光打印' : value).join('、')}';
+}
+
+bool warehouseDeliveryQuantityCovers(Object? available, Object? required) {
+  final have = financeAmountUnits(available?.toString());
+  final need = financeAmountUnits(required?.toString());
+  return have != null && need != null && need > BigInt.zero && have >= need;
 }
 
 class WarehouseSalesOutboundLine {
@@ -294,6 +391,7 @@ class WarehouseSalesWarehouseChoice {
     required this.warehouseId,
     required this.warehouseName,
     required this.canFulfill,
+    this.requiresSourceCheck = false,
     this.availableQty,
     this.requiredQty,
   });
@@ -301,20 +399,26 @@ class WarehouseSalesWarehouseChoice {
   final String warehouseId;
   final String warehouseName;
   final bool canFulfill;
+  final bool requiresSourceCheck;
+  bool get selectableForComponent => canFulfill || requiresSourceCheck;
   final String? availableQty;
   final String? requiredQty;
 
   /// 下拉项文案：仓名 · 可发 N；不足时补「不足(需 M)」。
-  String get label =>
-      '$warehouseName · 可发 ${availableQty ?? '0'}'
-      '${canFulfill ? '' : ' · 不足(需 ${requiredQty ?? '0'})'}';
+  String get label => requiresSourceCheck
+      ? '$warehouseName · 可用预览 ${availableQty ?? '0'} · 本单权益待核对'
+      : '$warehouseName · 可发 ${availableQty ?? '0'}'
+            '${canFulfill ? '' : ' · 不足(需 ${requiredQty ?? '0'})'}';
 
   factory WarehouseSalesWarehouseChoice.fromJson(Map<String, dynamic> json) =>
       WarehouseSalesWarehouseChoice(
         warehouseId: _requiredId(json['warehouseId']),
         warehouseName: _text(json['warehouseName']) ?? '—',
         canFulfill: json['canFulfill'] == true,
-        availableQty: _decimalText(json['availableQty']),
+        requiresSourceCheck: json['requiresSourceCheck'] == true,
+        availableQty: _decimalText(
+          json['availableQtyExact'] ?? json['availableQty'],
+        ),
         requiredQty: _decimalText(json['requiredQty']),
       );
 }

@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 /** Shared with V739's manual ownership trigger and learning publisher. Lock all parent rows first. */
 @Component
 @RequiredArgsConstructor
-public class GoodsBomGraphLock {
+public class GoodsBomGraphLock implements com.uten.imp.application.port.BomGraphLockPort {
     private final JdbcTemplate db;
 
     public void acquire() {

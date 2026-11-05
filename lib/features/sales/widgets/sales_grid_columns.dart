@@ -20,6 +20,8 @@ import '../intake/sales_intake_l10n.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../shared/drafts/form_draft_values.dart';
+import '../../../shared/delivery/order_delivery_plan.dart';
+import '../../../shared/delivery/order_delivery_window.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -135,6 +137,11 @@ class SalesGridRow extends EditableGridRow
   ///
   /// 不可与 [orderItemId] 混用：后者是出货/退货等下游单据对来源订货行的引用。
   String? documentItemId;
+
+  final deliveryPlanNotifier = ValueNotifier<OrderDeliveryPlan?>(null);
+  OrderDeliveryPlan? get deliveryPlan => deliveryPlanNotifier.value;
+  set deliveryPlan(OrderDeliveryPlan? value) =>
+      deliveryPlanNotifier.value = value;
 
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 直接映射为
   /// orderItemId/outItemId —— 销售双挂所以两 id 各自独立透传，不像采购三选一）。
@@ -342,8 +349,9 @@ class SalesGridRow extends EditableGridRow
       ..outItemId = li.outItemId
       ..colorId = li.colorId
       ..unitId = li.unitId
-      ..unitRate = li.unitRate;
-    r.qty.text = li.qty.toString();
+      ..unitRate = li.unitRate
+      ..unitRateExact = li.unitRateText;
+    r.qty.text = li.qtyText ?? li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
   }
 
@@ -429,6 +437,7 @@ class SalesGridRow extends EditableGridRow
     stockPlaceNotifier,
     solutionNotifier,
     responsibleNotifier,
+    deliveryPlanNotifier,
   ];
 
   Map<String, dynamic> exportDraft() => {
@@ -439,6 +448,7 @@ class SalesGridRow extends EditableGridRow
     'stockPlace': stockPlaceNotifier.value,
     'unitRate': unitRate,
     'documentItemId': documentItemId,
+    'deliveryPlan': deliveryPlan?.toJson(),
     'orderItemId': orderItemId,
     'outItemId': outItemId,
     'colorId': colorId,
@@ -487,6 +497,7 @@ class SalesGridRow extends EditableGridRow
       ..stockPlaceNotifier.value = data['stockPlace'] as String?
       ..unitRate = (data['unitRate'] as num?)?.toDouble()
       ..documentItemId = data['documentItemId'] as String?
+      ..deliveryPlan = OrderDeliveryPlan.read(data['deliveryPlan'])
       ..orderItemId = data['orderItemId'] as String?
       ..outItemId = data['outItemId'] as String?
       ..colorId = data['colorId'] as String?
@@ -527,6 +538,7 @@ class SalesGridRow extends EditableGridRow
           ..unitId = unitId
           ..unitRate = unitRate
           ..unitRateExact = unitRateExact;
+    c.deliveryPlan = OrderDeliveryPlan.read(deliveryPlan?.toJson());
     copyExtraColumnsTo(c);
     c.qty.text = qty.text;
     c.weight.text = weight.text;
@@ -558,6 +570,7 @@ class SalesGridRow extends EditableGridRow
     stockPlaceNotifier.dispose();
     solutionNotifier.dispose();
     responsibleNotifier.dispose();
+    deliveryPlanNotifier.dispose();
     qty.dispose();
     weight.dispose();
     price.dispose();
@@ -612,6 +625,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   bool showClientPrice = false,
   String? clientFileCurrency,
   bool priceMasked = false,
+  bool Function(SalesGridRow)? deliveryEditingCurrent,
+  void Function(SalesGridRow, bool)? onDeliveryWindowChanged,
 }) {
   final isQuote = docType == SalesDocType.quote;
   final allowsTotalInput =
@@ -869,6 +884,43 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         ),
       ),
     ),
+    if (docType == SalesDocType.order)
+      EditableGridColumn<SalesGridRow>(
+        key: 'deliveryPlan',
+        label: '交付方式',
+        width: 210,
+        headerInfo: '逐订单行设置交付层级与必要加工。查看下级不等于拆分；原BOM保持不变，数量由服务端确认。',
+        textOf: (row) => orderDeliveryLabel(row.deliveryPlan),
+        listenableOf: (row) => row.deliveryPlanNotifier,
+        cellBuilder: (_, row) => ValueListenableBuilder<OrderDeliveryPlan?>(
+          valueListenable: row.deliveryPlanNotifier,
+          builder: (_, plan, _) {
+            final goodsId = row.goods?.id;
+            final quantity = row.qty.text;
+            final unitId = row.unitId;
+            final unitRate = row.unitRateExact ?? row.unitRate?.toString();
+            return OrderDeliveryPlanCell(
+              plan: plan,
+              sessionKey: row,
+              onOpenChanged: (open) => onDeliveryWindowChanged?.call(row, open),
+              goodsId: goodsId,
+              goodsName: row.goods?.name ?? '货品',
+              quantity: quantity,
+              unitId: unitId,
+              unitRate: unitRate,
+              readOnly: false,
+              isCurrent: () =>
+                  (deliveryEditingCurrent?.call(row) ?? true) &&
+                  rows.contains(row) &&
+                  row.goods?.id == goodsId &&
+                  row.qty.text == quantity &&
+                  row.unitId == unitId &&
+                  (row.unitRateExact ?? row.unitRate?.toString()) == unitRate,
+              onChanged: (value) => row.deliveryPlan = value,
+            );
+          },
+        ),
+      ),
     if (!freeCustomerShipment)
       EditableGridColumn<SalesGridRow>(
         key: 'price',

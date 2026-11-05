@@ -34,22 +34,26 @@ class SalesLinkedItem {
   const SalesLinkedItem({
     required this.goodsId,
     required this.qty,
+    this.qtyText,
     this.price,
     this.orderItemId,
     this.outItemId,
     this.colorId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
   });
 
   final String goodsId;
   final double qty;
+  final String? qtyText;
   final double? price;
   final String? orderItemId;
   final String? outItemId;
   final String? colorId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据客户 id
@@ -114,6 +118,7 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
 }) async {
   final upstream = _upstreamType(cfg);
   final availableByOrderItem = <String, double?>{};
+  final availableTextByOrderItem = <String, String?>{};
   final sourceRequests = LatestLinkRequestGuard();
   final importsShipment =
       upstream == SalesDocType.order && cfg.type == SalesDocType.shipment;
@@ -188,6 +193,7 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
               .read(salesRepositoryProvider(upstream))
               .detail(docId);
           final available = <String, double?>{};
+          final availableTexts = <String, String?>{};
           if (importsShipment) {
             if (!detail.writable ||
                 !detail.financeConfirmed ||
@@ -199,13 +205,17 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
                 .read(salesRepositoryProvider(upstream))
                 .planProgress(docId);
             for (final line in progress) {
-              available[line.orderItemId] = line.shippableQty;
+              available[line.orderItemId] = line.availableShipmentQty;
+              availableTexts[line.orderItemId] = line.availableShipmentQtyExact;
             }
           }
           if (sourceRequests.isCurrent(request)) {
             availableByOrderItem
               ..clear()
               ..addAll(available);
+            availableTextByOrderItem
+              ..clear()
+              ..addAll(availableTexts);
           }
           return UtenDocLinkDetail<SalesDocItem>(
             partyId: detail.clientId,
@@ -231,7 +241,8 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
             ? availableByOrderItem[it.id] ?? 0
             : _remainQty(cfg, upstream, it),
         remainQtyText: (it) => importsShipment
-            ? availableByOrderItem[it.id]?.toString()
+            ? availableTextByOrderItem[it.id] ??
+                  availableByOrderItem[it.id]?.toString()
             : _recordedRemainQty(cfg, upstream, it),
         createBlankRow: () =>
             UtenDocLinkItemRow<SalesDocItem>(const SalesDocItem(id: null)),
@@ -251,6 +262,7 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
           (d) => SalesLinkedItem(
             goodsId: d.goodsId,
             qty: d.qty,
+            qtyText: d.qtyText,
             price: d.price,
             orderItemId: cfg.linkToOrderItem && upstream == SalesDocType.order
                 ? d.upstreamItemId
@@ -261,6 +273,7 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
             colorId: d.colorId,
             unitId: d.unitId,
             unitRate: d.unitRate,
+            unitRateText: d.unitRateText,
           ),
         )
         .toList(),

@@ -135,6 +135,17 @@ public record SalesOrderFinanceReviewDto(
             /** 本行单价与折扣是否与报价核定一致(非报价转入的订单为 null; 报价外新增的行为 false)。 */
             Boolean matchesQuote,
             List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns,
-            String goodsNameEn) {
+            String goodsNameEn,
+            UUID goodsId,
+            com.uten.imp.common.delivery.DeliveryPlan deliveryPlan) {
+        public Line(UUID itemId, Integer lineNo, String goodsCode, String goodsName, String colorName,
+                UUID unitId, String unitName, String clientModel, BigDecimal qty, BigDecimal weight,
+                BigDecimal price, BigDecimal discount, BigDecimal amountOriginal, String remark,
+                String clientGoodsName, BigDecimal clientPrice, BigDecimal quotePrice, BigDecimal quoteDiscount,
+                Boolean matchesQuote, List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns, String goodsNameEn) {
+            this(itemId,lineNo,goodsCode,goodsName,colorName,unitId,unitName,clientModel,qty,weight,price,discount,
+                    amountOriginal,remark,clientGoodsName,clientPrice,quotePrice,quoteDiscount,matchesQuote,
+                    extraColumns,goodsNameEn,null,com.uten.imp.common.delivery.DeliveryPlan.assembled());
+        }
     }
 }

@@ -81,6 +81,7 @@ import '../providers/goods_clipboard.dart';
 import '../providers/color_unit_dict.dart';
 import 'master_edit_dialog.dart' show kGoodsSourceTypeOptions;
 import '../repositories/goods_bom_repository.dart';
+import '../../../shared/delivery/bom_delivery_rule_window.dart';
 import '../repositories/goods_bom_edit_repository.dart';
 import 'goods_bom_import_dialog.dart';
 import 'master_data_table_view.dart';
@@ -551,7 +552,42 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   bool get _canDelete =>
       _canMutate && widget.canDelete && _hasPermission(Perm.goodsBomDelete);
   bool get _canMutate => _canEdit && _draft?.isCommitRecoveryPending != true;
+  bool _deliveryRuleWindowOpen = false;
+  Future<void> _showDeliveryRules() async {
+    if (_deliveryRuleWindowOpen || _writeBusy || _editMode || !_canEnterEdit) {
+      return;
+    }
+    final row = _singleSelectedRow;
+    if (row == null || row.isPlaceholder) return;
+    final goodsId = widget.goodsId;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    bool current() =>
+        mounted &&
+        widget.goodsId == goodsId &&
+        !_editMode &&
+        _canEnterEdit &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary;
+    setState(() => _deliveryRuleWindowOpen = true);
+    try {
+      final saved = await showBomDeliveryRuleWindow(
+        context,
+        rootGoodsId: goodsId,
+        edgeId: row.node.item.id,
+        componentName:
+            row.node.item.componentName ?? row.node.item.componentCode ?? '组件',
+        isCurrent: current,
+      );
+      if (saved && mounted && current()) {
+        await UtenBusyOverlay.run(context, title: '正在刷新交付规则', action: _load);
+        if (mounted && current()) context.appSuccess('交付规则已保存');
+      }
+    } finally {
+      if (mounted) setState(() => _deliveryRuleWindowOpen = false);
+    }
+  }
+
   bool get _writeBusy =>
+      _deliveryRuleWindowOpen ||
       _flushingInline ||
       _deleting ||
       _moving ||
@@ -4010,6 +4046,20 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   // toolbarLeadingActions 紧随其后（2026-09-25 口径：顶部按钮全部靠左、
                   // 统一高度/同色、不带 icon——大动作在右下悬浮组）。
                   toolbarLeadingActions: [
+                    if (_canEnterEdit)
+                      UtenButton(
+                        key: const Key('goods-bom-delivery-rule'),
+                        height: UtenTableToolbar.controlHeight,
+                        onPressed:
+                            _loading ||
+                                _writeBusy ||
+                                _editMode ||
+                                _singleSelectedRow == null ||
+                                _singleSelectedRow!.isPlaceholder
+                            ? null
+                            : _showDeliveryRules,
+                        child: const Text('交付规则'),
+                      ),
                     UtenTreeExpansionButton(
                       key: const Key('goods-bom-tree-expansion'),
                       expanded: _allBomBranchesExpanded,

@@ -24,7 +24,11 @@ Future<void> loadDialogFixtureFonts() async {
 }
 
 /// Captures a real feature route in its test fixture. No backend is contacted.
-Future<void> captureDialogFixture(WidgetTester tester, String filename) async {
+Future<void> captureDialogFixture(
+  WidgetTester tester,
+  String filename, {
+  String outputDirectory = 'output/dialog-unification-20261028',
+}) async {
   final previousShadows = debugDisableShadows;
   try {
     debugDisableShadows = false;
@@ -40,7 +44,7 @@ Future<void> captureDialogFixture(WidgetTester tester, String filename) async {
       final image = await boundary.toImage(pixelRatio: 1.5);
       try {
         final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        final output = Directory('output/dialog-unification-20261028');
+        final output = Directory(outputDirectory);
         await output.create(recursive: true);
         await File(
           '${output.path}/$filename.png',

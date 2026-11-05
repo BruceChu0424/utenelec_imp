@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -18,6 +20,78 @@ const _requirement = BusinessPrecisionRequirement(
   reason: 'NON_TERMINATING',
 );
 void main() {
+  for (final immediate in [false, true]) {
+    testWidgets(
+      'precision dialog yields an ${immediate ? 'unmounted immediate' : 'already active'} waiting layer and cancellation completes',
+      (tester) async {
+        final remote = Completer<void>();
+        var finished = false;
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [apiClientProvider.overrideWithValue(ApiClient(Dio()))],
+            child: MaterialApp(
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) => UtenButton(
+                    onPressed: () async {
+                      await UtenBusyOverlay.run(
+                        context,
+                        title: '外层读取中',
+                        action: () async {
+                          if (!immediate) await remote.future;
+                          if (!context.mounted) return;
+                          await showBusinessPrecisionDialog(
+                            context,
+                            _requirement,
+                          );
+                        },
+                      );
+                      finished = true;
+                    },
+                    child: const Text('开始读取'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('开始读取'));
+        await tester.pump();
+        if (!immediate) {
+          await tester.pump();
+          expect(find.text('外层读取中'), findsOneWidget);
+          remote.complete();
+        }
+        await tester.pumpAndSettle();
+        await tester.tapAt(tester.getCenter(find.text('取消，保留原输入')));
+        await tester.pumpAndSettle();
+        expect(finished, isTrue);
+        expect(find.byType(UtenBusyOverlay), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets('retired caller during the first frame does not open a dialog', (
+    tester,
+  ) async {
+    late BuildContext retiringContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            retiringContext = context;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    final pending = showBusinessPrecisionDialog(retiringContext, _requirement);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(await pending, isNull);
+    expect(find.byType(BusinessPrecisionDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'suggestion is not a selected default and both choices require explicit user input',
     (tester) async {

@@ -97,6 +97,36 @@ void main() {
     expect(find.byKey(const Key('reauth-dialog')), findsNothing);
     expect(find.text('正在保存部门权限'), findsOneWidget);
   });
+
+  testWidgets('让位范围不会隐藏密码框内新开始的验证遮罩', (tester) async {
+    final navigatorKey = GlobalKey<NavigatorState>();
+    final verify = Completer<String>();
+    await tester.pumpWidget(_host(navigatorKey));
+    await _frames(tester);
+    final result = showReauthDialog(
+      navigatorKey.currentContext!,
+      verify: (_) => verify.future,
+    );
+    await _frames(tester);
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const Key('reauth-password'))),
+    );
+    await tester.pump();
+    tester.testTextInput.enterText('SyntheticPassword1');
+    await tester.pump();
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const Key('reauth-confirm'))),
+    );
+    await _frames(tester);
+    expect(find.text('正在验证身份'), findsOneWidget);
+    expect(find.text('正在保存部门权限'), findsNothing);
+    verify.complete('synthetic-token');
+    await _frames(tester);
+    expect(await result, 'synthetic-token');
+    expect(find.text('正在验证身份'), findsNothing);
+    expect(find.text('正在保存部门权限'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Widget _host(GlobalKey<NavigatorState> navigatorKey) {

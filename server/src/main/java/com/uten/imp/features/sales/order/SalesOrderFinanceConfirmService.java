@@ -48,6 +48,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesOrderFinanceConfirmService {
+    private SalesOrderDeliveryService deliveryService;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setDeliveryService(SalesOrderDeliveryService service) { deliveryService = service; }
 
     private static final int MAX_BATCH_CONFIRM_ORDERS = 100;
     private static final String[] SEARCH_FIELDS = {"o.bill_no", "c.name", "e.full_name"};
@@ -433,7 +436,7 @@ public class SalesOrderFinanceConfirmService {
                        COALESCE(i.remark, ''),
                        i.client_goods_name, i.client_price,
                        i.goods_id, i.color_id, i.unit_rate, CAST(i.extra_columns AS text),
-                       i.goods_name_en_snapshot
+                       i.goods_name_en_snapshot, CAST(i.delivery_plan AS text)
                 FROM sales_order_items i
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -467,7 +470,9 @@ public class SalesOrderFinanceConfirmService {
                     quoted == null ? null : quoted.price(),
                     quoted == null ? null : quoted.discount(),
                     matchesQuote, r.length > 19 ? businessColumns.parse(r[19]) : List.of(),
-                    r.length > 20 ? (String) r[20] : null));
+                    r.length > 20 ? (String) r[20] : null,
+                    (UUID) r[16], r.length > 21 && deliveryService != null ? deliveryService.parsePlan(r[21])
+                            : com.uten.imp.common.delivery.DeliveryPlan.assembled()));
         }
         @SuppressWarnings("unchecked")
         List<Object[]> changeRows = em.createNativeQuery("""
@@ -740,6 +745,7 @@ public class SalesOrderFinanceConfirmService {
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
         requireReviewRevision(order, request == null ? null : request.expectedRevision());
         requireConfirmable(order);
+        if (deliveryService != null) deliveryService.validateOrderApproval(orderId);
         if (order.isFinanceConfirmed()) {
             return; // 幂等：已确认静默成功
         }
@@ -789,6 +795,7 @@ public class SalesOrderFinanceConfirmService {
                 alreadyConfirmed++;
                 continue;
             }
+            if (deliveryService != null) deliveryService.validateOrderApproval(order.getId());
             applyConfirmation(order, actor, confirmedAt, normalized.remark());
             orderRepo.save(order);
             chainNotice.notifyOrderFinanceConfirmed(order.getId());

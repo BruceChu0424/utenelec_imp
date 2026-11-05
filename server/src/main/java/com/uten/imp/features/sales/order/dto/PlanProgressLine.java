@@ -31,7 +31,21 @@ public record PlanProgressLine(
         BigDecimal unplannedQty,
         List<MaterialAnalysisProgress> materialAnalyses,
         List<PlanLink> links,
-        PreparationProgress preparation) {
+        PreparationProgress preparation,
+        com.uten.imp.common.delivery.DeliveryPlan deliveryPlan,
+        BigDecimal deliveryDraftQty,
+        boolean physicalReadinessUnknown) {
+
+    public PlanProgressLine(UUID orderItemId,Integer lineNo,String goodsCode,String goodsName,String spec,
+            String colorName,String unitName,BigDecimal qty,BigDecimal reservedQty,BigDecimal shippableQty,
+            BigDecimal pendingShipmentQty,BigDecimal plannedQty,BigDecimal producedQty,BigDecimal shippedQty,
+            Short chainStatus,BigDecimal unplannedQty,List<MaterialAnalysisProgress> materialAnalyses,
+            List<PlanLink> links,PreparationProgress preparation) {
+        this(orderItemId,lineNo,goodsCode,goodsName,spec,colorName,unitName,qty,reservedQty,shippableQty,
+                pendingShipmentQty,plannedQty,producedQty,shippedQty,chainStatus,unplannedQty,materialAnalyses,
+                links,preparation,com.uten.imp.common.delivery.DeliveryPlan.assembled(),BigDecimal.ZERO,false);
+    }
+    public String getDeliveryDraftQtyExact() { return com.uten.imp.common.util.DecimalText.of(deliveryDraftQty); }
 
     /** Order-unit physical fulfillment. Stock and net shipments are disjoint; production is not added again. */
     public record PreparationProgress(

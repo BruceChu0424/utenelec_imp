@@ -11,7 +11,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SalesShipmentReverseGuardTest {
     @org.junit.jupiter.api.Test
-    void fixedOrderFeeIsAllocatedOnceAndReturnedShareCanBeShippedAgain() {
+    void fixedOrderFeeIsAllocatedOnceAndReturnedShareCanBeShippedAgain() throws Exception {
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")))) {
         var fee = new com.uten.imp.common.columns.ExtraColumnSnapshot(java.util.UUID.randomUUID(),
                 "包装费", "AMOUNT", "ADD", "10");
         BigDecimal source = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
@@ -32,6 +34,7 @@ class SalesShipmentReverseGuardTest {
         SalesShipmentService.applyPostingRateSnapshot(shipment, java.util.List.of(item), new BigDecimal("7.1"));
         assertThat(shipment.getTotalOriginal()).isEqualByComparingTo(second);
         assertThat(shipment.getTotalLocal()).isEqualByComparingTo(second.multiply(new BigDecimal("7.1")));
+        }
     }
 
     @Test
@@ -84,7 +87,10 @@ class SalesShipmentReverseGuardTest {
     }
 
     @Test
-    void partialShipmentsAllocateTheOrderTotalCumulativelyAndTheLastBatchTakesTheRemainder() {
+    void partialShipmentsAllocateTheOrderTotalCumulativelyAndTheLastBatchTakesTheRemainder() throws Exception {
+        // This fixture explicitly selects its adoption policy; the product has no rounding default.
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")))) {
         // 订单行 3 件共 100: 三次各出 1 件, 应收合计必须恰好 100(旧口径逐批 4 位四舍五入合计 99.9999)。
         BigDecimal total = new BigDecimal("100.0000");
         BigDecimal first = SalesShipmentService.authoritativeShipmentAmount(
@@ -98,6 +104,7 @@ class SalesShipmentReverseGuardTest {
         assertThat(second).isEqualByComparingTo("33.3334");
         assertThat(third).isEqualByComparingTo("33.3333");
         assertThat(first.add(second).add(third)).isEqualByComparingTo(total);
+        }
     }
 
     @Test

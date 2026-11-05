@@ -7,6 +7,7 @@ import '../../../core/formatters/exact_number_text.dart';
 
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/models/progress_ratio.dart';
+import '../../../shared/delivery/order_delivery_plan.dart';
 import 'material_analysis_projection.dart';
 import 'material_preparation_supply_slice.dart';
 import 'production_sales_requirement.dart';
@@ -352,6 +353,7 @@ class MaterialAnalysisSalesCandidateLine {
     this.orderNo,
     this.orderDate,
     this.clientName,
+    this.deliveryPlan,
   });
 
   final String salesOrderItemId;
@@ -376,6 +378,7 @@ class MaterialAnalysisSalesCandidateLine {
   final String? orderNo;
   final String? orderDate;
   final String? clientName;
+  final OrderDeliveryPlan? deliveryPlan;
 
   factory MaterialAnalysisSalesCandidateLine.fromJson(
     Map<String, dynamic> json,
@@ -399,6 +402,7 @@ class MaterialAnalysisSalesCandidateLine {
     analysisId: _string(json['analysisId']),
     analysisStatus: _string(json['analysisStatus']),
     analysisVersion: _int(json['analysisVersion']),
+    deliveryPlan: OrderDeliveryPlan.read(json['deliveryPlan']),
   );
 
   MaterialAnalysisSalesCandidateLine withOrder(
@@ -414,6 +418,7 @@ class MaterialAnalysisSalesCandidateLine {
     colorName: colorName,
     unitId: unitId,
     unitName: unitName,
+    unitRate: unitRate,
     orderedQty: orderedQty,
     alreadyPlannedQty: alreadyPlannedQty,
     remainingQty: remainingQty,
@@ -425,6 +430,7 @@ class MaterialAnalysisSalesCandidateLine {
     orderNo: order.orderNo,
     orderDate: order.orderDate,
     clientName: order.clientName,
+    deliveryPlan: deliveryPlan,
   );
 }
 
@@ -934,9 +940,12 @@ class ProductionMaterialAnalysisProduct {
     this.owningWarehouseName,
     this.owningWorkshopId,
     this.owningWorkshopName,
+    this.deliveryPlan,
   });
 
   final String analysisLineId;
+  final OrderDeliveryPlan? deliveryPlan;
+  bool get isDeliveryContext => deliveryPlan?.mode == 'BOM';
   final String? sourceType;
 
   /// 所属仓库(V587, goods.owning_warehouse_id): 这批货平时归哪个仓管的**主档归属**。
@@ -1031,8 +1040,10 @@ class ProductionMaterialAnalysisProduct {
 
   /// 服务端明确区分“可以先排给车间”和“当前物料已经齐套”。旧服务端没有
   /// 新字段时保守回退原 ready-now 门禁，避免客户端越权放开待料排产。
-  bool get canSchedule => serverCanSchedule ?? readyNowQty > 0;
-  double get maxSchedulableQty => serverMaxSchedulableQty ?? readyNowQty;
+  bool get canSchedule =>
+      !isDeliveryContext && (serverCanSchedule ?? readyNowQty > 0);
+  double get maxSchedulableQty =>
+      isDeliveryContext ? 0 : (serverMaxSchedulableQty ?? readyNowQty);
 
   final Map<String, String> quantityFactsExact;
 
@@ -1042,6 +1053,7 @@ class ProductionMaterialAnalysisProduct {
     analysisLineId: _string(json['analysisLineId'] ?? json['id']) ?? '',
     quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
     sourceType: _string(json['sourceType']),
+    deliveryPlan: OrderDeliveryPlan.read(json['deliveryPlan']),
     rootMaterialLineId: _string(json['rootMaterialLineId']),
     sourceRef: _string(json['sourceRef']),
     sourceReason: _string(json['sourceReason']),
@@ -1391,9 +1403,17 @@ class ProductionMaterialAnalysisMaterial {
     this.owningWarehouseName,
     this.owningWorkshopId,
     this.owningWorkshopName,
+    this.deliveryContext = false,
+    this.deliveryFrontier = false,
+    this.deliveryOperations = const [],
   });
 
   final String materialLineId;
+
+  /// Server-owned delivery role; never infer assembly cancellation from zero demand.
+  final bool deliveryContext;
+  final bool deliveryFrontier;
+  final List<String> deliveryOperations;
   final String? analysisLineId;
   final String? nodeKey;
 
@@ -1798,7 +1818,17 @@ class ProductionMaterialAnalysisMaterial {
         warehouseStocks ??
         _mapList(json['warehouseBreakdown'], MaterialWarehouseStock.fromJson),
     actionable:
-        _boolOrNull(json['actionable']) ?? ((_int(json['level']) ?? 0) == 1),
+        json['deliveryContext'] != true &&
+        (_boolOrNull(json['actionable']) ?? ((_int(json['level']) ?? 0) == 1)),
+    deliveryContext: json['deliveryContext'] == true,
+    deliveryFrontier: json['deliveryFrontier'] == true,
+    deliveryOperations: [
+      for (final operation
+          in json['deliveryOperations'] is List
+              ? json['deliveryOperations'] as List
+              : const [])
+        operation.toString(),
+    ],
     owningWarehouseId: _string(json['owningWarehouseId']),
     owningWarehouseName: _string(json['owningWarehouseName']),
     owningWorkshopId: _string(json['owningWorkshopId']),

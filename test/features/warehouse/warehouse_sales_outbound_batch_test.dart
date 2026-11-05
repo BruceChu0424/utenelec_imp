@@ -310,8 +310,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(gateway.weights, {
-        '1': {'line-1': 1.5},
-        '2': <String, double>{},
+        '1': {'line-1': '1.5'},
+        '2': <String, String>{},
       });
       expect(gateway.commands, ['1:SHIPPED', '2:SHIPPED']);
       expect(tester.takeException(), isNull);
@@ -1043,6 +1043,7 @@ class _Gateway implements WarehouseSalesOutboundGateway {
     Map<String, String?>? lineWarehouses,
     Map<String, Object?>? lineWeights,
     List<String>? itemIds,
+    List<Map<String, dynamic>>? deliveryComponents,
   }) async {
     commands.add('$id:$targetStatus');
     reasons.add(reason);

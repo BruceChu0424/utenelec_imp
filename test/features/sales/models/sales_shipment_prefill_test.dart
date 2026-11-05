@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/models/sales_shipment_prefill.dart';
+import 'package:uten_imp/shared/delivery/order_delivery_plan.dart';
 
 void main() {
   final order = SalesDocDetail.fromJson({
@@ -26,6 +27,40 @@ void main() {
     intent.validate(order, progress);
     expect(intent.quantities, {'item': 7.125});
   });
+  test(
+    'BOM uses service-authorized draft capacity without changing reserved stock',
+    () {
+      final plan = OrderDeliveryPlan.assembled().copyWith(
+        mode: 'BOM',
+        packaging: 'BULK',
+      );
+      final intent = SalesShipmentPrefill.parse('order', 'item:7.1250');
+      intent.validate(order, [
+        OrderPlanProgressLine(
+          orderItemId: 'item',
+          reservedQty: 0,
+          shippableQty: 0,
+          deliveryPlan: plan,
+          deliveryDraftQty: 8,
+          deliveryDraftQtyExact: '8',
+        ),
+      ]);
+      expect(intent.exactQuantities, {'item': '7.1250'});
+      expect(
+        () => intent.validate(order, [
+          OrderPlanProgressLine(
+            orderItemId: 'item',
+            reservedQty: 0,
+            shippableQty: 0,
+            deliveryPlan: plan,
+            deliveryDraftQty: 7,
+            deliveryDraftQtyExact: '7',
+          ),
+        ]),
+        throwsFormatException,
+      );
+    },
+  );
   test('stale quantity, foreign UUID and unknown availability fail closed', () {
     expect(
       () => SalesShipmentPrefill.parse(

@@ -27,9 +27,11 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Transactional(propagation = Propagation.MANDATORY)
-public class SalesMutationFootprintService {
+public class SalesMutationFootprintService implements com.uten.imp.application.port.SalesDeliveryMutationPort {
     private final EntityManager em;
     private final FulfillmentMutationLocks locks;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.SalesDeliveryFulfillmentPort> deliveryFulfillment;
 
     public record RequestedLine(UUID goodsId, UUID colorId, UUID orderItemId, UUID shipmentItemId) {}
 
@@ -58,6 +60,7 @@ public class SalesMutationFootprintService {
     public void lockShipment(UUID id, Collection<RequestedLine> requested) {
         lock(Document.SHIPMENT, id, requested, List.of());
     }
+    @Override public void lockShipment(UUID id) { lockShipment(id,List.of()); }
     public void lockShipmentBatch(Collection<UUID> orderItemIds) {
         lock(Document.SHIPMENT, null, List.of(), orderItemIds);
     }
@@ -179,8 +182,36 @@ public class SalesMutationFootprintService {
                 sources.add(new CommercialSource(CommercialType.SALES_ORDER,(UUID)row[1]));
                 add(inventory,(UUID)row[2],(UUID)row[3]);
             }
+            // Frozen order recipes are part of the complete stock prefix before any execution row lock.
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT DISTINCT item.id,node->>'goodsId',node->>'colorId'
+                    FROM sales_order_items item
+                    CROSS JOIN LATERAL jsonb_path_query(item.delivery_bom_snapshot,'$.root.** ? (@.goodsId != null)') node
+                    WHERE item.id IN(:ids) AND (item.delivery_plan->>'mode'='BOM'
+                      OR jsonb_array_length(COALESCE(item.delivery_plan->'processes','[]'::jsonb))>0)
+                    ORDER BY item.id,node->>'goodsId',node->>'colorId'
+                    """).setParameter("ids",sorted(orderItems)))) {
+                parts.add("delivery-source:"+java.util.Arrays.toString(row));
+                add(inventory,UUID.fromString((String)row[1]),row[2]==null?null:UUID.fromString((String)row[2]));
+            }
         }
-        return new FulfillmentMutationLockPlan(sources,inventory,Set.of(),Set.of(),CanonicalFingerprint.sha256(parts));
+        if (kind==Document.SHIPMENT && id!=null) {
+            for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id,goods_id,color_id FROM sales_shipment_delivery_components WHERE shipment_id=:id ORDER BY id
+                    """).setParameter("id",id))) {
+                parts.add("delivery-physical:"+java.util.Arrays.toString(row));
+                add(inventory,(UUID)row[1],(UUID)row[2]);
+            }
+        }
+        var base=new FulfillmentMutationLockPlan(sources,inventory,Set.of(),Set.of(),CanonicalFingerprint.sha256(parts));
+        if(kind==Document.SHIPMENT&&deliveryFulfillment!=null){
+            var bridge=deliveryFulfillment.getIfAvailable();
+            if(bridge!=null){
+                var dependency=bridge.discover(orderItems,id==null?List.of():List.of(id));
+                return FulfillmentMutationLockPlan.merge(CanonicalFingerprint.sha256(List.of(base.fingerprint(),dependency.fingerprint())),List.of(base,dependency));
+            }
+        }
+        return base;
     }
 
     private static void add(Set<InventoryDimension> inventory,UUID goods,UUID color) {

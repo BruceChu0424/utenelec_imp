@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../../components/inputs/uten_input.dart';
 import '../../core/network/business_precision.dart';
@@ -15,14 +16,18 @@ Future<BusinessPrecisionChoice?> showBusinessPrecisionDialog(
   BusinessPrecisionRequirement requirement, {
   ValueListenable<int>? validity,
   int? expectedValidity,
-}) => showDialog<BusinessPrecisionChoice>(
-  context: context,
-  barrierDismissible: false,
-  builder: (_) => BusinessPrecisionDialog(
-    requirement: requirement,
-    validity: validity,
-    expectedValidity: expectedValidity,
-  ),
+}) => UtenBusyOverlay.yieldWhile(
+  () => !context.mounted
+      ? Future<BusinessPrecisionChoice?>.value()
+      : showDialog<BusinessPrecisionChoice>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => BusinessPrecisionDialog(
+            requirement: requirement,
+            validity: validity,
+            expectedValidity: expectedValidity,
+          ),
+        ),
 );
 
 class BusinessPrecisionDialog extends StatefulWidget {

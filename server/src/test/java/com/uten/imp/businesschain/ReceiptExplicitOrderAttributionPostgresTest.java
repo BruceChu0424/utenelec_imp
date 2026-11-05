@@ -1,6 +1,7 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.support.MigratedProjectionSchema;
+import com.uten.imp.testsupport.BoundTestSql;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,8 @@ import static org.assertj.core.api.Assertions.*;
  "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
  "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class ReceiptExplicitOrderAttributionPostgresTest {
+ private static final String PREPAYMENT_INSERT =
+     "INSERT INTO finance_receipts(id,sales_order_id,client_id,currency_id,status,receipt_kind,order_selection_version)VALUES(?,?,?,?,0,'CUSTOMER_PREPAYMENT',1)";
  @DynamicPropertySource static void database(DynamicPropertyRegistry r){FullChainEndToEndTest.registerDataSource(r);}
  @Autowired JdbcTemplate db;
  @Autowired TransactionTemplate transactions;
@@ -42,23 +45,23 @@ class ReceiptExplicitOrderAttributionPostgresTest {
       st.execute(new String(input.readAllBytes(),StandardCharsets.UTF_8));
      } catch(java.io.IOException e){throw new IllegalStateException(e);}
      UUID a=UUID.randomUUID(),b=UUID.randomUUID(),client=UUID.randomUUID(),currency=UUID.randomUUID(),receipt=UUID.randomUUID(),line=UUID.randomUUID(),ledger=UUID.randomUUID();
-     st.execute("INSERT INTO sales_orders(id,client_id,currency_id)VALUES('"+a+"','"+client+"','"+currency+"'),('"+b+"','"+client+"','"+currency+"')");
-     st.execute("INSERT INTO finance_receipts(id,client_id,status,receipt_kind,order_selection_version)VALUES('"+receipt+"','"+client+"',0,'AR_SETTLEMENT',1)");
-     st.execute("INSERT INTO ar_ap_source_refs(id,ledger_id,source_type,source_id)VALUES(gen_random_uuid(),'"+ledger+"','SALES_ORDER','"+a+"'),(gen_random_uuid(),'"+ledger+"','SALES_ORDER','"+b+"')");
-     st.execute("INSERT INTO finance_receipt_lines(id,receipt_id,applied_ledger_id,currency_id,requested_sales_order_id)VALUES('"+line+"','"+receipt+"','"+ledger+"','"+currency+"','"+b+"')");
+     BoundTestSql.execute(st,"INSERT INTO sales_orders(id,client_id,currency_id)VALUES(?,?,?),(?,?,?)",a,client,currency,b,client,currency);
+     BoundTestSql.execute(st,"INSERT INTO finance_receipts(id,client_id,status,receipt_kind,order_selection_version)VALUES(?,?,0,'AR_SETTLEMENT',1)",receipt,client);
+     BoundTestSql.execute(st,"INSERT INTO ar_ap_source_refs(id,ledger_id,source_type,source_id)VALUES(gen_random_uuid(),?,'SALES_ORDER',?),(gen_random_uuid(),?,'SALES_ORDER',?)",ledger,a,ledger,b);
+     BoundTestSql.execute(st,"INSERT INTO finance_receipt_lines(id,receipt_id,applied_ledger_id,currency_id,requested_sales_order_id)VALUES(?,?,?,?,?)",line,receipt,ledger,currency,b);
      st.execute("SET CONSTRAINTS ALL IMMEDIATE");
-     rejected(c,"INSERT INTO finance_receipt_source_allocations(id,receipt_line_id,sales_order_id)VALUES(gen_random_uuid(),'"+line+"','"+a+"')");
-     rejected(c,"INSERT INTO finance_receipt_source_allocations(id,receipt_line_id,sales_order_id)VALUES(gen_random_uuid(),'"+line+"',NULL)");
-     st.execute("UPDATE finance_receipt_lines SET requested_sales_order_id=NULL WHERE id='"+line+"'");
-     st.execute("UPDATE finance_receipt_lines SET requested_sales_order_id='"+b+"' WHERE id='"+line+"'");
-     rejected(c,"UPDATE finance_receipts SET order_selection_version=0 WHERE id='"+receipt+"'");
-     st.execute("INSERT INTO finance_receipt_source_allocations(id,receipt_line_id,sales_order_id)VALUES(gen_random_uuid(),'"+line+"','"+b+"')");
-     st.execute("UPDATE finance_receipts SET status=1 WHERE id='"+receipt+"'");
-     rejected(c,"UPDATE finance_receipt_lines SET requested_sales_order_id='"+a+"' WHERE id='"+line+"'");
-     rejected(c,"UPDATE finance_receipt_lines SET applied_source_doc_no='FORGED-SHIPMENT' WHERE id='"+line+"'");
+     rejected(c,"INSERT INTO finance_receipt_source_allocations(id,receipt_line_id,sales_order_id)VALUES(gen_random_uuid(),?,?)",line,a);
+     rejected(c,"INSERT INTO finance_receipt_source_allocations(id,receipt_line_id,sales_order_id)VALUES(gen_random_uuid(),?,?)",line,null);
+     BoundTestSql.execute(st,"UPDATE finance_receipt_lines SET requested_sales_order_id=NULL WHERE id=?",line);
+     BoundTestSql.execute(st,"UPDATE finance_receipt_lines SET requested_sales_order_id=? WHERE id=?",b,line);
+     rejected(c,"UPDATE finance_receipts SET order_selection_version=0 WHERE id=?",receipt);
+     BoundTestSql.execute(st,"INSERT INTO finance_receipt_source_allocations(id,receipt_line_id,sales_order_id)VALUES(gen_random_uuid(),?,?)",line,b);
+     BoundTestSql.execute(st,"UPDATE finance_receipts SET status=1 WHERE id=?",receipt);
+     rejected(c,"UPDATE finance_receipt_lines SET requested_sales_order_id=? WHERE id=?",a,line);
+     rejected(c,"UPDATE finance_receipt_lines SET applied_source_doc_no='FORGED-SHIPMENT' WHERE id=?",line);
      // Existing NULL / version-0 draft remains original evidence and is not retroactively assigned.
-     UUID old=UUID.randomUUID();st.execute("INSERT INTO finance_receipts(id,client_id,status,receipt_kind,order_selection_version)VALUES('"+old+"','"+client+"',0,'AR_SETTLEMENT',0)");
-     st.execute("INSERT INTO finance_receipt_lines(id,receipt_id,applied_ledger_id,currency_id)VALUES(gen_random_uuid(),'"+old+"','"+ledger+"','"+currency+"')");
+     UUID old=UUID.randomUUID();BoundTestSql.execute(st,"INSERT INTO finance_receipts(id,client_id,status,receipt_kind,order_selection_version)VALUES(?,?,0,'AR_SETTLEMENT',0)",old,client);
+     BoundTestSql.execute(st,"INSERT INTO finance_receipt_lines(id,receipt_id,applied_ledger_id,currency_id)VALUES(gen_random_uuid(),?,?,?)",old,ledger,currency);
 
      // Attach the exact public function installed by the full migration chain to
      // private column copies. This isolates its SQL identity guard, including
@@ -66,51 +69,50 @@ class ReceiptExplicitOrderAttributionPostgresTest {
      st.execute("CREATE TRIGGER oracle_financial_order_guard BEFORE INSERT OR UPDATE OF sales_order_id,client_id,currency_id,receipt_kind,status "
          +"ON finance_receipts FOR EACH ROW EXECUTE FUNCTION public.fn_guard_finance_receipt_order()");
      UUID closed=UUID.randomUUID(),approved=UUID.randomUUID(),pending=UUID.randomUUID();
-     st.execute("INSERT INTO sales_orders(id,client_id,currency_id,status,is_deleted,is_stopped,is_closed)VALUES('"+closed+"','"+client+"','"+currency+"',1,FALSE,FALSE,TRUE)");
-     st.execute(prepayment(approved,closed,client,currency));
-     st.execute(prepayment(pending,closed,client,currency));
-     st.execute("UPDATE finance_receipts SET status=1 WHERE id='"+approved+"'");
-     st.execute("UPDATE sales_orders SET is_stopped=TRUE WHERE id='"+closed+"'");
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,client,currency));
-     rejectedOrderGuard(c,"UPDATE finance_receipts SET status=1 WHERE id='"+pending+"'");
+     BoundTestSql.execute(st,"INSERT INTO sales_orders(id,client_id,currency_id,status,is_deleted,is_stopped,is_closed)VALUES(?,?,?,1,FALSE,FALSE,TRUE)",closed,client,currency);
+     prepayment(st,approved,closed,client,currency);
+     prepayment(st,pending,closed,client,currency);
+     BoundTestSql.execute(st,"UPDATE finance_receipts SET status=1 WHERE id=?",approved);
+     BoundTestSql.execute(st,"UPDATE sales_orders SET is_stopped=TRUE WHERE id=?",closed);
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,client,currency);
+     rejectedOrderGuard(c,"UPDATE finance_receipts SET status=1 WHERE id=?",pending);
      // The original approved identity can still reverse after its order stops;
      // no order reopening or replacement source is required for that history.
-     st.execute("UPDATE finance_receipts SET status=-1 WHERE id='"+approved+"'");
-     try(var row=st.executeQuery("SELECT status,sales_order_id FROM finance_receipts WHERE id='"+approved+"'")){
+     BoundTestSql.execute(st,"UPDATE finance_receipts SET status=-1 WHERE id=?",approved);
+     try(var query=BoundTestSql.prepare(st,"SELECT status,sales_order_id FROM finance_receipts WHERE id=?",approved);
+         var row=query.executeQuery()){
       assertThat(row.next()).isTrue();assertThat(row.getInt(1)).isEqualTo(-1);assertThat(row.getObject(2,UUID.class)).isEqualTo(closed);
      }
-     st.execute("UPDATE sales_orders SET is_stopped=FALSE,status=0 WHERE id='"+closed+"'");
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,client,currency));
-     st.execute("UPDATE sales_orders SET status=NULL WHERE id='"+closed+"'");
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,client,currency));
-     st.execute("UPDATE sales_orders SET status=1,is_deleted=TRUE WHERE id='"+closed+"'");
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,client,currency));
-     st.execute("UPDATE sales_orders SET is_deleted=FALSE WHERE id='"+closed+"'");
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,UUID.randomUUID(),currency));
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,client,UUID.randomUUID()));
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,null,currency));
-     rejectedOrderGuard(c,prepayment(UUID.randomUUID(),closed,client,null));
-     st.execute(prepayment(UUID.randomUUID(),closed,client,currency));
+     BoundTestSql.execute(st,"UPDATE sales_orders SET is_stopped=FALSE,status=0 WHERE id=?",closed);
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,client,currency);
+     BoundTestSql.execute(st,"UPDATE sales_orders SET status=NULL WHERE id=?",closed);
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,client,currency);
+     BoundTestSql.execute(st,"UPDATE sales_orders SET status=1,is_deleted=TRUE WHERE id=?",closed);
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,client,currency);
+     BoundTestSql.execute(st,"UPDATE sales_orders SET is_deleted=FALSE WHERE id=?",closed);
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,UUID.randomUUID(),currency);
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,client,UUID.randomUUID());
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,null,currency);
+     rejectedOrderGuard(c,PREPAYMENT_INSERT,UUID.randomUUID(),closed,client,null);
+     prepayment(st,UUID.randomUUID(),closed,client,currency);
     }
     return null;
    });
    tx.setRollbackOnly();
   });
  }
- static void rejected(Connection c,String sql)throws SQLException{
+ static void rejected(Connection c,String sql,Object... values)throws SQLException{
   Savepoint point=c.setSavepoint();
-  try(var st=c.createStatement()){assertThatThrownBy(()->st.execute(sql)).isInstanceOf(SQLException.class);}
+  try(var st=c.createStatement()){assertThatThrownBy(()->BoundTestSql.execute(st,sql,values)).isInstanceOf(SQLException.class);}
   finally{c.rollback(point);c.releaseSavepoint(point);}
  }
- static String prepayment(UUID id,UUID order,UUID client,UUID currency){
-  return "INSERT INTO finance_receipts(id,sales_order_id,client_id,currency_id,status,receipt_kind,order_selection_version)VALUES("
-      +uuid(id)+","+uuid(order)+","+uuid(client)+","+uuid(currency)+",0,'CUSTOMER_PREPAYMENT',1)";
+ static void prepayment(Statement st,UUID id,UUID order,UUID client,UUID currency)throws SQLException{
+  BoundTestSql.execute(st,PREPAYMENT_INSERT,id,order,client,currency);
  }
- static String uuid(UUID id){return id==null?"NULL":"'"+id+"'";}
- static void rejectedOrderGuard(Connection c,String sql)throws SQLException{
+ static void rejectedOrderGuard(Connection c,String sql,Object... values)throws SQLException{
   Savepoint point=c.setSavepoint();
   try(var st=c.createStatement()){
-   try{st.execute(sql);fail("Expected the real finance receipt/order SQL identity guard to reject this source");}
+   try{BoundTestSql.execute(st,sql,values);fail("Expected the real finance receipt/order SQL identity guard to reject this source");}
    catch(SQLException failure){
     assertThat(failure.getSQLState()).isEqualTo("23514");
     assertThat((Throwable)failure).isInstanceOf(org.postgresql.util.PSQLException.class);

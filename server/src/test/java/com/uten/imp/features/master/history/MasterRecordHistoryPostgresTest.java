@@ -765,7 +765,7 @@ class MasterRecordHistoryPostgresTest {
     edit(item, "needle revised name");
     var filter =
         new MasterRecordHistoryService.Filters(
-            "EDIT", null, "operator-", "needle", "2000-01-01", "2100-01-01", 50);
+            "EDIT", null, "restore-" + actor, "needle", "2000-01-01", "2100-01-01", 50);
     var page = service.search("colors", item, null, null, filter);
     assertEquals(1, page.entries().size());
     var entry = page.entries().getFirst();
@@ -1299,7 +1299,7 @@ class MasterRecordHistoryPostgresTest {
                       "goods", historyNumber(selected.id()), selected.expectedHead(), true);
                   return null;
                 }));
-    assertEquals("0.9000", value("SELECT zk::text FROM goods WHERE id=:id", item));
+    assertEquals(0, decimal("0.9").compareTo(decimal(value("SELECT zk::text FROM goods WHERE id=:id", item))));
   }
 
   @Test

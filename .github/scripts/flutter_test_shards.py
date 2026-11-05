@@ -2,7 +2,8 @@
 """Run every Flutter test file once and reconcile the real JSON reporter stream.
 
 Flutter 3.44.2 commands/test.dart enumerates test/**/*_test.dart without following
-directory links. test/runner.dart maps --machine to test_core's JSON reporter.
+directory links. test/runner.dart supports expanded stdout and an additional
+native JSON file reporter in the same execution.
 Its runtime root-group testCount, testStart/testDone and allSuites/done events
 provide execution evidence; Dart source is never used to guess a test count.
 """
@@ -25,11 +26,12 @@ from urllib.parse import unquote, urlsplit
 from backend_test_shards import digest, read_json, source_identity, write_json
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = 2
+VERSION = 3
 FLUTTER_VERSION = "3.44.2"
 PROTOCOL_VERSION = "0.1.1"
 SHARDS = 8
-COMMAND_OPTIONS = ("test", "--no-pub", "--machine", "--no-fail-fast")
+COMMAND_OPTIONS = ("test", "--no-pub", "--reporter", "expanded", "--no-fail-fast")
+REPORT_ROOT = "build/flutter-ci-reports"
 WORKER_PATH = "test/.uten-ci-codec-worker.js"
 WORKER_SOURCE = "web/uten_data_codec_worker.js"
 BROWSER_OPTIONS = (*COMMAND_OPTIONS, "--platform", "chrome",
@@ -65,6 +67,29 @@ def check_stderr(path):
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     if re.search(r"(?m)^(?:Unhandled exception:|ERROR:|Error:|[^\r\n]*\.dart:\d+:\d+: Error:)", text):
         raise ValueError("Flutter tool error on stderr")
+
+
+def file_reporter_option(number):
+    if not (type(number) is int and 0 <= number < SHARDS or number == "browser"):
+        raise ValueError("invalid Flutter report owner")
+    return f"--file-reporter=json:{REPORT_ROOT}/shard-{number}/machine.jsonl"
+
+
+def report_directory(output, number, root):
+    root = Path(root).resolve()
+    supplied = Path(output)
+    if ".." in supplied.parts:
+        raise ValueError("Flutter output must use the fixed report root")
+    supplied = supplied if supplied.is_absolute() else root / supplied
+    expected = root / REPORT_ROOT
+    if supplied.absolute() != expected:
+        raise ValueError("Flutter output must use the fixed report root")
+    for parent in (root / "build", expected):
+        if (parent.is_symlink() or getattr(parent, "is_junction", lambda: False)()
+                or parent.exists() and not parent.is_dir() or not parent.resolve().is_relative_to(root)):
+            raise ValueError("linked/special Flutter report output")
+    file_reporter_option(number)
+    return expected / f"shard-{number}"
 
 
 def test_path(value):
@@ -355,9 +380,9 @@ def run_browser(plan, output, flutter="flutter", root=ROOT):
 
 
 def _run_cohort(plan, number, files, options, mode, output, flutter, root):
-    directory = Path(output) / f"shard-{number}"
+    directory = report_directory(output, number, root)
     directory.mkdir(parents=True, exist_ok=False)
-    command = [shutil.which(flutter) or flutter, *options, *files]
+    command = [shutil.which(flutter) or flutter, *options, file_reporter_option(number), *files]
     record = {"schema_version": VERSION, "source": plan["source"], "plan_hash": plan["plan_hash"],
               "ci": ci_identity(), "mode": mode, "shard": number, "files": files, "command": command, "exit_code": None, "complete": False}
     started = time.monotonic()
@@ -371,16 +396,17 @@ def _run_cohort(plan, number, files, options, mode, output, flutter, root):
         if version.returncode != 0 or sdk.get("frameworkVersion") != plan["flutter_version"]:
             raise ValueError("Flutter executable does not match the pinned SDK")
         record["sdk"] = {key: sdk.get(key) for key in ("frameworkVersion", "frameworkRevision", "dartSdkVersion")}
-        with (directory / "machine.jsonl").open("wb") as stdout, (directory / "stderr.log").open("wb") as stderr:
+        with (directory / "stdout.log").open("xb") as stdout, (directory / "stderr.log").open("xb") as stderr:
             process = subprocess.run(command, cwd=root, stdout=stdout, stderr=stderr, check=False)
         record["exit_code"] = process.returncode
+        record["stdout_sha256"] = sha256(directory / "stdout.log")
+        record["stderr_sha256"] = sha256(directory / "stderr.log")
         if mode == "chrome":
             if verify_worker(root) != record["worker"]:
                 raise ValueError("codec worker changed during Chrome execution")
             record["worker"]["verified_after"] = True
         record["source_after"] = source_identity(root)
         record["machine_sha256"] = sha256(directory / "machine.jsonl")
-        record["stderr_sha256"] = sha256(directory / "stderr.log")
         check_stderr(directory / "stderr.log")
         skips = [row["path"] for row in plan["files"] if mode == "vm" and row["vm_platform_skip"] and row["path"] in files]
         record["results"] = parse_events(directory / "machine.jsonl", files, root, skips, "vm" if mode == "vm" else "chrome")
@@ -392,13 +418,13 @@ def _run_cohort(plan, number, files, options, mode, output, flutter, root):
     finally:
         record["elapsed_seconds"] = time.monotonic() - started
         write_json(directory / "report.json", record)
-    print(f"Flutter shard {number}: complete={record['complete']}; log={directory / 'machine.jsonl'}", flush=True)
+    print(f"Flutter shard {number}: complete={record['complete']}; log={directory / 'stdout.log'}; native={directory / 'machine.jsonl'}", flush=True)
     return record
 
 
 def _verify_cohort(plan, reports, shard, options, mode, root):
     directory = reports / f"shard-{shard['id']}"
-    if directory.is_symlink() or {path.name for path in directory.iterdir()} != {"report.json", "machine.jsonl", "stderr.log"}:
+    if directory.is_symlink() or {path.name for path in directory.iterdir()} != {"report.json", "machine.jsonl", "stdout.log", "stderr.log"}:
         raise ValueError("invalid Flutter report ownership/files")
     if any(path.is_symlink() or not path.is_file() for path in directory.iterdir()):
         raise ValueError("linked/special Flutter evidence file")
@@ -410,9 +436,10 @@ def _verify_cohort(plan, reports, shard, options, mode, root):
             or type(report.get("exit_code")) is not int or report.get("exit_code") != 0 or report.get("complete") is not True
             or report.get("sdk", {}).get("frameworkVersion") != plan["flutter_version"]
             or not isinstance(report.get("command"), list)
-            or report["command"][1:] != [*options, *shard["files"]]
+            or report["command"][1:] != [*options, file_reporter_option(shard["id"]), *shard["files"]]
             or not isinstance(report["command"][0], str)
             or report.get("machine_sha256") != sha256(directory / "machine.jsonl")
+            or report.get("stdout_sha256") != sha256(directory / "stdout.log")
             or report.get("stderr_sha256") != sha256(directory / "stderr.log")):
         raise ValueError("failed, filtered, wrong-SHA or tampered Flutter report")
     skips = [row["path"] for row in plan["files"] if mode == "vm" and row["vm_platform_skip"] and row["path"] in shard["files"]]

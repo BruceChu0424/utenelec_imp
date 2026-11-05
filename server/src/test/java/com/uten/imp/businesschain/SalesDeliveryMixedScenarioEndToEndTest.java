@@ -115,6 +115,8 @@ class SalesDeliveryMixedScenarioEndToEndTest {
         assertThat(product(view,order).rootMaterialLineId()).isNull();assertThat(product(view,order).canSchedule()).isFalse();
         var make=startManufacture(w,view,originalB.materialLineId());
         UUID firstReport=reportManufacture(w,make,"4");
+        assertPrivateReceipt(make,originalB.materialLineId(),firstReport,"4");
+        assertClosedCredit(make,originalB.materialLineId(),"0");
         assertConsumed(firstReport,w.goodsC(),"12");assertConsumed(firstReport,w.goodsD(),"20");
         assertWip(make,w.goodsC(),"18");assertWip(make,w.goodsD(),"30");
         var afterProduction=refresh(w,view.analysisId(),List.of(order));
@@ -124,6 +126,8 @@ class SalesDeliveryMixedScenarioEndToEndTest {
         UUID firstShipment=shipment(w,order,"2");var firstComponent=component(firstShipment,w.goodsB());
         assertThat(firstComponent.quantity()).isEqualByComparingTo("4");assertTarget(firstComponent,w.goodsC(),c.path(),"12");
         process(w,firstShipment,firstComponent,"1");
+        assertClosedCredit(make,originalB.materialLineId(),"0");
+        assertPrivateComponent(firstComponent.id(),"4");
         // LASER reports count whole delivered B units. Their C targets do not
         // consume another batch of production materials or manufacture inventory.
         assertConsumed(firstReport,w.goodsC(),"12");assertConsumed(firstReport,w.goodsD(),"20");
@@ -133,21 +137,28 @@ class SalesDeliveryMixedScenarioEndToEndTest {
         assertThat(product(remaining,order).remainingQty()).isEqualByComparingTo("3");
         assertThat(material(remaining,order,w.goodsB()).requiredQty()).isEqualByComparingTo("6");
         assertThat(material(remaining,order,w.goodsE()).requiredQty()).isEqualByComparingTo("3");
+        assertClosedCredit(make,originalB.materialLineId(),"4");
+        assertThat(db.queryForObject("SELECT fn_preplan_direct_make_total_capacity(?,?)",BigDecimal.class,makeChild(make),originalB.materialLineId())).isEqualByComparingTo("10");
+        assertThat(db.queryForObject("SELECT fn_preplan_direct_make_delivery_closed_qty(?,?)",BigDecimal.class,UUID.randomUUID(),originalB.materialLineId())).isZero();
+        assertThat(db.queryForObject("SELECT fn_preplan_direct_make_delivery_closed_qty(?,?)",BigDecimal.class,makeChild(make),material(remaining,order,w.goodsE()).materialLineId())).isZero();
         assertThat(material(remaining,order,w.goodsC()).deliveryFrontier()).isFalse();
         assertThat(material(remaining,order,w.goodsD()).deliveryFrontier()).isFalse();
         assertWip(make,w.goodsC(),"18");assertWip(make,w.goodsD(),"30");
         assertThat(db.queryForObject("SELECT count(*) FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",Integer.class,make.plan())).isEqualTo(1);
         UUID secondReport=reportManufacture(w,make,"6");
+        assertPrivateReceipt(make,originalB.materialLineId(),secondReport,"6");
         assertConsumed(secondReport,w.goodsC(),"18");assertConsumed(secondReport,w.goodsD(),"30");
         assertWip(make,w.goodsC(),"0");assertWip(make,w.goodsD(),"0");
         UUID secondShipment=shipment(w,order,"3");var secondComponent=component(secondShipment,w.goodsB());
         assertThat(secondComponent.quantity()).isEqualByComparingTo("6");assertTarget(secondComponent,w.goodsC(),c.path(),"18");
         process(w,secondShipment,secondComponent,"2");
+        assertPrivateComponent(secondComponent.id(),"6");assertClosedCredit(make,originalB.materialLineId(),"4");
         shipments.transitionWarehouseWork(secondShipment,support.pick(ready(w,order,secondShipment)));
         var finished=analyses.detail(view.analysisId());
         assertThat(product(finished,order).remainingQty()).isZero();
         assertThat(material(finished,order,w.goodsB()).requiredQty()).isZero();
         assertThat(material(finished,order,w.goodsE()).requiredQty()).isZero();
+        assertClosedCredit(make,originalB.materialLineId(),"10");
         assertThat(db.queryForObject("SELECT sum(quantity) FROM sales_delivery_entitlement_handoffs WHERE source_material_id=?",BigDecimal.class,originalB.materialLineId())).isEqualByComparingTo("10");
         assertThat(db.queryForObject("SELECT sum(event.order_qty) FROM sales_delivery_fulfillment_events event JOIN sales_delivery_fulfillment_allocations allocation ON allocation.id=event.allocation_id WHERE allocation.analysis_item_id=? AND event.event_type='FULFILL'",BigDecimal.class,product(finished,order).analysisLineId())).isEqualByComparingTo("5");
         for(UUID goods:List.of(w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE()))assertThat(support.balance(w.warehouseId(),goods)).isZero();
@@ -215,6 +226,20 @@ class SalesDeliveryMixedScenarioEndToEndTest {
     }
     private void assertConsumed(UUID report,UUID goods,String expected){assertThat(db.queryForObject("SELECT sum(posting.qty_base) FROM production_material_settlement_postings posting JOIN production_material_settlement_events event ON event.id=posting.event_id JOIN production_material_demands demand ON demand.id=posting.demand_id WHERE event.daily_report_id=? AND event.event_type='POST' AND posting.settlement_type='CONSUMED' AND demand.goods_id=?",BigDecimal.class,report,goods)).isEqualByComparingTo(expected);}
     private void assertWip(Make make,UUID goods,String expected){assertThat(settlements.clearance(make.plan(),make.segment()).stream().filter(row->row.goodsId().equals(goods)).map(row->row.availableToSettleQty()).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo(expected);}
+    private UUID makeChild(Make make){return db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,make.plan());}
+    private void assertClosedCredit(Make make,UUID material,String expected){assertThat(db.queryForObject("SELECT fn_preplan_direct_make_delivery_closed_qty(?,?)",BigDecimal.class,makeChild(make),material)).isEqualByComparingTo(expected);}
+    private void assertPrivateReceipt(Make make,UUID material,UUID report,String expected){
+        assertThat(db.queryForObject("""
+                SELECT sum(origin.qty) FROM preplan_stock_entitlement_events origin
+                JOIN preplan_analysis_stock_exact_pegs exact ON exact.id=origin.source_exact_peg_id
+                WHERE origin.event_type='ORIGIN_MAKE' AND origin.beneficiary_analysis_material_id=?
+                  AND exact.make_source_analysis_item_id=? AND exact.source_stock_document_id=?
+                """,BigDecimal.class,material,makeChild(make),fixture.finishedInDocForReport(report))).isEqualByComparingTo(expected);
+    }
+    private void assertPrivateComponent(UUID component,String expected){
+        assertThat(db.queryForObject("SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations WHERE owner_type='SALES_DELIVERY_COMPONENT_SHIPMENT' AND owner_id=? AND status=0 AND NOT is_deleted",BigDecimal.class,component)).isEqualByComparingTo(expected);
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_reservations WHERE owner_type='SALES_DELIVERY_PROCESSING' AND owner_id=? AND status=0 AND NOT is_deleted",Integer.class,component)).isZero();
+    }
     private void assertNoParentStock(FullChainEndToEndTest.World w){assertThat(db.queryForObject("SELECT count(*) FROM stock_movements WHERE goods_id=?",Integer.class,w.goodsA())).isZero();assertThat(support.balance(w.warehouseId(),w.goodsA())).isZero();}
     private long version(UUID segment){return db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);}
     private record Order(UUID id,UUID item,String qty){}

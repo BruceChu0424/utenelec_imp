@@ -683,7 +683,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     private BigDecimal directMakeCapacity(UUID analysisId, UUID childId, UUID materialId, UUID currentDocument) {
         return decimal(em.createNativeQuery("""
                 WITH budget AS (
-                SELECT child.requested_qty,fn_preplan_aggregate_source_capacity(material.id) AS required_qty,
+                SELECT child.requested_qty,fn_preplan_direct_make_total_capacity(child.id,material.id) AS required_qty,
                     fn_preplan_direct_make_admitted_qty(child.id,material.id) AS admitted_qty,
                     COALESCE((
                     SELECT SUM(exact.qty) FROM preplan_analysis_stock_exact_pegs exact

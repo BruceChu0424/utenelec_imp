@@ -15,6 +15,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** The case balance chain must use the same ordering as the database guard. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class ProcurementCaseBookAllocationPostgresTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "money.book-share", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(30, "DOWN"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     @Test void bothUuidSignBoundariesMatchDatabaseAndConserveTheFinalRemainder() throws Exception {
         List<UUID> ids=List.of(
                 UUID.fromString("80000000-0000-0000-0000-000000000000"),

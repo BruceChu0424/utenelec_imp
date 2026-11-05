@@ -82,8 +82,8 @@ class ArtifactExtractionTests(unittest.TestCase):
         self.assertTrue(verified["complete"], verified["errors"])
         self.assertEqual(4, sum(sum(shard["method_counts"].values()) for shard in verified["shards"]))
 
-    def test_eight_current_partitions_keep_authenticated_ownership_and_complete_inventory(self):
-        manifest = fixtures.plan([fixtures.test_class("example.Partition" + str(i) + "Test") for i in range(8)], shards=8)
+    def test_sixteen_current_partitions_keep_authenticated_ownership_and_complete_inventory(self):
+        manifest = fixtures.plan([fixtures.test_class("example.Partition" + str(i) + "Test") for i in range(16)], shards=16)
         for shard in manifest["shards"]:
             number = shard["id"]
             source = self.root / f"producer-{number}"
@@ -91,15 +91,15 @@ class ArtifactExtractionTests(unittest.TestCase):
             self.archive([(f"shard-{number}/" + file.relative_to(source).as_posix(), file.read_bytes())
                           for file in source.rglob("*") if file.is_file()], folder=f"backend-test-results-{number}")
         result = self.extract("backend-test-results-*")
-        self.assertEqual(8, result["archives"])
+        self.assertEqual(16, result["archives"])
         destination = self.server / "target-ci-reports"
-        self.assertEqual({f"shard-{i}" for i in range(8)}, {path.name for path in destination.iterdir()})
+        self.assertEqual({f"shard-{i}" for i in range(16)}, {path.name for path in destination.iterdir()})
         verified = runner.verify_reports(manifest, destination)
         self.assertTrue(verified["complete"], verified["errors"])
-        self.assertEqual(8, sum(sum(shard["method_counts"].values()) for shard in verified["shards"]))
+        self.assertEqual(16, sum(sum(shard["method_counts"].values()) for shard in verified["shards"]))
 
     def test_single_sdk_match_cannot_hide_an_out_of_pool_member(self):
-        for shard in ("8", "08", "-1", "7-extra"):
+        for shard in ("16", "016", "-1", "15-extra"):
             with self.subTest(shard=shard):
                 archive = self.archive([(f"shard-{shard}/report.json", "{}")])
                 self.assert_rejected("backend-test-results-*")
@@ -111,6 +111,73 @@ class ArtifactExtractionTests(unittest.TestCase):
         target = self.server / "target-ci-reports"
         self.assertTrue((target / "shard-2/report.json").is_file())
         self.assertEqual(["shard-2"], [p.name for p in target.iterdir()])
+
+    def test_flutter_plan_uses_only_its_exact_build_root(self):
+        self.archive([("plan.json", "{}")])
+        self.extract("flutter-test-plan")
+        self.assertEqual("{}", (self.workspace / "build/flutter-ci-plan/plan.json").read_text())
+        self.assertFalse((self.server / "flutter-ci-plan").exists())
+        self.assertEqual("untouched-source", self.sentinel.read_text())
+
+    def test_eight_flutter_archives_preserve_distinct_owners_without_expanding_backend_roots(self):
+        for shard in range(8):
+            self.archive([(f"shard-{shard}/report.json", "{}"), (f"shard-{shard}/machine.jsonl", "{}"),
+                          (f"shard-{shard}/stderr.log", "")], folder=f"flutter-test-results-{shard}")
+        result = self.extract("flutter-test-results-*")
+        self.assertEqual(8, result["archives"])
+        destination = self.workspace / "build/flutter-ci-reports"
+        self.assertEqual({f"shard-{number}" for number in range(8)}, {path.name for path in destination.iterdir()})
+        self.assertFalse((self.server / "target-ci-reports").exists())
+
+    def test_flutter_zip_cannot_write_source_plan_extras_nested_paths_or_another_owner(self):
+        for selector, folder, members in (
+            ("flutter-test-plan", None, [("plan.json", "{}"), (".github/workflows/quality.yml", "forged")]),
+            ("flutter-test-plan", None, [("plan.json", "{}"), ("other.json", "{}")]),
+            ("flutter-test-plan", None, [("../plan.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-8", [("shard-8/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-1/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/report.json", "{}"), ("shard-1/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/other.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/nested/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-browser", [("shard-0/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-browser/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-browser2", [("shard-browser/report.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-browser", [("shard-browser/worker.js", "forged")]),
+            ("flutter-test-results-*", "backend-test-results-0", [("shard-0/report.json", "{}")]),
+        ):
+            with self.subTest(selector=selector, folder=folder, members=members):
+                archive = self.archive(members, folder=folder)
+                with self.assertRaises(ValueError): self.extract(selector)
+                self.assertFalse((self.workspace / "build/flutter-ci-plan").exists())
+                self.assertFalse((self.workspace / "build/flutter-ci-reports").exists())
+                self.assertEqual("untouched-source", self.sentinel.read_text())
+                archive.unlink()
+                if folder:
+                    (self.raw / folder).rmdir()
+
+    def test_browser_report_is_an_exact_ninth_owner_under_the_existing_flutter_root(self):
+        for owner in (*unpack.FLUTTER_SHARD_IDS, "browser"):
+            self.archive([(f"shard-{owner}/{name}", "{}") for name in ("report.json", "machine.jsonl", "stderr.log")],
+                         folder=f"flutter-test-results-{owner}")
+        result = self.extract("flutter-test-results-*")
+        self.assertEqual(9, result["archives"])
+        self.assertEqual({f"shard-{owner}" for owner in unpack.FLUTTER_REPORT_OWNERS},
+                         {path.name for path in (self.workspace / "build/flutter-ci-reports").iterdir()})
+
+    def test_flutter_zip_symlinks_and_source_owned_build_aliases_fail_closed(self):
+        info = zipfile.ZipInfo("plan.json")
+        info.create_system = 3
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive = self.archive([(info, "../../application-prod.yml")])
+        with self.assertRaises(ValueError): self.extract("flutter-test-plan")
+        self.assertFalse((self.workspace / "build/flutter-ci-plan").exists())
+        archive.unlink()
+        (self.workspace / "build").rmdir()
+        self.symlink(self.server, self.workspace / "build", directory=True)
+        self.archive([("plan.json", "{}")])
+        with self.assertRaises(ValueError): self.extract("flutter-test-plan")
+        self.assertFalse((self.server / "flutter-ci-plan").exists())
+        self.assertEqual("untouched-source", self.sentinel.read_text())
 
     def test_optional_reference_preserves_baseline_plan_and_shard_directory(self):
         self.archive([("baseline-plan.json", "{}"), ("shard-0/report.json", "{}")], name="reference.zip")
@@ -214,7 +281,7 @@ class ArtifactExtractionTests(unittest.TestCase):
 
     def test_report_artifact_names_and_zip_shard_ownership_must_agree(self):
         for folder, members in (("unrelated", [("shard-0/a", "x")]),
-                                ("backend-test-results-8", [("shard-8/a", "x")]),
+                                ("backend-test-results-16", [("shard-16/a", "x")]),
                                 ("backend-test-results-4", [("shard-0/a", "x")]),
                                 ("backend-test-results-0", [("shard-1/a", "x")]),
                                 ("backend-test-results-0", [("shard-0/a", "x"), ("shard-1/b", "x")]),
@@ -272,11 +339,21 @@ class AuthenticatedWorkflowBoundaryTests(unittest.TestCase):
         self.assertEqual(tuple(str(int(value.strip())) for value in matrix[1].split(",")), unpack.SHARD_IDS)
         self.assertIn("--shards " + str(len(unpack.SHARD_IDS)), source)
 
+    def test_flutter_extraction_pool_is_exactly_eight_and_is_not_the_backend_pool(self):
+        source = (unpack.ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+        job = re.search(r"(?ms)^  frontend-shards:\n.*?(?=^  [a-z][a-z0-9-]*:|\Z)", source).group()
+        matrix = re.search(r"^        shard: \[([0-9, ]+)\]$", job, re.M)
+        self.assertEqual(tuple(str(int(value.strip())) for value in matrix[1].split(",")), unpack.FLUTTER_SHARD_IDS)
+        self.assertEqual(16, len(unpack.SHARD_IDS))
+        self.assertEqual(8, len(unpack.FLUTTER_SHARD_IDS))
+        self.assertEqual((*unpack.FLUTTER_SHARD_IDS, "browser"), unpack.FLUTTER_REPORT_OWNERS)
+        self.assertIn("name: flutter-test-results-browser", source)
+
     def test_all_quality_downloads_keep_official_runtime_scope_and_hard_digest_gate(self):
         source = (unpack.ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
         steps = re.findall(r"^      - (.*?)(?=^      - |\Z)", source, re.M | re.S)
         downloads = [(i, step) for i, step in enumerate(steps) if "actions/download-artifact@" in step]
-        self.assertEqual(5, len(downloads))
+        self.assertEqual(8, len(downloads))
         for number, step in downloads:
             with self.subTest(download=step):
                 self.assertIn("actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333", step)
@@ -298,7 +375,8 @@ class AuthenticatedWorkflowBoundaryTests(unittest.TestCase):
                 if "pattern:" in step:
                     self.assertIn("merge-multiple: false", step)
         self.assertEqual({"backend-test-plan": "target-ci-plan", "backend-test-results-*": "target-ci-reports",
-                          "backend-unfiltered-reference": "target-ci-reference"}, unpack.DESTINATIONS)
+                          "backend-unfiltered-reference": "target-ci-reference",
+                          "flutter-test-plan": "flutter-ci-plan", "flutter-test-results-*": "flutter-ci-reports"}, unpack.DESTINATIONS)
         self.assertIn("-p 'test_safe_artifact_extract.py' -v", source)
 
 

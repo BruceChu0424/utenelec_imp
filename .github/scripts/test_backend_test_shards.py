@@ -1066,10 +1066,10 @@ class WorkflowGatingTests(unittest.TestCase):
 
     def test_optional_reference_never_disables_any_full_partition(self):
         planning, shards = self.job("backend-plan"), self.job("backend-shards")
-        self.assertIn("--shards 8", planning)
+        self.assertIn("--shards 16", planning)
         self.assertEqual({"backend-plan"}, self.needs(shards))
-        self.assertRegex(shards, r"(?m)^        shard: \[0, 1, 2, 3, 4, 5, 6, 7\]$")
-        self.assertRegex(shards, r"(?m)^      max-parallel: 8$")
+        self.assertRegex(shards, r"(?m)^        shard: \[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15\]$")
+        self.assertRegex(shards, r"(?m)^      max-parallel: 16$")
         self.assertRegex(shards, r"(?m)^      fail-fast: false$")
         for job in (planning, shards):
             self.assertNotIn("compare_reference", job)
@@ -1147,9 +1147,12 @@ class WorkflowGatingTests(unittest.TestCase):
                     self.assertIn(option, options)
                 self.assertNotIn("--wasm", options)
         frontend = self.job("frontend")
-        self.assertIn("flutter analyze --no-pub", frontend)
-        self.assertIn("flutter test --no-pub", frontend)
-        self.assertIn("verify-font-assets.ps1", frontend)
+        self.assertIn("flutter analyze --no-pub", self.job("frontend-analyze"))
+        self.assertIn("flutter_test_shards.py run", self.job("frontend-shards"))
+        self.assertIn("verify-font-assets.ps1", self.job("frontend-build"))
+        self.assertIn("flutter_test_shards.py verify", frontend)
+        for producer in ("frontend-analyze", "frontend-shards", "frontend-build"):
+            self.assertIn(producer, self.needs(frontend))
 
     def test_actual_gate_shell_rejects_failed_or_skipped_producers_and_comparison(self):
         gate = self.job("backend-db")

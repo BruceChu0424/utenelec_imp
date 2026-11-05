@@ -203,7 +203,16 @@ class SalesDeliveryMixedScenarioEndToEndTest {
         segments.start(plan.planId(),segment,new SegmentTransitionRequest(version(segment),"mixed-make-start-"+segment));
         return new Make(plan.planId(),segment,db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,segment));
     }
-    private UUID reportManufacture(FullChainEndToEndTest.World w,Make make,String qty){fixture.loginAs(w.superAdminUserId());UUID report=fixture.reportAndApproveExecutionSegment(w,make.item(),null,w.goodsB(),make.segment(),null,qty,false,"0",null,null);fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));ReflectionTestUtils.invokeMethod(fixture,"drainCostsWithFreshRunnerWithoutSession",w);fixture.loginAs(w.superAdminUserId());return report;}
+    private UUID reportManufacture(FullChainEndToEndTest.World w,Make make,String qty){
+        fixture.loginAs(w.superAdminUserId());
+        UUID report=fixture.reportAndApproveExecutionSegment(w,make.item(),null,w.goodsB(),make.segment(),null,qty,false,"0",null,null);
+        // A later report may reprice earlier, already shipped output. Settle its
+        // durable work with the real worker before writing the next receipt.
+        ReflectionTestUtils.invokeMethod(fixture,"drainCostsWithFreshRunnerWithoutSession",w);
+        fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
+        ReflectionTestUtils.invokeMethod(fixture,"drainCostsWithFreshRunnerWithoutSession",w);
+        fixture.loginAs(w.superAdminUserId());return report;
+    }
     private void assertConsumed(UUID report,UUID goods,String expected){assertThat(db.queryForObject("SELECT sum(posting.qty_base) FROM production_material_settlement_postings posting JOIN production_material_settlement_events event ON event.id=posting.event_id JOIN production_material_demands demand ON demand.id=posting.demand_id WHERE event.daily_report_id=? AND event.event_type='POST' AND posting.settlement_type='CONSUMED' AND demand.goods_id=?",BigDecimal.class,report,goods)).isEqualByComparingTo(expected);}
     private void assertWip(Make make,UUID goods,String expected){assertThat(settlements.clearance(make.plan(),make.segment()).stream().filter(row->row.goodsId().equals(goods)).map(row->row.availableToSettleQty()).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo(expected);}
     private void assertNoParentStock(FullChainEndToEndTest.World w){assertThat(db.queryForObject("SELECT count(*) FROM stock_movements WHERE goods_id=?",Integer.class,w.goodsA())).isZero();assertThat(support.balance(w.warehouseId(),w.goodsA())).isZero();}

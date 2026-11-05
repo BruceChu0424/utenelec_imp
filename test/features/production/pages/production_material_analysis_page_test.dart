@@ -3154,14 +3154,14 @@ void main() {
         tester,
         'material-analysis-bucket-action-buy',
       );
-      await _submitIssuePage(tester, nativeDraftWork: true);
+      await _submitIssuePage(tester);
 
       // 第二分块超时后保留原页、原来源和增量，不重发已完成的第一块。
       expect(
         find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
       );
-      await _submitIssuePage(tester, nativeDraftWork: true);
+      await _submitIssuePage(tester);
 
       final writes = harness.requests
           .where(
@@ -4044,7 +4044,7 @@ void main() {
     expect(find.textContaining('本批需求 '), findsWidgets);
     expect(find.textContaining('合格库存保障 '), findsWidgets);
     // 本批覆盖只认 max(已分配, exact)，安全保护单独展示。
-    expect(find.textContaining('3/16(19%)'), findsWidgets);
+    expect(find.textContaining('3/16(18.75%)'), findsWidgets);
     expect(find.text('计划日期 未设置'), findsNothing);
     expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
     expect(tester.takeException(), isNull);
@@ -6187,8 +6187,8 @@ void main() {
       },
     );
     await _openMaterialTableDetails(tester, 'material-path-1');
-    // 本批覆盖只认 max(已分配 3, exact 0)，安全/在途不混成本批已到：3/16=19%。
-    expect(find.text('合格库存保障 3/16(19%)'), findsOneWidget);
+    // 本批覆盖只认 max(已分配 3, exact 0)，安全/在途不混成本批已到：3/16=18.75%。
+    expect(find.text('合格库存保障 3/16(18.75%)'), findsOneWidget);
   });
 
   testWidgets(
@@ -11934,14 +11934,7 @@ Future<void> _pickCascadeWorkshop(
 /// 2026-09-29 起提交前可能先弹「本次下单是否使用可用数量抵扣？」(skipAutoClaim)：
 /// 所选行有可用余量且选择影响结果时询问。默认「优先使用可用余量」＝旧自动抵扣
 /// 行为，点「继续」放行；没有余量的用例不弹、此处直接跳过。
-Future<void> _settlePreparationDraftWork(
-  WidgetTester tester,
-  bool nativeDraftWork,
-) async {
-  if (!nativeDraftWork) {
-    await tester.pumpAndSettle();
-    return;
-  }
+Future<void> _settlePreparationDraftWork(WidgetTester tester) async {
   // Large private drafts use real native compute. Advance fake UI timers and
   // its native event loop together; a fake-only pump cannot finish that codec.
   for (var frame = 0; frame < 400; frame++) {
@@ -11954,10 +11947,7 @@ Future<void> _settlePreparationDraftWork(
   fail('备料操作在原生草稿编码后未在有界窗口内结束');
 }
 
-Future<void> _continueClaimChoiceDialog(
-  WidgetTester tester, {
-  bool nativeDraftWork = false,
-}) async {
+Future<void> _continueClaimChoiceDialog(WidgetTester tester) async {
   final question = find.text('本次下单是否使用可用数量抵扣？');
   if (question.evaluate().isEmpty) return;
   final next = find.descendant(
@@ -11965,22 +11955,21 @@ Future<void> _continueClaimChoiceDialog(
     matching: find.text('继续'),
   );
   await tester.ensureVisible(next);
-  await _settlePreparationDraftWork(tester, nativeDraftWork);
+  await _settlePreparationDraftWork(tester);
   await tester.tap(next);
-  await _settlePreparationDraftWork(tester, nativeDraftWork);
+  await _settlePreparationDraftWork(tester);
 }
 
 Future<void> _submitIssuePage(
   WidgetTester tester, {
   bool confirm = true,
-  bool nativeDraftWork = false,
 }) async {
   final submit = find.byKey(const Key('material-preparation-order-submit'));
   await tester.ensureVisible(submit);
-  await _settlePreparationDraftWork(tester, nativeDraftWork);
+  await _settlePreparationDraftWork(tester);
   await tester.tap(submit);
-  await _settlePreparationDraftWork(tester, nativeDraftWork);
-  await _continueClaimChoiceDialog(tester, nativeDraftWork: nativeDraftWork);
+  await _settlePreparationDraftWork(tester);
+  await _continueClaimChoiceDialog(tester);
   if (!confirm) return;
   final confirmation = find.descendant(
     of: find.byType(AlertDialog),
@@ -11988,7 +11977,7 @@ Future<void> _submitIssuePage(
   );
   if (confirmation.evaluate().isNotEmpty) {
     await tester.tap(confirmation);
-    await _settlePreparationDraftWork(tester, nativeDraftWork);
+    await _settlePreparationDraftWork(tester);
   }
 }
 

@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/widgets/gl_report_line_bindings_dialog.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 
 /// ADR-112 / overhaul-gap-03: 附表取数设置——未配置的行明确标注, 选费用末级科目后整行保存,
 /// 「按默认名单补齐」调用服务端同一个库函数。
@@ -150,6 +154,109 @@ void main() {
     },
   );
 
+  testWidgets(
+    'rapid default requests and stale edit callbacks share one wait',
+    (tester) async {
+      final api = _Api()..pendingDefaults = Completer();
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: const MaterialApp(
+            home: Scaffold(body: GlReportLineBindingsDialog(canEdit: true)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final seed = tester
+          .widget<OutlinedButton>(
+            find.byKey(const ValueKey('gl-line-seed-defaults')),
+          )
+          .onPressed!;
+      final edit = tester
+          .widget<TextButton>(
+            find.byKey(const ValueKey('gl-line-edit-ADM_OFFICE')),
+          )
+          .onPressed!;
+      seed();
+      seed();
+      edit();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(api.defaultCalls, 1);
+      expect(api.lastQuery, isNull);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      api.pendingDefaults!.complete(api.lines);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(api.putPath, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final openPicker in [false, true]) {
+    testWidgets('retired scope closes safely with picker=$openPicker', (
+      tester,
+    ) async {
+      final api = _Api();
+      final epoch = _Epoch();
+      bool? changed;
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            exportContextEpochProvider.overrideWith(() => epoch),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () async {
+                    changed = await showGlReportLineBindingsDialog(
+                      context,
+                      canEdit: true,
+                    );
+                  },
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      if (openPicker) {
+        await tester.tap(find.byKey(const ValueKey('gl-line-edit-ADM_OFFICE')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('gl-line-target-style-office')),
+        );
+        await tester.pump();
+      }
+      epoch.advance();
+      await tester.pumpAndSettle();
+      expect(find.text('办公费'), findsNothing);
+      expect(find.byKey(const ValueKey('gl-line-target-save')), findsNothing);
+      if (openPicker) {
+        await tester.tap(
+          find.byKey(const ValueKey('gl-line-picker-retired-close')),
+        );
+        await tester.pumpAndSettle();
+        expect(changed, isNull);
+      }
+      await tester.tap(find.byKey(const ValueKey('gl-line-retired-close')));
+      await tester.pumpAndSettle();
+      expect(changed, isFalse);
+      expect(api.putPath, isNull);
+      expect(api.postPath, isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   test('department tree flattens every level with indentation depth', () {
     final flat = flattenDepartments([
       {
@@ -164,6 +271,13 @@ void main() {
     expect(flat.map((item) => item.label), ['生产部 (D1)', '注塑车间 (D2)']);
     expect(flat.map((item) => item.depth), [0, 1]);
   });
+}
+
+class _Epoch extends ExportContextEpoch {
+  @override
+  int build() => 0;
+
+  void advance() => state++;
 }
 
 class _Api extends ApiClient {
@@ -195,6 +309,8 @@ class _Api extends ApiClient {
   String? putPath;
   Object? putBody;
   String? postPath;
+  int defaultCalls = 0;
+  Completer<List<Map<String, dynamic>>>? pendingDefaults;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -252,6 +368,7 @@ class _Api extends ApiClient {
     Object? body,
   }) async {
     postPath = path;
-    return lines;
+    defaultCalls++;
+    return pendingDefaults?.future ?? lines;
   }
 }

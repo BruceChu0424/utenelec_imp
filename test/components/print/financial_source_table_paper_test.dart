@@ -84,7 +84,7 @@ void main() {
         );
         if (key == 'annualProfit') {
           final headings = (layout['headings'] as List)
-              .cast<Map<String, dynamic>>();
+              .cast<Map<Object?, Object?>>();
           final unit = headings.singleWhere(
             (heading) => heading['row'] == 2 && heading['text'] == '单位：元',
           );
@@ -92,7 +92,7 @@ void main() {
           expect(unit['fontSize'], 11);
           expect(unit['alignment'], 'CENTER');
           expect(
-            (layout['merges'] as List).cast<Map<String, dynamic>>(),
+            (layout['merges'] as List).cast<Map<Object?, Object?>>(),
             contains(
               equals({
                 'firstRow': 2,

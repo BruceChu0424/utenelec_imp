@@ -115,7 +115,7 @@ class ProductionExecutionSegmentPostgresTest {
                         fixture.readySegmentId(),
                         "12");
                 assertEquals(
-                        "2|1|10.0000|6.0000|true",
+                        "2|1|10|6|true",
                         scalarText(
                                 connection,
                                 """
@@ -221,7 +221,7 @@ class ProductionExecutionSegmentPostgresTest {
                         createExactDemandFixture(connection);
 
                 assertEquals(
-                        "EXACT_SNAPSHOT|9999.0000|3.0000",
+                        "EXACT_SNAPSHOT|9999|3",
                         scalarText(
                                 connection,
                                 """

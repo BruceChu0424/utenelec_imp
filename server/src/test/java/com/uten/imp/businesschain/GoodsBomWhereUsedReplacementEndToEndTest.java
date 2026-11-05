@@ -73,7 +73,7 @@ class GoodsBomWhereUsedReplacementEndToEndTest {
         var result = service.commit(new GoodsBomWhereUsedReplacementService.Commit(preview.previewToken()));
         assertEquals(1, result.replacedEdges()); assertEquals(3, result.affectedProducts());
         assertEquals(replacement, component(original));
-        assertEquals(new BigDecimal("2.50000"), db.queryForObject("SELECT qty FROM goods_bom_items WHERE id=?", BigDecimal.class, original));
+        assertEquals(0, new BigDecimal("2.5").compareTo(db.queryForObject("SELECT qty FROM goods_bom_items WHERE id=?", BigDecimal.class, original)));
         assertEquals("keep original", db.queryForObject("SELECT summary FROM goods_bom_items WHERE id=?", String.class, original));
         assertEquals(result, service.commit(new GoodsBomWhereUsedReplacementService.Commit(preview.previewToken())), "lost response retry is idempotent");
     }

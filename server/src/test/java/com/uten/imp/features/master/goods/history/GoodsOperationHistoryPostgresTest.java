@@ -189,7 +189,7 @@ class GoodsOperationHistoryPostgresTest {
         login(Set.of("goods:view","goods:cost:view"),false);
         assertFalse(service.list().entries().getFirst().canUndo());
         assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
-        assertEquals("17.0000",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
+        assertEquals("17",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
         assertEquals(0,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
         login(Set.of("goods:view","goods:edit","goods:cost:view"),false);
         inTx(()->service.undo(operation,0));
@@ -211,10 +211,10 @@ class GoodsOperationHistoryPostgresTest {
         assertEquals("禁用",scalar("SELECT status FROM goods WHERE id=:id",id));
         login(Set.of("goods:view","goods:edit","goods:import","goods:import:undo","goods:price:edit","goods:discount:view","goods:status"),false);
         inTx(()->service.undo(operation,0));
-        assertEquals("10.0000",scalar("SELECT price::text FROM goods WHERE id=:id",id));assertEquals("使用",scalar("SELECT status FROM goods WHERE id=:id",id));
+        assertEquals("10",scalar("SELECT price::text FROM goods WHERE id=:id",id));assertEquals("使用",scalar("SELECT status FROM goods WHERE id=:id",id));
         login(Set.of("goods:view","goods:edit","goods:import","goods:import:undo","goods:discount:view"),false);
         assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
-        assertEquals("10.0000",scalar("SELECT price::text FROM goods WHERE id=:id",id));
+        assertEquals("10",scalar("SELECT price::text FROM goods WHERE id=:id",id));
         assertEquals(1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
     }
 

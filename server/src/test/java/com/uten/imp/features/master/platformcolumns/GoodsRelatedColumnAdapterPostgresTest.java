@@ -50,7 +50,7 @@ class GoodsRelatedColumnAdapterPostgresTest {
         var historical=adapter.relatedValues(Set.of(legacyOnly,conflictingLegacy,unknownLegacy),Set.of(
                 "mouldName","mouldCode","mouldQty","mouldSetCount","mouldManufacturer","mouldPlace","mouldManufacturingMonth"));
         assertThat(historical.get(legacyOnly)).containsEntry("mouldName","模具甲").containsEntry("mouldCode","00012")
-                .containsEntry("mouldQty","1+1").containsEntry("mouldSetCount","2.0000")
+                .containsEntry("mouldQty","1+1").containsEntry("mouldSetCount","2")
                 .containsEntry("mouldManufacturer","厂家甲").containsEntry("mouldPlace","历史存放位置")
                 .containsEntry("mouldManufacturingMonth","2008-07");
         assertThat(historical.get(conflictingLegacy)).containsEntry("mouldName","模具甲"); // UUID wins over a different legacy identity.

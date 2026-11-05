@@ -277,7 +277,7 @@ class GoodsOperationHistoryAccountPostgresTest {
         UUID operation=command("/api/master/goods/"+parent+"/bom/"+edge,"PUT",()->{execute("UPDATE goods_bom_items SET qty=2 WHERE id=:id",edge);execute("UPDATE goods SET source_e=2,version=version+1 WHERE id=:id",parent);});
         login(a,Set.of("goods:view","goods:bom:edit"),false);scope(true);grant(a,b.employee());grant(a,c.employee());
         assertTrue(entry(operation).canUndo());inTx(()->service.undo(operation,0));assertEvents(1);
-        assertEquals("1.00000",text("SELECT qty::text FROM goods_bom_items WHERE id=:id",edge));
+        assertEquals("1",text("SELECT qty::text FROM goods_bom_items WHERE id=:id",edge));
     }
 
     @Test void categoryCascadeRequiresWriteScopeForGoodsAndReadScopeForReintroducedComponents() {

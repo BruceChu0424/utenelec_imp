@@ -203,7 +203,7 @@ class StockOperableBalanceLockPostgresTest {
             runtime.rollback();
         }
         try (Connection owner = owner()) {
-            assertEquals("500.0000", scalar(owner, "SELECT qty FROM stock_balances WHERE id='" + query.balance() + "'"));
+            assertEquals("500", scalar(owner, "SELECT qty FROM stock_balances WHERE id='" + query.balance() + "'"));
             assertEquals("1", scalar(owner, "SELECT count(*) FROM stock_measurement_holds WHERE id='" + hold + "'"));
         }
     }

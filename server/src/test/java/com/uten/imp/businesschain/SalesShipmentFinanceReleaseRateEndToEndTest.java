@@ -87,21 +87,21 @@ class SalesShipmentFinanceReleaseRateEndToEndTest {
         Map<String,Object> released=release(draft.getId(),new BigDecimal("7.200000"));
         assertEquals("7.2",released.get("shipmentExchangeRate"));assertEquals("7.2",released.get("suggestedExchangeRate"));
         rate("7.2",db.queryForObject("SELECT exchange_rate FROM sales_shipments WHERE id=?",BigDecimal.class,draft.getId()));
-        assertEquals(List.of("RELEASED|7.200000|FINANCE_MANUAL"),releaseEvents(draft.getId()));
+        assertEquals(List.of("RELEASED|7.2|FINANCE_MANUAL"),releaseEvents(draft.getId()));
 
         // 撤回放行：冻结值作废，撤回事件不带汇率。
         shipments.financeAuditReverse(draft.getId());
         assertNull(db.queryForObject("SELECT exchange_rate FROM sales_shipments WHERE id=?",BigDecimal.class,draft.getId()));
-        assertEquals(List.of("RELEASED|7.200000|FINANCE_MANUAL","REVOKED|null|null"),releaseEvents(draft.getId()));
+        assertEquals(List.of("RELEASED|7.2|FINANCE_MANUAL","REVOKED|null|null"),releaseEvents(draft.getId()));
 
         // 主档维护了 7 之后：预填 7；不填就用主档(来源=主档)；填成同值也算主档。
         db.update("UPDATE currencies SET exchange_rate=7 WHERE id=?",w.currencyId());
         assertEquals("7",shipments.financeAuditInfo(draft.getId()).get("suggestedExchangeRate"));
         release(draft.getId(),null);
-        assertEquals("RELEASED|7.000000|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
+        assertEquals("RELEASED|7|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
         shipments.financeAuditReverse(draft.getId());
         release(draft.getId(),new BigDecimal("7.0"));
-        assertEquals("RELEASED|7.000000|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
+        assertEquals("RELEASED|7|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
         shipments.financeAuditReverse(draft.getId());
 
         // 财务改成 7.25 放行；主档随后改成 8 也不影响本单——仓库确认出库按冻结的 7.25 立应收。
@@ -140,7 +140,7 @@ class SalesShipmentFinanceReleaseRateEndToEndTest {
         assertTrue(other.getMessage().contains("记账汇率固定为 1"),other.getMessage());
         release(draft.getId(),null);
         rate("1",db.queryForObject("SELECT exchange_rate FROM sales_shipments WHERE id=?",BigDecimal.class,draft.getId()));
-        assertEquals("RELEASED|1.000000|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
+        assertEquals("RELEASED|1|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
     }
 
     /**

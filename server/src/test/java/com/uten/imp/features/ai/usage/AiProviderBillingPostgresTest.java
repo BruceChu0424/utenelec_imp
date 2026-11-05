@@ -59,7 +59,8 @@ class AiProviderBillingPostgresTest {
         logs.record(new AiCallLogService.CallRecord("COST_QUERY", provider, "test-provider", "model-a", "OPENAI_CHAT", true,
                 null, 200, 1000, 500, 10, null, actorId, generation, employeeId, snapshot));
         var record = jdbc.queryForMap("SELECT estimated_cost,actual_cost,billing_input_per_million,billing_provider_version,employee_id FROM ai_call_logs WHERE provider_id=?", provider);
-        assertThat(record.get("estimated_cost").toString()).isEqualTo("0.003000000000000000");
+        assertThat(record.get("estimated_cost")).isInstanceOf(java.math.BigDecimal.class);
+        assertThat((java.math.BigDecimal)record.get("estimated_cost")).isEqualByComparingTo("0.003");
         assertThat(record.get("actual_cost")).isNull();
         assertThat(record.get("billing_provider_version")).isEqualTo(first.version());
         assertThat(record.get("employee_id")).isEqualTo(employeeId);

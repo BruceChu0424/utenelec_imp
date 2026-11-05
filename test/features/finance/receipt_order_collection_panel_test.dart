@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
-import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/widgets/receipt_order_collection_panel.dart';
@@ -125,15 +124,12 @@ void main() {
       expect(result, isNull);
       expect(api.pending, hasLength(1));
       expect(
-        (tester
-                    .widget<TextField>(
-                      find.byKey(const ValueKey('order-collection-amount')),
-                    )
-                    .decoration
-                as UtenInputDecoration)
-            .base
-            .errorText,
-        contains('登录身份、权限或连接已变化'),
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip &&
+              (widget.message ?? '').contains('登录身份、权限或连接已变化'),
+        ),
+        findsOneWidget,
       );
       expect(tester.takeException(), isNull);
     },

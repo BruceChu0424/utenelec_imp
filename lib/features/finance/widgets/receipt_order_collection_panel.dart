@@ -5,6 +5,7 @@ import 'package:dio/dio.dart' show CancelToken;
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog_chrome.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_panel_header.dart';
@@ -245,7 +246,10 @@ class _ReceiptOrderCollectionPanelState
                       decimal: true,
                     ),
                     decoration: UtenInputDecoration(
-                      InputDecoration(labelText: '本次收款原币金额', errorText: _error),
+                      InputDecoration(
+                        labelText: '本次收款原币金额',
+                        error: utenFieldError(_error),
+                      ),
                       info:
                           '先引用订货单再填本次金额。已立账应收按本订单来源分配，尚无正式应收时登记本订单预收。'
                           '此处为客户结算原币金额，银行净到账和手续费在收款单中分别填写。',

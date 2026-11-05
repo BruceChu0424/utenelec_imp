@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_editor_tooltip.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../formatters/exact_decimal.dart';
@@ -142,7 +143,7 @@ class _UnitWeightCellState extends State<_UnitWeightCell> {
               // (for example 2lb) must not be displayed as "2lb g/个".
               suffixText: '/${widget.unitName ?? '单位'}',
               isDense: true,
-              errorText: error,
+              error: utenFieldError(error),
             ),
             autofilled: widget.weight.isSuggested,
             info: widget.weight.isSuggested

@@ -27,6 +27,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_editor_tooltip.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -1077,7 +1078,7 @@ class _WeightCellState<T extends EditableGridRow>
           InputDecoration(
             isDense: true,
             hintText: '重量',
-            errorText: error,
+            error: utenFieldError(error),
             enabledBorder: border(focused: false),
             focusedBorder: border(focused: true),
             suffixIconConstraints: BoxConstraints(

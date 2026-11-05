@@ -174,7 +174,7 @@ def extract_artifacts(raw, artifact, *, workspace=ROOT, runner_temp=None):
                     raise ValueError("unexpected Flutter plan member")
                 if artifact == "flutter-test-results-*" and not (
                     len(parts) == 1 and directory
-                    or len(parts) == 2 and not directory and parts[1] in {"report.json", "machine.jsonl", "stderr.log"}
+                    or len(parts) == 2 and not directory and parts[1] in {"report.json", "machine.jsonl", "stdout.log", "stderr.log"}
                 ):
                     raise ValueError("unexpected Flutter report member")
                 members.append((archive_path, info, parts, directory))

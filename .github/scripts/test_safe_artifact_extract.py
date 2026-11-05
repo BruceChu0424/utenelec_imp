@@ -122,12 +122,14 @@ class ArtifactExtractionTests(unittest.TestCase):
     def test_eight_flutter_archives_preserve_distinct_owners_without_expanding_backend_roots(self):
         for shard in range(8):
             self.archive([(f"shard-{shard}/report.json", "{}"), (f"shard-{shard}/machine.jsonl", "{}"),
+                          (f"shard-{shard}/stdout.log", f"native trace {shard}"),
                           (f"shard-{shard}/stderr.log", "")], folder=f"flutter-test-results-{shard}")
         result = self.extract("flutter-test-results-*")
         self.assertEqual(8, result["archives"])
         destination = self.workspace / "build/flutter-ci-reports"
         self.assertEqual({f"shard-{number}" for number in range(8)}, {path.name for path in destination.iterdir()})
         self.assertFalse((self.server / "target-ci-reports").exists())
+        self.assertEqual("native trace 0", (destination / "shard-0/stdout.log").read_text())
 
     def test_flutter_zip_cannot_write_source_plan_extras_nested_paths_or_another_owner(self):
         for selector, folder, members in (
@@ -138,6 +140,11 @@ class ArtifactExtractionTests(unittest.TestCase):
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-1/report.json", "{}")]),
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/report.json", "{}"), ("shard-1/report.json", "{}")]),
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/other.json", "{}")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/extra.log", "forged")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("stdout.log", "forged")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-1/stdout.log", "forged")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/nested/stdout.log", "forged")]),
+            ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/stdout.log/extra", "forged")]),
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-0/nested/report.json", "{}")]),
             ("flutter-test-results-*", "flutter-test-results-browser", [("shard-0/report.json", "{}")]),
             ("flutter-test-results-*", "flutter-test-results-0", [("shard-browser/report.json", "{}")]),
@@ -157,12 +164,21 @@ class ArtifactExtractionTests(unittest.TestCase):
 
     def test_browser_report_is_an_exact_ninth_owner_under_the_existing_flutter_root(self):
         for owner in (*unpack.FLUTTER_SHARD_IDS, "browser"):
-            self.archive([(f"shard-{owner}/{name}", "{}") for name in ("report.json", "machine.jsonl", "stderr.log")],
+            self.archive([(f"shard-{owner}/{name}", "{}") for name in ("report.json", "machine.jsonl", "stdout.log", "stderr.log")],
                          folder=f"flutter-test-results-{owner}")
         result = self.extract("flutter-test-results-*")
         self.assertEqual(9, result["archives"])
         self.assertEqual({f"shard-{owner}" for owner in unpack.FLUTTER_REPORT_OWNERS},
                          {path.name for path in (self.workspace / "build/flutter-ci-reports").iterdir()})
+
+    def test_flutter_stdout_zip_entry_cannot_be_a_link(self):
+        info = zipfile.ZipInfo("shard-0/stdout.log")
+        info.create_system = 3
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        self.archive([(info, "../../server/application-prod.yml")], folder="flutter-test-results-0")
+        with self.assertRaises(ValueError): self.extract("flutter-test-results-*")
+        self.assertFalse((self.workspace / "build/flutter-ci-reports").exists())
+        self.assertEqual("untouched-source", self.sentinel.read_text())
 
     def test_flutter_zip_symlinks_and_source_owned_build_aliases_fail_closed(self):
         info = zipfile.ZipInfo("plan.json")

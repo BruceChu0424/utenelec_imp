@@ -31,6 +31,14 @@ import static org.assertj.core.api.Assertions.*;
  "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
  "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class PurchaseGiftSourceAllocationEndToEndTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "quantity.share", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
  @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
  @Autowired AutowireCapableBeanFactory beans;@Autowired JdbcTemplate db;
  @Autowired PurchaseRequestService requests;@Autowired PurchaseOrderService orders;

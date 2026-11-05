@@ -20,6 +20,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.OffsetDateTime;
+import java.sql.Connection;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -109,6 +110,61 @@ class InventoryValueWorkConcurrencyPostgresTest {
             assertEquals(1,count("SELECT count(*) FROM applied_refresh"));
             assertFalse(worker.hasPendingWork());assertEquals(1,version(seed));
         } finally { release.countDown();executor.shutdownNow();assertTrue(executor.awaitTermination(5,TimeUnit.SECONDS)); }
+    }
+
+    @Test void aWholeBusyRefreshPageDoesNotStarveAnIndependentReadyScopeAndReleasedClaimsAreRevisited() throws Exception {
+        for(int index=0;index<11;index++)seed("PRODUCTION_EXECUTION",true);
+        List<UUID> ordered=jdbc.queryForList("SELECT execution_segment_id FROM stock_value_production_cost_objects ORDER BY execution_segment_id",UUID.class);
+        UUID ready=ordered.getLast();List<Connection> claims=new ArrayList<>();
+        try {
+            for(UUID scope:ordered.subList(0,10))claims.add(claimRefresh(scope));
+            assertEquals(0,worker.runBatch(),"The original ten attempts remain bounded and busy");
+            assertEquals(1,worker.runBatch(),"The next page must discover the independent ready scope");
+            assertEquals(1,jdbc.queryForObject("SELECT version FROM stock_value_production_cost_objects WHERE execution_segment_id=?",Long.class,ready));
+            assertEquals(1,count("SELECT count(*) FROM applied_refresh"));
+            assertTrue(worker.hasPendingWork(),"Busy scopes remain durable, never settled by discovery");
+        } finally {
+            for(Connection claim:claims) {try {claim.rollback();}finally {claim.close();}}
+        }
+        assertEquals(10,worker.runBatch(),"The exhausted tail wraps to the now-released original page");
+        assertEquals(11,count("SELECT count(*) FROM applied_refresh"));
+        assertFalse(worker.hasPendingWork());
+    }
+
+    @Test void aLateRefreshCompletionCannotOverwriteANewerCursorTokenAfterUuidWraparound() throws Exception {
+        seed("PRODUCTION_EXECUTION",true);
+        assertEquals(1,worker.runBatch());
+        UUID first=jdbc.queryForList("SELECT execution_segment_id FROM stock_value_production_cost_objects ORDER BY execution_segment_id",UUID.class).getFirst();
+        jdbc.update("UPDATE stock_value_production_cost_objects SET business_refresh_pending=true,business_refresh_event_id=gen_random_uuid()");
+        CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);AtomicBoolean waiting=new AtomicBoolean();
+        business.set((scope,event,actor)->{
+            if(scope.equals(first)&&waiting.compareAndSet(false,true)){entered.countDown();await(release);}
+            applyBusiness(scope,event,actor);
+        });
+        var executor=Executors.newSingleThreadExecutor();
+        try {
+            Future<Integer> slow=executor.submit(worker::runBatch);assertTrue(entered.await(5,TimeUnit.SECONDS));
+            assertEquals(0,worker.runBatch(),"The other worker observes the same claimed UUID after wrapping");
+            // Both scans wrapped to the same largest UUID. Their identity tokens
+            // differ, so the old completion cannot publish even across this ABA.
+            var position=InventoryValueWorkService.class.getDeclaredField("refreshPosition");position.setAccessible(true);
+            var cursor=(AtomicReference<?>)position.get(worker);Object newer=cursor.get();
+            release.countDown();assertEquals(1,slow.get(5,TimeUnit.SECONDS));
+            assertSame(newer,cursor.get(),"A late page cannot replace the newer discovery position");
+            assertEquals(2,count("SELECT count(*) FROM applied_refresh"));
+            assertFalse(worker.hasPendingWork());
+        } finally {release.countDown();executor.shutdownNow();assertTrue(executor.awaitTermination(5,TimeUnit.SECONDS));}
+    }
+
+    private static Connection claimRefresh(UUID scope) throws Exception {
+        Connection claim=jdbc.getDataSource().getConnection();
+        try {
+            claim.setAutoCommit(false);
+            try(var statement=claim.prepareStatement("SELECT pg_advisory_xact_lock(?,hashtext(CAST(? AS text)))")) {
+                statement.setInt(1,0x5657524B);statement.setObject(2,scope);statement.execute();
+            }
+            return claim;
+        } catch(Exception failure) {claim.close();throw failure;}
     }
 
     @Test void eventAndActorArrivingWhileInventoryIsHeldReplaceTheOldDiscovery() throws Exception {

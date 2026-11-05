@@ -65,7 +65,13 @@ class StandardFinanceApprovalReadOnlyEndToEndTest {
     @Test
     void receiptReviewerCannotChangeAmountsAndApprovalPostsOnlyTheOriginalAmountThenReverses() {
         Fixture f=fixture("receipt");
-        var request=receipt(f,"100"); var draft=receipts.create(request);
+        var request=receipt(f,"100");
+        request.setSalesOrderId(null);
+        long before=db.queryForObject("SELECT count(*) FROM finance_receipts WHERE client_id=?",Long.class,f.world().clientId());
+        assertThatThrownBy(()->receipts.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("必须先引用销售订货单");
+        assertThat(db.queryForObject("SELECT count(*) FROM finance_receipts WHERE client_id=?",Long.class,f.world().clientId())).isEqualTo(before);
+        request.setSalesOrderId(f.prepaymentOrder());
+        var draft=receipts.create(request);
         request.setExpectedVersion(draft.getVersion()); request.setAmountOriginal(new BigDecimal("150"));
         request.setAccountAmount(new BigDecimal("150"));
         harness.loginAs(f.reviewer());
@@ -161,6 +167,7 @@ class StandardFinanceApprovalReadOnlyEndToEndTest {
         var world=harness.seedWorld("standard-review-"+tag); harness.loginAs(world.superAdminUserId()); harness.seedChartOfAccounts();
         UUID bankStyle=style("ACCOUNT",tag+"-bank"),expenseStyle=style("EXPENSE",tag+"-expense"),incomeStyle=style("INCOME",tag+"-income");
         UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND status='使用' AND NOT is_deleted",UUID.class);
+        UUID prepaymentOrder=com.uten.imp.support.SalesPrepaymentOrderFixture.createApproved(beans,db,world.clientId(),currency,BusinessTime.today());
         UUID bank=bank(currency,bankStyle,tag+"-a"),other=bank(currency,bankStyle,tag+"-b");
         UUID reviewer=harness.createUserWithPerms(world,"standard-reviewer-"+tag,
                 "finance:view:all","customer_prepayment:view","finance_receipt:view","finance_receipt:approve",
@@ -168,7 +175,7 @@ class StandardFinanceApprovalReadOnlyEndToEndTest {
                 "finance_other_income:view","finance_other_income:approve","finance_bank_transfer:view","finance_bank_transfer:approve");
         db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'grant' FROM permissions WHERE code IN ('finance_order_approval:view','finance_order_approval:approve')",reviewer);
         db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'revoke' FROM permissions WHERE code IN ('finance_receipt:edit','finance_payment:edit','finance_expense:edit','finance_other_income:edit','finance_bank_transfer:edit')",reviewer);
-        return new Fixture(world,reviewer,bank,other,expenseStyle,incomeStyle,currency);
+        return new Fixture(world,reviewer,bank,other,expenseStyle,incomeStyle,currency,prepaymentOrder);
     }
     private UUID style(String category,String tag) {
         UUID id=UUID.randomUUID(); db.update("INSERT INTO payment_styles(id,code,name,category,level,status) VALUES (?,?,?, ?,0,'使用')",id,"RV-"+tag,"审核测试"+tag,category); return id;
@@ -179,13 +186,14 @@ class StandardFinanceApprovalReadOnlyEndToEndTest {
     private FinanceReceiptSaveRequest receipt(Fixture f,String amount) {
         FinanceReceiptSaveRequest req=ReflectionTestUtils.invokeMethod(harness,"receiptRequest",f.world(),null,f.bank(),f.expenseStyle(),amount,amount,"0","0",BigDecimal.ONE,BusinessTime.today());
         req.setReceiptKind("CUSTOMER_PREPAYMENT"); req.setCurrencyId(f.currency()); req.setExchangeRate(BigDecimal.ONE);
+        req.setSalesOrderId(f.prepaymentOrder());
         req.setAmountOriginal(new BigDecimal(amount));req.setOtherFeeStyleId(null);req.setItems(List.of());return req;
     }
     private FinancePaymentSaveRequest payment(Fixture f,String amount) {
         var req=new FinancePaymentSaveRequest();req.setBillDate(BusinessTime.today());req.setCreateIdempotencyKey("review-payment-"+UUID.randomUUID());
         req.setSupplierId(f.world().supplierId());req.setAccountId(f.bank());req.setCurrencyId(f.currency());req.setExchangeRate(BigDecimal.ONE);
         req.setAmountOriginal(new BigDecimal(amount));req.setAccountCurrencyId(f.currency());req.setAccountAmount(new BigDecimal(amount));
-        req.setBankFeeAccountAmount(BigDecimal.ZERO);req.setBankReference("REVIEW-"+UUID.randomUUID());req.setBankBookedAt(BusinessTime.today().atTime(10,0).atOffset(java.time.ZoneOffset.UTC));
+        req.setBankFeeAccountAmount(BigDecimal.ZERO);req.setBankReference("REVIEW-"+UUID.randomUUID());req.setBankBookedAt(BusinessTime.startOfDay(BusinessTime.today()));
         var line=new com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput();
         line.setAppliedLedgerId(payable(f));line.setSupplierId(f.world().supplierId());line.setAmountOriginal(new BigDecimal(amount));
         req.setItems(List.of(line));return req;
@@ -233,5 +241,5 @@ class StandardFinanceApprovalReadOnlyEndToEndTest {
         var line=new FinanceBankTransferLineInput();line.setInAccountId(f.otherBank());line.setOccurDate(BusinessTime.today());line.setAmountOriginal(new BigDecimal(amount));req.setItems(List.of(line));return req;
     }
     private void assertBalance(UUID account,String value) { assertThat(db.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,account)).isEqualByComparingTo(value); }
-    private record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID bank,UUID otherBank,UUID expenseStyle,UUID incomeStyle,UUID currency) { }
+    private record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID bank,UUID otherBank,UUID expenseStyle,UUID incomeStyle,UUID currency,UUID prepaymentOrder) { }
 }

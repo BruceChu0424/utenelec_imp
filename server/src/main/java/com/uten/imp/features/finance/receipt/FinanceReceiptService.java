@@ -256,15 +256,15 @@ public class FinanceReceiptService {
                 || req.getItems()!=null && req.getItems().stream().anyMatch(line->line.getRequestedSalesOrderId()!=null)?1:0));
         r.setStatus(STATUS_DRAFT);
         applyMakerIdentity(r);
+        if ("CUSTOMER_PREPAYMENT".equals(r.getReceiptKind()) && r.getSalesOrderId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "新建客户预收必须先引用销售订货单，再填写本次收款金额");
+        }
         receiptRepo.save(r);
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
         applyLineTotals(r, items);
         finalizeSettlementAuthority(r, req.getAccountCurrencyId(),
                 req.getAccountAmount(), false);
         validateReceiptShape(r, items, false);
-        if ("CUSTOMER_PREPAYMENT".equals(r.getReceiptKind()) && r.getSalesOrderId() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "新建客户预收必须先引用销售订货单，再填写本次收款金额");
-        }
         receiptRepo.flush();
         return toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList());
     }

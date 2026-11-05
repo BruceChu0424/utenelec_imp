@@ -8612,10 +8612,11 @@ class FullChainEndToEndTest {
         req.setCreateIdempotencyKey(UUID.randomUUID().toString());
         req.setSettlementChannel("DIRECT_ACCOUNT");
         req.setExchangeRateSource("BANK_STATEMENT");
-        req.setExchangeRateEffectiveAt(
-                billDate.atTime(9,0).atOffset(java.time.ZoneOffset.ofHours(8)));
-        req.setBankBookedAt(
-                billDate.atTime(10,0).atOffset(java.time.ZoneOffset.ofHours(8)));
+        // This helper represents a bank fact that already happened on its stated
+        // Shanghai business day, including CI runs before 09:00. Future-booking
+        // scenarios set their explicit future timestamp in the individual test.
+        req.setExchangeRateEffectiveAt(BusinessTime.startOfDay(billDate));
+        req.setBankBookedAt(BusinessTime.startOfDay(billDate));
         req.setBankReference("FULLCHAIN-"+UUID.randomUUID());
         req.setBankFeeAccountAmount(new BigDecimal(bankFee));
         req.setOtherFeeAccountAmount(new BigDecimal(otherFee));

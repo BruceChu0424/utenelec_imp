@@ -30,7 +30,8 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "subcontract_order_items")
-public class SubcontractOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity {
+public class SubcontractOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity
+        implements com.uten.imp.common.finance.ProcurementReferencePrice.Owner {
 
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted;
@@ -73,6 +74,10 @@ public class SubcontractOrderItem extends com.uten.imp.common.columns.ExtraColum
 
     @Column(name = "total_amount_input", columnDefinition = "numeric")
     private BigDecimal totalAmountInput;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @jakarta.persistence.Transient
+    private java.util.Map<String, Object> referencePricePrecisionPolicy;
 
     @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;

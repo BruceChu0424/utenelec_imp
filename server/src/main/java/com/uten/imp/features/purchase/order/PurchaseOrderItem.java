@@ -24,7 +24,8 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "purchase_order_items")
-public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity {
+public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity
+        implements com.uten.imp.common.finance.ProcurementReferencePrice.Owner {
     @jakarta.persistence.Column(name="quantity_semantics")
     private String quantitySemantics = "LEGACY_RECORDED";
     @jakarta.persistence.Column(name="gift_received_qty")
@@ -80,6 +81,10 @@ public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEn
 
     @Column(name = "total_amount_input", columnDefinition = "numeric")
     private BigDecimal totalAmountInput;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @jakarta.persistence.Transient
+    private java.util.Map<String, Object> referencePricePrecisionPolicy;
 
     @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;

@@ -6,9 +6,7 @@ import java.math.BigDecimal;
 import java.util.Map;
 import java.util.List;
 import java.util.UUID;
-import javax.sql.DataSource;
-import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.MigrationVersion;
+import com.uten.imp.testsupport.TestFlyway;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,7 +36,7 @@ import com.uten.imp.security.TxSessionVars;
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @AutoConfigureMockMvc(print=MockMvcPrint.NONE)
 @TestExecutionListeners(listeners=GoodsNativeBudgetEndToEndTest.Cleanup.class,mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
-@SpringBootTest(properties={"spring.profiles.active=dev","spring.flyway.target=1032",
+@SpringBootTest(properties={"spring.profiles.active=dev",
         "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false","uten.inventory.value-work.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
@@ -49,13 +47,38 @@ import com.uten.imp.security.TxSessionVars;
 class GoodsNativeBudgetEndToEndTest {
     private static final String MIGRATIONS=snapshotMigrations();
     private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
+    private static FullChainEndToEndTest.World originalWorld;
+    private static String upgradedGoods;
     public static class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
         @Override public void afterTestClass(TestContext ignored){PG.stop();}
     }
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){PG.start();FixtureDatabaseProperties.bindSameRole(registry,PG::getJdbcUrl,PG::getUsername,PG::getPassword);registry.add("spring.flyway.locations",()->MIGRATIONS);}
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){
+        PG.start();
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
+        var oldDb=new JdbcTemplate(source);
+        TestFlyway.configure().dataSource(source).locations(MIGRATIONS).target("1032").load().migrate();
+        // seedWorld only uses JdbcTemplate. No current entity mapping or Spring
+        // application is started against the historical schema.
+        var oldFixture=new FullChainEndToEndTest();ReflectionTestUtils.setField(oldFixture,"jdbc",oldDb);
+        originalWorld=oldFixture.seedWorld("goods-native-budget");
+        oldDb.update("UPDATE goods SET source_e=7.1234 WHERE id=?",originalWorld.goodsA());
+        String before=oldDb.queryForObject("SELECT jsonb_agg(to_jsonb(goods) ORDER BY id)::text FROM goods",String.class);
+        TestFlyway.configure().dataSource(source).locations(MIGRATIONS).target("1034").load().migrate();
+        assertThat(oldDb.queryForObject("SELECT jsonb_agg(to_jsonb(goods) ORDER BY id)::text FROM goods",String.class)).isEqualTo(before);
+        assertThat(oldDb.queryForObject("SELECT count(*) FROM goods_bom_material_cost_adoptions",Integer.class)).isZero();
+        assertThat(oldDb.queryForObject("SELECT count(*) FROM goods_bom_periodic_quantity_adoptions",Integer.class)).isZero();
+        // Only the actual forward-complete catalog may bootstrap current JPA.
+        TestFlyway.configure().dataSource(source).locations(MIGRATIONS).load().migrate();
+        assertThat(oldDb.queryForObject("""
+                SELECT jsonb_agg((SELECT jsonb_object_agg(key,value) FROM jsonb_each(to_jsonb(goods))
+                    WHERE key IN(SELECT jsonb_object_keys(CAST(? AS jsonb)->0))) ORDER BY goods.id)::text FROM goods
+                """,String.class,before)).isEqualTo(before);
+        upgradedGoods=oldDb.queryForObject("SELECT jsonb_agg(to_jsonb(goods) ORDER BY id)::text FROM goods",String.class);
+        FixtureDatabaseProperties.bindSameRole(registry,PG::getJdbcUrl,PG::getUsername,PG::getPassword);
+        registry.add("spring.flyway.locations",()->MIGRATIONS);
+    }
     @Autowired AutowireCapableBeanFactory beans;
-    @Autowired DataSource data;
     @Autowired JdbcTemplate db;
     @Autowired MockMvc http;
     @Autowired ObjectMapper json;
@@ -64,11 +87,8 @@ class GoodsNativeBudgetEndToEndTest {
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
     private static final String FULL="1234567890123456789012345678901234567890.123456789012345678901234";
     @Test void migrationDoesNotRewriteHistoryAndActualHttpKeepsFullFactsAndCas()throws Exception {
-        var harness=new FullChainEndToEndTest();beans.autowireBean(harness);var world=harness.seedWorld("goods-native-budget");harness.loginAs(world.superAdminUserId());
-        db.update("UPDATE goods SET source_e=7.1234 WHERE id=?",world.goodsA());
-        String before=db.queryForObject("SELECT jsonb_agg(to_jsonb(goods) ORDER BY id)::text FROM goods",String.class);
-        Flyway.configure().dataSource(data).locations(MIGRATIONS).target(MigrationVersion.fromVersion("1034")).load().migrate();
-        assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(goods) ORDER BY id)::text FROM goods",String.class)).isEqualTo(before);
+        var harness=new FullChainEndToEndTest();beans.autowireBean(harness);var world=originalWorld;harness.loginAs(world.superAdminUserId());
+        assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(goods) ORDER BY id)::text FROM goods",String.class)).isEqualTo(upgradedGoods);
         assertThat(db.queryForObject("SELECT count(*) FROM goods_bom_material_cost_adoptions",Integer.class)).isZero();
         assertThat(db.queryForObject("SELECT count(*) FROM goods_bom_periodic_quantity_adoptions",Integer.class)).isZero();
         UUID category=UUID.randomUUID();db.update("INSERT INTO material_categories(id,code,name,level) VALUES(?,?,?,0)",category,"GOODS-NATIVE-CAT","匿名完整值分类");

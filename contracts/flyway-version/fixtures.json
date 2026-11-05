@@ -1,0 +1,12 @@
+{
+  "contractVersion": 1,
+  "canonicalOrder": ["0.1", "1", "1.0.1", "1.2", "1.2.0.1", "2", "999", "999.1", "999.2", "999.10", "999.11", "1000", "20261105123456789012345678901234567890"],
+  "semanticAliases": [["999_1", "999.1"], ["0007.000", "7"], ["1.2.0", "1.2"]],
+  "invalidCanonical": ["", "0", "00", "01", "1.0", "1.00", "999.01", "999.1.0", "1_2", "1..2", "1.", ".1", "1e3", "-1", "+1", " 1", "1\n", "١", true, false, null, 1, 1.5],
+  "scripts": [
+    {"file": "V999_1__first_decimal.sql", "version": "999.1", "rawDescription": "first_decimal", "flywayDescription": "first decimal"},
+    {"file": "V999.10__tenth_delta.sql", "version": "999.10", "rawDescription": "tenth_delta", "flywayDescription": "tenth delta"},
+    {"file": "V1000__integer.sql", "version": "1000", "rawDescription": "integer", "flywayDescription": "integer"}
+  ],
+  "invalidScripts": ["V0999_1__alias.sql", "V999_1_0__alias.sql", "V999_1.2__mixed.sql", "V1e3__exponent.sql", "V1____.sql/evil", "../V1__outside.sql", "V1__folder/file.sql", "V1__folder\\file.sql", "V1__line\nbreak.sql"]
+}

@@ -18943,18 +18943,18 @@
       "id": "page:applications/pages/business_application_edit_page.dart",
       "feature": "applications",
       "source": "lib/features/applications/pages/business_application_edit_page.dart",
-      "sha256": "639f17b95854c9dfebc082e82027fd510aa38233f1010a8e762f72ba708f7e63",
-      "lineCount": 624,
+      "sha256": "7481f184d0711cd87a86f175ec6cfd923236295147dcbbfc21cafe4a1427bbab",
+      "lineCount": 626,
       "classes": [
         {
           "name": "BusinessApplicationEditPage",
-          "line": 36,
+          "line": 37,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_BusinessApplicationEditPageState",
-          "line": 45,
+          "line": 46,
           "role": "state-class",
           "extends": "ConsumerState<BusinessApplicationEditPage>\n    with FormDraftMixin<BusinessApplicationEditPage>"
         }
@@ -19070,9 +19070,21 @@
         },
         {
           "directive": "import",
+          "uri": "../../../components/inputs/uten_field_message.dart",
+          "source": "lib/components/inputs/uten_field_message.dart",
+          "line": 11,
+          "role": "sharedComponents",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "07829bc659793a855ff8d4749075727514248c244ae75b64a8409bb4230d8834"
+        },
+        {
+          "directive": "import",
           "uri": "../../../components/inputs/uten_input_decoration.dart",
           "source": "lib/components/inputs/uten_input_decoration.dart",
-          "line": 11,
+          "line": 12,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19084,7 +19096,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 12,
+          "line": 13,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19096,7 +19108,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 13,
+          "line": 14,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19108,7 +19120,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_floating_action_group.dart",
           "source": "lib/components/layout/uten_floating_action_group.dart",
-          "line": 14,
+          "line": 15,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19120,7 +19132,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_form_grid.dart",
           "source": "lib/components/layout/uten_form_grid.dart",
-          "line": 15,
+          "line": 16,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19132,7 +19144,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 16,
+          "line": 17,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -19144,7 +19156,7 @@
           "directive": "import",
           "uri": "../../../core/router/editor_resource_key.dart",
           "source": "lib/core/router/editor_resource_key.dart",
-          "line": 17,
+          "line": 18,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -19156,7 +19168,7 @@
           "directive": "import",
           "uri": "../../../core/router/nav_helpers.dart",
           "source": "lib/core/router/nav_helpers.dart",
-          "line": 18,
+          "line": 19,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -19168,7 +19180,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/editor_identity_notice.dart",
           "source": "lib/shared/widgets/editor_identity_notice.dart",
-          "line": 19,
+          "line": 20,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19180,7 +19192,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 20,
+          "line": 21,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -19192,7 +19204,7 @@
           "directive": "import",
           "uri": "../../../core/utils/china_datetime.dart",
           "source": "lib/core/utils/china_datetime.dart",
-          "line": 21,
+          "line": 22,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -19204,7 +19216,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 22,
+          "line": 23,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19216,7 +19228,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 23,
+          "line": 24,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19228,7 +19240,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/sensitive_write.dart",
           "source": "lib/shared/auth/sensitive_write.dart",
-          "line": 24,
+          "line": 25,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19240,7 +19252,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/sensitive_read_boundary_provider.dart",
           "source": "lib/shared/providers/sensitive_read_boundary_provider.dart",
-          "line": 25,
+          "line": 26,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19252,7 +19264,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_catalog.dart",
           "source": "lib/shared/drafts/form_draft_catalog.dart",
-          "line": 26,
+          "line": 27,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19264,7 +19276,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_mixin.dart",
           "source": "lib/shared/drafts/form_draft_mixin.dart",
-          "line": 27,
+          "line": 28,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19276,7 +19288,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/authenticated_scope_provider.dart",
           "source": "lib/shared/providers/authenticated_scope_provider.dart",
-          "line": 28,
+          "line": 29,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19288,7 +19300,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/session_provider.dart",
           "source": "lib/shared/providers/session_provider.dart",
-          "line": 29,
+          "line": 30,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -19300,7 +19312,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/uten_supplier_picker.dart",
           "source": "lib/features/basic_data/widgets/uten_supplier_picker.dart",
-          "line": 30,
+          "line": 31,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -19312,7 +19324,7 @@
           "directive": "import",
           "uri": "../models/business_application.dart",
           "source": "lib/features/applications/models/business_application.dart",
-          "line": 31,
+          "line": 32,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -19324,7 +19336,7 @@
           "directive": "import",
           "uri": "../providers/business_application_providers.dart",
           "source": "lib/features/applications/providers/business_application_providers.dart",
-          "line": 32,
+          "line": 33,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
@@ -19336,7 +19348,7 @@
           "directive": "import",
           "uri": "../repositories/business_application_repository.dart",
           "source": "lib/features/applications/repositories/business_application_repository.dart",
-          "line": 33,
+          "line": 34,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -19350,21 +19362,21 @@
         {
           "symbol": "Perm.applicationApply",
           "literal": "application:apply",
-          "line": 102,
+          "line": 103,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 64
         },
         {
           "symbol": "Perm.applicationApply",
           "literal": "application:apply",
-          "line": 466,
+          "line": 468,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 64
         },
         {
           "symbol": "Perm.applicationKindApplyPermissions",
           "literal": null,
-          "line": 469,
+          "line": 471,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 70
         }
@@ -19390,7 +19402,7 @@
         {
           "symbol": "BusinessApplicationEditPage",
           "receiver": null,
-          "line": 37,
+          "line": 38,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -19400,7 +19412,7 @@
         {
           "symbol": "_BusinessApplicationEditPageState",
           "receiver": null,
-          "line": 42,
+          "line": 43,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -19410,7 +19422,7 @@
         {
           "symbol": "restoreFormDraft",
           "receiver": null,
-          "line": 124,
+          "line": 125,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "restore"
@@ -19420,7 +19432,7 @@
         {
           "symbol": "startFormDraftIdentityGuard",
           "receiver": null,
-          "line": 146,
+          "line": 147,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -19430,7 +19442,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 150,
+          "line": 151,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -19440,7 +19452,7 @@
         {
           "symbol": "_save",
           "receiver": null,
-          "line": 191,
+          "line": 192,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -19450,7 +19462,7 @@
         {
           "symbol": "update",
           "receiver": "repository",
-          "line": 271,
+          "line": 272,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -19460,7 +19472,7 @@
         {
           "symbol": "create",
           "receiver": "repository",
-          "line": 272,
+          "line": 273,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -19470,7 +19482,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 285,
+          "line": 286,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -19480,7 +19492,7 @@
         {
           "symbol": "close",
           "receiver": "subscription",
-          "line": 297,
+          "line": 298,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -85210,7 +85222,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -88665,7 +88677,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -96060,7 +96072,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -97513,7 +97525,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -99451,8 +99463,8 @@
       "id": "page:finance/payables/pages/finance_payables_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
-      "sha256": "1e8f710ae6bc8ed065cfa1ce225d3f1e31c1e7c8ea9448ef8e09bd8a455f5976",
-      "lineCount": 1095,
+      "sha256": "13a66c294393f631a0a210a399ea3a5a554f84533a2a621be9d5dbb50357818e",
+      "lineCount": 1096,
       "classes": [
         {
           "name": "FinancePayablesPage",
@@ -106818,7 +106830,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -112073,7 +112085,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -113633,7 +113645,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -123992,7 +124004,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -124629,7 +124641,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -127989,7 +128001,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -128457,7 +128469,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ce1206513e0b3d5e14a52e080bc8eca4d5b16b806df7ce39bafa00195c51a828"
+          "targetSha256": "a057ae263497babc412e3b2a2fa69e21c1c2a95ecc27e91cb3de22ea23ea8075"
         },
         {
           "directive": "part",
@@ -130278,8 +130290,8 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_material_table.dart",
-          "sha256": "ce1206513e0b3d5e14a52e080bc8eca4d5b16b806df7ce39bafa00195c51a828",
-          "lineCount": 9125,
+          "sha256": "a057ae263497babc412e3b2a2fa69e21c1c2a95ecc27e91cb3de22ea23ea8075",
+          "lineCount": 9132,
           "classes": [
             {
               "name": "_MaterialTableRow",
@@ -130295,13 +130307,13 @@
             },
             {
               "name": "_MaterialAnalysisIssuedRateField",
-              "line": 8884,
+              "line": 8891,
               "role": "supporting-class",
               "extends": "StatefulWidget"
             },
             {
               "name": "_MaterialAnalysisIssuedRateFieldState",
-              "line": 8914,
+              "line": 8921,
               "role": "state-class",
               "extends": "State<_MaterialAnalysisIssuedRateField>"
             }
@@ -130450,7 +130462,7 @@
             {
               "symbol": "removeAll",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 1294,
+              "line": 1290,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130460,7 +130472,7 @@
             {
               "symbol": "removeAll",
               "receiver": null,
-              "line": 1300,
+              "line": 1296,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130470,7 +130482,7 @@
             {
               "symbol": "removeAll",
               "receiver": null,
-              "line": 1302,
+              "line": 1298,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130480,7 +130492,7 @@
             {
               "symbol": "removeAll",
               "receiver": null,
-              "line": 1303,
+              "line": 1299,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130490,7 +130502,7 @@
             {
               "symbol": "removeAll",
               "receiver": "_tableUserDeselectedKeys",
-              "line": 1325,
+              "line": 1321,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130500,7 +130512,7 @@
             {
               "symbol": "removeAll",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 1327,
+              "line": 1323,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130510,7 +130522,7 @@
             {
               "symbol": "removeAll",
               "receiver": "_tableAutoSelectedKeys",
-              "line": 1330,
+              "line": 1326,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130520,7 +130532,7 @@
             {
               "symbol": "_tableSubmitQtyOf",
               "receiver": null,
-              "line": 1345,
+              "line": 1341,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -130530,7 +130542,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 1366,
+              "line": 1362,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130540,7 +130552,7 @@
             {
               "symbol": "update",
               "receiver": "statusCounts",
-              "line": 1969,
+              "line": 1965,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "update"
@@ -130550,7 +130562,7 @@
             {
               "symbol": "complete",
               "receiver": null,
-              "line": 2000,
+              "line": 1996,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "complete"
@@ -130560,7 +130572,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 2438,
+              "line": 2434,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -130570,7 +130582,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 2448,
+              "line": 2444,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -130580,7 +130592,7 @@
             {
               "symbol": "remove",
               "receiver": "_collapsedBomProducts",
-              "line": 2754,
+              "line": 2750,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130590,7 +130602,7 @@
             {
               "symbol": "remove",
               "receiver": "_expandedMaterialAggregates",
-              "line": 2759,
+              "line": 2755,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130600,7 +130612,7 @@
             {
               "symbol": "remove",
               "receiver": "_collapsedBomBranches",
-              "line": 2766,
+              "line": 2762,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130610,7 +130622,7 @@
             {
               "symbol": "remove",
               "receiver": "_expandedMaterialAggregates",
-              "line": 2805,
+              "line": 2801,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130620,7 +130632,7 @@
             {
               "symbol": "remove",
               "receiver": "_collapsedBomBranches",
-              "line": 2813,
+              "line": 2809,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130630,7 +130642,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 2985,
+              "line": 2981,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -130640,7 +130652,7 @@
             {
               "symbol": "_editOwningWarehouse",
               "receiver": null,
-              "line": 2998,
+              "line": 2994,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "edit"
@@ -130650,7 +130662,7 @@
             {
               "symbol": "_editOwningWarehouse",
               "receiver": null,
-              "line": 3022,
+              "line": 3018,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "edit"
@@ -130660,12 +130672,22 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 3431,
+              "line": 3427,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
               ],
               "evidenceLine": "_tableEstimateRebuild?.cancel();"
+            },
+            {
+              "symbol": "cancel",
+              "receiver": null,
+              "line": 3448,
+              "kind": "action-like-invocation",
+              "actionNameHints": [
+                "cancel"
+              ],
+              "evidenceLine": "_tableCascadeDebounce?.cancel();"
             },
             {
               "symbol": "cancel",
@@ -130675,22 +130697,12 @@
               "actionNameHints": [
                 "cancel"
               ],
-              "evidenceLine": "_tableCascadeDebounce?.cancel();"
-            },
-            {
-              "symbol": "cancel",
-              "receiver": null,
-              "line": 3456,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "cancel"
-              ],
               "evidenceLine": "_tableCascadeCancelToken?.cancel('material table preview disposed');"
             },
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 3458,
+              "line": 3454,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130700,7 +130712,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 3866,
+              "line": 3862,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -130710,7 +130722,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 3881,
+              "line": 3877,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -130720,7 +130732,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 3887,
+              "line": 3883,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -130730,7 +130742,7 @@
             {
               "symbol": "_submitQtyWithOrderPolicy",
               "receiver": null,
-              "line": 3895,
+              "line": 3891,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -130740,7 +130752,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 3964,
+              "line": 3960,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -130750,7 +130762,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableSeededQtyTexts",
-              "line": 4119,
+              "line": 4115,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130760,7 +130772,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 4122,
+              "line": 4118,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -130770,7 +130782,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 4123,
+              "line": 4119,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -130780,7 +130792,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 4137,
+              "line": 4133,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -130790,7 +130802,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableTypedBlockedNotices",
-              "line": 4153,
+              "line": 4149,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130800,7 +130812,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 4171,
+              "line": 4167,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -130810,7 +130822,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableAutoSelectedKeys",
-              "line": 4179,
+              "line": 4175,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130820,7 +130832,7 @@
             {
               "symbol": "remove",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 4180,
+              "line": 4176,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130830,7 +130842,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4188,
+              "line": 4184,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130840,7 +130852,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4263,
+              "line": 4259,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130850,7 +130862,7 @@
             {
               "symbol": "_cancelPreparationEditorPreview",
               "receiver": null,
-              "line": 4275,
+              "line": 4271,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -130860,7 +130872,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4276,
+              "line": 4272,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130870,7 +130882,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4279,
+              "line": 4275,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130880,7 +130892,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserTypedQty",
-              "line": 4336,
+              "line": 4332,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130890,7 +130902,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserDeselectedKeys",
-              "line": 4343,
+              "line": 4339,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130900,7 +130912,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableTypedBlockedNotices",
-              "line": 4348,
+              "line": 4344,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130910,7 +130922,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4363,
+              "line": 4359,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130920,7 +130932,7 @@
             {
               "symbol": "CancelToken",
               "receiver": null,
-              "line": 4417,
+              "line": 4413,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -130930,7 +130942,7 @@
             {
               "symbol": "previewIssuePlans",
               "receiver": null,
-              "line": 4422,
+              "line": 4418,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -130940,7 +130952,7 @@
             {
               "symbol": "_aggregateTransferPaths",
               "receiver": null,
-              "line": 4843,
+              "line": 4839,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "transfer"
@@ -130950,7 +130962,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 4937,
+              "line": 4933,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -130960,7 +130972,7 @@
             {
               "symbol": "removeWhere",
               "receiver": null,
-              "line": 4954,
+              "line": 4950,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130970,7 +130982,7 @@
             {
               "symbol": "complete",
               "receiver": "completion",
-              "line": 5059,
+              "line": 5055,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "complete"
@@ -130980,7 +130992,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableWorkerDraft",
-              "line": 5255,
+              "line": 5251,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -130990,7 +131002,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 5306,
+              "line": 5302,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "issue"
@@ -131000,7 +131012,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 5366,
+              "line": 5373,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "issue"
@@ -131010,7 +131022,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 5427,
+              "line": 5434,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131020,7 +131032,7 @@
             {
               "symbol": "_tableTransferBlockedReason",
               "receiver": null,
-              "line": 5459,
+              "line": 5466,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "transfer"
@@ -131030,7 +131042,7 @@
             {
               "symbol": "_tableTransferBlockedReason",
               "receiver": null,
-              "line": 5495,
+              "line": 5502,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131040,7 +131052,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5519,
+              "line": 5526,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131050,7 +131062,7 @@
             {
               "symbol": "topLevelWithdrawCell",
               "receiver": "_aggregateTable",
-              "line": 5522,
+              "line": 5529,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -131060,7 +131072,7 @@
             {
               "symbol": "withdrawCell",
               "receiver": "_aggregateTable",
-              "line": 5523,
+              "line": 5530,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -131070,7 +131082,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5542,
+              "line": 5549,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131080,7 +131092,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5548,
+              "line": 5555,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131090,7 +131102,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5554,
+              "line": 5561,
               "kind": "action-ui-factory",
               "actionNameHints": [
                 "transfer"
@@ -131100,7 +131112,7 @@
             {
               "symbol": "_tableTransferBlockedReason",
               "receiver": null,
-              "line": 5559,
+              "line": 5566,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131110,7 +131122,7 @@
             {
               "symbol": "_showTransferLauncher",
               "receiver": null,
-              "line": 5572,
+              "line": 5579,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131120,7 +131132,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5621,
+              "line": 5628,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131130,7 +131142,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5630,
+              "line": 5637,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131140,7 +131152,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5714,
+              "line": 5721,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131150,7 +131162,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 5758,
+              "line": 5765,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131160,7 +131172,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 5785,
+              "line": 5792,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131170,27 +131182,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5843,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "copy"
-              ],
-              "evidenceLine": "style: theme.textTheme.bodySmall?.copyWith("
-            },
-            {
-              "symbol": "_tableIssueBlockedReason",
-              "receiver": null,
-              "line": 5874,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "issue"
-              ],
-              "evidenceLine": "message: _tableIssueBlockedReason(group)!,"
-            },
-            {
-              "symbol": "copyWith",
-              "receiver": null,
-              "line": 5909,
+              "line": 5850,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131200,7 +131192,17 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5924,
+              "line": 5916,
+              "kind": "action-like-invocation",
+              "actionNameHints": [
+                "copy"
+              ],
+              "evidenceLine": "style: theme.textTheme.bodySmall?.copyWith("
+            },
+            {
+              "symbol": "copyWith",
+              "receiver": null,
+              "line": 5931,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131210,7 +131212,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 5933,
+              "line": 5940,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131220,7 +131222,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 5969,
+              "line": 5976,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131230,7 +131232,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 6000,
+              "line": 6007,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131240,7 +131242,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 6013,
+              "line": 6020,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131250,7 +131252,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6223,
+              "line": 6230,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131260,7 +131262,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 6465,
+              "line": 6472,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -131270,7 +131272,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 6473,
+              "line": 6480,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131280,7 +131282,7 @@
             {
               "symbol": "_tableSubmitQtyOf",
               "receiver": null,
-              "line": 6478,
+              "line": 6485,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -131290,7 +131292,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 6480,
+              "line": 6487,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131300,7 +131302,7 @@
             {
               "symbol": "_tableSubmitQtyOf",
               "receiver": null,
-              "line": 6520,
+              "line": 6527,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131310,7 +131312,7 @@
             {
               "symbol": "_finishPreparationQuantityEditing",
               "receiver": null,
-              "line": 6528,
+              "line": 6535,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "finish"
@@ -131320,7 +131322,7 @@
             {
               "symbol": "_completePreparationSupplyUsage",
               "receiver": null,
-              "line": 6559,
+              "line": 6566,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "complete"
@@ -131330,7 +131332,7 @@
             {
               "symbol": "whenComplete",
               "receiver": null,
-              "line": 6584,
+              "line": 6591,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "complete"
@@ -131340,7 +131342,7 @@
             {
               "symbol": "_submitMaterialTableRows",
               "receiver": null,
-              "line": 6690,
+              "line": 6697,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -131350,7 +131352,7 @@
             {
               "symbol": "_submitMaterialTableRowsInScope",
               "receiver": null,
-              "line": 6694,
+              "line": 6701,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131360,7 +131362,7 @@
             {
               "symbol": "_submitMaterialTableRowsInScope",
               "receiver": null,
-              "line": 6700,
+              "line": 6707,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -131370,7 +131372,7 @@
             {
               "symbol": "submit",
               "receiver": "_aggregateTable",
-              "line": 6716,
+              "line": 6723,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131380,7 +131382,7 @@
             {
               "symbol": "_tableSubmitQtyOf",
               "receiver": null,
-              "line": 6744,
+              "line": 6751,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131390,7 +131392,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 6752,
+              "line": 6759,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131400,7 +131402,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6770,
+              "line": 6777,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131410,7 +131412,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 6789,
+              "line": 6796,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131420,7 +131422,7 @@
             {
               "symbol": "_confirmMaterialTableSubmit",
               "receiver": null,
-              "line": 6829,
+              "line": 6836,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "confirm",
@@ -131431,7 +131433,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6851,
+              "line": 6858,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "settle"
@@ -131441,7 +131443,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserTypedQty",
-              "line": 6854,
+              "line": 6861,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -131451,7 +131453,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 6861,
+              "line": 6868,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131461,7 +131463,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6889,
+              "line": 6896,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131471,7 +131473,7 @@
             {
               "symbol": "_issueMaterialTableWorkshopBatch",
               "receiver": null,
-              "line": 6893,
+              "line": 6900,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131481,7 +131483,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6915,
+              "line": 6922,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "settle"
@@ -131491,7 +131493,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6920,
+              "line": 6927,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131501,7 +131503,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6941,
+              "line": 6948,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "settle"
@@ -131511,7 +131513,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6948,
+              "line": 6955,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131521,7 +131523,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6966,
+              "line": 6973,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "settle"
@@ -131531,7 +131533,7 @@
             {
               "symbol": "submit",
               "receiver": "_aggregateTable",
-              "line": 6980,
+              "line": 6987,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131541,7 +131543,7 @@
             {
               "symbol": "removeAll",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 6998,
+              "line": 7005,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -131551,7 +131553,7 @@
             {
               "symbol": "remove",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 7003,
+              "line": 7010,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -131561,7 +131563,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableAutoSelectedKeys",
-              "line": 7004,
+              "line": 7011,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -131571,7 +131573,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserDeselectedKeys",
-              "line": 7005,
+              "line": 7012,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -131581,7 +131583,7 @@
             {
               "symbol": "_reportMaterialTableSubmit",
               "receiver": null,
-              "line": 7020,
+              "line": 7027,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131591,7 +131593,7 @@
             {
               "symbol": "_reconcileWorkshopUrgesAfterOrder",
               "receiver": null,
-              "line": 7028,
+              "line": 7035,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "reconcile"
@@ -131601,7 +131603,7 @@
             {
               "symbol": "_issueMaterialTableWorkshopBatch",
               "receiver": null,
-              "line": 7042,
+              "line": 7049,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "issue"
@@ -131611,7 +131613,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7083,
+              "line": 7090,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131621,7 +131623,7 @@
             {
               "symbol": "_issueWorkshopPlans",
               "receiver": null,
-              "line": 7095,
+              "line": 7102,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131631,7 +131633,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7118,
+              "line": 7125,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131641,7 +131643,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7179,
+              "line": 7186,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131651,7 +131653,7 @@
             {
               "symbol": "_confirmMaterialTableSubmit",
               "receiver": null,
-              "line": 7191,
+              "line": 7198,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "confirm",
@@ -131662,7 +131664,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7211,
+              "line": 7218,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -131672,7 +131674,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 7220,
+              "line": 7227,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131682,7 +131684,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7308,
+              "line": 7315,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131692,7 +131694,7 @@
             {
               "symbol": "_reportMaterialTableSubmit",
               "receiver": null,
-              "line": 7315,
+              "line": 7322,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -131702,7 +131704,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7381,
+              "line": 7388,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131712,7 +131714,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7403,
+              "line": 7410,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131722,7 +131724,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7514,
+              "line": 7521,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131732,7 +131734,7 @@
             {
               "symbol": "_pendingIssueLabelOfRoute",
               "receiver": null,
-              "line": 7630,
+              "line": 7637,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131742,7 +131744,7 @@
             {
               "symbol": "_pendingIssueLabelOfRoute",
               "receiver": null,
-              "line": 7646,
+              "line": 7653,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -131752,7 +131754,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7725,
+              "line": 7732,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131762,7 +131764,7 @@
             {
               "symbol": "_showTransferLauncher",
               "receiver": null,
-              "line": 8036,
+              "line": 8043,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "transfer"
@@ -131772,7 +131774,7 @@
             {
               "symbol": "showMaterialTransferLauncher",
               "receiver": null,
-              "line": 8040,
+              "line": 8047,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131782,7 +131784,7 @@
             {
               "symbol": "_canFutureTransferIn",
               "receiver": null,
-              "line": 8047,
+              "line": 8054,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -131792,7 +131794,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 8198,
+              "line": 8205,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131802,7 +131804,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8233,
+              "line": 8240,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -131812,7 +131814,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 8311,
+              "line": 8318,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -131822,7 +131824,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8332,
+              "line": 8339,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131832,7 +131834,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8361,
+              "line": 8368,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131842,7 +131844,7 @@
             {
               "symbol": "_cancelMaterialAction",
               "receiver": null,
-              "line": 8373,
+              "line": 8380,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131852,7 +131854,7 @@
             {
               "symbol": "_confirmSharedFutureClaim",
               "receiver": null,
-              "line": 8448,
+              "line": 8455,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "confirm"
@@ -131862,7 +131864,7 @@
             {
               "symbol": "_confirmSharedFutureClaim",
               "receiver": null,
-              "line": 8518,
+              "line": 8525,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "confirm"
@@ -131872,7 +131874,7 @@
             {
               "symbol": "_cancelCurrentAnalysis",
               "receiver": null,
-              "line": 8606,
+              "line": 8613,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -131882,7 +131884,7 @@
             {
               "symbol": "cancelMaterialAnalysis",
               "receiver": null,
-              "line": 8635,
+              "line": 8642,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131892,7 +131894,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8686,
+              "line": 8693,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131902,7 +131904,7 @@
             {
               "symbol": "_canWithdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8700,
+              "line": 8707,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "withdraw"
@@ -131912,7 +131914,7 @@
             {
               "symbol": "_withdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8704,
+              "line": 8711,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "withdraw"
@@ -131922,7 +131924,7 @@
             {
               "symbol": "_canWithdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8709,
+              "line": 8716,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -131932,7 +131934,7 @@
             {
               "symbol": "_canWithdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8761,
+              "line": 8768,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -131942,7 +131944,7 @@
             {
               "symbol": "withdrawMaterialAnalysisPlan",
               "receiver": null,
-              "line": 8774,
+              "line": 8781,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -131952,7 +131954,7 @@
             {
               "symbol": "_cancelMaterialAction",
               "receiver": null,
-              "line": 8805,
+              "line": 8812,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -131962,7 +131964,7 @@
             {
               "symbol": "cancelAction",
               "receiver": "_aggregateTable",
-              "line": 8808,
+              "line": 8815,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131972,7 +131974,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8811,
+              "line": 8818,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131982,7 +131984,7 @@
             {
               "symbol": "cancelMaterialSupplyAction",
               "receiver": null,
-              "line": 8835,
+              "line": 8842,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -131992,7 +131994,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 8940,
+              "line": 8947,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -132002,7 +132004,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 8952,
+              "line": 8959,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -132012,7 +132014,7 @@
             {
               "symbol": "_save",
               "receiver": null,
-              "line": 8955,
+              "line": 8962,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "save"
@@ -132022,7 +132024,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 9016,
+              "line": 9023,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -132032,7 +132034,7 @@
             {
               "symbol": "_save",
               "receiver": null,
-              "line": 9017,
+              "line": 9024,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "save"
@@ -132042,7 +132044,7 @@
             {
               "symbol": "_save",
               "receiver": null,
-              "line": 9021,
+              "line": 9028,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "save"
@@ -132052,7 +132054,7 @@
             {
               "symbol": "updateMaterialAnalysisIssuedRates",
               "receiver": "widget.repository",
-              "line": 9035,
+              "line": 9042,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "update"
@@ -132062,7 +132064,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 9063,
+              "line": 9070,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -132072,32 +132074,12 @@
             {
               "symbol": "removeListener",
               "receiver": "_focus",
-              "line": 9064,
+              "line": 9071,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
               ],
               "evidenceLine": "_focus.removeListener(_focusChanged);"
-            },
-            {
-              "symbol": "cancel",
-              "receiver": null,
-              "line": 9089,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "cancel"
-              ],
-              "evidenceLine": "_debounce?.cancel();"
-            },
-            {
-              "symbol": "_save",
-              "receiver": null,
-              "line": 9092,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "save"
-              ],
-              "evidenceLine": "() => unawaited(_save()),"
             },
             {
               "symbol": "cancel",
@@ -132112,7 +132094,27 @@
             {
               "symbol": "_save",
               "receiver": null,
-              "line": 9097,
+              "line": 9099,
+              "kind": "action-like-invocation",
+              "actionNameHints": [
+                "save"
+              ],
+              "evidenceLine": "() => unawaited(_save()),"
+            },
+            {
+              "symbol": "cancel",
+              "receiver": null,
+              "line": 9103,
+              "kind": "action-like-invocation",
+              "actionNameHints": [
+                "cancel"
+              ],
+              "evidenceLine": "_debounce?.cancel();"
+            },
+            {
+              "symbol": "_save",
+              "receiver": null,
+              "line": 9104,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "save"
@@ -132121,7 +132123,7 @@
             },
             {
               "symbol": "transferReason",
-              "line": 5571,
+              "line": 5578,
               "kind": "callback-reference",
               "callback": "onTap",
               "actionNameHints": [
@@ -132130,7 +132132,7 @@
             },
             {
               "symbol": "_finishPreparationQuantityEditing",
-              "line": 5945,
+              "line": 5952,
               "kind": "callback-reference",
               "callback": "onFinished",
               "actionNameHints": [
@@ -132139,7 +132141,7 @@
             },
             {
               "symbol": "_finishPreparationQuantityEditing",
-              "line": 6032,
+              "line": 6039,
               "kind": "callback-reference",
               "callback": "onFinished",
               "actionNameHints": [
@@ -132151,49 +132153,49 @@
             {
               "symbol": "Perm.productionMaterialAnalysisView",
               "literal": "production_material_analysis:view",
-              "line": 8060,
+              "line": 8067,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 448
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
-              "line": 8061,
+              "line": 8068,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 452
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
-              "line": 8264,
+              "line": 8271,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 452
             },
             {
               "symbol": "Perm.productionMaterialAnalysisClaimSharedFuture",
               "literal": "production_material_analysis:claim_shared_future",
-              "line": 8268,
+              "line": 8275,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 464
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
-              "line": 8269,
+              "line": 8276,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 452
             },
             {
               "symbol": "Perm.productionPlanReverse",
               "literal": "production_plan:reverse",
-              "line": 8695,
+              "line": 8702,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 713
             },
             {
               "symbol": "Perm.productionPlanDelete",
               "literal": "production_plan:delete",
-              "line": 8696,
+              "line": 8703,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 712
             }
@@ -136489,7 +136491,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -139192,7 +139194,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -154323,7 +154325,7 @@
           ],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -162619,7 +162621,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -163545,7 +163547,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -164548,7 +164550,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -165501,7 +165503,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -166465,7 +166467,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -169063,7 +169065,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -184175,7 +184177,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -188551,7 +188553,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -189795,7 +189797,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -193111,7 +193113,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -202553,7 +202555,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -205599,7 +205601,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "36f4116cb7c6cb9c2a98099869f93e872ec239388b0d919f41bd6e9b86b69b53"
+          "targetSha256": "16c13adfc2830d2dd9352e378afa8f3b912c59329b02a366673f970865931586"
         },
         {
           "directive": "import",
@@ -205611,7 +205613,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ecdb92caf3ec8a9e1879ea0ecaf1a63e7f5ab1d6f422cba111643d8d6820c082"
+          "targetSha256": "b39dfca2b31ac7280d572ba70aa21f24028d017ef2a793fed08d1618e7da1724"
         },
         {
           "directive": "import",
@@ -218500,7 +218502,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -222420,7 +222422,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -224978,7 +224980,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -225933,7 +225935,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -230337,7 +230339,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c"
+          "targetSha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b"
         },
         {
           "directive": "import",
@@ -254152,8 +254154,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetOpeningGroupController.java",
-      "sha256": "48d783ef8080c273ac44afac54cd614bfd8f0172529330a05d51e52e153135f7",
-      "lineCount": 21,
+      "sha256": "4ba825a5fb167fe03805457371f669295c7f2cbd17860c84c7ddc3c5e3dcdf42",
+      "lineCount": 25,
       "class": "FinanceAssetOpeningGroupController",
       "declaredBasePaths": [
         "/api/finance/asset-opening-groups"
@@ -254162,7 +254164,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 13,
+          "line": 15,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/asset-opening-groups"
@@ -254170,7 +254172,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 14,
+          "line": 16,
           "declaredPathLiterals": [
             "/vouchers"
           ],
@@ -254180,7 +254182,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 18,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -254190,7 +254192,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 16,
+          "line": 20,
           "declaredPathLiterals": [
             "/{id}/source"
           ],
@@ -254200,7 +254202,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 17,
+          "line": 21,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/asset-opening-groups"
@@ -254208,7 +254210,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 18,
+          "line": 22,
           "declaredPathLiterals": [
             "/{id}/approve"
           ],
@@ -254218,7 +254220,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 19,
+          "line": 23,
           "declaredPathLiterals": [
             "/{id}/revoke"
           ],
@@ -254228,7 +254230,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 20,
+          "line": 24,
           "declaredPathLiterals": [
             "/{id}/approve-revoke"
           ],
@@ -254241,8 +254243,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetTemplateController.java",
-      "sha256": "87a56e72c9e56749b6afeea496f3265f0684bdcac177e1718d103a958b756b57",
-      "lineCount": 22,
+      "sha256": "3fbc2a4f35b0641c4ac42582d24fc9708a19c1bc0428455b914b1e681f161ffb",
+      "lineCount": 26,
       "class": "FinanceAssetTemplateController",
       "declaredBasePaths": [
         "/api/finance/asset-template-inputs"
@@ -254251,7 +254253,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 17,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/asset-template-inputs"
@@ -254259,7 +254261,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 18,
+          "line": 21,
           "declaredPathLiterals": [
             "/operations/{id}"
           ],
@@ -254269,7 +254271,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 20,
+          "line": 24,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/asset-template-inputs"
@@ -255008,8 +255010,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostInputController.java",
-      "sha256": "249fb3efa413837196c4a334a504698e99f5617a50f23c569b8bb9c660dce9fe",
-      "lineCount": 27,
+      "sha256": "52e604292c14285a8a69a4412373fa3bb3b4cff6ec4c9ce7d1b61a035d4a7ed3",
+      "lineCount": 34,
       "class": "FinanceCostInputController",
       "declaredBasePaths": [
         "/api/finance/cost-template-inputs"
@@ -255018,7 +255020,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 14,
+          "line": 16,
           "declaredPathLiterals": [
             "/sales"
           ],
@@ -255028,7 +255030,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 18,
           "declaredPathLiterals": [
             "/plastic/{id}"
           ],
@@ -255038,7 +255040,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 16,
+          "line": 20,
           "declaredPathLiterals": [
             "/order/{id}"
           ],
@@ -255048,7 +255050,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 17,
+          "line": 22,
           "declaredPathLiterals": [
             "/copper/{id}"
           ],
@@ -255058,7 +255060,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 18,
+          "line": 24,
           "declaredPathLiterals": [
             "/operations/{id}"
           ],
@@ -255068,7 +255070,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 19,
+          "line": 26,
           "declaredPathLiterals": [
             "/sales"
           ],
@@ -255078,7 +255080,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 21,
+          "line": 28,
           "declaredPathLiterals": [
             "/plastic"
           ],
@@ -255088,7 +255090,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 23,
+          "line": 30,
           "declaredPathLiterals": [
             "/order"
           ],
@@ -255098,7 +255100,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 25,
+          "line": 32,
           "declaredPathLiterals": [
             "/copper"
           ],
@@ -255324,8 +255326,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingImportController.java",
-      "sha256": "f09b4d17929cbc96e90776124bd53e5b1ed5594536db37fbba73c90bbc48f1d0",
-      "lineCount": 30,
+      "sha256": "60d2f224671fe5a3ac34e5e909ecb43d627f8c52cb4bc92e12e22a37de917142",
+      "lineCount": 34,
       "class": "FinanceAccountingImportController",
       "declaredBasePaths": [
         "/api/finance/accounting-imports"
@@ -255334,7 +255336,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 17,
+          "line": 19,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/accounting-imports"
@@ -255342,7 +255344,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 18,
+          "line": 20,
           "declaredPathLiterals": [
             "/options"
           ],
@@ -255352,7 +255354,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 19,
+          "line": 22,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -255362,7 +255364,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 20,
+          "line": 24,
           "declaredPathLiterals": [
             "/{id}/compare"
           ],
@@ -255372,7 +255374,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 21,
+          "line": 25,
           "declaredPathLiterals": [
             "/preview"
           ],
@@ -255382,7 +255384,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 26,
+          "line": 30,
           "declaredPathLiterals": [
             "/{id}/submit"
           ],
@@ -255392,7 +255394,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 27,
+          "line": 31,
           "declaredPathLiterals": [
             "/{id}/approve"
           ],
@@ -255402,7 +255404,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 28,
+          "line": 32,
           "declaredPathLiterals": [
             "/{id}/reject"
           ],
@@ -255412,7 +255414,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 29,
+          "line": 33,
           "declaredPathLiterals": [
             "/{id}/withdraw"
           ],
@@ -255425,8 +255427,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartController.java",
-      "sha256": "1f5a6dade4ab0e8f88561df0c2b0fb45d36a7443e4f777949b879a96379fcfe7",
-      "lineCount": 40,
+      "sha256": "0683dee3980025e7b58db9936c19c254a4ac25f4fc2fdb953c3ab80f91afc647",
+      "lineCount": 44,
       "class": "FinanceChartController",
       "declaredBasePaths": [
         "/api/finance/chart"
@@ -255435,7 +255437,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 18,
+          "line": 20,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/chart"
@@ -255443,7 +255445,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 19,
+          "line": 21,
           "declaredPathLiterals": [
             "/options"
           ],
@@ -255453,7 +255455,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 20,
+          "line": 22,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/chart"
@@ -255461,7 +255463,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 23,
+          "line": 25,
           "declaredPathLiterals": [
             "/imports"
           ],
@@ -255471,7 +255473,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 24,
+          "line": 26,
           "declaredPathLiterals": [
             "/import-preview"
           ],
@@ -255481,7 +255483,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 30,
+          "line": 33,
           "declaredPathLiterals": [
             "/imports/{id}"
           ],
@@ -255491,7 +255493,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 31,
+          "line": 35,
           "declaredPathLiterals": [
             "/import-apply"
           ],
@@ -255501,7 +255503,7 @@
         },
         {
           "httpMethod": "PUT",
-          "line": 34,
+          "line": 38,
           "declaredPathLiterals": [
             "/{code}"
           ],
@@ -255511,7 +255513,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 37,
+          "line": 41,
           "declaredPathLiterals": [
             "/{code}/create-target"
           ],
@@ -255524,8 +255526,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisController.java",
-      "sha256": "16fa960f985f16dd940c4a3cc1f30171897b7311ad886c6773b6ae1122256a08",
-      "lineCount": 51,
+      "sha256": "4cf8bb1da544c2da7a1daa2d8e2893a4d221f737b4a31955c90627d20b36cbdb",
+      "lineCount": 56,
       "class": "FinanceExpenseAnalysisController",
       "declaredBasePaths": [
         "/api/finance/expense-analysis"
@@ -255534,17 +255536,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 19,
-          "declaredPathLiterals": [
-            "/groups"
-          ],
-          "fullPathCandidates": [
-            "/api/finance/expense-analysis/groups"
-          ]
-        },
-        {
-          "httpMethod": "POST",
-          "line": 20,
+          "line": 21,
           "declaredPathLiterals": [
             "/groups"
           ],
@@ -255556,6 +255548,16 @@
           "httpMethod": "POST",
           "line": 22,
           "declaredPathLiterals": [
+            "/groups"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/expense-analysis/groups"
+          ]
+        },
+        {
+          "httpMethod": "POST",
+          "line": 24,
+          "declaredPathLiterals": [
             "/groups/seed-template"
           ],
           "fullPathCandidates": [
@@ -255564,7 +255566,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 24,
+          "line": 26,
           "declaredPathLiterals": [
             "/entries"
           ],
@@ -255574,7 +255576,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 25,
+          "line": 28,
           "declaredPathLiterals": [
             "/entries/{id}"
           ],
@@ -255584,7 +255586,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 26,
+          "line": 30,
           "declaredPathLiterals": [
             "/assignments"
           ],
@@ -255594,38 +255596,38 @@
         },
         {
           "httpMethod": "GET",
-          "line": 28,
-          "declaredPathLiterals": [
-            "/policy"
-          ],
-          "fullPathCandidates": [
-            "/api/finance/expense-analysis/policy"
-          ]
-        },
-        {
-          "httpMethod": "POST",
-          "line": 29,
-          "declaredPathLiterals": [
-            "/policy"
-          ],
-          "fullPathCandidates": [
-            "/api/finance/expense-analysis/policy"
-          ]
-        },
-        {
-          "httpMethod": "GET",
-          "line": 31,
-          "declaredPathLiterals": [
-            "/notes"
-          ],
-          "fullPathCandidates": [
-            "/api/finance/expense-analysis/notes"
-          ]
-        },
-        {
-          "httpMethod": "POST",
           "line": 32,
           "declaredPathLiterals": [
+            "/policy"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/expense-analysis/policy"
+          ]
+        },
+        {
+          "httpMethod": "POST",
+          "line": 33,
+          "declaredPathLiterals": [
+            "/policy"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/expense-analysis/policy"
+          ]
+        },
+        {
+          "httpMethod": "GET",
+          "line": 35,
+          "declaredPathLiterals": [
+            "/notes"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/expense-analysis/notes"
+          ]
+        },
+        {
+          "httpMethod": "POST",
+          "line": 36,
+          "declaredPathLiterals": [
             "/notes"
           ],
           "fullPathCandidates": [
@@ -255634,7 +255636,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 34,
+          "line": 38,
           "declaredPathLiterals": [
             "/labor"
           ],
@@ -255644,7 +255646,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 35,
+          "line": 39,
           "declaredPathLiterals": [
             "/labor"
           ],
@@ -255654,7 +255656,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 37,
+          "line": 41,
           "declaredPathLiterals": [
             "/note-imports"
           ],
@@ -255664,7 +255666,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 38,
+          "line": 42,
           "declaredPathLiterals": [
             "/note-imports/{id}"
           ],
@@ -255674,7 +255676,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 39,
+          "line": 44,
           "declaredPathLiterals": [
             "/notes/import-preview"
           ],
@@ -255684,7 +255686,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 44,
+          "line": 49,
           "declaredPathLiterals": [
             "/notes/import-apply"
           ],
@@ -255694,7 +255696,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 46,
+          "line": 51,
           "declaredPathLiterals": [
             "/notes/import-preview-bytes"
           ],
@@ -255889,8 +255891,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/NativeLegacyOpeningController.java",
-      "sha256": "92e34af880f6b20db5d17685b8ba37f47f5b03b2200a40e4309807de67d9ca43",
-      "lineCount": 24,
+      "sha256": "52e115dbb2251fb3e38ef103481af8890e233dee7a4c3be15509439ea518e1f1",
+      "lineCount": 28,
       "class": "NativeLegacyOpeningController",
       "declaredBasePaths": [
         "/api/finance/native-legacy-openings"
@@ -255899,7 +255901,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 14,
+          "line": 16,
           "declaredPathLiterals": [
             "/targets/{ledgerId}"
           ],
@@ -255909,7 +255911,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 17,
           "declaredPathLiterals": [
             "/operations/{request}"
           ],
@@ -255919,7 +255921,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 16,
+          "line": 18,
           "declaredPathLiterals": [
             "/{id}/receipts/{action}"
           ],
@@ -255929,7 +255931,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 17,
+          "line": 20,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -255939,7 +255941,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 18,
+          "line": 22,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/native-legacy-openings"
@@ -255947,7 +255949,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 20,
+          "line": 24,
           "declaredPathLiterals": [
             "/{id}/approve"
           ],
@@ -255957,7 +255959,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 22,
+          "line": 26,
           "declaredPathLiterals": [
             "/{id}/withdraw"
           ],
@@ -256110,8 +256112,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/FinancePayableStatementAdjustmentController.java",
-      "sha256": "6c895f485170eb45a3b9c8723b12f92446d22e0bf4677ad3c9c859e8f7013a61",
-      "lineCount": 21,
+      "sha256": "62f96c44ef330a1ecb67d001e3fb3096fab49a49e12edd32b440344b3082d8df",
+      "lineCount": 25,
       "class": "FinancePayableStatementAdjustmentController",
       "declaredBasePaths": [
         "/api/finance/payable-statement-adjustments"
@@ -256120,7 +256122,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 17,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/payable-statement-adjustments"
@@ -256128,7 +256130,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 16,
+          "line": 18,
           "declaredPathLiterals": [
             "/preview"
           ],
@@ -256138,7 +256140,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 17,
+          "line": 19,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/payable-statement-adjustments"
@@ -256146,7 +256148,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 18,
+          "line": 21,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -256156,7 +256158,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 19,
+          "line": 23,
           "declaredPathLiterals": [
             "/{id}/approve"
           ],
@@ -256166,7 +256168,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 20,
+          "line": 24,
           "declaredPathLiterals": [
             "/{id}/reverse"
           ],
@@ -256280,8 +256282,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayableRecognitionController.java",
-      "sha256": "ec98f5bb3fd5bcd240ee900d90374ffe8d844c6cba655902f2f0bda79373043d",
-      "lineCount": 32,
+      "sha256": "4187fa2f13bb3684ba283d6082c6d2070ff62531a19ac1eccc0546f0fba29cf0",
+      "lineCount": 36,
       "class": "ProcurementPayableRecognitionController",
       "declaredBasePaths": [
         "/api/finance/procurement-payable-recognitions"
@@ -256290,7 +256292,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 17,
+          "line": 19,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/procurement-payable-recognitions"
@@ -256298,7 +256300,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 18,
+          "line": 20,
           "declaredPathLiterals": [
             "/policy"
           ],
@@ -256308,7 +256310,7 @@
         },
         {
           "httpMethod": "PUT",
-          "line": 19,
+          "line": 21,
           "declaredPathLiterals": [
             "/policy"
           ],
@@ -256318,7 +256320,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 20,
+          "line": 22,
           "declaredPathLiterals": [
             "/candidates"
           ],
@@ -256328,7 +256330,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 21,
+          "line": 23,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/procurement-payable-recognitions"
@@ -256336,7 +256338,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 26,
+          "line": 28,
           "declaredPathLiterals": [
             "/operations/{request}"
           ],
@@ -256346,7 +256348,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 27,
+          "line": 30,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -256356,7 +256358,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 28,
+          "line": 32,
           "declaredPathLiterals": [
             "/{id}/approve"
           ],
@@ -256366,7 +256368,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 30,
+          "line": 34,
           "declaredPathLiterals": [
             "/{id}/reverse"
           ],
@@ -256376,7 +256378,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 31,
+          "line": 35,
           "declaredPathLiterals": [
             "/{id}/file"
           ],
@@ -256532,8 +256534,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierPrepaymentController.java",
-      "sha256": "d14d2c7ea9aaaaf55adde0a76b63d1cbfe26970f97248ba8a205891124757888",
-      "lineCount": 26,
+      "sha256": "aaad94dc7930c13596db551e2aa30fae3ff7955e348bcd28039a524573d8460f",
+      "lineCount": 31,
       "class": "SupplierPrepaymentController",
       "declaredBasePaths": [
         "/api/finance/supplier-prepayments"
@@ -256542,7 +256544,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 14,
+          "line": 16,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/supplier-prepayments"
@@ -256550,7 +256552,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 16,
+          "line": 19,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -256560,7 +256562,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 17,
+          "line": 21,
           "declaredPathLiterals": [
             "/{id}/settlements"
           ],
@@ -256570,7 +256572,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 18,
+          "line": 22,
           "declaredPathLiterals": [
             "/{id}/classification"
           ],
@@ -256580,7 +256582,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 19,
+          "line": 23,
           "declaredPathLiterals": [
             "/{id}/applications"
           ],
@@ -256590,7 +256592,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 21,
+          "line": 25,
           "declaredPathLiterals": [
             "/applications/{id}/reverse"
           ],
@@ -256600,7 +256602,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 22,
+          "line": 26,
           "declaredPathLiterals": [
             "/{id}/refunds"
           ],
@@ -256610,7 +256612,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 23,
+          "line": 27,
           "declaredPathLiterals": [
             "/refunds/{id}"
           ],
@@ -256620,7 +256622,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 24,
+          "line": 29,
           "declaredPathLiterals": [
             "/refunds/{id}/approve"
           ],
@@ -256630,7 +256632,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 25,
+          "line": 30,
           "declaredPathLiterals": [
             "/refunds/{id}/reverse"
           ],
@@ -257501,8 +257503,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceTemplateSourceController.java",
-      "sha256": "d8fcd2a4c5a0c4cbf1a8e1da2e76e1012ad2b57af766a9d2c7068cd2a2dc1d4a",
-      "lineCount": 29,
+      "sha256": "eb5935ddc7d4aea60b7b08145994f49b71398654de13d6e142430d94fdcb19db",
+      "lineCount": 33,
       "class": "FinanceTemplateSourceController",
       "declaredBasePaths": [
         "/api/finance/template-imports"
@@ -257511,7 +257513,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "POST",
-          "line": 14,
+          "line": 16,
           "declaredPathLiterals": [
             "/costs/preview"
           ],
@@ -257521,7 +257523,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 19,
+          "line": 21,
           "declaredPathLiterals": [
             "/assets/preview"
           ],
@@ -257531,7 +257533,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 24,
+          "line": 27,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -257603,8 +257605,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportController.java",
-      "sha256": "f48b90aae86c6d2062e660baa3b9c67e218838a1755f5c1726d2c144282ef008",
-      "lineCount": 41,
+      "sha256": "5976e7dd584b45e0787abbb0e52f4ce7077f84648083ef520f19ce2c3e9c9694",
+      "lineCount": 45,
       "class": "FinanceAuxiliaryImportController",
       "declaredBasePaths": [
         "/api/finance/auxiliary-imports"
@@ -257613,7 +257615,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 22,
+          "line": 24,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/auxiliary-imports"
@@ -257621,7 +257623,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 23,
+          "line": 25,
           "declaredPathLiterals": [
             "/operations/{request}"
           ],
@@ -257631,7 +257633,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 24,
+          "line": 27,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -257641,7 +257643,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 25,
+          "line": 29,
           "declaredPathLiterals": [
             "/{id}/recheck"
           ],
@@ -257651,7 +257653,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 26,
+          "line": 30,
           "declaredPathLiterals": [
             "/{id}/file"
           ],
@@ -257661,7 +257663,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 27,
+          "line": 31,
           "declaredPathLiterals": [
             "/{id}/comparison"
           ],
@@ -257671,7 +257673,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 28,
+          "line": 32,
           "declaredPathLiterals": [
             "/preview"
           ],
@@ -257681,7 +257683,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 37,
+          "line": 41,
           "declaredPathLiterals": [
             "/directory-apply"
           ],
@@ -257717,8 +257719,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceMaterialStatementController.java",
-      "sha256": "3a65abfc523dc3287e3f2b4a4a2e7962a0e2b34f864be7d5adfbd54ce276c08c",
-      "lineCount": 43,
+      "sha256": "87cb87ae95d3bb061f1f89d14007ac9d1b3f30b8eba1624dc5ad3b95dd4c9a67",
+      "lineCount": 50,
       "class": "FinanceMaterialStatementController",
       "declaredBasePaths": [
         "/api/finance/material-statements"
@@ -257727,7 +257729,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 17,
+          "line": 19,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/material-statements"
@@ -257735,7 +257737,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 18,
+          "line": 21,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -257745,7 +257747,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 19,
+          "line": 23,
           "declaredPathLiterals": [
             "/contexts"
           ],
@@ -257755,7 +257757,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 20,
+          "line": 24,
           "declaredPathLiterals": [
             "/drafts"
           ],
@@ -257765,7 +257767,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 21,
+          "line": 25,
           "declaredPathLiterals": [
             "/evidence"
           ],
@@ -257775,7 +257777,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 22,
+          "line": 26,
           "declaredPathLiterals": [
             "/evidence/{id}"
           ],
@@ -257785,7 +257787,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 23,
+          "line": 28,
           "declaredPathLiterals": [
             "/evidence/{id}/submit"
           ],
@@ -257795,7 +257797,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 24,
+          "line": 29,
           "declaredPathLiterals": [
             "/evidence/{id}/{action:approve|reject|withdraw}"
           ],
@@ -257805,7 +257807,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 25,
+          "line": 30,
           "declaredPathLiterals": [
             "/operations/{id}"
           ],
@@ -257815,7 +257817,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 26,
+          "line": 32,
           "declaredPathLiterals": [
             "/operations/{id}/verify"
           ],
@@ -257825,7 +257827,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 27,
+          "line": 33,
           "declaredPathLiterals": [
             "/operations/{id}/cancel-unwritten"
           ],
@@ -257835,7 +257837,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 28,
+          "line": 34,
           "declaredPathLiterals": [
             "/options/{kind}"
           ],
@@ -257845,7 +257847,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 29,
+          "line": 35,
           "declaredPathLiterals": [
             "/reference-labels"
           ],
@@ -257855,7 +257857,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 30,
+          "line": 36,
           "declaredPathLiterals": [
             "/sources"
           ],
@@ -257865,7 +257867,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 33,
+          "line": 39,
           "declaredPathLiterals": [
             "/sources/{kind}/{id}"
           ],
@@ -257875,7 +257877,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 34,
+          "line": 41,
           "declaredPathLiterals": [
             "/gl-sources"
           ],
@@ -257885,7 +257887,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 35,
+          "line": 42,
           "declaredPathLiterals": [
             "/gl-sources/{entry}/{allocation}"
           ],
@@ -257895,7 +257897,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 36,
+          "line": 43,
           "declaredPathLiterals": [
             "/sidebar-report"
           ],
@@ -257905,7 +257907,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 37,
+          "line": 44,
           "declaredPathLiterals": [
             "/report"
           ],
@@ -257915,7 +257917,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 39,
+          "line": 46,
           "declaredPathLiterals": [
             "/adjustment-sources"
           ],
@@ -257925,7 +257927,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 40,
+          "line": 47,
           "declaredPathLiterals": [
             "/adjustment-sources/{entry}/{allocation}"
           ],
@@ -257935,7 +257937,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 41,
+          "line": 48,
           "declaredPathLiterals": [
             "/comparison-targets"
           ],
@@ -257945,7 +257947,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 42,
+          "line": 49,
           "declaredPathLiterals": [
             "/compare"
           ],
@@ -257958,8 +257960,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceOpenItemClassificationController.java",
-      "sha256": "afd8c8157b82ca0795e89be0621e9b8fa739a6d3204a107bdc82d41dfc2b2db0",
-      "lineCount": 31,
+      "sha256": "b903c7a2d8b9e0eddca83a840daa319e51920b8e9ea234a3379fbde4deec6f70",
+      "lineCount": 38,
       "class": "FinanceOpenItemClassificationController",
       "declaredBasePaths": [
         "/api/finance/open-item-classifications"
@@ -257968,7 +257970,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 17,
           "declaredPathLiterals": [
             "/corrections/graph"
           ],
@@ -257978,7 +257980,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 16,
+          "line": 18,
           "declaredPathLiterals": [
             "/corrections"
           ],
@@ -257988,7 +257990,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 17,
+          "line": 19,
           "declaredPathLiterals": [
             "/corrections/preview"
           ],
@@ -257998,7 +258000,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 18,
+          "line": 20,
           "declaredPathLiterals": [
             "/corrections/requests/{requestId}/resolve"
           ],
@@ -258008,7 +258010,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 19,
+          "line": 21,
           "declaredPathLiterals": [
             "/corrections/requests/{requestId}"
           ],
@@ -258018,7 +258020,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 20,
+          "line": 22,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/open-item-classifications"
@@ -258026,7 +258028,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 22,
+          "line": 26,
           "declaredPathLiterals": [
             "/sources/{id}"
           ],
@@ -258036,7 +258038,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 23,
+          "line": 28,
           "declaredPathLiterals": [
             "/sources/{id}/references"
           ],
@@ -258046,7 +258048,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 24,
+          "line": 29,
           "declaredPathLiterals": [
             "/sources/{id}"
           ],
@@ -258056,7 +258058,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 25,
+          "line": 30,
           "declaredPathLiterals": [
             "/payments/{id}"
           ],
@@ -258066,7 +258068,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 26,
+          "line": 32,
           "declaredPathLiterals": [
             "/payments/{id}"
           ],
@@ -258076,7 +258078,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 28,
+          "line": 34,
           "declaredPathLiterals": [
             "/offsets/{id}"
           ],
@@ -258086,7 +258088,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 29,
+          "line": 36,
           "declaredPathLiterals": [
             "/offsets/{id}"
           ],
@@ -258099,8 +258101,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceReceivableClassificationController.java",
-      "sha256": "6d0411c3554336601be8370f5a7fcb9faa78217a3031e00883535f71da15d79e",
-      "lineCount": 19,
+      "sha256": "c44bb0c97d6203854145e4951f5137a5d9d5138e4f9fefac48d65e19ecd574c8",
+      "lineCount": 24,
       "class": "FinanceReceivableClassificationController",
       "declaredBasePaths": [
         "/api/finance/open-item-classifications"
@@ -258109,7 +258111,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 18,
           "declaredPathLiterals": [
             "/receipts/{id}"
           ],
@@ -258119,7 +258121,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 16,
+          "line": 20,
           "declaredPathLiterals": [
             "/receipts/{id}"
           ],
@@ -258129,7 +258131,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 17,
+          "line": 21,
           "declaredPathLiterals": [
             "/customer-offsets/{id}"
           ],
@@ -258139,7 +258141,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 18,
+          "line": 23,
           "declaredPathLiterals": [
             "/customer-offsets/{id}"
           ],
@@ -258236,8 +258238,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementDocumentController.java",
-      "sha256": "33b414bb06d234a33574448f32d25105d056bd98fd26007612f6e35553bb82fa",
-      "lineCount": 40,
+      "sha256": "7ea457580c1c99e899cb7fad87737deacaf86a354ab5163f0a95728b032d5d45",
+      "lineCount": 45,
       "class": "FinanceStatementDocumentController",
       "declaredBasePaths": [
         "/api/finance/statement-documents"
@@ -258246,7 +258248,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 19,
+          "line": 21,
           "declaredPathLiterals": [
             "/profiles"
           ],
@@ -258256,7 +258258,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 22,
+          "line": 25,
           "declaredPathLiterals": [
             "/profiles/{id}"
           ],
@@ -258266,7 +258268,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 23,
+          "line": 27,
           "declaredPathLiterals": [
             "/profiles"
           ],
@@ -258276,7 +258278,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 24,
+          "line": 28,
           "declaredPathLiterals": [
             "/profiles/{id}/review"
           ],
@@ -258286,7 +258288,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 26,
+          "line": 30,
           "declaredPathLiterals": [
             "/metadata"
           ],
@@ -258296,7 +258298,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 27,
+          "line": 31,
           "declaredPathLiterals": [
             "/preview"
           ],
@@ -258306,7 +258308,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 28,
+          "line": 32,
           "declaredPathLiterals": [
             "/reviews"
           ],
@@ -258316,7 +258318,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 29,
+          "line": 33,
           "declaredPathLiterals": [
             "/settlement-preview"
           ],
@@ -258326,7 +258328,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 30,
+          "line": 34,
           "declaredPathLiterals": [
             "/settlement-reviews"
           ],
@@ -258336,7 +258338,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 31,
+          "line": 35,
           "declaredPathLiterals": [
             "/reviews/query"
           ],
@@ -258346,7 +258348,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 32,
+          "line": 36,
           "declaredPathLiterals": [
             "/reviews/{id}"
           ],
@@ -258356,7 +258358,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 33,
+          "line": 38,
           "declaredPathLiterals": [
             "/reviews/{id}/original-table"
           ],
@@ -258366,7 +258368,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 34,
+          "line": 39,
           "declaredPathLiterals": [
             "/reviews/{id}/decision"
           ],
@@ -258376,7 +258378,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 35,
+          "line": 40,
           "declaredPathLiterals": [
             "/reviews/{id}/counterpart"
           ],
@@ -258386,7 +258388,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 39,
+          "line": 44,
           "declaredPathLiterals": [
             "/reviews/{id}/counterpart-file"
           ],
@@ -258399,8 +258401,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractLossPolicyController.java",
-      "sha256": "35438ec7f796308f31cc86c9d5b18798276b84a84e899d7a3137a40570e24176",
-      "lineCount": 19,
+      "sha256": "f1d5ff9fed17fb14467f514b02dd9fbc2391d2968df3bd8621d6329ab4c5111b",
+      "lineCount": 23,
       "class": "FinanceSubcontractLossPolicyController",
       "declaredBasePaths": [
         "/api/finance/subcontract-loss-policies"
@@ -258409,7 +258411,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 13,
+          "line": 15,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/subcontract-loss-policies"
@@ -258417,7 +258419,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 14,
+          "line": 16,
           "declaredPathLiterals": [
             "/source-choices"
           ],
@@ -258427,7 +258429,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 15,
+          "line": 18,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -258437,7 +258439,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 16,
+          "line": 20,
           "declaredPathLiterals": [
             "/operations/{request}"
           ],
@@ -258447,7 +258449,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 17,
+          "line": 21,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/subcontract-loss-policies"
@@ -258455,7 +258457,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 18,
+          "line": 22,
           "declaredPathLiterals": [
             "/{id}/decision"
           ],
@@ -258468,8 +258470,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractQuantityEvidenceController.java",
-      "sha256": "8b5b8c4fa23f6809bdd625b1af57f1d129ff2cbfcaab3abd016982ac8621bfc4",
-      "lineCount": 30,
+      "sha256": "bd84ef0ebc0e9190c46535428f5e763b05c8fbc30706f4ae1aa060e44f6a9353",
+      "lineCount": 35,
       "class": "FinanceSubcontractQuantityEvidenceController",
       "declaredBasePaths": [
         "/api/finance/subcontract-quantity-evidence"
@@ -258478,7 +258480,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 19,
+          "line": 21,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/subcontract-quantity-evidence"
@@ -258486,7 +258488,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 20,
+          "line": 23,
           "declaredPathLiterals": [
             "/{id}"
           ],
@@ -258496,7 +258498,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 21,
+          "line": 25,
           "declaredPathLiterals": [
             "/operations/{request}"
           ],
@@ -258506,7 +258508,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 22,
+          "line": 26,
           "declaredPathLiterals": [
             "/approved"
           ],
@@ -258516,7 +258518,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 23,
+          "line": 27,
           "declaredPathLiterals": [
             "/pcs-units"
           ],
@@ -258526,7 +258528,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 24,
+          "line": 28,
           "declaredPathLiterals": [
             "/sources"
           ],
@@ -258536,7 +258538,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 25,
+          "line": 29,
           "declaredPathLiterals": [
             "/sources/{kind}/{id}"
           ],
@@ -258546,7 +258548,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 26,
+          "line": 31,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/subcontract-quantity-evidence"
@@ -258554,7 +258556,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 27,
+          "line": 32,
           "declaredPathLiterals": [],
           "fullPathCandidates": [
             "/api/finance/subcontract-quantity-evidence"
@@ -258562,7 +258564,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 28,
+          "line": 33,
           "declaredPathLiterals": [
             "/{id}/decision"
           ],
@@ -258572,7 +258574,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 29,
+          "line": 34,
           "declaredPathLiterals": [
             "/{id}/attachment"
           ],
@@ -273954,8 +273956,8 @@
     },
     {
       "source": "lib/features/applications/pages/business_application_edit_page.dart",
-      "sha256": "639f17b95854c9dfebc082e82027fd510aa38233f1010a8e762f72ba708f7e63",
-      "lineCount": 624
+      "sha256": "7481f184d0711cd87a86f175ec6cfd923236295147dcbbfc21cafe4a1427bbab",
+      "lineCount": 626
     },
     {
       "source": "lib/features/applications/pages/business_application_list_page.dart",
@@ -275404,8 +275406,8 @@
     },
     {
       "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
-      "sha256": "1e8f710ae6bc8ed065cfa1ce225d3f1e31c1e7c8ea9448ef8e09bd8a455f5976",
-      "lineCount": 1095
+      "sha256": "13a66c294393f631a0a210a399ea3a5a554f84533a2a621be9d5dbb50357818e",
+      "lineCount": 1096
     },
     {
       "source": "lib/features/finance/payables/repositories/finance_payables_repository.dart",
@@ -276239,8 +276241,8 @@
     },
     {
       "source": "lib/features/production/pages/material_analysis_material_table.dart",
-      "sha256": "ce1206513e0b3d5e14a52e080bc8eca4d5b16b806df7ce39bafa00195c51a828",
-      "lineCount": 9125
+      "sha256": "a057ae263497babc412e3b2a2fa69e21c1c2a95ecc27e91cb3de22ea23ea8075",
+      "lineCount": 9132
     },
     {
       "source": "lib/features/production/pages/material_analysis_order_page.dart",
@@ -277744,13 +277746,13 @@
     },
     {
       "source": "lib/features/warehouse/materialbin/widgets/count_bag_material_card.dart",
-      "sha256": "36f4116cb7c6cb9c2a98099869f93e872ec239388b0d919f41bd6e9b86b69b53",
-      "lineCount": 431
+      "sha256": "16c13adfc2830d2dd9352e378afa8f3b912c59329b02a366673f970865931586",
+      "lineCount": 432
     },
     {
       "source": "lib/features/warehouse/materialbin/widgets/machine_count_card.dart",
-      "sha256": "ecdb92caf3ec8a9e1879ea0ecaf1a63e7f5ab1d6f422cba111643d8d6820c082",
-      "lineCount": 348
+      "sha256": "b39dfca2b31ac7280d572ba70aa21f24028d017ef2a793fed08d1618e7da1724",
+      "lineCount": 349
     },
     {
       "source": "lib/features/warehouse/materialbin/widgets/workshop_material_close_poller.dart",
@@ -278819,8 +278821,8 @@
     },
     {
       "source": "lib/shared/formatters/quantity_display.dart",
-      "sha256": "77225191ff7069f261d212ed87afd78dfe0ed8ed4144378d308821d47d36691c",
-      "lineCount": 42
+      "sha256": "dff8ae2737444ec75186903b19cefb3905985b01ee852f4f29117bef574d961b",
+      "lineCount": 46
     },
     {
       "source": "lib/shared/forms/prepare_editable_grid_rows.dart",
@@ -279954,13 +279956,13 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetOpeningGroupController.java",
-      "sha256": "48d783ef8080c273ac44afac54cd614bfd8f0172529330a05d51e52e153135f7",
-      "lineCount": 21
+      "sha256": "4ba825a5fb167fe03805457371f669295c7f2cbd17860c84c7ddc3c5e3dcdf42",
+      "lineCount": 25
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/api/FinanceAssetTemplateController.java",
-      "sha256": "87a56e72c9e56749b6afeea496f3265f0684bdcac177e1718d103a958b756b57",
-      "lineCount": 22
+      "sha256": "3fbc2a4f35b0641c4ac42582d24fc9708a19c1bc0428455b914b1e681f161ffb",
+      "lineCount": 26
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferController.java",
@@ -279974,8 +279976,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostInputController.java",
-      "sha256": "249fb3efa413837196c4a334a504698e99f5617a50f23c569b8bb9c660dce9fe",
-      "lineCount": 27
+      "sha256": "52e604292c14285a8a69a4412373fa3bb3b4cff6ec4c9ce7d1b61a035d4a7ed3",
+      "lineCount": 34
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseController.java",
@@ -279984,18 +279986,18 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingImportController.java",
-      "sha256": "f09b4d17929cbc96e90776124bd53e5b1ed5594536db37fbba73c90bbc48f1d0",
-      "lineCount": 30
+      "sha256": "60d2f224671fe5a3ac34e5e909ecb43d627f8c52cb4bc92e12e22a37de917142",
+      "lineCount": 34
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartController.java",
-      "sha256": "1f5a6dade4ab0e8f88561df0c2b0fb45d36a7443e4f777949b879a96379fcfe7",
-      "lineCount": 40
+      "sha256": "0683dee3980025e7b58db9936c19c254a4ac25f4fc2fdb953c3ab80f91afc647",
+      "lineCount": 44
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisController.java",
-      "sha256": "16fa960f985f16dd940c4a3cc1f30171897b7311ad886c6773b6ae1122256a08",
-      "lineCount": 51
+      "sha256": "4cf8bb1da544c2da7a1daa2d8e2893a4d221f737b4a31955c90627d20b36cbdb",
+      "lineCount": 56
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/GlController.java",
@@ -280014,8 +280016,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/NativeLegacyOpeningController.java",
-      "sha256": "92e34af880f6b20db5d17685b8ba37f47f5b03b2200a40e4309807de67d9ca43",
-      "lineCount": 24
+      "sha256": "52e115dbb2251fb3e38ef103481af8890e233dee7a4c3be15509439ea518e1f1",
+      "lineCount": 28
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/SystemPostingStyleController.java",
@@ -280029,8 +280031,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/FinancePayableStatementAdjustmentController.java",
-      "sha256": "6c895f485170eb45a3b9c8723b12f92446d22e0bf4677ad3c9c859e8f7013a61",
-      "lineCount": 21
+      "sha256": "62f96c44ef330a1ecb67d001e3fb3096fab49a49e12edd32b440344b3082d8df",
+      "lineCount": 25
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementIqcRejectionController.java",
@@ -280039,8 +280041,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayableRecognitionController.java",
-      "sha256": "ec98f5bb3fd5bcd240ee900d90374ffe8d844c6cba655902f2f0bda79373043d",
-      "lineCount": 32
+      "sha256": "4187fa2f13bb3684ba283d6082c6d2070ff62531a19ac1eccc0546f0fba29cf0",
+      "lineCount": 36
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayablesController.java",
@@ -280059,8 +280061,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierPrepaymentController.java",
-      "sha256": "d14d2c7ea9aaaaf55adde0a76b63d1cbfe26970f97248ba8a205891124757888",
-      "lineCount": 26
+      "sha256": "aaad94dc7930c13596db551e2aa30fae3ff7955e348bcd28039a524573d8460f",
+      "lineCount": 31
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementController.java",
@@ -280114,8 +280116,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceTemplateSourceController.java",
-      "sha256": "d8fcd2a4c5a0c4cbf1a8e1da2e76e1012ad2b57af766a9d2c7068cd2a2dc1d4a",
-      "lineCount": 29
+      "sha256": "eb5935ddc7d4aea60b7b08145994f49b71398654de13d6e142430d94fdcb19db",
+      "lineCount": 33
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryController.java",
@@ -280124,8 +280126,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryImportController.java",
-      "sha256": "f48b90aae86c6d2062e660baa3b9c67e218838a1755f5c1726d2c144282ef008",
-      "lineCount": 41
+      "sha256": "5976e7dd584b45e0787abbb0e52f4ce7077f84648083ef520f19ce2c3e9c9694",
+      "lineCount": 45
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceAuxiliaryReportController.java",
@@ -280134,18 +280136,18 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceMaterialStatementController.java",
-      "sha256": "3a65abfc523dc3287e3f2b4a4a2e7962a0e2b34f864be7d5adfbd54ce276c08c",
-      "lineCount": 43
+      "sha256": "87cb87ae95d3bb061f1f89d14007ac9d1b3f30b8eba1624dc5ad3b95dd4c9a67",
+      "lineCount": 50
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceOpenItemClassificationController.java",
-      "sha256": "afd8c8157b82ca0795e89be0621e9b8fa739a6d3204a107bdc82d41dfc2b2db0",
-      "lineCount": 31
+      "sha256": "b903c7a2d8b9e0eddca83a840daa319e51920b8e9ea234a3379fbde4deec6f70",
+      "lineCount": 38
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceReceivableClassificationController.java",
-      "sha256": "6d0411c3554336601be8370f5a7fcb9faa78217a3031e00883535f71da15d79e",
-      "lineCount": 19
+      "sha256": "c44bb0c97d6203854145e4951f5137a5d9d5138e4f9fefac48d65e19ecd574c8",
+      "lineCount": 24
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementComparisonController.java",
@@ -280159,18 +280161,18 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementDocumentController.java",
-      "sha256": "33b414bb06d234a33574448f32d25105d056bd98fd26007612f6e35553bb82fa",
-      "lineCount": 40
+      "sha256": "7ea457580c1c99e899cb7fad87737deacaf86a354ab5163f0a95728b032d5d45",
+      "lineCount": 45
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractLossPolicyController.java",
-      "sha256": "35438ec7f796308f31cc86c9d5b18798276b84a84e899d7a3137a40570e24176",
-      "lineCount": 19
+      "sha256": "f1d5ff9fed17fb14467f514b02dd9fbc2391d2968df3bd8621d6329ab4c5111b",
+      "lineCount": 23
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceSubcontractQuantityEvidenceController.java",
-      "sha256": "8b5b8c4fa23f6809bdd625b1af57f1d129ff2cbfcaab3abd016982ac8621bfc4",
-      "lineCount": 30
+      "sha256": "bd84ef0ebc0e9190c46535428f5e763b05c8fbc30706f4ae1aa060e44f6a9353",
+      "lineCount": 35
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/history/CompanyFileHistoryController.java",

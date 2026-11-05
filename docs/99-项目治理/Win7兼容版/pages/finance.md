@@ -454,7 +454,7 @@
 
 ## W7-BIZ-078 · lib/features/finance/payables/pages/finance_payables_page.dart
 
-模块 `finance`；1095 行；SHA256 `1e8f710ae6bc8ed065cfa1ce225d3f1e31c1e7c8ea9448ef8e09bd8a455f5976`。
+模块 `finance`；1096 行；SHA256 `13a66c294393f631a0a210a399ea3a5a554f84533a2a621be9d5dbb50357818e`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

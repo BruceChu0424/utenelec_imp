@@ -409,6 +409,7 @@ void main() {
             final container = await _pump(tester, type, api);
             _openDetail(tester, type);
             await tester.pump(const Duration(milliseconds: 80));
+            await tester.pump();
             expect(find.byType(CircularProgressIndicator), findsWidgets);
             if (identityChanged) {
               container.read(_identity.notifier).state =

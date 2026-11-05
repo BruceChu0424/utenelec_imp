@@ -259,6 +259,7 @@ void main() {
       final pending = Future<void>.sync(actions.operations.delete!.onInvoke);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump();
       if (kind == 'goods' || kind == 'mould') {
         expect(find.text('正在检查删除范围…'), findsOneWidget);
         for (
@@ -283,6 +284,7 @@ void main() {
       ) {
         await tester.pump(const Duration(milliseconds: 20));
       }
+      await tester.pump();
       expect(find.text('正在删除分类…'), findsOneWidget);
       fixture.releaseDelete();
       await tester.pumpAndSettle();

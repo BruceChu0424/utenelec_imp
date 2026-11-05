@@ -90,6 +90,7 @@ void main() {
     warehouses.pendingDetails['c01'] = details;
     await tester.tap(find.text('删除仓库'));
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
     expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
     expect(find.text('正在读取仓库资料'), findsOneWidget);
     expect(warehouses.deletedIds, isEmpty);
@@ -100,6 +101,7 @@ void main() {
     for (var frame = 0; frame < 8 && warehouses.deletedIds.isEmpty; frame++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+    await tester.pump();
     expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
     expect(find.text('正在删除仓库'), findsOneWidget);
     expect(warehouses.deletedIds, ['c01']);

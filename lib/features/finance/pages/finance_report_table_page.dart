@@ -910,6 +910,9 @@ class _FinanceReportTablePageState
       await showDialog<void>(
         context: context,
         builder: (_) => UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
+
           title: Text(
             (row['item'] ??
                     row['styleName'] ??
@@ -1046,12 +1049,6 @@ class _FinanceReportTablePageState
               ],
             ),
           ),
-          actions: [
-            UtenButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     } else {

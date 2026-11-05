@@ -618,7 +618,7 @@ class _FinanceTemplateInputSurfaceState
               icon: Icons.table_chart_outlined,
               title: Text(_title),
               showCloseButton: true,
-              onClose: _close,
+              onClose: _saving ? null : _close,
             ),
           ),
           Expanded(
@@ -793,11 +793,6 @@ class _FinanceTemplateInputSurfaceState
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed: _saving ? null : _close,
-                  child: const Text('关闭'),
-                ),
                 const SizedBox(width: UtenSpacing.s12),
                 UtenButton(
                   onPressed: _saving || _loading || _error != null

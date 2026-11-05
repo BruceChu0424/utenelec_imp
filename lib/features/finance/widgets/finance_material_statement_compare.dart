@@ -356,6 +356,8 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
           children: [
             UtenDialogSurface(
               child: UtenDialogHeader(
+                showCloseButton: true,
+
                 title: const Text(
                   '${FinanceRequirementNames.otherReceivableStatement}原表导入比对',
                 ),
@@ -608,15 +610,6 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
                     ),
                   const Text(
                     '比对保留全部原行号、原值及差额；每页编辑30行，提交比对取完整清单。原件及期间载入后冻结，需另一原件/期间时先关闭保留草稿再另开。',
-                  ),
-                  UtenResponsiveActionWrap(
-                    children: [
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        onPressed: _busy ? null : _close,
-                        child: const Text('关闭'),
-                      ),
-                    ],
                   ),
                 ],
               ),

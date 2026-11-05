@@ -252,8 +252,14 @@ class _ExpenseApprovalDetailPageState
             boundary: boundary,
             isCurrent: current,
             invalidatedBuilder: (dialogContext) => UtenAlertDialog(
-              title: const Text('授权已变化'),
-              content: const Text('请关闭后重新打开付款登记'),
+              title: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('授权已变化'),
+                  SizedBox(width: UtenSpacing.s8),
+                  UtenFieldHintIcon(info: '请关闭后重新打开付款登记', dense: true),
+                ],
+              ),
               showCloseButton: true,
               onClose: () => Navigator.of(dialogContext).pop(),
             ),

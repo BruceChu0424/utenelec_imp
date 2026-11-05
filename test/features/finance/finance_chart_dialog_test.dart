@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
@@ -66,7 +67,7 @@ void main() {
       expect(api.applies, ['batch-1']);
       expect(
         tester
-            .widget<UtenButton>(find.widgetWithText(UtenButton, '关闭'))
+            .widget<UtenCloseButton>(find.byType(UtenCloseButton).last)
             .onPressed,
         isNull,
       );
@@ -92,7 +93,7 @@ void main() {
       expect(find.text('核对并重试原批次'), findsNothing);
       expect(
         tester
-            .widget<UtenButton>(find.widgetWithText(UtenButton, '关闭'))
+            .widget<UtenCloseButton>(find.byType(UtenCloseButton).last)
             .onPressed,
         isNotNull,
       );

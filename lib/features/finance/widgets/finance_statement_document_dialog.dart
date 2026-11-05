@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:collection/collection.dart';
@@ -274,6 +275,8 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
     ref.watch(currentPermissionsProvider);
     if (!_current) return _retiredDocument(context);
     return _Frame(
+      showCloseButton: true,
+      onClose: _busy ? null : () => Navigator.pop(context, _changed),
       title: Text(
         '${_title(widget.scope['templateKey']?.toString())} · 原件与打印资料',
       ),
@@ -390,13 +393,7 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
           ],
         ),
       ),
-      actions: [
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: _busy ? null : () => Navigator.pop(context, _changed),
-          child: const Text('关闭'),
-        ),
-      ],
+      actions: const [],
     );
   }
 }
@@ -541,6 +538,8 @@ class _OriginalState extends ConsumerState<_Original> {
           : Perm.financeReceiptApprove,
     );
     return _Frame(
+      showCloseButton: true,
+      onClose: _busy ? null : () => Navigator.pop(context),
       title: const Text('对账原件'),
       width: 1240,
       content: SizedBox(
@@ -690,13 +689,7 @@ class _OriginalState extends ConsumerState<_Original> {
           ],
         ),
       ),
-      actions: [
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: _busy ? null : () => Navigator.pop(context),
-          child: const Text('关闭'),
-        ),
-      ],
+      actions: const [],
     );
   }
 }
@@ -1392,6 +1385,8 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
     final locked = _saving || _sent != null || _view || !_current;
     return withFormDraft(
       _Frame(
+        showCloseButton: true,
+        onClose: _saving ? null : _close,
         title: Text(
           _profile
               ? (_profileKinds[_kind] ?? '打印资料')
@@ -1677,11 +1672,6 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
                 ),
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _saving ? null : _close,
-            child: const Text('关闭'),
-          ),
           if (!_view)
             UtenButton(
               onPressed: _saving || _loading || !_current ? null : _save,
@@ -1699,17 +1689,16 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
   }
 }
 
-Widget _retiredDocument(BuildContext context, {VoidCallback? close}) => _Frame(
+Widget _retiredDocument(
+  BuildContext context, {
+  FutureOr<void> Function()? close,
+}) => _Frame(
+  showCloseButton: true,
+  onClose: close ?? () => Navigator.pop(context, false),
   title: const Text('对账原件'),
   width: 620,
   content: const Text('身份或权限已变化，请从原入口重新打开；原件和原账号草稿仍保留。'),
-  actions: [
-    UtenButton(
-      type: UtenButtonType.secondary,
-      onPressed: close ?? () => Navigator.pop(context, false),
-      child: const Text('关闭'),
-    ),
-  ],
+  actions: const [],
 );
 
 class _Frame extends StatelessWidget {
@@ -1718,10 +1707,14 @@ class _Frame extends StatelessWidget {
     required this.width,
     required this.content,
     required this.actions,
+    this.onClose,
+    this.showCloseButton = false,
   });
   final Widget title, content;
   final double width;
   final List<Widget> actions;
+  final FutureOr<void> Function()? onClose;
+  final bool showCloseButton;
   @override
   Widget build(BuildContext context) => UtenDialogFrame(
     maxWidth: width,
@@ -1729,7 +1722,11 @@ class _Frame extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        UtenDialogHeader(title: title),
+        UtenDialogHeader(
+          title: title,
+          showCloseButton: showCloseButton,
+          onClose: onClose,
+        ),
         Flexible(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),

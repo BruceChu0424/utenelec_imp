@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -237,7 +238,8 @@ void main() {
       expect(repository.reads, 0);
       expect(find.textContaining('旧单未冻结BOM'), findsWidgets);
       expect(find.text('激光底板'), findsNothing);
-      await tester.tap(find.text('关闭'));
+      expect(find.byType(UtenCloseButton), findsOneWidget);
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
     },
   );
@@ -256,7 +258,8 @@ void main() {
       expect(repository.reads, 0);
       expect(repository.previews, 0);
       expect(find.text('确认'), findsNothing);
-      await tester.tap(find.text('关闭'));
+      expect(find.byType(UtenCloseButton), findsOneWidget);
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
     });
   }
@@ -277,7 +280,8 @@ void main() {
       expect(repository.frozenReads, 0);
       expect(repository.previews, 0);
       expect(find.text('激光底板'), findsNothing);
-      await tester.tap(find.text('关闭'));
+      expect(find.byType(UtenCloseButton), findsOneWidget);
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
     },
   );

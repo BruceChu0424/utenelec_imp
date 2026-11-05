@@ -228,10 +228,6 @@ class _ClassificationDirectoryState
                           },
                     child: const Text('整图更正'),
                   ),
-                  TextButton(
-                    onPressed: _busy ? null : () => Navigator.pop(context),
-                    child: const Text('关闭'),
-                  ),
                 ],
               ),
             ],
@@ -884,10 +880,6 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
                   alignment: MainAxisAlignment.end,
                   overflowAlignment: OverflowBarAlignment.end,
                   children: [
-                    TextButton(
-                      onPressed: _busy || _unknown ? null : _close,
-                      child: const Text('关闭'),
-                    ),
                     if (widget.mode == 'sources')
                       TextButton(
                         onPressed: _busy || _unknown || _dirty
@@ -939,11 +931,8 @@ bool _rejected(Object error) =>
     (error.httpStatus ?? 0) < 500 &&
     error.httpStatus != 408;
 Widget _lost(BuildContext context) => UtenAlertDialog(
+  showCloseButton: true,
+  onClose: () => Navigator.pop(context),
+
   title: const Text('访问范围已变化'),
-  actions: [
-    TextButton(
-      onPressed: () => Navigator.pop(context),
-      child: const Text('关闭'),
-    ),
-  ],
 );

@@ -703,7 +703,15 @@ class _PayrollPreparationState extends ConsumerState<FinancePayrollPreparation>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('核对工资会计准备', style: Theme.of(context).textTheme.titleLarge),
+            UtenDialogHeader(
+              padding: EdgeInsets.zero,
+              title: Text(
+                '核对工资会计准备',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              showCloseButton: true,
+              onClose: _saving ? null : () => Navigator.pop(context),
+            ),
             Text('${widget.application['application_no']}　原工资金额不在本页修改'),
             const SizedBox(height: 12),
             Expanded(
@@ -922,11 +930,6 @@ class _PayrollPreparationState extends ConsumerState<FinancePayrollPreparation>
               alignment: WrapAlignment.end,
               spacing: 8,
               children: [
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed: _saving ? null : () => Navigator.pop(context),
-                  child: const Text('关闭'),
-                ),
                 if (_sent != null)
                   UtenButton(
                     type: UtenButtonType.secondary,
@@ -1139,11 +1142,11 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('身份或权限已变化，请关闭后从原申请重新进入。'),
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
+            UtenDialogHeader(
+              padding: EdgeInsets.zero,
+              title: const Text('身份或权限已变化，请关闭后从原申请重新进入。'),
+              showCloseButton: true,
+              onClose: () => Navigator.pop(context),
             ),
           ],
         ),
@@ -1160,9 +1163,16 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            widget.kind == 'WAGE_LIABILITY' ? '选择明确原工资负债来源' : '选择本工资条员工的真实未结来源',
-            style: Theme.of(context).textTheme.titleLarge,
+          UtenDialogHeader(
+            padding: EdgeInsets.zero,
+            title: Text(
+              widget.kind == 'WAGE_LIABILITY'
+                  ? '选择明确原工资负债来源'
+                  : '选择本工资条员工的真实未结来源',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            showCloseButton: true,
+            onClose: () => Navigator.pop(context),
           ),
           const SizedBox(height: 12),
           if (widget.employeeId == null && widget.kind == 'WAGE_LIABILITY')
@@ -1220,11 +1230,6 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
                 child: const Text('查询'),
               ),
               const SizedBox(width: 8),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
             ],
           ),
           if (_error != null) Text(_error!),

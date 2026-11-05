@@ -138,13 +138,10 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != _epoch) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('访问范围已变化'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final columns = <MasterColumnDef<Map<String, dynamic>>>[
@@ -248,16 +245,6 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
                 }
               },
             ),
-          ),
-          UtenDialogActions(
-            alignment: MainAxisAlignment.end,
-            overflowAlignment: OverflowBarAlignment.end,
-            children: [
-              TextButton(
-                onPressed: _busy ? null : () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
-            ],
           ),
         ],
       ),
@@ -471,13 +458,10 @@ class _AuxiliaryEditorState extends ConsumerState<_AuxiliaryEditor> {
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != widget.ownerEpoch) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('访问范围已变化'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final editable = !_busy && !_unknown && !_otherUnknown;

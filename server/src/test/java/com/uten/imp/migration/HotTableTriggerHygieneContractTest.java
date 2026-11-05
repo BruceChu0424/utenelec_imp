@@ -245,6 +245,55 @@ class HotTableTriggerHygieneContractTest {
     }
 
     @Test
+    void frozenInventoryPrecisionIgnoresProjectionWritesButStillRejectsReplicaTampering() throws SQLException {
+        assertThat(strings("""
+                SELECT c.relname || '.' || t.tgname FROM pg_trigger t
+                JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_proc p ON p.oid=t.tgfoid
+                WHERE p.proname='fn_guard_inventory_value_precision'
+                  AND (t.tgenabled<>'A' OR ((t.tgtype & 16)<>0 AND t.tgqual IS NULL))
+                """)).isEmpty();
+        try(Connection connection=database.openConnection();Statement statement=connection.createStatement()) {
+            connection.setAutoCommit(false);
+            try {
+                statement.execute("CREATE TEMP TABLE precision_gate_probe ON COMMIT DROP AS SELECT * FROM stock_value_nodes WITH NO DATA");
+                statement.execute("CREATE TEMP TABLE inspection_gate_calls(operation text) ON COMMIT DROP");
+                statement.execute("CREATE FUNCTION pg_temp.record_precision_gate() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO inspection_gate_calls VALUES(TG_OP); RETURN NEW; END $$");
+                String definition;
+                try(ResultSet rows=statement.executeQuery("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid='stock_value_nodes'::regclass AND tgname='trg_00_inventory_value_precision_upd'")) {
+                    assertThat(rows.next()).isTrue();
+                    definition=rows.getString(1);
+                }
+                String probe=definition.replace(" ON public.stock_value_nodes "," ON pg_temp.precision_gate_probe ");
+                assertThat(probe).isNotEqualTo(definition);
+                String prefix=probe.substring(0,probe.indexOf("EXECUTE FUNCTION"));
+                statement.execute(prefix+"EXECUTE FUNCTION pg_temp.record_precision_gate()");
+                statement.execute("ALTER TABLE precision_gate_probe ENABLE ALWAYS TRIGGER trg_00_inventory_value_precision_upd");
+                statement.execute("SET LOCAL session_replication_role='replica'");
+                statement.execute("INSERT INTO precision_gate_probe(id,value_precision_version,business_precision_policy) VALUES(gen_random_uuid(),2,'{\"version\":1,\"choices\":{}}')");
+                statement.execute("UPDATE precision_gate_probe SET owned_value_local=1");
+                assertProbeCalls(statement,0);
+                statement.execute("UPDATE precision_gate_probe SET value_precision_version=value_precision_version,business_precision_policy=business_precision_policy");
+                assertProbeCalls(statement,0);
+                statement.execute("UPDATE precision_gate_probe SET value_precision_version=1");
+                assertProbeCalls(statement,1);
+                statement.execute("UPDATE precision_gate_probe SET business_precision_policy=NULL");
+                assertProbeCalls(statement,1);
+                statement.execute("DROP TRIGGER trg_00_inventory_value_precision_upd ON precision_gate_probe");
+                statement.execute(probe);
+                statement.execute("ALTER TABLE precision_gate_probe ENABLE ALWAYS TRIGGER trg_00_inventory_value_precision_upd");
+                for(String tamper:List.of("UPDATE precision_gate_probe SET value_precision_version=2",
+                        "UPDATE precision_gate_probe SET business_precision_policy='{\"version\":1,\"choices\":{}}'")) {
+                    var savepoint=connection.setSavepoint();
+                    try {
+                        org.junit.jupiter.api.Assertions.assertEquals("55000",
+                                org.junit.jupiter.api.Assertions.assertThrows(SQLException.class,()->statement.execute(tamper)).getSQLState());
+                    } finally {connection.rollback(savepoint);}
+                }
+            } finally {connection.rollback();}
+        }
+    }
+
+    @Test
     void businessDocumentIdentifierIsReservedOnInsertAndGuardedPerColumnOnUpdate() throws SQLException {
         assertThat(strings("""
                 SELECT c.relname || '.' || t.tgname

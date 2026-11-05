@@ -346,7 +346,7 @@ void main() {
 
     expect(find.text('销售订单确认'), findsOneWidget);
     expect(find.text('订单修改确认'), findsNothing);
-    expect(find.text('出货审核'), findsOneWidget);
+    expect(find.text('客户发货审核'), findsOneWidget);
     // 无权限的队列不出现。
     expect(find.text('订货审批'), findsNothing);
     expect(find.text('超量到货审批'), findsNothing);

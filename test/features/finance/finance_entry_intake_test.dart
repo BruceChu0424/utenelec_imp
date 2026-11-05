@@ -112,59 +112,58 @@ void main() {
     expect(env.api.writes, isEmpty);
   });
 
-  testWidgets(
-    'AR rows inherit the source reference with independent entry controllers',
-    (tester) async {
-      final launch = _Launch();
-      final env = await _pump(tester, launch: launch, withArRow: false);
-      await _selectAccount(tester, FinanceDocType.receipt);
-      final initial = _table(tester).controller.rows.single;
-      expect(initial.appliedLedgerId, isNull);
-      expect(initial.entry.bankReference.text, isEmpty);
-      await _recognize(tester);
-      expect(launch.calls, 1);
-      expect(initial.entry.bankReference.text, 'BANK-20261003-001');
-      expect(
-        (await _field(tester, FinanceDocType.receipt, 'account-amount')).text,
-        '123456789012.34',
-      );
-      expect((await _pending(tester)).items, hasLength(1));
+  testWidgets('adding an AR row preserves OCR facts without cloning bank terms', (
+    tester,
+  ) async {
+    final launch = _Launch();
+    final env = await _pump(tester, launch: launch, withArRow: false);
+    await _selectAccount(tester, FinanceDocType.receipt);
+    final initial = _table(tester).controller.rows.single;
+    expect(initial.appliedLedgerId, isNull);
+    expect(initial.entry.bankReference.text, isEmpty);
+    await _recognize(tester);
+    expect(launch.calls, 1);
+    expect(initial.entry.bankReference.text, 'BANK-20261003-001');
+    expect(
+      (await _field(tester, FinanceDocType.receipt, 'account-amount')).text,
+      '123456789012.34',
+    );
+    expect((await _pending(tester)).items, hasLength(1));
 
-      await _addArRow(tester);
-      await _addArRow(tester, index: 2);
-      final first = await _field(
-        tester,
-        FinanceDocType.receipt,
-        'bank-reference',
-      );
-      final rows = _table(tester).controller.rows;
-      expect(rows.map((row) => row.appliedLedgerId), ['ledger-1', 'ledger-2']);
-      final second = rows.last.entry.bankReference;
-      expect(first, isNot(same(second)));
-      expect(first.text, 'BANK-20261003-001');
-      expect(second.text, 'BANK-20261003-001');
-      expect(rows.first.entry.accountId, 'account-1');
-      expect(rows.last.entry.accountId, 'account-1');
-      expect(rows.first.entry.accountAmount.text, '123456789012.34');
-      expect(
-        rows.last.entry.accountAmount.text,
-        isEmpty,
-        reason:
-            'Appending another AR row must not duplicate the bank actual amount.',
-      );
-      final secondField = find.byWidgetPredicate(
-        (widget) => widget is TextField && widget.controller == second,
-      );
-      await tester.ensureVisible(secondField);
-      await tester.enterText(secondField, 'BANK-REVIEWED-002');
-      await tester.pumpAndSettle();
-      expect(first.text, 'BANK-20261003-001');
-      expect(second.text, 'BANK-REVIEWED-002');
-      expect((await _pending(tester)).items, hasLength(1));
-      expect(env.api.writes, isEmpty);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await _addArRow(tester);
+    await _addArRow(tester, index: 2, append: true);
+    final first = await _field(
+      tester,
+      FinanceDocType.receipt,
+      'bank-reference',
+    );
+    final rows = _table(tester).controller.rows;
+    expect(rows.map((row) => row.appliedLedgerId), ['ledger-1', 'ledger-2']);
+    final second = rows.last.entry.bankReference;
+    expect(first, isNot(same(second)));
+    expect(first.text, 'BANK-20261003-001');
+    expect(second.text, isEmpty);
+    expect(rows.first.entry.accountId, 'account-1');
+    expect(rows.last.entry.accountId, isNull);
+    expect(rows.first.entry.accountAmount.text, '123456789012.34');
+    expect(
+      rows.last.entry.accountAmount.text,
+      isEmpty,
+      reason:
+          'Appending another AR row must not duplicate the bank actual amount.',
+    );
+    final secondField = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.controller == second,
+    );
+    await tester.ensureVisible(secondField);
+    await tester.enterText(secondField, 'BANK-REVIEWED-002');
+    await tester.pumpAndSettle();
+    expect(first.text, 'BANK-20261003-001');
+    expect(second.text, 'BANK-REVIEWED-002');
+    expect((await _pending(tester)).items, hasLength(1));
+    expect(env.api.writes, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final removed in [
     Perm.financeReceiptView,
@@ -364,15 +363,25 @@ Future<TextEditingController> _field(
   };
 }
 
-Future<void> _addArRow(WidgetTester tester, {int index = 1}) async {
+Future<void> _addArRow(
+  WidgetTester tester, {
+  int index = 1,
+  bool append = false,
+}) async {
+  if (append) {
+    final add = find.text('添加行').first;
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+  }
   final grid = _table(tester).controller;
-  final target = grid.rows.first;
+  final target = grid.rows.last;
   target.entry.partyId = 'client-1';
   target.entry.touch();
   grid.setSelected(grid.rows, false);
   grid.setSelected([target], true);
   await tester.pumpAndSettle();
-  final import = find.text('引用应收').first;
+  final import = find.text('按出货单收款').first;
   await tester.ensureVisible(import);
   await tester.tap(import);
   await tester.pumpAndSettle();
@@ -583,7 +592,7 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/finance/ar-ap') {
+    if (path == '/finance/receipts/shipment-sources') {
       return {
         'items': [
           for (final index in [1, 2])

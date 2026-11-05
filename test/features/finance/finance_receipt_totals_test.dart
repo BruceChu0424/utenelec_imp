@@ -120,6 +120,12 @@ void main() {
       invalid.amount.text = '2';
       invalid.exchangeRate.text = '1e3';
       await tester.pump();
+      expect(_bar(tester).entries.single.value, '2006.00');
+      expect(find.text('2006.00'), findsOneWidget);
+      expect(invalid.exchangeRate.text, '1e3');
+      invalid.exchangeRate.text = '1e';
+      await tester.pump();
+      expect(_bar(tester).entries.single.value, '—');
       expect(find.text('合计金额(人民币): '), findsNothing);
       invalid.exchangeRate.text = '1';
       await tester.pump();

@@ -1222,11 +1222,7 @@ abstract class _MaterialAnalysisMaterialTableState
         if (coverage.requiredText != null &&
             coverage.requiredText != '0' &&
             coverage.gapText == '0') {
-          final processingRequired = group.paths.any(
-            (path) => path.deliveryOperations.isNotEmpty,
-          );
-          return '本批库存已覆盖，无需下单'
-              '${processingRequired ? '；必要加工仍需执行' : ''}';
+          return _tableCoveredSourceHint(group);
         }
       }
       if (reason != null) return reason;
@@ -5357,6 +5353,17 @@ abstract class _MaterialAnalysisMaterialTableState
   static const _tableMissingWorkerReason = '先在「负责人」列里指定本次谁负责';
   static const _tableMissingSourceReason = '请先在货品资料维护默认来源，再刷新物料分析';
 
+  String _tableCoveredSourceHint(_MaterialGroup group) {
+    final next = group.representative.sourceSuggestion == null
+        ? '额外备货前请维护货品默认来源并刷新'
+        : '额外备货前请刷新以确认货品默认来源';
+    final processingRequired = group.paths.any(
+      (path) => path.deliveryOperations.isNotEmpty,
+    );
+    return '本批库存已覆盖，无需补缺；$next'
+        '${processingRequired ? '；必要加工仍需执行' : ''}';
+  }
+
   /// 已转交共享制造 / 不再需要备料的来源行说明：灰勾选框悬浮与「没有量可下」
   /// 的数量格提示共用同一句，避免两处各说各话。
   static const _tableTransferredSourceReason = '此来源已转交生产责任或不再需要备料，当前仅保留来源说明';
@@ -5871,7 +5878,7 @@ abstract class _MaterialAnalysisMaterialTableState
       final material = group.representative;
       if (material.shortageQty <= 0 && material.requiredQty > 0) {
         return Tooltip(
-          message: _tableIssueBlockedReason(group)!,
+          message: _tableCoveredSourceHint(group),
           child: Text('0', style: theme.textTheme.bodySmall),
         );
       }

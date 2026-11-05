@@ -342,10 +342,24 @@ void _registerMaterialDisabledHintCases() {
       ]) {
         final result = await _disabledHintOfCoverage(tester, overrides);
         expect(result.hint, contains('维护默认来源'));
-        expect(result.hint, isNot(contains('本批库存已覆盖，无需下单')));
+        expect(result.hint, isNot(contains('本批库存已覆盖')));
         expect(result.checkbox.onChanged, isNull);
         expect(tester.takeException(), isNull);
       }
+    },
+  );
+  testWidgets(
+    'disabled covered source hints preserve missing master and required processing',
+    (tester) async {
+      final missing = await _disabledHintOfCoverage(tester, {
+        'sourceSuggestion': null,
+        'deliveryOperations': ['LASER'],
+      });
+      expect(missing.hint, contains('本批库存已覆盖，无需补缺'));
+      expect(missing.hint, contains('额外备货前请维护货品默认来源并刷新'));
+      expect(missing.hint, contains('必要加工仍需执行'));
+      expect(missing.checkbox.onChanged, isNull);
+      expect(tester.takeException(), isNull);
     },
   );
   testWidgets(
@@ -3140,7 +3154,7 @@ void main() {
         'material-analysis-bucket-action-buy',
       );
       // 大草稿编码在真实原生事件循环完成，与下方501行未知提交用例同口径等待。
-      await _submitIssuePage(tester, nativeDraftWork: true);
+      await _submitIssuePage(tester);
       expect(
         find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
@@ -4636,6 +4650,17 @@ void main() {
           .message,
       contains('本批库存已覆盖，无需补缺'),
     );
+    final hints = tester
+        .widgetList<Tooltip>(
+          find.descendant(of: row, matching: find.byType(Tooltip)),
+        )
+        .map((tooltip) => tooltip.message)
+        .whereType<String>()
+        .where((message) => message.contains('本批库存已覆盖，无需补缺'))
+        .toList();
+    expect(hints, hasLength(2), reason: '灰勾选框与锁0数量格使用同一覆盖来源说明');
+    expect(hints.toSet(), hasLength(1));
+    expect(hints.first, contains('额外备货前请刷新以确认货品默认来源'));
   });
 
   testWidgets('库存已覆盖的已确认来源可显式备货，取消保留输入，重试不重复下单', (tester) async {

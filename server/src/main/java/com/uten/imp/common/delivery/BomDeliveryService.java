@@ -38,13 +38,18 @@ public class BomDeliveryService {
         references.resolveAdmittedSourceGoodsUnit(source.goodsId(),source.unitId(),source.unitRate(),1);
         return probeRequiredOperations(source.goodsId(),false);
     }
+    // Periodic workshop consumables are not physical delivery components; prune
+    // their entire branch in both the cheap probe and the authoritative snapshot.
     private boolean probeRequiredOperations(UUID goodsId,boolean requireVisibility) {
         if(goodsId==null)return false;
         if(requireVisibility)references.requireVisibleGoods(goodsId); graphLock.acquire();
         return Boolean.TRUE.equals(em.createNativeQuery("""
             WITH RECURSIVE reachable(id) AS (SELECT CAST(:id AS uuid) UNION
-                SELECT b.component_goods_id FROM goods_bom_items b JOIN reachable r ON r.id=b.goods_id WHERE NOT b.is_deleted)
+                SELECT b.component_goods_id FROM goods_bom_items b JOIN reachable r ON r.id=b.goods_id
+                JOIN goods component ON component.id=b.component_goods_id AND component.issue_method<>'PERIODIC'
+                WHERE NOT b.is_deleted)
             SELECT EXISTS(SELECT 1 FROM reachable r JOIN goods_bom_items b ON b.goods_id=r.id AND NOT b.is_deleted
+                JOIN goods component ON component.id=b.component_goods_id AND component.issue_method<>'PERIODIC'
                 JOIN goods_bom_delivery_rules rule ON rule.bom_edge_id=b.id WHERE jsonb_array_length(rule.required_operations)>0)
             """).setParameter("id",goodsId).getSingleResult());
     }
@@ -62,7 +67,9 @@ public class BomDeliveryService {
                 SELECT CAST(:id AS uuid)
                 UNION
                 SELECT b.component_goods_id FROM goods_bom_items b
-                JOIN reachable r ON r.id=b.goods_id WHERE NOT b.is_deleted
+                JOIN reachable r ON r.id=b.goods_id
+                JOIN goods component ON component.id=b.component_goods_id AND component.issue_method<>'PERIODIC'
+                WHERE NOT b.is_deleted
             )
             SELECT b.id,b.goods_id,b.component_goods_id,b.qty,b.consumption_basis,b.basis_output_qty,
                 b.allow_partial_package,COALESCE(b.color_id,c.color_id),color.name,
@@ -74,7 +81,7 @@ public class BomDeliveryService {
                   %s,
                   CASE WHEN c.auto_created THEN 'GOODS_PLACEHOLDER' WHEN c.status='禁用' THEN 'GOODS_DISABLED' END),'')
             FROM reachable r JOIN goods_bom_items b ON b.goods_id=r.id AND NOT b.is_deleted
-            JOIN goods c ON c.id=b.component_goods_id
+            JOIN goods c ON c.id=b.component_goods_id AND c.issue_method<>'PERIODIC'
             LEFT JOIN units u ON u.id=c.unit_id AND NOT u.is_deleted
             LEFT JOIN colors color ON color.id=COALESCE(b.color_id,c.color_id) AND NOT color.is_deleted
             LEFT JOIN goods_bom_delivery_rules rule ON rule.bom_edge_id=b.id
@@ -192,11 +199,17 @@ public class BomDeliveryService {
             List<DeliveryPlan.Operation> requiredOperations, String expectedFingerprint, UUID requestedRoot) {
         tx.bind();
         @SuppressWarnings("unchecked")
-        List<Object[]> edges = em.createNativeQuery("SELECT goods_id,component_goods_id FROM goods_bom_items WHERE id=:id AND NOT is_deleted")
+        List<Object[]> edges = em.createNativeQuery("""
+            SELECT edge.goods_id,edge.component_goods_id,component.issue_method FROM goods_bom_items edge
+            JOIN goods component ON component.id=edge.component_goods_id
+            WHERE edge.id=:id AND NOT edge.is_deleted
+            """)
                 .setParameter("id", edgeId).getResultList();
         if (edges.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "BOM边不存在");
         UUID parent=uuid(edges.getFirst()[0]);
         references.requireVisibleGoods(parent); references.requireVisibleGoods(uuid(edges.getFirst()[1]));
+        if ("PERIODIC".equals(edges.getFirst()[2]))
+            throw invalid("整批领料的期间材料不参与逐单实物交付配置");
         graphLock.acquire();
         UUID rootId=requestedRoot==null?parent:requestedRoot;
         Snapshot before=snapshot(rootId);

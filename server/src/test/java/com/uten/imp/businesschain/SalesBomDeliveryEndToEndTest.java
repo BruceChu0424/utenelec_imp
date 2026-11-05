@@ -152,6 +152,28 @@ class SalesBomDeliveryEndToEndTest {
         assertThatThrownBy(()->shipments.transitionWarehouseWork(r.shipment(),pick(r))).isInstanceOf(ApiException.class).hasMessageContaining("加工");
         assertThat(balance(r.world().warehouseId(),r.world().goodsB())).isEqualByComparingTo("10");
     }
+    @Test void periodicWorkshopMaterialIsAbsentFromPhysicalSnapshotRequiredWorkAndRuleEditing(){
+        var w=fixture.seedWorld("bom-periodic-"+UUID.randomUUID().toString().substring(0,7));fixture.loginAs(w.superAdminUserId());
+        db.update("UPDATE goods SET issue_method='PERIODIC' WHERE id=?",w.goodsC());
+        UUID periodicEdge=db.queryForObject("SELECT id FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",UUID.class,w.goodsB(),w.goodsC());
+        db.update("INSERT INTO goods_bom_delivery_rules(bom_edge_id,required_operations) VALUES(?,'[\"LASER\"]')",periodicEdge);
+        var before=boms.snapshot(w.goodsA());
+        var assembly=before.root().children().stream().filter(n->n.goodsId().equals(w.goodsB())).findFirst().orElseThrow();
+        assertThat(assembly.children()).extracting(DeliveryBom.Node::goodsId).containsExactly(w.goodsD());
+        assertThat(before.root().children()).extracting(DeliveryBom.Node::goodsId).containsExactlyInAnyOrder(w.goodsB(),w.goodsE());
+        assertThat(boms.hasRequiredOperations(w.goodsA())).isFalse();
+        db.update("UPDATE goods_bom_items SET qty=qty+1 WHERE id=?",periodicEdge);
+        assertThat(boms.snapshot(w.goodsA()).bomFingerprint()).isEqualTo(before.bomFingerprint());
+        assertThatThrownBy(()->boms.updateRule(periodicEdge,false,DeliveryBom.MaterialRole.PART,List.of(DeliveryPlan.Operation.LASER),before.bomFingerprint(),w.goodsA()))
+                .isInstanceOf(ApiException.class).hasMessageContaining("整批领料");
+        UUID ordinaryEdge=assembly.children().getFirst().edgeId();
+        var changed=boms.updateRule(ordinaryEdge,false,DeliveryBom.MaterialRole.PART,List.of(DeliveryPlan.Operation.LASER),before.bomFingerprint(),w.goodsA());
+        assertThat(changed.bomFingerprint()).isNotEqualTo(before.bomFingerprint());
+        assertThat(boms.hasRequiredOperations(w.goodsA())).isTrue();
+        assertThat(changed.root().children().stream().filter(n->n.goodsId().equals(w.goodsB())).findFirst().orElseThrow().children().getFirst().requiredOperations())
+                .containsExactly(DeliveryPlan.Operation.LASER);
+    }
+
     @Test void changedBomCannotSilentlyReplaceTheApprovedPhysicalFrontier(){
         Ready r=ready("bom-drift","10","5",false);
         db.update("UPDATE goods_bom_items SET qty=3 WHERE goods_id=? AND component_goods_id=?",r.world().goodsA(),r.world().goodsB());

@@ -238,15 +238,19 @@ public class SalesMutationFootprintService implements com.uten.imp.application.p
         // ahead of inventory: the ordinary save acquires that lock later and revalidates its reviewed fingerprint.
         if(masterReferences==null)throw new ApiException(ErrorCode.CONFLICT,"交付预锁资料校验服务不可用");
         masterReferences.requireVisibleGoodsBatch(roots);
+        // Match the delivery snapshot: PERIODIC branches never enter the new
+        // physical footprint. Stored physical snapshots above remain fully locked.
         var query=em.createNativeQuery("""
             WITH RECURSIVE proposed(root_id) AS (SELECT id FROM goods WHERE id IN(:roots)),
             reachable(root_id,goods_id) AS (
               SELECT root_id,root_id FROM proposed
               UNION SELECT reachable.root_id,edge.component_goods_id FROM reachable
                 JOIN goods_bom_items edge ON edge.goods_id=reachable.goods_id AND NOT edge.is_deleted
+                JOIN goods component ON component.id=edge.component_goods_id AND component.issue_method<>'PERIODIC'
             ), needed(root_id) AS (
               SELECT proposed.root_id FROM proposed WHERE %s OR EXISTS(
                 SELECT 1 FROM reachable JOIN goods_bom_items edge ON edge.goods_id=reachable.goods_id AND NOT edge.is_deleted
+                JOIN goods component ON component.id=edge.component_goods_id AND component.issue_method<>'PERIODIC'
                 JOIN goods_bom_delivery_rules rule ON rule.bom_edge_id=edge.id
                 WHERE reachable.root_id=proposed.root_id AND jsonb_array_length(rule.required_operations)>0)
             )
@@ -260,7 +264,7 @@ public class SalesMutationFootprintService implements com.uten.imp.application.p
               COALESCE(rule.required_operations::text,'[]'),component.unit_id,component.is_deleted,component.auto_created,component.status
             FROM reachable JOIN needed ON needed.root_id=reachable.root_id
             JOIN goods_bom_items edge ON edge.goods_id=reachable.goods_id AND NOT edge.is_deleted
-            JOIN goods component ON component.id=edge.component_goods_id
+            JOIN goods component ON component.id=edge.component_goods_id AND component.issue_method<>'PERIODIC'
             LEFT JOIN goods_bom_delivery_rules rule ON rule.bom_edge_id=edge.id
             ORDER BY 1,2 NULLS FIRST,3,4,5
             """.formatted(physical.isEmpty()?"FALSE":"proposed.root_id IN(:physical)"))

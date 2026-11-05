@@ -50,7 +50,7 @@ class ProcurementTotalAmountPostgresTest {
                     try (PreparedStatement sql = db.prepareStatement("SELECT fn_procurement_reference_price(?,?)")) {
                         sql.setBigDecimal(1,new BigDecimal(total)); sql.setBigDecimal(2,q);
                         try (ResultSet r=sql.executeQuery()) { r.next(); assertThat(r.getBigDecimal(1))
-                                .isEqualByComparingTo(MoneyPolicy.referenceUnitPrice(new BigDecimal(total),q)); }
+                                .isEqualByComparingTo(ProcurementReferencePrice.proofPrice(new BigDecimal(total),q,null)); }
                     }
                 }
             }
@@ -83,6 +83,7 @@ class ProcurementTotalAmountPostgresTest {
         for (String prefix : List.of("purchase", "subcontract")) {
             try (Connection db = connect()) {
                 Fixture f = seed(db,prefix);
+                exec(db,"SELECT set_config('app.business_precision_choices','{\"version\":1,\"choices\":{\"money.reference-unit-price\":{\"scale\":10,\"rounding\":\"DOWN\"}}}',false)");
                 db.setAutoCommit(false);
                 try {
                     exec(db,"SET LOCAL session_replication_role=replica");
@@ -91,6 +92,11 @@ class ProcurementTotalAmountPostgresTest {
                             + "SELECT gen_random_uuid(),'" + prefix.toUpperCase() + "',order_id,id,qty,6000,1,to_jsonb(i),0,gen_random_uuid(),gen_random_uuid() FROM " + prefix + "_order_items i WHERE id='" + f.item() + "'");
                     exec(db,"SET LOCAL session_replication_role=origin");
                     assertThat(scalar(db,"SELECT fn_is_proven_procurement_qty_revision('" + prefix + "_order_items',to_jsonb(i),to_jsonb(i)||'{\"qty\":6000,\"total_amount_input\":200,\"amount_original\":205,\"amount_local\":205}'::jsonb) FROM " + prefix + "_order_items i WHERE id='" + f.item() + "'"))
+                            .isEqualTo("purchase".equals(prefix) ? "f" : "t");
+                    String adopted = "to_jsonb(i)||'{\"qty\":6000,\"total_amount_input\":200,\"amount_original\":205,\"amount_local\":205}'::jsonb"
+                            + "||jsonb_build_object('reference_price_precision_policy',fn_business_precision_snapshot())";
+                    if ("purchase".equals(prefix)) adopted += "||jsonb_build_object('charged_base_qty',6000,'gift_base_qty',0,'quantity_precision_policy',fn_business_precision_snapshot())";
+                    assertThat(scalar(db,"SELECT fn_is_proven_procurement_qty_revision('" + prefix + "_order_items',to_jsonb(i)," + adopted + ") FROM " + prefix + "_order_items i WHERE id='" + f.item() + "'"))
                             .isEqualTo("t");
                     assertThat(scalar(db,"SELECT fn_is_proven_procurement_header_revision('" + prefix.toUpperCase() + "',to_jsonb(h),to_jsonb(h)||'{\"total_original\":205,\"total_local\":205}'::jsonb) FROM " + prefix + "_orders h WHERE id='" + f.header() + "'"))
                             .isEqualTo("t");
@@ -98,6 +104,10 @@ class ProcurementTotalAmountPostgresTest {
                     exec(db,"UPDATE " + prefix + "_order_items SET qty=6000,total_amount_input=200,amount_original=205,amount_local=205 WHERE id='" + f.item() + "'");
                     assertThat(decimal(db,"SELECT total_amount_input FROM " + prefix + "_order_items WHERE id='" + f.item() + "'"))
                             .isEqualByComparingTo("200");
+                    assertThat(decimal(db,"SELECT price FROM " + prefix + "_order_items WHERE id='" + f.item() + "'"))
+                            .isEqualByComparingTo("0.0333333333");
+                    assertThat(scalar(db,"SELECT reference_price_precision_policy->'choices'->'money.reference-unit-price'->>'scale' FROM " + prefix + "_order_items WHERE id='" + f.item() + "'"))
+                            .isEqualTo("10");
                 } finally { db.rollback(); }
             }
         }
@@ -111,14 +121,12 @@ class ProcurementTotalAmountPostgresTest {
             exec(db,"INSERT INTO " + prefix + "_orders(id,bill_no,bill_date,currency_id,settlement_method_id,exchange_rate,tax_rate,total_original,total_local) "
                     + "SELECT '" + header + "','" + bill + "',CURRENT_DATE,(SELECT id FROM currencies WHERE status='使用' AND NOT is_deleted LIMIT 1),"
                     + "(SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted LIMIT 1),1,0,105,105");
-            // 夹具代表 V1033 前的既有行(quantity_adoption_version=1 只存在于采购行)，带真实计量
-            // 单位与 1:1 换算率；随后经真实触发的改量走正式采用路径。
+            // Total-price history keeps V760's recorded reference. Quantity inputs
+            // use the real current adoption trigger and their explicit 1:1 unit.
             exec(db,"INSERT INTO " + prefix + "_order_items(id,order_id,bill_no,bill_date,goods_id,line_no,qty,price,total_amount_input,amount_original,amount_local,unit_id,unit_rate"
-                    + ("purchase".equals(prefix)?",quantity_adoption_version":"")
                     + ",goods_snapshot_source,goods_code_snapshot,goods_name_snapshot,extra_columns) VALUES('"
                     + item + "','" + header + "','" + bill + "',CURRENT_DATE,gen_random_uuid(),1,3000,0.0333333333,100,105,105,"
                     + "(SELECT id FROM units WHERE code='TOTAL-U-" + header + "'),1"
-                    + ("purchase".equals(prefix)?",1":"")
                     + ",'MASTER_AT_SAVE','TOTAL','总金额货品','[{\"name\":\"包装费\",\"type\":\"AMOUNT\",\"operation\":\"ADD\",\"value\":\"5\"}]'::jsonb)");
         } finally { exec(db,"SET session_replication_role=origin"); }
         return new Fixture(header,item);

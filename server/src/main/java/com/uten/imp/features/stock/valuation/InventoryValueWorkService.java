@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static com.uten.imp.features.stock.valuation.ValueMath.conflict;
@@ -22,6 +23,11 @@ public class InventoryValueWorkService {
     // Separate two-key PostgreSQL advisory namespace; this nonblocking claim is
     // only between workers and never replaces the ordinary inventory/pool locks.
     private static final int REFRESH_CLAIM_NAMESPACE = 0x5657524B;
+    private record RefreshPosition(UUID after) { }
+    // Discovery hint only. Every page gets a new identity token: a late worker
+    // cannot move another worker's cursor backwards, including after wraparound.
+    private final AtomicReference<RefreshPosition> refreshPosition =
+            new AtomicReference<>(new RefreshPosition(null));
     private static final String REFRESH_KEYS_SQL = """
             WITH scope AS MATERIALIZED (
                 SELECT execution_segment_id,source_kind,product_pool_id
@@ -65,14 +71,16 @@ public class InventoryValueWorkService {
     /** A zero result means this invocation did no work, not that another worker has drained the queue. */
     public int runBatch(){
         int applied=0;
-        List<UUID> pendingScopes=db.queryForList("""
-                SELECT execution_segment_id FROM stock_value_production_cost_objects
-                WHERE business_refresh_pending AND state<>'APPLYING'
-                ORDER BY execution_segment_id LIMIT 10
-                """,Map.of(),UUID.class);
+        RefreshPosition observed=refreshPosition.get();
+        List<UUID> pendingScopes=pendingRefreshScopes(observed.after());
+        if(pendingScopes.isEmpty()&&observed.after()!=null)pendingScopes=pendingRefreshScopes(null);
         for(UUID scope:pendingScopes) {
             if(refreshScope(scope,()->refreshPendingBusiness(scope)))applied++;
         }
+        // A busy claim is a completed discovery attempt, not completed work.
+        // Keep ten attempts per call, and revisit skipped scopes on the next lap.
+        // Unexpected failures still escape before this cursor advance.
+        if(!pendingScopes.isEmpty())refreshPosition.compareAndSet(observed,new RefreshPosition(pendingScopes.getLast()));
         // Discovery is deliberately scope-only authority. Events and versions in
         // this projection can become stale while a worker waits for inventory.
         for(var dirty:production.pendingRecalculations(10)) {
@@ -93,6 +101,15 @@ public class InventoryValueWorkService {
             });if(Boolean.TRUE.equals(result))applied++;
         }
         return applied;
+    }
+
+    private List<UUID> pendingRefreshScopes(UUID after) {
+        return db.queryForList("""
+                SELECT execution_segment_id FROM stock_value_production_cost_objects
+                WHERE business_refresh_pending AND state<>'APPLYING'%s
+                ORDER BY execution_segment_id LIMIT 10
+                """.formatted(after==null?"":" AND execution_segment_id>:after"),
+                after==null?Map.of():Map.of("after",after),UUID.class);
     }
 
     /**

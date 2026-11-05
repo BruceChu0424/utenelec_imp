@@ -745,6 +745,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 order.getExchangeRate(),
                 order.getTaxRate(),
                 "委外订货");
+        com.uten.imp.common.finance.ProcurementReferencePrice.loadPolicies(em, orderType(), items);
         requireFinanceCommercialAuthority(order, items);
         lockAndValidateSourcesIncludingPending(order, items);
         // ADR-143 §二.3：委外件必须先有可发外的直属物料(BOM)；缺的先转研发，提交人进等待名单。
@@ -947,8 +948,13 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             item.setTotalAmountInput(MoneyPolicy.revisedTotalAmountInput(
                     item.getTotalAmountInput(), (BigDecimal) change[1], newQty));
             item.setQty(newQty);
+            if (item.getTotalAmountInput() != null) {
+                var reference = com.uten.imp.common.finance.ProcurementReferencePrice.adopt(item.getTotalAmountInput(), newQty);
+                item.setPrice(reference.price());
+                item.setReferencePricePrecisionPolicy(reference.policy());
+            }
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    item.getPrice() == null ? null : MoneyPolicy.orderBaseAmount(newQty, item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
+                    item.getPrice() == null ? null : com.uten.imp.common.finance.ProcurementReferencePrice.baseAmount(newQty, item.getPrice(), item.getTotalAmountInput(), item.getReferencePricePrecisionPolicy()), item.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || rate == null ? null : MoneyPolicy.local(original, rate));
             item.setAmountOriginal(amounts.original());
@@ -1493,11 +1499,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         "委外订货数量、单价和金额必须完整且不能为负");
             }
             BigDecimal expectedOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    MoneyPolicy.orderBaseAmount(item.getQty(), item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
-            if (item.getTotalAmountInput() != null
-                    && item.getPrice().compareTo(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty())) != 0) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "参考单价与总金额、数量不一致");
-            }
+                    com.uten.imp.common.finance.ProcurementReferencePrice.baseAmount(item.getQty(), item.getPrice(), item.getTotalAmountInput(), item.getReferencePricePrecisionPolicy()), item.getExtraColumns());
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
@@ -1805,15 +1807,18 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             it.setUnitRate(l.getUnitRate() == null ? BigDecimal.ONE : l.getUnitRate());
             it.setQty(l.getQty());
             BigDecimal totalInput = MoneyPolicy.totalAmountInput(l.getTotalAmountInput());
-            BigDecimal price = totalInput == null
+            var reference = totalInput == null ? null
+                    : com.uten.imp.common.finance.ProcurementReferencePrice.adopt(totalInput, l.getQty());
+            BigDecimal price = reference == null
                     ? (l.getPrice() == null ? null : com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(), "单价"))
-                    : MoneyPolicy.referenceUnitPrice(totalInput, l.getQty());
+                    : reference.price();
             it.setTotalAmountInput(totalInput);
             it.setPrice(price);
+            it.setReferencePricePrecisionPolicy(reference == null ? null : reference.policy());
             it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "subcontract_order",
                     l.getExtraColumns(), previousColumns.getOrDefault(l, it.getExtraColumns()), subcontractPriceMasked()));
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    MoneyPolicy.orderBaseAmount(l.getQty(), price, totalInput), it.getExtraColumns());
+                    com.uten.imp.common.finance.ProcurementReferencePrice.baseAmount(l.getQty(), price, totalInput, it.getReferencePricePrecisionPolicy()), it.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
             it.setAmountOriginal(amounts.original());

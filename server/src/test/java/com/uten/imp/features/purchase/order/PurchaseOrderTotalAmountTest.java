@@ -1,6 +1,6 @@
 package com.uten.imp.features.purchase.order;
 
-import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.finance.ProcurementReferencePrice;
 import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -31,7 +31,9 @@ class PurchaseOrderTotalAmountTest {
             // 2026-11-04 数量采用契约（0aaffa3aa/d533807ca V1033 范式）：送审校验需要单位换算率。
             item.setUnitRate(BigDecimal.ONE);
             item.setTotalAmountInput(new BigDecimal("100"));
-            item.setPrice(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty()));
+            var reference = ProcurementReferencePrice.adopt(item.getTotalAmountInput(), item.getQty());
+            item.setPrice(reference.price());
+            item.setReferencePricePrecisionPolicy(reference.policy());
             item.setAmountOriginal(new BigDecimal("100")); item.setAmountLocal(new BigDecimal("710"));
             assertThatCode(() -> ReflectionTestUtils.invokeMethod(PurchaseOrderService.class,
                     "requireFinanceCommercialAuthority", order, List.of(item))).doesNotThrowAnyException();

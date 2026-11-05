@@ -4,14 +4,12 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import java.util.regex.Pattern;
+import com.uten.imp.testsupport.MigrationSqlResources;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -125,10 +123,6 @@ class PurchaseQuantityPolicyGuardPostgresTest {
     private static void choose(String policy) { jdbc.queryForObject("SELECT set_config('app.business_precision_choices',?,false)", String.class, policy); }
     private static String row(UUID item) { return jdbc.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?", String.class, item); }
     private static void installGuard() throws Exception { jdbc.execute(sql("V1060__keep_frozen_purchase_quantity_policy_on_derived_only_updates.sql")); }
-    private static String sql(String name) throws Exception { return new ClassPathResource("db/migration/" + name).getContentAsString(StandardCharsets.UTF_8); }
-    private static String function(String source, String name) {
-        var matcher = Pattern.compile("(?s)CREATE(?: OR REPLACE)? FUNCTION " + name + "\\b.*?\\$\\$;").matcher(source);
-        if (!matcher.find()) throw new IllegalArgumentException("Missing original function " + name);
-        return matcher.group();
-    }
+    private static String sql(String name) throws Exception { return MigrationSqlResources.read(name); }
+    private static String function(String source, String name) { return MigrationSqlResources.function(source, name); }
 }

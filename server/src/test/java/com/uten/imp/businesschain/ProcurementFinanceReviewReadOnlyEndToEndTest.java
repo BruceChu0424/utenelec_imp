@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.BatchDecisionItem;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
@@ -196,7 +197,12 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
                 request.setItems(List.of(line));
                 var order = subcontractOrders.create(request);
                 UUID itemId = order.getItems().getFirst().getId();
-                var submitted = finance.submit("SUBCONTRACT", order.getId());
+                String referencePolicy = db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?", String.class, itemId);
+                assertThat(db.queryForObject("SELECT reference_price_precision_policy#>>'{choices,money.reference-unit-price,scale}' FROM subcontract_order_items WHERE id=?", String.class, itemId))
+                        .isEqualTo("10");
+                var submitted = submitUnderDifferentPrecision("SUBCONTRACT", order.getId());
+                assertThat(db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?", String.class, itemId))
+                        .isEqualTo(referencePolicy);
                 String original = snapshot(submitted.caseId());
                 line.setTotalAmountInput(BigDecimal.ZERO);
                 assertThatThrownBy(() -> subcontractOrders.update(order.getId(), request)).isInstanceOf(ApiException.class);
@@ -223,8 +229,57 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         }
     }
 
+    @Test void pendingTotalPricedPurchaseKeepsItsReviewCaseAndOriginalEvidenceAcrossAnExplicitQuantityRevision() throws Exception {
+        var w = fixture.seedWorld("pending-total-policy"); fixture.loginAs(w.superAdminUserId());
+        var request = new com.uten.imp.features.purchase.request.dto.RequestSaveRequest();
+        request.setBillDate(BusinessTime.today()); request.setWarehouseId(w.warehouseId()); request.setDepartmentId(w.departmentId()); request.setApplicantId(w.employeeId());
+        var requested = new com.uten.imp.features.purchase.request.dto.RequestItemLine();
+        requested.setGoodsId(w.goodsD()); requested.setUnitId(w.unitId()); requested.setUnitRate(BigDecimal.ONE); requested.setQty(new BigDecimal("10"));
+        request.setItems(List.of(requested)); var source = requests.create(request); requests.approve(source.getId());
+        var orderRequest = new OrderSaveRequest(); orderRequest.setBillDate(BusinessTime.today()); orderRequest.setSupplierId(w.supplierId());
+        orderRequest.setWarehouseId(w.warehouseId()); orderRequest.setCurrencyId(w.currencyId()); orderRequest.setExchangeRate(BigDecimal.ONE); orderRequest.setTaxRate(BigDecimal.ZERO);
+        orderRequest.setSettlementMethodId(ReflectionTestUtils.invokeMethod(fixture, "activeSettlementMethodId"));
+        var line = new OrderItemLine(); line.setGoodsId(w.goodsD()); line.setUnitId(w.unitId()); line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal("3")); line.setTotalAmountInput(BigDecimal.ONE); line.setRequestItemId(source.getItems().getFirst().getId()); orderRequest.setItems(List.of(line));
+        UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
+        try (var ignored = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.reference-unit-price", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"),
+                "money.revised-total", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
+            var order = orders.create(orderRequest); UUID item = order.getItems().getFirst().getId();
+            var pending = submitUnderDifferentPrecision("PURCHASE", order.getId()); String original = snapshot(pending.caseId());
+            var changed = orders.changeQty(order.getId(), new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(item, new BigDecimal("4")))));
+            var updated = changed.getFinanceApproval();
+            assertThat(updated.caseId()).isEqualTo(pending.caseId()); assertThat(updated.version()).isEqualTo(pending.version()+1);
+            assertThat(changed.getTotalOriginal()).isEqualByComparingTo("1.3333");
+            assertThat(db.queryForObject("SELECT price FROM purchase_order_items WHERE id=?", BigDecimal.class, item)).isEqualByComparingTo("0.333325");
+            assertThat(db.queryForObject("SELECT ordered_qty FROM purchase_request_items WHERE id=?", BigDecimal.class, line.getRequestItemId())).isZero();
+            assertThat(db.queryForObject("SELECT event_snapshot->>'previousSubmissionSnapshot' FROM procurement_order_approval_events WHERE case_id=? AND event_type='QUANTITY_CHANGED'", String.class, pending.caseId())).isEqualTo(original);
+            fixture.loginAs(reviewer); var claim = claims.claim("PROCUREMENT_FINANCE_APPROVE", updated.caseId().toString());
+            try (var different = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                    "money.reference-unit-price", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(0, "DOWN")))) {
+                finance.approveBatch(List.of(new BatchDecisionItem(updated.caseId(), updated.version(), claim.claimId())), "核对原总额和改量", BigDecimal.ONE);
+            }
+            assertThat(db.queryForObject("SELECT ordered_qty FROM purchase_request_items WHERE id=?", BigDecimal.class, line.getRequestItemId())).isEqualByComparingTo("4");
+        }
+    }
+
     private String snapshot(UUID caseId) {
         return db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE id=?", String.class, caseId);
+    }
+
+    private FinanceApproval submitUnderDifferentPrecision(String kind, UUID order) {
+        String original = db.queryForObject("SELECT current_setting('app.business_precision_choices',true)", String.class);
+        FinanceApproval result;
+        try (var ignored = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.reference-unit-price", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(0, "DOWN")))) {
+            db.queryForObject("SELECT set_config('app.business_precision_choices',?,true)", String.class,
+                    com.uten.imp.common.finance.BusinessPrecisionContext.json());
+            result = finance.submit(kind, order);
+        } catch (RuntimeException failure) { throw failure; }
+        catch (Exception failure) { throw new IllegalStateException("Precision test scope could not close", failure); }
+        db.queryForObject("SELECT set_config('app.business_precision_choices',?,true)", String.class,
+                java.util.Objects.toString(original, ""));
+        return result;
     }
 
     /**

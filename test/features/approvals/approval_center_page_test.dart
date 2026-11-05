@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -18,6 +19,7 @@ import 'package:uten_imp/features/applications/pages/business_application_list_p
 import 'package:uten_imp/features/approvals/pages/approval_center_page.dart';
 import 'package:uten_imp/features/expense/pages/expense_claim_edit_page.dart';
 import 'package:uten_imp/features/expense/pages/expense_detail_page.dart';
+import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/pages/expense_list_page.dart';
 import 'package:uten_imp/features/expense/widgets/expense_editable_items.dart';
 import 'package:uten_imp/features/expense/models/expense_item.dart';
@@ -529,19 +531,33 @@ void main() {
         const Size(1440, 1000),
         permissions: {Perm.applicationPrepaymentLinkFinance},
       );
-      final states = tester.widget<UtenFilterToolbar<String>>(
+      // 2026-11-04 状态行退役后：入账队列经首列「状态」表头筛选承载——
+      // 红（待入账待办数）落在筛选桶计数，黄（在办数）保留在父分类行徽章。
+      final table = tester.widget<MasterDataTableView<BusinessApplication>>(
+        find.byType(MasterDataTableView<BusinessApplication>),
+      );
+      expect(
+        table.facets['status']!
+            .singleWhere((value) => value.value == 'prepayment-posting')
+            .count,
+        1,
+        reason: '红：预付待入账待办数',
+      );
+      final mainBar = tester.widget<UtenFilterToolbar<String>>(
         find.byWidgetPredicate(
-          (value) =>
-              value is UtenFilterToolbar<String> &&
-              value.segmentsKey == const Key('application-status-filter'),
+          (w) =>
+              w is UtenFilterToolbar<String> &&
+              w.segmentsKey == const Key('approval-center-categories'),
         ),
       );
-      final posting = states.segments.singleWhere(
-        (value) => value.value == 'prepayment-posting',
+      expect(
+        mainBar.segments
+            .singleWhere((w) => w.value == 'application')
+            .inProgressCount,
+        2,
+        reason: '黄：预付在办数仍在父分类行',
       );
-      expect(posting.count, 1);
-      expect(posting.inProgressCount, 2);
-      expect(states.selected, {'prepayment-posting'});
+      expect(table.filters['status'], 'prepayment-posting');
       expect(
         api.queries
             .where(
@@ -551,9 +567,6 @@ void main() {
             .last
             .query['kind'],
         'PREPAYMENT',
-      );
-      final table = tester.widget<MasterDataTableView<BusinessApplication>>(
-        find.byType(MasterDataTableView<BusinessApplication>),
       );
       expect(table.error, isNull);
       expect(table.items, hasLength(3));
@@ -570,6 +583,156 @@ void main() {
           'manual-prepayment-posting',
         );
       }
+    },
+  );
+
+  testWidgets(
+    'non-prepayment kinds do not offer the prepayment posting queue',
+    (tester) async {
+      // 2026-11-04 用户口径:入账队列只属于预付申请——选了「出差申请」等
+      // 其他类别时不再提供「预付待入账」筛选桶,仅在「全部申请/预付申请」下提供。
+      final api = _Api()..postingTodo = 1;
+      await _pump(
+        tester,
+        api,
+        '/approvals/FINANCE?group=application',
+        const Size(1440, 1000),
+        permissions: {Perm.applicationPrepaymentLinkFinance},
+      );
+      UtenFilterToolbar<String> kindBar() =>
+          tester.widget<UtenFilterToolbar<String>>(
+            find.byWidgetPredicate(
+              (value) =>
+                  value is UtenFilterToolbar<String> &&
+                  value.segmentsKey == const Key('application-kind-filter'),
+            ),
+          );
+      List<String> statusBuckets() =>
+          (tester
+                      .widget<MasterDataTableView<BusinessApplication>>(
+                        find.byType(MasterDataTableView<BusinessApplication>),
+                      )
+                      .facets['status'] ??
+                  const [])
+              .map((value) => value.value)
+              .toList();
+      kindBar().onSelectionChanged!('TRAVEL');
+      await tester.pumpAndSettle();
+      expect(
+        statusBuckets(),
+        isNot(contains('prepayment-posting')),
+        reason: '出差申请没有预付入账队列',
+      );
+      expect(kindBar().selected, {'TRAVEL'});
+      kindBar().onSelectionChanged!('ALL');
+      await tester.pumpAndSettle();
+      expect(
+        statusBuckets(),
+        contains('prepayment-posting'),
+        reason: '全部申请仍提供入账队列入口',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'entering the posting queue keeps the kind row visible on PREPAYMENT',
+    (tester) async {
+      // 2026-11-04 修复:此前进入「预付待入账」会整行隐藏分类行(行跳动、
+      // 数据来路不可见)。现在分类行保持可见并显式选中「预付申请」;状态行
+      // 退役后队列切换走首列「状态」表头筛选。
+      final api = _Api()..postingTodo = 1;
+      await _pump(
+        tester,
+        api,
+        '/approvals/FINANCE?group=application',
+        const Size(1440, 1000),
+        permissions: {Perm.applicationPrepaymentLinkFinance},
+      );
+      tester
+          .widget<MasterDataTableView<BusinessApplication>>(
+            find.byType(MasterDataTableView<BusinessApplication>),
+          )
+          .onFilterChanged('status', 'prepayment-posting');
+      await tester.pumpAndSettle();
+      expect(
+        find.byWidgetPredicate(
+          (value) =>
+              value is UtenFilterToolbar<String> &&
+              value.segmentsKey == const Key('application-kind-filter'),
+        ),
+        findsOneWidget,
+        reason: '分类行不再整行消失',
+      );
+      final kinds = tester.widget<UtenFilterToolbar<String>>(
+        find.byWidgetPredicate(
+          (value) =>
+              value is UtenFilterToolbar<String> &&
+              value.segmentsKey == const Key('application-kind-filter'),
+        ),
+      );
+      expect(kinds.selected, {'PREPAYMENT'});
+      expect(
+        api.queries
+            .where((q) => q.path == '/business-applications/prepayment-posting')
+            .last
+            .query['kind'],
+        'PREPAYMENT',
+      );
+      // 切到「出差申请」即退出入账队列,回到待审核并按该类别拉取。
+      kinds.onSelectionChanged!('TRAVEL');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<MasterDataTableView<BusinessApplication>>(
+              find.byType(MasterDataTableView<BusinessApplication>),
+            )
+            .filters['status'],
+        'pending',
+      );
+      expect(
+        api.queries
+            .where((q) => q.path == '/business-applications/pending')
+            .last
+            .query['kind'],
+        'TRAVEL',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'header refresh sits in the app bar and reloads the active group',
+    (tester) async {
+      // 2026-11-04 刷新按钮对齐任务中心范式:右上角 AppBar 一枚,当前分组
+      // 的列表随 tick 重拉(内嵌页不再各带 trailing 刷新)。
+      final api = _Api();
+      await _pump(
+        tester,
+        api,
+        '/approvals/FINANCE?group=application',
+        const Size(1440, 1000),
+        permissions: {Perm.applicationPrepaymentLinkFinance},
+      );
+      final refresh = find.byKey(const Key('approval-center-refresh'));
+      expect(
+        find.ancestor(of: refresh, matching: find.byType(UtenAppBar)),
+        findsOneWidget,
+        reason: '刷新按钮应与其他页面一样位于右上角 AppBar',
+      );
+      final pendingBefore = api.queries
+          .where((q) => q.path == '/business-applications/pending')
+          .length;
+      await tester.tap(refresh);
+      await tester.pumpAndSettle();
+      expect(
+        api.queries
+            .where((q) => q.path == '/business-applications/pending')
+            .length,
+        greaterThan(pendingBefore),
+        reason: '右上角刷新应重拉当前申请队列',
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -604,7 +767,7 @@ void main() {
           'approval-center-placeholder',
         );
       }
-      // 点击父分类后子分类行才出现并加载对应队列。
+      // 点击父分类后直接进入待审核表格（2026-11-04 状态子行退役，无子分类行）。
       final main = tester.widget<UtenFilterToolbar<String>>(
         find.byWidgetPredicate(
           (w) =>
@@ -617,8 +780,10 @@ void main() {
       expect(find.byType(UtenFilterPlaceholder), findsNothing);
       expect(
         find.byKey(const Key('expense-approval-segments')),
-        findsOneWidget,
+        findsNothing,
+        reason: '内嵌报销不再自带队列行',
       );
+      expect(find.byType(MasterDataTableView<ExpenseClaim>), findsOneWidget);
       expect(
         api.queries.where((q) => q.path == '/expense-claims/pending'),
         isNotEmpty,
@@ -649,8 +814,9 @@ void main() {
       );
       expect(main.selected, {'expense'});
       expect(
-        find.byKey(const Key('expense-approval-segments')),
+        find.byType(MasterDataTableView<ExpenseClaim>),
         findsOneWidget,
+        reason: '自动选中后直接进入待审核表格',
       );
       expect(
         api.queries.where((q) => q.path == '/expense-claims/pending'),
@@ -663,13 +829,16 @@ void main() {
   testWidgets(
     'parent and child category rows share the container edge and rowGap',
     (tester) async {
-      // 父分类行与子分类行同一左缘（页面容器 gutter，不再有 16px 手写缩进），
-      // 行间距为任务中心统一 UtenFilterRow.rowGap（不再出现 8+8 双层叠加）。
+      // 父分类行与子分类行（申请类别行）同一左缘（页面容器 gutter，不再有
+      // 16px 手写缩进），行间距为任务中心统一 UtenFilterRow.rowGap。2026-11-04
+      // 状态子行退役后，报销/订单只剩父分类行；申请审批保留类别子行，同缘契约
+      // 以它为准。父行经 externalHeader 挂进内嵌页折叠头（上滑先把表格钉顶），
+      // 初始静态位置不变。
       final api = _Api();
       await _pump(
         tester,
         api,
-        '/approvals/DEPT_SALES?group=expense',
+        '/approvals/DEPT_SALES?group=application',
         const Size(1440, 1000),
       );
       final parent =
@@ -678,9 +847,7 @@ void main() {
               )
               as RenderBox;
       final child =
-          tester.renderObject(
-                find.byKey(const Key('expense-approval-segments')),
-              )
+          tester.renderObject(find.byKey(const Key('application-kind-filter')))
               as RenderBox;
       final parentTopLeft = parent.localToGlobal(Offset.zero);
       final childTopLeft = child.localToGlobal(Offset.zero);

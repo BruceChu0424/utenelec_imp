@@ -56,6 +56,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
@@ -2928,435 +2929,429 @@ class _ProductionWorkshopTasksPageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const TaskDraftRecoveryNotice(
-                  scope: FormDraftCategoryScope(module: BadgeModule.workshop),
-                ),
-                // 开工准备汇总认料、等料、领料和可开工；数量不是必须领料的工单数。
-                // 与搜索：全站标准工具条。车间筛选在表格「生产车间」列表头。
-                // 「开工准备」红徽章：等待认料、领料、确认开工等下一步办理；
-                // 「生产中」黄徽章 —— 活已经在机台上跑, 报工是做完以后的事,
-                // 此刻没人在等谁动手, 跟着红色一起喊就是假警报。
-                // 历史任务不传 count: 已结束的东西不数(准则 §四之七)。
-                UtenFilterToolbar<String>(
-                  segments: [
-                    UtenFilterSegment(
-                      value: 'PREPARING',
-                      label: '开工准备',
-                      count: counts.preparing,
-                      countForm: UtenSegmentCountForm.actionable,
-                    ),
-                    UtenFilterSegment(
-                      value: 'IN_PROGRESS',
-                      label: '生产中',
-                      count: counts.inProgress,
-                      countForm: UtenSegmentCountForm.inProgress,
-                    ),
-                    // 2026-10-10 用户口径「报工送检」：生产中报完(remaining=0)未完工的
-                    // 工单单独一档，不与还没报完的混在一起。黄数=在办不归我(球在仓库/
-                    // 品质/点收手上)，与生产中同黄；状态列沿用琥珀 waiting 档子标签。
-                    UtenFilterSegment(
-                      value: 'REPORT_INSPECTION',
-                      label: '报工送检',
-                      count: counts.reportInspection,
-                      countForm: UtenSegmentCountForm.inProgress,
-                    ),
-                    const UtenFilterSegment(value: 'COMPLETED', label: '历史任务'),
-                  ],
-                  selected: _status == null ? const {} : {_status!},
-                  onSelectionChanged: (value) {
-                    setState(() {
-                      _status = value;
-                      _preparationFilter = null;
-                      _routeFilter = null;
-                      // 单号列筛选/排序随分类重置（facets 也按新分类重取）。
-                      _analysisNoFilter = null;
-                      _segmentCodeFilter = null;
-                      _sortColumn = null;
-                      _sortAscending = true;
-                      _page = 1;
-                      _selected.clear();
-                      // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
-                      _historyTime = _isHistory
-                          ? UtenHistoryTimeValue.lastMonth()
-                          : const UtenHistoryTimeValue.all();
-                    });
-                    _load(preferPrepared: !_isHistory);
-                  },
-                  searchHint: '搜索订单 / 工单 / 产品 / 车间',
-                  onSearchChanged: (value) {
-                    _keyword = value.trim();
-                    _page = 1;
-                    _load();
-                  },
-                ),
-
-                const SizedBox(height: UtenSpacing.s8),
-                if (_serverReportDraftsError != null && _status != null)
-                  Padding(
-                    key: const Key('workshop-server-draft-error'),
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                    child: Text(_serverReportDraftsError!),
+            // 2026-11-04 上滑先把表格钉顶（同任务中心范式）：草稿恢复提示、
+            // 分类行与错误提示进折叠头随页滚走，表格工具条+表头钉在页面顶部。
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const TaskDraftRecoveryNotice(
+                    scope: FormDraftCategoryScope(module: BadgeModule.workshop),
                   ),
-                Expanded(
-                  // 分类默认不选：引导占位不发请求（与调度台大类行同范式）。
-                  child: _status == null
-                      ? const UtenFilterPlaceholder(
-                          message: '在上方选择分类后查看任务',
-                          description: '开工准备包含待认料、等待物料和可开工任务；生产中可报工',
-                        )
-                      : _isHistory && _historyTime.isNone
-                      ? UtenHistoryTimePlaceholder(
-                          controls: UtenHistoryTimeFilter(
+                  // 开工准备汇总认料、等料、领料和可开工；数量不是必须领料的工单数。
+                  // 与搜索：全站标准工具条。车间筛选在表格「生产车间」列表头。
+                  // 「开工准备」红徽章：等待认料、领料、确认开工等下一步办理；
+                  // 「生产中」黄徽章 —— 活已经在机台上跑, 报工是做完以后的事,
+                  // 此刻没人在等谁动手, 跟着红色一起喊就是假警报。
+                  // 历史任务不传 count: 已结束的东西不数(准则 §四之七)。
+                  UtenFilterToolbar<String>(
+                    segments: [
+                      UtenFilterSegment(
+                        value: 'PREPARING',
+                        label: '开工准备',
+                        count: counts.preparing,
+                        countForm: UtenSegmentCountForm.actionable,
+                      ),
+                      UtenFilterSegment(
+                        value: 'IN_PROGRESS',
+                        label: '生产中',
+                        count: counts.inProgress,
+                        countForm: UtenSegmentCountForm.inProgress,
+                      ),
+                      // 2026-10-10 用户口径「报工送检」：生产中报完(remaining=0)未完工的
+                      // 工单单独一档，不与还没报完的混在一起。黄数=在办不归我(球在仓库/
+                      // 品质/点收手上)，与生产中同黄；状态列沿用琥珀 waiting 档子标签。
+                      UtenFilterSegment(
+                        value: 'REPORT_INSPECTION',
+                        label: '报工送检',
+                        count: counts.reportInspection,
+                        countForm: UtenSegmentCountForm.inProgress,
+                      ),
+                      const UtenFilterSegment(
+                        value: 'COMPLETED',
+                        label: '历史任务',
+                      ),
+                    ],
+                    selected: _status == null ? const {} : {_status!},
+                    onSelectionChanged: (value) {
+                      setState(() {
+                        _status = value;
+                        _preparationFilter = null;
+                        _routeFilter = null;
+                        // 单号列筛选/排序随分类重置（facets 也按新分类重取）。
+                        _analysisNoFilter = null;
+                        _segmentCodeFilter = null;
+                        _sortColumn = null;
+                        _sortAscending = true;
+                        _page = 1;
+                        _selected.clear();
+                        // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
+                        _historyTime = _isHistory
+                            ? UtenHistoryTimeValue.lastMonth()
+                            : const UtenHistoryTimeValue.all();
+                      });
+                      _load(preferPrepared: !_isHistory);
+                    },
+                    searchHint: '搜索订单 / 工单 / 产品 / 车间',
+                    onSearchChanged: (value) {
+                      _keyword = value.trim();
+                      _page = 1;
+                      _load();
+                    },
+                  ),
+
+                  const SizedBox(height: UtenSpacing.s8),
+                  if (_serverReportDraftsError != null && _status != null)
+                    Padding(
+                      key: const Key('workshop-server-draft-error'),
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                      child: Text(_serverReportDraftsError!),
+                    ),
+                  // 跑批期间的全屏加载遮罩(组件自己推 root Overlay, 挂载位置随意;
+                  // 物料分析 bucketActionBusyMessage 同款)。批量设路线 / 批量开工 /
+                  // 重新核对备料共用 [_busy] 这一条通道, 同一时刻只会有一块。
+                  if (_busy != null)
+                    UtenBusyOverlay(
+                      semanticsKey: _busy!.semanticsKey,
+                      title: _busy!.title,
+                      description: _busy!.description,
+                    ),
+                ],
+              ),
+              // 分类默认不选：引导占位不发请求（与调度台大类行同范式）。
+              body: _status == null
+                  ? const UtenFilterPlaceholder(
+                      message: '在上方选择分类后查看任务',
+                      description: '开工准备包含待认料、等待物料和可开工任务；生产中可报工',
+                    )
+                  : _isHistory && _historyTime.isNone
+                  ? UtenHistoryTimePlaceholder(
+                      controls: UtenHistoryTimeFilter(
+                        key: const Key('workshop-history-time'),
+                        value: _historyTime,
+                        onChanged: _onHistoryTime,
+                      ),
+                      description: '按计划完工日期加载已完工 / 已取消 / 已撤回工单',
+                    )
+                  : MasterDataTableView<ProductionExecutionWorkbenchSegment>(
+                      toolbarLeadingActions: [
+                        if (_isHistory)
+                          UtenHistoryTimeFilter(
                             key: const Key('workshop-history-time'),
                             value: _historyTime,
                             onChanged: _onHistoryTime,
                           ),
-                          description: '按计划完工日期加载已完工 / 已取消 / 已撤回工单',
-                        )
-                      : MasterDataTableView<
-                          ProductionExecutionWorkbenchSegment
-                        >(
-                          toolbarLeadingActions: [
-                            if (_isHistory)
-                              UtenHistoryTimeFilter(
-                                key: const Key('workshop-history-time'),
-                                value: _historyTime,
-                                onChanged: _onHistoryTime,
-                              ),
+                      ],
+                      rowsController: _tableRows,
+                      expensiveRowMounts: _isPreparing && _canStart,
+                      paginationRevision: _items,
+                      // 表头列序按 tableKey 记在每用户偏好里；2026-10-29
+                      // 「工单号/关联订单包住来源计划前移」只改了默认序，
+                      // 老账号保存过的旧列序会一直压住它。尾号 .1→.2
+                      // 一次性重置保存布局，让所有人拿到新默认序（同物料
+                      // 分析 2026-10-09 做法）；固定列/拖拽换位此后照常自存。
+                      tableKey:
+                          'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.2',
+                      columns: _columnsFor(_status!),
+                      items: _displayItems,
+                      // 车间筛选在表头（生产车间列下拉，与状态值筛选同范式）；
+                      // 选项来自生产车间树，选中后整页按车间重拉。
+                      facets: {
+                        if (_isPreparing)
+                          'status': const [
+                            MasterFacetBucket(
+                              value: 'WAITING_MATERIAL',
+                              label: '车间已收到 · 等待物料',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'DRAW_FULL_KIT',
+                              label: '物料齐套 · 去领料',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'DRAW_PARTIAL',
+                              label: '部分物料可领 · 去领料',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'SAME_WORKSHOP_MAKE_ONLY',
+                              label: '仅缺 1 种本车间自产件',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'DRAW_REQUESTED',
+                              label: '已提交领料 · 待仓库发料',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'READY_TO_START',
+                              label: '已领齐 / 无需领料 · 可开工',
+                              count: 0,
+                            ),
                           ],
-                          rowsController: _tableRows,
-                          expensiveRowMounts: _isPreparing && _canStart,
-                          paginationRevision: _items,
-                          // 表头列序按 tableKey 记在每用户偏好里；2026-10-29
-                          // 「工单号/关联订单包住来源计划前移」只改了默认序，
-                          // 老账号保存过的旧列序会一直压住它。尾号 .1→.2
-                          // 一次性重置保存布局，让所有人拿到新默认序（同物料
-                          // 分析 2026-10-09 做法）；固定列/拖拽换位此后照常自存。
-                          tableKey:
-                              'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.2',
-                          columns: _columnsFor(_status!),
-                          items: _displayItems,
-                          // 车间筛选在表头（生产车间列下拉，与状态值筛选同范式）；
-                          // 选项来自生产车间树，选中后整页按车间重拉。
-                          facets: {
-                            if (_isPreparing)
-                              'status': const [
-                                MasterFacetBucket(
-                                  value: 'WAITING_MATERIAL',
-                                  label: '车间已收到 · 等待物料',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'DRAW_FULL_KIT',
-                                  label: '物料齐套 · 去领料',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'DRAW_PARTIAL',
-                                  label: '部分物料可领 · 去领料',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'SAME_WORKSHOP_MAKE_ONLY',
-                                  label: '仅缺 1 种本车间自产件',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'DRAW_REQUESTED',
-                                  label: '已提交领料 · 待仓库发料',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'READY_TO_START',
-                                  label: '已领齐 / 无需领料 · 可开工',
-                                  count: 0,
-                                ),
-                              ],
-                            // 「下一步」表头筛选（2026-09-20 用户口径）：按路线分桶，
-                            // 服务端 routeFilter 在分页前生效。
-                            if (_isPreparing)
-                              'nextStep': const [
-                                MasterFacetBucket(
-                                  value: 'UNCONFIRMED',
-                                  label: '待选生产路线',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'FULL_KIT',
-                                  label: '齐套生产',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'CONTINUOUS',
-                                  label: '持续生产',
-                                  count: 0,
-                                ),
-                                MasterFacetBucket(
-                                  value: 'BATCH',
-                                  label: '分批生产',
-                                  count: 0,
-                                ),
-                              ],
-                            'workshop': [
-                              for (final workshop in workshops)
-                                MasterFacetBucket(
-                                  value: workshop.id,
-                                  label: workshop.name,
-                                  count: 0,
-                                ),
-                            ],
-                            // 2026-09-25 单号列统一：来源计划/工单号值来自服务端
-                            // facets（与列表同一过滤上下文）。
-                            'sourcePlan':
-                                _docNoFacets['sourcePlan'] ?? const [],
-                            'segment': _docNoFacets['segment'] ?? const [],
-                          },
-                          nullCounts: const {},
-                          facetPageLoaders: nativeFacetLoaders(
-                            ref,
-                            path: '/production/workshop-tasks/facets',
-                            fields: const ['sourcePlan', 'segment'],
-                            filters: {
-                              'keyword': _keyword,
-                              'status': _status,
-                              'preparationFilter': _isPreparing
-                                  ? _preparationFilter
-                                  : null,
-                              'routeFilter': _isPreparing ? _routeFilter : null,
-                              'workshopDepartmentId': _workshopDepartmentId,
-                              'dateFrom':
-                                  _isHistory && _historyTime.range != null
-                                  ? ChinaDateTime.formatDate(
-                                      _historyTime.range!.start,
-                                    )
-                                  : null,
-                              'dateTo': _isHistory && _historyTime.range != null
-                                  ? ChinaDateTime.formatDate(
-                                      _historyTime.range!.end,
-                                    )
-                                  : null,
-                            },
-                          ),
-                          facetSearchScope: nativeFacetSearchScope(
-                            ref,
-                            '/production/workshop-tasks/facets',
-                            {
-                              'keyword': _keyword,
-                              'status': _status,
-                              'preparationFilter': _isPreparing
-                                  ? _preparationFilter
-                                  : null,
-                              'routeFilter': _isPreparing ? _routeFilter : null,
-                              'workshopDepartmentId': _workshopDepartmentId,
-                              'dateFrom':
-                                  _isHistory && _historyTime.range != null
-                                  ? ChinaDateTime.formatDate(
-                                      _historyTime.range!.start,
-                                    )
-                                  : null,
-                              'dateTo': _isHistory && _historyTime.range != null
-                                  ? ChinaDateTime.formatDate(
-                                      _historyTime.range!.end,
-                                    )
-                                  : null,
-                            },
-                          ),
-
-                          filters: {
-                            'workshop': ?_workshopDepartmentId,
-                            if (_isPreparing) 'status': ?_preparationFilter,
-                            if (_isPreparing) 'nextStep': ?_routeFilter,
-                            'sourcePlan': ?_analysisNoFilter,
-                            'segment': ?_segmentCodeFilter,
-                          },
-                          onFilterChanged: (key, value) {
-                            if (key != 'workshop' &&
-                                key != 'status' &&
-                                key != 'nextStep' &&
-                                key != 'sourcePlan' &&
-                                key != 'segment') {
-                              return;
-                            }
-                            setState(() {
-                              final filter = value == null || value.isEmpty
-                                  ? null
-                                  : value;
-                              switch (key) {
-                                case 'workshop':
-                                  _workshopDepartmentId = filter;
-                                case 'status':
-                                  _preparationFilter = filter;
-                                case 'sourcePlan':
-                                  _analysisNoFilter = filter;
-                                case 'segment':
-                                  _segmentCodeFilter = filter;
-                                default:
-                                  _routeFilter = filter;
-                              }
-                              _page = 1;
-                              _selected.clear();
-                            });
-                            _load();
-                          },
-                          // 2026-09-25 单号列统一：表头排序走服务端白名单
-                          //（sourcePlan/order/segment）。
-                          sortColumn: _sortColumn,
-                          sortAscending: _sortAscending,
-                          onSortChange: (column, ascending) {
-                            setState(() {
-                              _sortColumn = column;
-                              _sortAscending = ascending;
-                              _page = 1;
-                            });
-                            _load();
-                          },
-                          selectable: _selectable,
-                          idOf: (task) => _selectable && _selectableTask(task)
-                              ? task.segmentId
+                        // 「下一步」表头筛选（2026-09-20 用户口径）：按路线分桶，
+                        // 服务端 routeFilter 在分页前生效。
+                        if (_isPreparing)
+                          'nextStep': const [
+                            MasterFacetBucket(
+                              value: 'UNCONFIRMED',
+                              label: '待选生产路线',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'FULL_KIT',
+                              label: '齐套生产',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'CONTINUOUS',
+                              label: '持续生产',
+                              count: 0,
+                            ),
+                            MasterFacetBucket(
+                              value: 'BATCH',
+                              label: '分批生产',
+                              count: 0,
+                            ),
+                          ],
+                        'workshop': [
+                          for (final workshop in workshops)
+                            MasterFacetBucket(
+                              value: workshop.id,
+                              label: workshop.name,
+                              count: 0,
+                            ),
+                        ],
+                        // 2026-09-25 单号列统一：来源计划/工单号值来自服务端
+                        // facets（与列表同一过滤上下文）。
+                        'sourcePlan': _docNoFacets['sourcePlan'] ?? const [],
+                        'segment': _docNoFacets['segment'] ?? const [],
+                      },
+                      nullCounts: const {},
+                      facetPageLoaders: nativeFacetLoaders(
+                        ref,
+                        path: '/production/workshop-tasks/facets',
+                        fields: const ['sourcePlan', 'segment'],
+                        filters: {
+                          'keyword': _keyword,
+                          'status': _status,
+                          'preparationFilter': _isPreparing
+                              ? _preparationFilter
                               : null,
-                          rowKeyOf: (task) => task.segmentId,
-                          // 未齐行的勾选位换成带原因的锁图标（悬停/长按可见），
-                          // 不再呈现一个永远点不动的空复选框。
-                          leadingOverlayBuilder: _leadingLockOf,
-                          unselectableLeadingBuilder: (context, task) =>
-                              Tooltip(
-                                message: _blockedReasonOf(task),
-                                child: Icon(
-                                  _canRequestBatchDrawTask(task)
-                                      ? Icons.call_split_rounded
-                                      : task.segmentStatus == 'IN_PROGRESS' &&
-                                            _remainingReportOf(task) <= 0.000001
-                                      ? Icons.info_outline_rounded
-                                      : Icons.lock_outline_rounded,
-                                  size: 20,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                          selectedIds: _selectable
-                              ? _selected
-                              : const <String>{},
-                          onSelectedIdsChanged: (requested) {
-                            setState(() {
-                              _selected
-                                ..clear()
-                                ..addAll(
-                                  requested.where(
-                                    (id) => _tableRows.items.any(
-                                      (task) =>
-                                          task.segmentId == id &&
-                                          _selectableTask(task),
-                                    ),
-                                  ),
-                                );
-                            });
-                          },
-                          batchActionsBuilder: (_, ids) => [
-                            if (_isPreparing) ...[
-                              // 批量设路线(ADR-096)：勾选多行 → 菜单里点一条路线
-                              // 即提交。勾选多行后在任一勾选行的「下一步」下拉选
-                              // 路线也是对全部勾选行提交(同一套筛选)，本菜单是不
-                              // 经过某一行、直接按路线提交的第二入口。
-                              Builder(
-                                builder: (menuContext) => UtenButton(
-                                  key: const Key('workshop-batch-route'),
-                                  type: UtenButtonType.danger,
-                                  icon: Icons.alt_route_rounded,
-                                  onPressed:
-                                      _loading ||
-                                          _navigating ||
-                                          _selectedRouteTasks(ids).isEmpty
-                                      ? null
-                                      : () => _showBatchRouteMenu(
-                                          menuContext,
-                                          _selectedRouteTasks(ids),
-                                        ),
-                                  child: Text(
-                                    '批量设路线(${_selectedRouteTasks(ids).length})',
-                                  ),
-                                ),
-                              ),
-                              UtenButton(
-                                type: UtenButtonType.danger,
-                                icon: Icons.move_to_inbox_rounded,
-                                onPressed:
-                                    _loading ||
-                                        _navigating ||
-                                        _selectedDrawTasks(ids).isEmpty
-                                    ? null
-                                    : () =>
-                                          _requestDraw(_selectedDrawTasks(ids)),
-                                child: Text(
-                                  '批量领料(${_selectedDrawTasks(ids).length})',
-                                ),
-                              ),
-                              UtenButton(
-                                type: UtenButtonType.danger,
-                                icon: Icons.play_circle_fill_rounded,
-                                onPressed:
-                                    _loading ||
-                                        _navigating ||
-                                        _selectedStartTasks(ids).isEmpty
-                                    ? null
-                                    : () =>
-                                          _startTasks(_selectedStartTasks(ids)),
-                                child: Text(
-                                  '批量开工(${_selectedStartTasks(ids).length})',
-                                ),
-                              ),
-                            ] else
-                              UtenButton(
-                                type: UtenButtonType.danger,
-                                icon: Icons.fact_check_outlined,
-                                onPressed: ids.isEmpty || _navigating
-                                    ? null
-                                    : _reportSelected,
-                                child: Text('批量报工(${ids.length})'),
-                              ),
-                          ],
-                          rowMenuBuilder: _nextStepEntries,
-                          onRowTap: _openTaskDetail,
-                          canOpenRow: (task) => task.planId.isNotEmpty,
-                          currentPage: _page,
-                          totalPages: _totalPages,
-                          paginationScope: (
-                            _keyword,
-                            _status,
-                            _preparationFilter,
-                            _routeFilter,
-                            _workshopDepartmentId,
-                            _historyTime,
-                          ),
-                          onPageChange: (page) {
-                            _page = page;
-                            return _load(useCache: true);
-                          },
-                          isLoading: _loading,
-                          error: _error,
-                          onRetry: _load,
-                          emptyMessage: _isPreparing
-                              ? '当前车间没有待开工的工单'
-                              : _status == 'IN_PROGRESS'
-                              ? '当前车间没有生产中的工单'
-                              : _status == 'REPORT_INSPECTION'
-                              ? '当前车间没有已报工待检验的工单'
-                              : '该时间段内没有已完工 / 已取消 / 已撤回的工单',
+                          'routeFilter': _isPreparing ? _routeFilter : null,
+                          'workshopDepartmentId': _workshopDepartmentId,
+                          'dateFrom': _isHistory && _historyTime.range != null
+                              ? ChinaDateTime.formatDate(
+                                  _historyTime.range!.start,
+                                )
+                              : null,
+                          'dateTo': _isHistory && _historyTime.range != null
+                              ? ChinaDateTime.formatDate(
+                                  _historyTime.range!.end,
+                                )
+                              : null,
+                        },
+                      ),
+                      facetSearchScope: nativeFacetSearchScope(
+                        ref,
+                        '/production/workshop-tasks/facets',
+                        {
+                          'keyword': _keyword,
+                          'status': _status,
+                          'preparationFilter': _isPreparing
+                              ? _preparationFilter
+                              : null,
+                          'routeFilter': _isPreparing ? _routeFilter : null,
+                          'workshopDepartmentId': _workshopDepartmentId,
+                          'dateFrom': _isHistory && _historyTime.range != null
+                              ? ChinaDateTime.formatDate(
+                                  _historyTime.range!.start,
+                                )
+                              : null,
+                          'dateTo': _isHistory && _historyTime.range != null
+                              ? ChinaDateTime.formatDate(
+                                  _historyTime.range!.end,
+                                )
+                              : null,
+                        },
+                      ),
+
+                      filters: {
+                        'workshop': ?_workshopDepartmentId,
+                        if (_isPreparing) 'status': ?_preparationFilter,
+                        if (_isPreparing) 'nextStep': ?_routeFilter,
+                        'sourcePlan': ?_analysisNoFilter,
+                        'segment': ?_segmentCodeFilter,
+                      },
+                      onFilterChanged: (key, value) {
+                        if (key != 'workshop' &&
+                            key != 'status' &&
+                            key != 'nextStep' &&
+                            key != 'sourcePlan' &&
+                            key != 'segment') {
+                          return;
+                        }
+                        setState(() {
+                          final filter = value == null || value.isEmpty
+                              ? null
+                              : value;
+                          switch (key) {
+                            case 'workshop':
+                              _workshopDepartmentId = filter;
+                            case 'status':
+                              _preparationFilter = filter;
+                            case 'sourcePlan':
+                              _analysisNoFilter = filter;
+                            case 'segment':
+                              _segmentCodeFilter = filter;
+                            default:
+                              _routeFilter = filter;
+                          }
+                          _page = 1;
+                          _selected.clear();
+                        });
+                        _load();
+                      },
+                      // 2026-09-25 单号列统一：表头排序走服务端白名单
+                      //（sourcePlan/order/segment）。
+                      sortColumn: _sortColumn,
+                      sortAscending: _sortAscending,
+                      onSortChange: (column, ascending) {
+                        setState(() {
+                          _sortColumn = column;
+                          _sortAscending = ascending;
+                          _page = 1;
+                        });
+                        _load();
+                      },
+                      selectable: _selectable,
+                      idOf: (task) => _selectable && _selectableTask(task)
+                          ? task.segmentId
+                          : null,
+                      rowKeyOf: (task) => task.segmentId,
+                      // 未齐行的勾选位换成带原因的锁图标（悬停/长按可见），
+                      // 不再呈现一个永远点不动的空复选框。
+                      leadingOverlayBuilder: _leadingLockOf,
+                      unselectableLeadingBuilder: (context, task) => Tooltip(
+                        message: _blockedReasonOf(task),
+                        child: Icon(
+                          _canRequestBatchDrawTask(task)
+                              ? Icons.call_split_rounded
+                              : task.segmentStatus == 'IN_PROGRESS' &&
+                                    _remainingReportOf(task) <= 0.000001
+                              ? Icons.info_outline_rounded
+                              : Icons.lock_outline_rounded,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                ),
-                // 跑批期间的全屏加载遮罩(组件自己推 root Overlay, 挂载位置随意;
-                // 物料分析 bucketActionBusyMessage 同款)。批量设路线 / 批量开工 /
-                // 重新核对备料共用 [_busy] 这一条通道, 同一时刻只会有一块。
-                if (_busy != null)
-                  UtenBusyOverlay(
-                    semanticsKey: _busy!.semanticsKey,
-                    title: _busy!.title,
-                    description: _busy!.description,
-                  ),
-              ],
+                      ),
+                      selectedIds: _selectable ? _selected : const <String>{},
+                      onSelectedIdsChanged: (requested) {
+                        setState(() {
+                          _selected
+                            ..clear()
+                            ..addAll(
+                              requested.where(
+                                (id) => _tableRows.items.any(
+                                  (task) =>
+                                      task.segmentId == id &&
+                                      _selectableTask(task),
+                                ),
+                              ),
+                            );
+                        });
+                      },
+                      batchActionsBuilder: (_, ids) => [
+                        if (_isPreparing) ...[
+                          // 批量设路线(ADR-096)：勾选多行 → 菜单里点一条路线
+                          // 即提交。勾选多行后在任一勾选行的「下一步」下拉选
+                          // 路线也是对全部勾选行提交(同一套筛选)，本菜单是不
+                          // 经过某一行、直接按路线提交的第二入口。
+                          Builder(
+                            builder: (menuContext) => UtenButton(
+                              key: const Key('workshop-batch-route'),
+                              type: UtenButtonType.danger,
+                              icon: Icons.alt_route_rounded,
+                              onPressed:
+                                  _loading ||
+                                      _navigating ||
+                                      _selectedRouteTasks(ids).isEmpty
+                                  ? null
+                                  : () => _showBatchRouteMenu(
+                                      menuContext,
+                                      _selectedRouteTasks(ids),
+                                    ),
+                              child: Text(
+                                '批量设路线(${_selectedRouteTasks(ids).length})',
+                              ),
+                            ),
+                          ),
+                          UtenButton(
+                            type: UtenButtonType.danger,
+                            icon: Icons.move_to_inbox_rounded,
+                            onPressed:
+                                _loading ||
+                                    _navigating ||
+                                    _selectedDrawTasks(ids).isEmpty
+                                ? null
+                                : () => _requestDraw(_selectedDrawTasks(ids)),
+                            child: Text(
+                              '批量领料(${_selectedDrawTasks(ids).length})',
+                            ),
+                          ),
+                          UtenButton(
+                            type: UtenButtonType.danger,
+                            icon: Icons.play_circle_fill_rounded,
+                            onPressed:
+                                _loading ||
+                                    _navigating ||
+                                    _selectedStartTasks(ids).isEmpty
+                                ? null
+                                : () => _startTasks(_selectedStartTasks(ids)),
+                            child: Text(
+                              '批量开工(${_selectedStartTasks(ids).length})',
+                            ),
+                          ),
+                        ] else
+                          UtenButton(
+                            type: UtenButtonType.danger,
+                            icon: Icons.fact_check_outlined,
+                            onPressed: ids.isEmpty || _navigating
+                                ? null
+                                : _reportSelected,
+                            child: Text('批量报工(${ids.length})'),
+                          ),
+                      ],
+                      rowMenuBuilder: _nextStepEntries,
+                      onRowTap: _openTaskDetail,
+                      canOpenRow: (task) => task.planId.isNotEmpty,
+                      currentPage: _page,
+                      totalPages: _totalPages,
+                      paginationScope: (
+                        _keyword,
+                        _status,
+                        _preparationFilter,
+                        _routeFilter,
+                        _workshopDepartmentId,
+                        _historyTime,
+                      ),
+                      onPageChange: (page) {
+                        _page = page;
+                        return _load(useCache: true);
+                      },
+                      isLoading: _loading,
+                      error: _error,
+                      onRetry: _load,
+                      emptyMessage: _isPreparing
+                          ? '当前车间没有待开工的工单'
+                          : _status == 'IN_PROGRESS'
+                          ? '当前车间没有生产中的工单'
+                          : _status == 'REPORT_INSPECTION'
+                          ? '当前车间没有已报工待检验的工单'
+                          : '该时间段内没有已完工 / 已取消 / 已撤回的工单',
+                      primary: true,
+                    ),
             ),
           ),
         ),

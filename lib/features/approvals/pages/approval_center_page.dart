@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -36,6 +38,14 @@ class ApprovalCenterPage extends ConsumerStatefulWidget {
 class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
   String? _group;
   String? _historyKind;
+  int _refreshTick = 0;
+  final _refreshController = UtenRefreshController();
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -170,44 +180,6 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
         ? _historyKind
         : groups.firstOrNull;
     final active = history ? historyKind : group;
-    Widget content = const SizedBox.shrink();
-    if (active == 'expense') {
-      content = ProviderScope(
-        key: ValueKey((_scope, history)),
-        overrides: [expenseApprovalReadScopeProvider.overrideWithValue(_scope)],
-        child: ExpenseApprovalListPage(
-          embedded: true,
-          historyOnly: history,
-          resumeLocation: '/approvals/${widget.departmentCode}',
-          initialQueue: history ? ApprovalQueue.history : ApprovalQueue.pending,
-        ),
-      );
-    } else if (active == 'application') {
-      content = BusinessApplicationApprovalListPage(
-        key: ValueKey((widget.departmentCode, history)),
-        embedded: true,
-        approvalStage: _finance
-            ? 'FINANCE'
-            : _executive
-            ? 'MANAGEMENT'
-            : widget.departmentCode == 'DEPT_PMC'
-            ? 'PMC'
-            : 'DEPARTMENT',
-        departmentCode: _finance || _executive ? null : _departmentCode,
-        initialHistory: history,
-        initialQueue: history ? 'history' : widget.initialApplicationQueue,
-        historyOnly: history,
-        resumeLocation: '/approvals/${widget.departmentCode}',
-      );
-    } else if (active == 'order') {
-      content = SalesManagerReviewPage(
-        key: ValueKey(('order', history)),
-        embedded: true,
-        initialKind: 'order',
-        initialHistory: history,
-        historyOnly: history,
-      );
-    }
     final categoryBar = UtenFilterToolbar<String>(
       segmentsKey: const Key('approval-center-categories'),
       segments: [
@@ -234,71 +206,131 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
       selected: historyKind == null ? const <String>{} : {historyKind},
       onSelectionChanged: (value) => setState(() => _historyKind = value),
     );
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: _finance
-            ? '财务审批中心'
-            : _executive
-            ? '总经办任务中心'
-            : '审批中心',
-        showBackButton: true,
-        actions: [
-          if (permissions.contains(Perm.approvalPolicyManage))
-            UtenButton(
-              type: UtenButtonType.secondary,
-              icon: Icons.rule_folder_outlined,
-              onPressed: () => context.push('/approvals/settings'),
-              child: const Text('审批设置'),
-            ),
+    // 2026-11-04 上滑先把表格钉顶（同仓库任务中心/业务审核中心 externalHeader
+    // 范式）：选中分类后父分类行（历史态含分类选择行）作为外置头传给内嵌页，
+    // 由内嵌页挂进自己的折叠头随页滚走；未选分类时父行仍钉在引导占位上方。
+    // 与正文的间距由内嵌页在 externalHeader 之后统一补 rowGap，这里不再叠加。
+    final groupHeader = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        categoryBar,
+        if (history) ...[
+          const SizedBox(height: UtenFilterRow.rowGap),
+          historyBar,
         ],
-        info: '只显示当前授权范围内的单据。审批结果、驳回原因与每次修订均保留记录。',
-      ),
-      // 布局对齐任务中心范式（仓库任务中心/财务业务审核中心）：页面容器统一
-      // 提供 gutter（父分类行与正文同缘、随窗口取 16/24），父行与子分类行之间
-      // 用统一 rowGap，不再手写 16px 缩进与页面自加的水平边距。
-      body: SafeArea(
-        child: groups.isEmpty
-            ? Center(
-                child: Text(
-                  '暂无已授权的审批任务，请联系管理员开通。',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              )
-            : UtenContentContainer.wide(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
-                  ),
-                  // 未选分类 = 引导占位（子分类不出现、不发请求）；有待办的
-                  // 分类由上方自动选中逻辑/用户点击进入正文。
-                  child: group == null
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            categoryBar,
-                            const SizedBox(height: UtenSpacing.s8),
-                            const Expanded(
-                              child: UtenFilterPlaceholder(
-                                message: '在上方选择分类后开始审批',
-                                description: '分段右侧数字徽章为该分类的待办数量',
-                              ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            categoryBar,
-                            const SizedBox(height: UtenFilterRow.rowGap),
-                            if (history) ...[
-                              historyBar,
-                              const SizedBox(height: UtenFilterRow.rowGap),
-                            ],
-                            Expanded(child: content),
-                          ],
-                        ),
-                ),
+      ],
+    );
+    Widget content = const SizedBox.shrink();
+    if (active == 'expense') {
+      content = ProviderScope(
+        key: ValueKey((_scope, history)),
+        overrides: [expenseApprovalReadScopeProvider.overrideWithValue(_scope)],
+        child: ExpenseApprovalListPage(
+          embedded: true,
+          historyOnly: history,
+          resumeLocation: '/approvals/${widget.departmentCode}',
+          initialQueue: history ? ApprovalQueue.history : ApprovalQueue.pending,
+          refreshTick: _refreshTick,
+          externalHeader: groupHeader,
+        ),
+      );
+    } else if (active == 'application') {
+      content = BusinessApplicationApprovalListPage(
+        key: ValueKey((widget.departmentCode, history)),
+        embedded: true,
+        approvalStage: _finance
+            ? 'FINANCE'
+            : _executive
+            ? 'MANAGEMENT'
+            : widget.departmentCode == 'DEPT_PMC'
+            ? 'PMC'
+            : 'DEPARTMENT',
+        departmentCode: _finance || _executive ? null : _departmentCode,
+        initialHistory: history,
+        initialQueue: history ? 'history' : widget.initialApplicationQueue,
+        historyOnly: history,
+        resumeLocation: '/approvals/${widget.departmentCode}',
+        refreshTick: _refreshTick,
+        externalHeader: groupHeader,
+      );
+    } else if (active == 'order') {
+      content = SalesManagerReviewPage(
+        key: ValueKey(('order', history)),
+        embedded: true,
+        initialKind: 'order',
+        initialHistory: history,
+        historyOnly: history,
+        refreshTick: _refreshTick,
+        externalHeader: groupHeader,
+      );
+    }
+    // 刷新按钮与其他任务中心页同位（右上角 AppBar）：徽章汇总直接重拉，
+    // 当前分段的列表请求由 refreshTick 传给内嵌页并登记到刷新作用域。
+    return UtenRefreshScope(
+      controller: _refreshController,
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: _finance
+              ? '财务审批中心'
+              : _executive
+              ? '总经办任务中心'
+              : '审批中心',
+          showBackButton: true,
+          actions: [
+            if (permissions.contains(Perm.approvalPolicyManage))
+              UtenButton(
+                type: UtenButtonType.secondary,
+                icon: Icons.rule_folder_outlined,
+                onPressed: () => context.push('/approvals/settings'),
+                child: const Text('审批设置'),
               ),
+            UtenRefreshButton(
+              key: const Key('approval-center-refresh'),
+              onRefresh: () => _refreshController.run(() {
+                _refreshController.track(refreshBadges(ref));
+                setState(() => _refreshTick++);
+              }),
+            ),
+          ],
+          info: '只显示当前授权范围内的单据。审批结果、驳回原因与每次修订均保留记录。',
+        ),
+        // 布局对齐任务中心范式（仓库任务中心/财务业务审核中心）：页面容器统一
+        // 提供 gutter（父分类行与正文同缘、随窗口取 16/24），父行与子分类行之间
+        // 用统一 rowGap，不再手写 16px 缩进与页面自加的水平边距。
+        body: SafeArea(
+          child: groups.isEmpty
+              ? Center(
+                  child: Text(
+                    '暂无已授权的审批任务，请联系管理员开通。',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                )
+              : UtenContentContainer.wide(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s16,
+                    ),
+                    // 未选分类 = 引导占位（子分类不出现、不发请求）；有待办的
+                    // 分类由上方自动选中逻辑/用户点击进入正文。选中后父分类行
+                    // 经 externalHeader 进内嵌页折叠头（上滑先把表格钉顶）。
+                    child: group == null
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              categoryBar,
+                              const SizedBox(height: UtenSpacing.s8),
+                              const Expanded(
+                                child: UtenFilterPlaceholder(
+                                  message: '在上方选择分类后开始审批',
+                                  description: '分段右侧数字徽章为该分类的待办数量',
+                                ),
+                              ),
+                            ],
+                          )
+                        : content,
+                  ),
+                ),
+        ),
       ),
     );
   }

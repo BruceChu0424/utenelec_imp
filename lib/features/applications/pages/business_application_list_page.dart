@@ -11,9 +11,11 @@ import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -23,8 +25,8 @@ import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/session_provider.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../expense/pages/expense_list_page.dart';
 import '../../expense/providers/expense_providers.dart';
@@ -93,6 +95,8 @@ class BusinessApplicationApprovalListPage extends StatelessWidget {
     this.historyOnly = false,
     this.resumeLocation,
     this.kind,
+    this.refreshTick = 0,
+    this.externalHeader,
   });
   final bool embedded;
   final String? approvalStage;
@@ -102,6 +106,13 @@ class BusinessApplicationApprovalListPage extends StatelessWidget {
   final bool historyOnly;
   final String? resumeLocation;
   final String? kind;
+
+  /// 宿主(审批中心)右上角刷新的递增计数；变化时本页重拉列表与计数。
+  final int refreshTick;
+
+  /// 宿主父分类行：由本页挂进折叠头随页滚走（上滑先把表格钉顶，
+  /// 2026-09-24「表格滑到顶」口径，同仓库任务中心/业务审核中心范式）。
+  final Widget? externalHeader;
   @override
   Widget build(BuildContext context) => _ApplicationsPage(
     embedded: embedded,
@@ -113,6 +124,8 @@ class BusinessApplicationApprovalListPage extends StatelessWidget {
     initialQueue: initialQueue,
     historyOnly: historyOnly,
     resumeLocation: resumeLocation,
+    refreshTick: refreshTick,
+    externalHeader: externalHeader,
   );
 }
 
@@ -126,10 +139,14 @@ class _ApplicationsPage extends ConsumerStatefulWidget {
     this.initialQueue,
     this.historyOnly = false,
     this.resumeLocation,
+    this.refreshTick = 0,
+    this.externalHeader,
     required this.approval,
   });
   final bool embedded, approval, initialHistory, historyOnly;
   final String? kind, stage, departmentCode, resumeLocation, initialQueue;
+  final int refreshTick;
+  final Widget? externalHeader;
   @override
   ConsumerState<_ApplicationsPage> createState() => _ApplicationsPageState();
 }
@@ -150,6 +167,9 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
     _kind = widget.kind;
     _history = widget.initialHistory;
     _posting = widget.initialQueue == 'prepayment-posting';
+    // 入账队列只列预付申请：进入时分类行显式选中「预付申请」，
+    // 不整行隐藏分类行（避免行跳动与来路不明的数据切换）。
+    if (_posting) _kind = 'PREPAYMENT';
     _queueChosen = widget.initialHistory || widget.initialQueue != null;
   }
 
@@ -165,8 +185,17 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       _kind = widget.kind;
       _history = widget.initialHistory;
       _posting = widget.initialQueue == 'prepayment-posting';
+      if (_posting) _kind = 'PREPAYMENT';
       _queueChosen = widget.initialHistory || widget.initialQueue != null;
       _page = 1;
+    }
+    // 宿主(审批中心)右上角刷新：递增 tick 触发本页重拉，请求登记到
+    // 宿主 UtenRefreshScope，让按钮等待真实请求收尾。延迟到帧后执行，
+    // 避免在 build 期间 invalidate provider。
+    if (old.refreshTick != widget.refreshTick) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) UtenRefreshScope.track(context, _refresh());
+      });
     }
   }
 
@@ -278,9 +307,6 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
           ref.watch(isSuperAdminProvider),
           RouteName.expense,
         );
-    final canHandle =
-        Perm.applicationApprovalPermissions.any(permissions.contains) &&
-        !ref.watch(sessionProvider).impersonationReadOnly;
     final canSeePosting =
         widget.approval &&
         widget.stage == 'FINANCE' &&
@@ -304,6 +330,7 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
                   n('prepaymentPostingInProgressCount') >
               0) {
         _posting = true;
+        _kind = 'PREPAYMENT';
       }
       _queueChosen = true;
     }
@@ -421,6 +448,44 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
     }
 
     // 申请视图构建器：仅非报销分类时求值（此时 result 非空）。
+    // 2026-11-04 审批中心分类栏精简：审批态第三行状态栏退役——待审核/预付待入账
+    // 由首列「状态」表头筛选驱动（同订货审批任务中心 status→分段联动范式）；
+    // 嵌入态历史记录不在筛选里（宿主父分类行已有），独立路由保留历史桶保深链。
+    final statusFilterable = widget.approval && !widget.historyOnly;
+    final approvalStatusFacets = statusFilterable
+        ? <String, List<MasterFacetBucket>>{
+            'status': [
+              MasterFacetBucket(
+                value: 'pending',
+                label: '待审核',
+                count: scopedPending() ?? 0,
+              ),
+              if (canSeePosting && (_kind == null || _kind == 'PREPAYMENT'))
+                MasterFacetBucket(
+                  value: 'prepayment-posting',
+                  label: '预付待入账',
+                  count: number('prepaymentPostingTodoCount') ?? 0,
+                ),
+              // 嵌入态历史走宿主父分类行，不出桶；独立路由与「深链直入历史
+              // 队列」时保留历史桶，保证 ?queue=history 仍能落到已选值。
+              if (!widget.embedded || _history)
+                const MasterFacetBucket(
+                  value: 'history',
+                  label: '历史记录',
+                  count: 0,
+                ),
+            ],
+          }
+        : const <String, List<MasterFacetBucket>>{};
+    final approvalStatusFilter = statusFilterable
+        ? <String, String?>{
+            'status': _posting
+                ? 'prepayment-posting'
+                : _history
+                ? 'history'
+                : 'pending',
+          }
+        : const <String, String?>{};
     Widget applicationsView() {
       final applications = result!;
       return _withLocalDrafts(
@@ -431,6 +496,7 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
             _kind,
             _status,
             _history,
+            _posting,
             widget.stage,
             widget.departmentCode,
           ),
@@ -438,10 +504,20 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
               'applications.${widget.approval ? 'approval' : 'mine'}.${widget.stage ?? 'all'}',
           columns: _columns,
           items: applications.value?.items ?? const [],
-          facets: const {},
+          facets: approvalStatusFacets,
           nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
+          filters: approvalStatusFilter,
+          onFilterChanged: (key, value) {
+            if (!statusFilterable || key != 'status') return;
+            // 与原状态栏分段切换同一套状态迁移（含入账队列→预付申请联动）。
+            setState(() {
+              _history = value == 'history';
+              _posting = value == 'prepayment-posting';
+              if (_posting) _kind = 'PREPAYMENT';
+              _queueChosen = true;
+              _page = 1;
+            });
+          },
           primary: true,
           isLoading: applications.isLoading && !applications.hasValue,
           isRefreshing: applications.isLoading && applications.hasValue,
@@ -468,145 +544,121 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       );
     }
 
-    final content = Stack(
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.kind == null && !_posting)
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: UtenFilterToolbar<String>(
-                  segmentsKey: const Key('application-kind-filter'),
+    // 申请类别行（审批态与我的记录共用；2026-11-04 审批中心精简后审批态只剩
+    // 这一行自带导航，状态行已下沉为表格首列「状态」表头筛选）。
+    final kindBar = widget.kind == null
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: UtenFilterToolbar<String>(
+              segmentsKey: const Key('application-kind-filter'),
+              segments: [
+                const UtenFilterSegment(value: 'ALL', label: '全部申请'),
+                for (final e in businessApplicationKinds.entries)
+                  UtenFilterSegment(
+                    value: e.key,
+                    label: e.value,
+                    count: widget.approval
+                        ? kindPending(e.key)
+                        : kindMine(e.key).$1,
+                    inProgressCount: widget.approval
+                        ? null
+                        : kindMine(e.key).$2,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                // 报销入口徽章与原 hub「我的报销」卡同口径：红=本人待办
+                // （草稿+待修订），黄=已提交流转中；来源徽章汇总单一数据源。
+                if (canViewExpense)
+                  UtenFilterSegment(
+                    value: kExpenseSegmentKind,
+                    label: '报销申请',
+                    count: ref.watch(
+                      badgeEntryTodoProvider(BadgeEntry.expenseMine),
+                    ),
+                    inProgressCount: ref.watch(
+                      badgeEntryInProgressProvider(BadgeEntry.expenseMine),
+                    ),
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+              ],
+              selected: {_kind ?? 'ALL'},
+              onSelectionChanged: (value) => setState(() {
+                _kind = value == 'ALL' ? null : value;
+                // 入账队列只属于预付申请：切到其他类别即退出该队列。
+                if (_posting && value != 'PREPAYMENT') _posting = false;
+                _page = 1;
+                _queueChosen = true;
+              }),
+              autoSelectBadge: false,
+            ),
+          )
+        : null;
+    // 审批态（嵌入审批中心/独立审批路由）：宿主父分类行 + 类别行进折叠头，
+    // 上滑先把表格钉顶（2026-09-24「表格滑到顶」口径）；我的申请记录保留
+    // 固定两行导航（报销段内嵌报销列表自带折叠容器，不与其嵌套）。
+    final Widget pageBody = widget.approval && !viewingExpense
+        ? UtenCollapsingHeaderScrollView(
+            collapsingHeader: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.externalHeader != null) ...[
+                  widget.externalHeader!,
+                  const SizedBox(height: UtenFilterRow.rowGap),
+                ],
+                ?kindBar,
+              ],
+            ),
+            body: applicationsView(),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ?kindBar,
+              if (!viewingExpense && !widget.approval)
+                UtenFilterToolbar<String>(
+                  segmentsKey: const Key('application-status-filter'),
                   segments: [
-                    const UtenFilterSegment(value: 'ALL', label: '全部申请'),
-                    for (final e in businessApplicationKinds.entries)
-                      UtenFilterSegment(
-                        value: e.key,
-                        label: e.value,
-                        count: widget.approval
-                            ? kindPending(e.key)
-                            : kindMine(e.key).$1,
-                        inProgressCount: widget.approval
-                            ? null
-                            : kindMine(e.key).$2,
-                        countForm: UtenSegmentCountForm.actionable,
-                      ),
-                    // 报销入口徽章与原 hub「我的报销」卡同口径：红=本人待办
-                    // （草稿+待修订），黄=已提交流转中；来源徽章汇总单一数据源。
-                    if (canViewExpense)
-                      UtenFilterSegment(
-                        value: kExpenseSegmentKind,
-                        label: '报销申请',
-                        count: ref.watch(
-                          badgeEntryTodoProvider(BadgeEntry.expenseMine),
-                        ),
-                        inProgressCount: ref.watch(
-                          badgeEntryInProgressProvider(BadgeEntry.expenseMine),
-                        ),
-                        countForm: UtenSegmentCountForm.actionable,
-                      ),
+                    UtenFilterSegment(
+                      value: 'DRAFT',
+                      label: '草稿',
+                      count: mine('DRAFT'),
+                      countForm: UtenSegmentCountForm.actionable,
+                    ),
+                    UtenFilterSegment(
+                      value: 'ACTION_REQUIRED',
+                      label: '待处理',
+                      count: mine('ACTION_REQUIRED'),
+                      countForm: UtenSegmentCountForm.actionable,
+                    ),
+                    UtenFilterSegment(
+                      value: 'PROCESSING',
+                      label: '处理中',
+                      count: mine('PROCESSING'),
+                      countForm: UtenSegmentCountForm.inProgress,
+                    ),
+                    const UtenFilterSegment(value: 'FINISHED', label: '历史记录'),
                   ],
-                  selected: {_kind ?? 'ALL'},
+                  selected: {_status},
                   onSelectionChanged: (value) => setState(() {
-                    _kind = value == 'ALL' ? null : value;
+                    _status = value;
                     _page = 1;
-                    _queueChosen = true;
                   }),
                   autoSelectBadge: false,
                 ),
+              const SizedBox(height: UtenSpacing.s8),
+              Expanded(
+                child: viewingExpense
+                    ? const ExpenseListPage(
+                        key: Key('applications-mine-expense-embedded'),
+                        embedded: true,
+                        resumeLocation: '/applications/mine',
+                      )
+                    : applicationsView(),
               ),
-            if (!viewingExpense)
-              UtenFilterToolbar<String>(
-                segmentsKey: const Key('application-status-filter'),
-                trailing: widget.embedded
-                    ? UtenRefreshButton(onRefresh: _refresh, busy: _refreshing)
-                    : null,
-                segments: widget.approval
-                    ? [
-                        if (!widget.historyOnly)
-                          UtenFilterSegment(
-                            value: 'pending',
-                            label: '待审核',
-                            count: canHandle
-                                ? scopedPending()
-                                : (!_history ? result?.value?.total : null),
-                            countForm: canHandle
-                                ? UtenSegmentCountForm.actionable
-                                : UtenSegmentCountForm.browsing,
-                          ),
-                        if (canSeePosting && !widget.historyOnly)
-                          UtenFilterSegment(
-                            value: 'prepayment-posting',
-                            label: '预付待入账',
-                            count: number('prepaymentPostingTodoCount'),
-                            inProgressCount: number(
-                              'prepaymentPostingInProgressCount',
-                            ),
-                            countForm: UtenSegmentCountForm.actionable,
-                          ),
-                        const UtenFilterSegment(
-                          value: 'history',
-                          label: '历史记录',
-                        ),
-                      ]
-                    : [
-                        UtenFilterSegment(
-                          value: 'DRAFT',
-                          label: '草稿',
-                          count: mine('DRAFT'),
-                          countForm: UtenSegmentCountForm.actionable,
-                        ),
-                        UtenFilterSegment(
-                          value: 'ACTION_REQUIRED',
-                          label: '待处理',
-                          count: mine('ACTION_REQUIRED'),
-                          countForm: UtenSegmentCountForm.actionable,
-                        ),
-                        UtenFilterSegment(
-                          value: 'PROCESSING',
-                          label: '处理中',
-                          count: mine('PROCESSING'),
-                          countForm: UtenSegmentCountForm.inProgress,
-                        ),
-                        const UtenFilterSegment(
-                          value: 'FINISHED',
-                          label: '历史记录',
-                        ),
-                      ],
-                selected: {
-                  widget.approval
-                      ? (_posting
-                            ? 'prepayment-posting'
-                            : _history
-                            ? 'history'
-                            : 'pending')
-                      : _status,
-                },
-                onSelectionChanged: (value) => setState(() {
-                  if (widget.approval) {
-                    _history = value == 'history';
-                    _posting = value == 'prepayment-posting';
-                    _queueChosen = true;
-                  } else {
-                    _status = value;
-                  }
-                  _page = 1;
-                }),
-                autoSelectBadge: false,
-              ),
-            const SizedBox(height: UtenSpacing.s8),
-            Expanded(
-              child: viewingExpense
-                  ? const ExpenseListPage(
-                      key: Key('applications-mine-expense-embedded'),
-                      embedded: true,
-                      resumeLocation: '/applications/mine',
-                    )
-                  : applicationsView(),
-            ),
-          ],
-        ),
+            ],
+          );
+    final content = Stack(
+      children: [
+        pageBody,
         if (_refreshing)
           const UtenBusyOverlay(title: '正在刷新申请', showDoNotLeaveHint: false),
       ],

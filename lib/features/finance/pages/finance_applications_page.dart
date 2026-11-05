@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -203,143 +205,136 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
               onPressed: () => context.push('/finance/applications/settings'),
               child: const Text('流程设置'),
             ),
+          // 2026-11-04 刷新按钮归位：不再放分类栏行尾，与其他任务中心同位
+          // 右上角 AppBar（UtenRefreshButton 自带 busy 转圈与防重入）。
+          UtenRefreshButton(busy: _loading, onRefresh: _load),
         ],
       ),
       body: UtenContentContainer(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: UtenFilterToolbar<String>(
-                segments: [
-                  const UtenFilterSegment(value: 'mine', label: '本人申请'),
-                  if (actionable)
-                    const UtenFilterSegment(value: 'pending', label: '指派待办'),
-                  if (perms.contains(Perm.financeApplicationExecute) ||
-                      perms.contains(Perm.financeApplicationConfirm) ||
-                      perms.contains(Perm.financeApplicationReverse))
-                    const UtenFilterSegment(value: 'payment', label: '批准及付款'),
-                  const UtenFilterSegment(value: 'history', label: '申请历史'),
-                ],
-                selected: {_queue},
-                autoSelectBadge: false,
-                onSelectionChanged: (v) {
-                  _queue = v;
-                  _page = 1;
-                  unawaited(_load());
-                },
-                searchHint: '申请单号、事由、申请人',
-                onSearchChanged: (v) {
-                  _search = v;
-                  _page = 1;
-                  unawaited(_load());
-                },
-                trailing: Wrap(
-                  spacing: 8,
-                  children: [
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: _loading ? null : _load,
-                      child: const Text('刷新'),
-                    ),
-                    if (perms.contains(Perm.financeApplicationApply) ||
-                        perms.contains(Perm.expenseApply) ||
-                        perms.contains(Perm.payrollGenerate))
-                      UtenButton(
-                        onPressed: current && !_loading ? _new : null,
-                        child: const Text('新增'),
-                      ),
+        // 2026-11-04 上滑先把表格钉顶（同任务中心范式）：分类行与身份提示进
+        // 折叠头随页滚走，表格工具条+表头钉在页面顶部。
+        child: UtenCollapsingHeaderScrollView(
+          collapsingHeader: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: UtenFilterToolbar<String>(
+                  segments: [
+                    const UtenFilterSegment(value: 'mine', label: '本人申请'),
+                    if (actionable)
+                      const UtenFilterSegment(value: 'pending', label: '指派待办'),
+                    if (perms.contains(Perm.financeApplicationExecute) ||
+                        perms.contains(Perm.financeApplicationConfirm) ||
+                        perms.contains(Perm.financeApplicationReverse))
+                      const UtenFilterSegment(value: 'payment', label: '批准及付款'),
+                    const UtenFilterSegment(value: 'history', label: '申请历史'),
                   ],
+                  selected: {_queue},
+                  autoSelectBadge: false,
+                  onSelectionChanged: (v) {
+                    _queue = v;
+                    _page = 1;
+                    unawaited(_load());
+                  },
+                  searchHint: '申请单号、事由、申请人',
+                  onSearchChanged: (v) {
+                    _search = v;
+                    _page = 1;
+                    unawaited(_load());
+                  },
+                  trailing:
+                      (perms.contains(Perm.financeApplicationApply) ||
+                          perms.contains(Perm.expenseApply) ||
+                          perms.contains(Perm.payrollGenerate))
+                      ? UtenButton(
+                          onPressed: current && !_loading ? _new : null,
+                          child: const Text('新增'),
+                        )
+                      : null,
                 ),
               ),
-            ),
-            if (!current) const Text('登录身份或权限已变化，请刷新当前申请范围。'),
-            Expanded(
-              child: MasterDataTableView<Map<String, dynamic>>(
-                columns: [
-                  financeApplicationColumn(
-                    'application_no',
-                    '申请单号',
-                    170,
-                    filters: false,
-                  ),
-                  financeApplicationColumn(
-                    'kindLabel',
-                    '申请类型',
-                    165,
-                    filters: false,
-                  ),
-                  financeApplicationColumn(
-                    'applicant_name_snapshot',
-                    '申请人',
-                    130,
-                    filters: false,
-                  ),
-                  financeApplicationColumn(
-                    'department_name_snapshot',
-                    '部门',
-                    150,
-                    filters: false,
-                  ),
-                  financeApplicationColumn(
-                    'title',
-                    '申请事由',
-                    250,
-                    filters: false,
-                  ),
-                  financeApplicationColumn(
-                    'requested_date',
-                    '申请日期',
-                    130,
-                    filters: false,
-                  ),
-                  financeApplicationColumn(
-                    'amount_original',
-                    '原币金额',
-                    160,
-                    filters: false,
-                  ),
-                  MasterColumnDef(
-                    key: 'status',
-                    label: '状态',
-                    width: 165,
-                    value: (r) => financeApplicationStatus(r['status']),
-                    columnSearchEnabled: false,
-                  ),
-                  financeApplicationColumn(
-                    'current_label',
-                    '当前步骤',
-                    200,
-                    filters: false,
-                  ),
-                ],
-                items: current ? _rows : [],
-                facets: const {},
-                nullCounts: const {},
-                filters: const {},
-                onFilterChanged: (_, _) {},
-                isLoading: _loading,
-                error: _error,
-                onRetry: _load,
-                currentPage: _page,
-                totalPages: (_total / 30).ceil().clamp(1, 1 << 30),
-                onPageChange: (p) {
-                  _page = p;
-                  unawaited(_load());
-                },
-                onRowTap: (r) {
-                  if (_epoch == ref.read(exportContextEpochProvider)) {
-                    context.push('/finance/applications/${r['id']}');
-                  }
-                },
-                rowKeyOf: (r) => r['id'].toString(),
-                headerFilterScopeDescription: '搜索及分页由服务端按当前参与范围查询；行内查看原申请和节点历史',
-                summaryBar: Text('共 $_total 张申请'),
-                emptyMessage: '当前分类没有申请',
+              if (!current) const Text('登录身份或权限已变化，请刷新当前申请范围。'),
+            ],
+          ),
+          body: MasterDataTableView<Map<String, dynamic>>(
+            columns: [
+              financeApplicationColumn(
+                'application_no',
+                '申请单号',
+                170,
+                filters: false,
               ),
-            ),
-          ],
+              financeApplicationColumn(
+                'kindLabel',
+                '申请类型',
+                165,
+                filters: false,
+              ),
+              financeApplicationColumn(
+                'applicant_name_snapshot',
+                '申请人',
+                130,
+                filters: false,
+              ),
+              financeApplicationColumn(
+                'department_name_snapshot',
+                '部门',
+                150,
+                filters: false,
+              ),
+              financeApplicationColumn('title', '申请事由', 250, filters: false),
+              financeApplicationColumn(
+                'requested_date',
+                '申请日期',
+                130,
+                filters: false,
+              ),
+              financeApplicationColumn(
+                'amount_original',
+                '原币金额',
+                160,
+                filters: false,
+              ),
+              MasterColumnDef(
+                key: 'status',
+                label: '状态',
+                width: 165,
+                value: (r) => financeApplicationStatus(r['status']),
+                columnSearchEnabled: false,
+              ),
+              financeApplicationColumn(
+                'current_label',
+                '当前步骤',
+                200,
+                filters: false,
+              ),
+            ],
+            items: current ? _rows : [],
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            isLoading: _loading,
+            error: _error,
+            onRetry: _load,
+            currentPage: _page,
+            totalPages: (_total / 30).ceil().clamp(1, 1 << 30),
+            onPageChange: (p) {
+              _page = p;
+              unawaited(_load());
+            },
+            onRowTap: (r) {
+              if (_epoch == ref.read(exportContextEpochProvider)) {
+                context.push('/finance/applications/${r['id']}');
+              }
+            },
+            rowKeyOf: (r) => r['id'].toString(),
+            headerFilterScopeDescription: '搜索及分页由服务端按当前参与范围查询；行内查看原申请和节点历史',
+            summaryBar: Text('共 $_total 张申请'),
+            emptyMessage: '当前分类没有申请',
+            primary: true,
+          ),
         ),
       ),
     );

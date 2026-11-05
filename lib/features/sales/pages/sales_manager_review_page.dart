@@ -16,6 +16,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../core/network/api_client.dart';
@@ -85,11 +86,20 @@ class SalesManagerReviewPage extends ConsumerStatefulWidget {
     this.embedded = false,
     this.initialHistory = false,
     this.historyOnly = false,
+    this.refreshTick = 0,
+    this.externalHeader,
   });
   final String initialKind;
   final bool embedded;
   final bool initialHistory;
   final bool historyOnly;
+
+  /// 宿主(审批中心)右上角刷新的递增计数；变化时本页重拉当前队列。
+  final int refreshTick;
+
+  /// 宿主父分类行：由本页挂进折叠头随页滚走（上滑先把表格钉顶，
+  /// 2026-09-24「表格滑到顶」口径，同仓库任务中心/业务审核中心范式）。
+  final Widget? externalHeader;
   @override
   ConsumerState<SalesManagerReviewPage> createState() =>
       _SalesManagerReviewPageState();
@@ -222,6 +232,18 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
     _batchRemark.dispose();
     _search.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant SalesManagerReviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 宿主(审批中心)右上角刷新：请求登记到宿主 UtenRefreshScope，
+    // 按钮等待真实列表请求收尾。延迟到帧后执行，避免在 build 期间改状态。
+    if (oldWidget.refreshTick != widget.refreshTick) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) UtenRefreshScope.track(context, _reloadFromButton());
+      });
+    }
   }
 
   Future<void> _reload({int page = 1, bool clear = false}) async {
@@ -612,40 +634,54 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                   ? const EdgeInsets.only(bottom: UtenSpacing.s16)
                   : const EdgeInsets.all(UtenSpacing.s16),
               child: UtenCollapsingHeaderScrollView(
+                // 2026-11-04 审批中心分类栏精简：嵌入态状态段退役——待审核为
+                // 默认视图、历史记录走宿主父分类行，只留全站标准搜索行；
+                // 独立页保留自己的状态段导航。宿主父行经 externalHeader 挂进
+                // 折叠头一起随页滚走。
                 collapsingHeader: Column(
                   children: [
-                    UtenFilterToolbar<String>(
-                      enabled: !_busy,
-                      autoSelectBadge: false,
-                      segmentsKey: const Key('sales-review-categories'),
-                      trailing: widget.embedded
-                          ? UtenRefreshButton(
-                              onRefresh: _reloadFromButton,
-                              busy: _buttonReading,
-                              enabled: !_busy,
-                            )
-                          : null,
-                      searchKey: const Key('sales-review-search'),
-                      segments: const [
-                        UtenFilterSegment(value: 'PENDING', label: '待审核'),
-                        UtenFilterSegment(value: 'HISTORY', label: '历史记录'),
-                      ],
-                      selected: {_state},
-                      onSelectionChanged: (value) {
-                        if (_busy) return;
-                        _state = value;
-                        _filters.clear();
-                        _reload(clear: true);
-                      },
-                      searchController: _search,
-                      searchHint: '搜索单据号、客户或业务员',
-                      onSearchInputChanged: (_) {
-                        if (!_busy) ++_generation;
-                      },
-                      onSearchChanged: (_) {
-                        if (!_busy) _reload(clear: true);
-                      },
-                    ),
+                    if (widget.externalHeader != null) ...[
+                      widget.externalHeader!,
+                      const SizedBox(height: UtenFilterRow.rowGap),
+                    ],
+                    if (!widget.embedded)
+                      UtenFilterToolbar<String>(
+                        enabled: !_busy,
+                        autoSelectBadge: false,
+                        segmentsKey: const Key('sales-review-categories'),
+                        searchKey: const Key('sales-review-search'),
+                        segments: const [
+                          UtenFilterSegment(value: 'PENDING', label: '待审核'),
+                          UtenFilterSegment(value: 'HISTORY', label: '历史记录'),
+                        ],
+                        selected: {_state},
+                        onSelectionChanged: (value) {
+                          if (_busy) return;
+                          _state = value;
+                          _filters.clear();
+                          _reload(clear: true);
+                        },
+                        searchController: _search,
+                        searchHint: '搜索单据号、客户或业务员',
+                        onSearchInputChanged: (_) {
+                          if (!_busy) ++_generation;
+                        },
+                        onSearchChanged: (_) {
+                          if (!_busy) _reload(clear: true);
+                        },
+                      )
+                    else
+                      UtenFilterToolbar<String>(
+                        searchKey: const Key('sales-review-search'),
+                        searchController: _search,
+                        searchHint: '搜索单据号、客户或业务员',
+                        onSearchInputChanged: (_) {
+                          if (!_busy) ++_generation;
+                        },
+                        onSearchChanged: (_) {
+                          if (!_busy) _reload(clear: true);
+                        },
+                      ),
                     const SizedBox(height: UtenSpacing.s12),
                   ],
                 ),

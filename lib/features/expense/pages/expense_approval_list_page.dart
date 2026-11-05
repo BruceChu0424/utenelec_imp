@@ -31,6 +31,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -40,6 +41,7 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/sensitive_write.dart';
 import '../../../core/network/read_scope_revision.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
@@ -72,11 +74,20 @@ class ExpenseApprovalListPage extends ConsumerStatefulWidget {
     this.embedded = false,
     this.historyOnly = false,
     this.resumeLocation,
+    this.refreshTick = 0,
+    this.externalHeader,
   });
   final ApprovalQueue? initialQueue;
   final bool embedded;
   final bool historyOnly;
   final String? resumeLocation;
+
+  /// 宿主(审批中心)右上角刷新的递增计数；变化时本页重拉队列数据。
+  final int refreshTick;
+
+  /// 宿主父分类行：由本页挂进折叠头随页滚走（上滑先把表格钉顶，
+  /// 2026-09-24「表格滑到顶」口径，同仓库任务中心/业务审核中心范式）。
+  final Widget? externalHeader;
 
   @override
   ConsumerState<ExpenseApprovalListPage> createState() =>
@@ -117,6 +128,14 @@ class _ExpenseApprovalListPageState
   void didUpdateWidget(covariant ExpenseApprovalListPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialQueue != widget.initialQueue) _prepareInitialQueue();
+    // 宿主(审批中心)右上角刷新：请求登记到宿主 UtenRefreshScope，
+    // 按钮等待真实列表请求收尾。延迟到帧后执行，避免在 build 期间
+    // invalidate provider。
+    if (oldWidget.refreshTick != widget.refreshTick) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) UtenRefreshScope.track(context, _refreshQueue());
+      });
+    }
   }
 
   void _prepareInitialQueue() {
@@ -197,9 +216,20 @@ class _ExpenseApprovalListPageState
       _refreshQueue,
     );
     if (!_queueReady) {
-      return const Scaffold(
-        appBar: UtenAppBar(title: '报销审批'),
-        body: UtenPageEdgePadding(child: UtenSkeletonList()),
+      // 嵌入审批中心时不重复出自己的 AppBar，宿主父分类行钉在骨架上方
+      //（同订货审批任务中心 _pinHostHeader：点击子分类瞬间分类栏不得消失）。
+      return Scaffold(
+        appBar: widget.embedded ? null : const UtenAppBar(title: '报销审批'),
+        body: widget.externalHeader == null
+            ? const UtenPageEdgePadding(child: UtenSkeletonList())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  widget.externalHeader!,
+                  const SizedBox(height: UtenFilterRow.rowGap),
+                  const Expanded(child: UtenSkeletonList()),
+                ],
+              ),
       );
     }
     ref
@@ -257,6 +287,27 @@ class _ExpenseApprovalListPageState
     final summary = summaryAsync?.value;
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    // 嵌入审批中心（分类栏精简）：队列行退役，待审核/待付款的队列切换由
+    // 首列「状态」表头筛选承载（同订货审批任务中心 status→分段联动范式）；
+    // 历史记录不在筛选里——宿主父分类行已有「历史记录」段。
+    final queueFilterable = widget.embedded && !widget.historyOnly;
+    final statusFacets = queueFilterable
+        ? <String, List<MasterFacetBucket>>{
+            'status': [
+              MasterFacetBucket(
+                value: ApprovalQueue.pending.name,
+                label: '待审核',
+                count: pendingCount,
+              ),
+              if (canPay)
+                MasterFacetBucket(
+                  value: ApprovalQueue.payable.name,
+                  label: '待付款',
+                  count: counts.pendingPaymentCount,
+                ),
+            ],
+          }
+        : const <String, List<MasterFacetBucket>>{};
 
     Widget body = Padding(
       // 嵌入审批中心时顶部间距由父分类行的统一 rowGap 提供，避免双层间距叠加；
@@ -266,64 +317,65 @@ class _ExpenseApprovalListPageState
         // 两队列都是「确实在等本页用户动手」→ actionable 红徽章
         // （docs/00-项目准则/14-徽章与计数口径.md §二）。
         // 2026-09-24 对齐物料分析页：统计条随页滚走，body 只剩表格。
+        // 2026-11-04 审批中心分类栏精简：嵌入态不再自带队列行——待审核/待付款
+        // 由表格首列「状态」表头筛选驱动（同订货审批任务中心范式），历史记录走
+        // 宿主父分类行；宿主父行经 [Widget.externalHeader] 挂进折叠头随页滚走。
         collapsingHeader: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            UtenFilterToolbar<ApprovalQueue>(
-              segmentsKey: const Key('expense-approval-segments'),
-              trailing: widget.embedded
-                  ? UtenRefreshButton(
-                      onRefresh: _refreshQueue,
-                      busy: _refreshing,
-                      enabled: !_batchBusy,
-                    )
-                  : null,
-              segments: [
-                if (!widget.historyOnly && canView)
-                  const UtenFilterSegment(
-                    value: ApprovalQueue.browse,
-                    label: '全部单据',
-                  ),
-                if (!widget.historyOnly && (canView || canApprove))
+            if (widget.externalHeader != null) ...[
+              widget.externalHeader!,
+              const SizedBox(height: UtenFilterRow.rowGap),
+            ],
+            if (!widget.embedded)
+              UtenFilterToolbar<ApprovalQueue>(
+                segmentsKey: const Key('expense-approval-segments'),
+                segments: [
+                  if (!widget.historyOnly && canView)
+                    const UtenFilterSegment(
+                      value: ApprovalQueue.browse,
+                      label: '全部单据',
+                    ),
+                  if (!widget.historyOnly && (canView || canApprove))
+                    UtenFilterSegment(
+                      value: ApprovalQueue.pending,
+                      label: '待审核',
+                      count: canApprove
+                          ? (scope.isScoped
+                                ? pendingCount
+                                : summary?.actionablePendingCount)
+                          : summary?.pendingCount,
+                      countForm: canApprove
+                          ? UtenSegmentCountForm.actionable
+                          : UtenSegmentCountForm.browsing,
+                    ),
+                  if (!widget.historyOnly && (canView || canPay))
+                    UtenFilterSegment(
+                      value: ApprovalQueue.payable,
+                      label: '待付款',
+                      count: canPay
+                          ? (scope.isScoped
+                                ? counts.pendingPaymentCount
+                                : summary?.actionablePayableCount)
+                          : summary?.payableCount,
+                      countForm: canPay
+                          ? UtenSegmentCountForm.actionable
+                          : UtenSegmentCountForm.browsing,
+                    ),
                   UtenFilterSegment(
-                    value: ApprovalQueue.pending,
-                    label: '待审核',
-                    count: canApprove
-                        ? (scope.isScoped
-                              ? pendingCount
-                              : summary?.actionablePendingCount)
-                        : summary?.pendingCount,
-                    countForm: canApprove
-                        ? UtenSegmentCountForm.actionable
-                        : UtenSegmentCountForm.browsing,
+                    value: ApprovalQueue.history,
+                    label: l10n.expenseFlowHistory,
+                    count: queue == ApprovalQueue.history
+                        ? listAsync.value?.total
+                        : null,
                   ),
-                if (!widget.historyOnly && (canView || canPay))
-                  UtenFilterSegment(
-                    value: ApprovalQueue.payable,
-                    label: '待付款',
-                    count: canPay
-                        ? (scope.isScoped
-                              ? counts.pendingPaymentCount
-                              : summary?.actionablePayableCount)
-                        : summary?.payableCount,
-                    countForm: canPay
-                        ? UtenSegmentCountForm.actionable
-                        : UtenSegmentCountForm.browsing,
-                  ),
-                UtenFilterSegment(
-                  value: ApprovalQueue.history,
-                  label: l10n.expenseFlowHistory,
-                  count: queue == ApprovalQueue.history
-                      ? listAsync.value?.total
-                      : null,
-                ),
-              ],
-              selected: {queue},
-              onSelectionChanged: (value) {
-                _retireSelection();
-                ref.read(approvalQueueProvider.notifier).state = value;
-              },
-            ),
+                ],
+                selected: {queue},
+                onSelectionChanged: (value) {
+                  _retireSelection();
+                  ref.read(approvalQueueProvider.notifier).state = value;
+                },
+              ),
             // 队列汇总统计条（/summary：两队列 + 本月口径，财务汇总；随页滚走）。
             if (summary != null)
               UtenPageEdgePadding(
@@ -381,10 +433,25 @@ class _ExpenseApprovalListPageState
           items: page.items,
           // 部门 / 年月筛选桶来自后端聚合；未加载完成前列头暂无筛选项。
           // 2026-09-25 单号列统一：facets 响应含报销单号桶（claimNo）。
-          facets: facets.value ?? const {},
+          // 嵌入态 'status' 桶 = 队列切换（待审核/待付款），计数与原队列段同源。
+          facets: {...facets.value ?? const {}, ...statusFacets},
           nullCounts: const {},
-          filters: filters.asTableFilters,
-          onFilterChanged: _onFilterChanged,
+          filters: {
+            ...filters.asTableFilters,
+            if (queueFilterable) 'status': queue.name,
+          },
+          onFilterChanged: (key, value) {
+            if (queueFilterable && key == 'status') {
+              final next = value == ApprovalQueue.payable.name
+                  ? ApprovalQueue.payable
+                  : ApprovalQueue.pending;
+              if (next == queue) return;
+              _retireSelection();
+              ref.read(approvalQueueProvider.notifier).state = next;
+              return;
+            }
+            _onFilterChanged(key, value);
+          },
           // 2026-09-25 单号列统一：表头排序走服务端白名单（claimNo）。
           sortColumn: sortColumn,
           sortAscending: sortAscending,

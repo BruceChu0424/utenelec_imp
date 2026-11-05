@@ -46,7 +46,9 @@ class SupplierPayableHoldGuardBehaviorTest {
                 .containsEntry("allowedCaseId", null);
         assertThat(holdQueries.get(0).sql())
                 .contains("fn_procurement_iqc_ap_hold_reason(ledger.id,cast(:allowedcaseid as uuid)) is not null")
-                .contains("source_ap_ledger_id=ledger.id and parent_funding_slice_id is null")
+                // 2026-11-04 财务整合（0aaffa3aa）后资金片 AP 归属经 fn_finance_iqc_funding_ap 解析，
+                // 不再直连 funding.source_ap_ledger_id 列。
+                .contains("fn_finance_iqc_funding_ap(id)=ledger.id and parent_funding_slice_id is null")
                 .contains("fn_procurement_consideration_active('funding',id)")
                 .contains("receipt_type||'_receipt'=ledger.source_doc_type and status<>'reversed'");
     }
@@ -94,11 +96,12 @@ class SupplierPayableHoldGuardBehaviorTest {
                 .containsEntry("source", creditLedgerId)
                 .containsEntry("targets", List.of(targetLedgerId));
         assertThat(authorization.sql())
-                .contains("count(distinct funding.source_ap_ledger_id)")
+                // 2026-11-04 财务整合（0aaffa3aa）后 AP 归属经 fn_finance_iqc_funding_ap 动态解析。
+                .contains("count(distinct fn_finance_iqc_funding_ap(funding.id))")
                 .contains("funding.id=credit.funding_slice_id")
                 .contains("credit.case_id=:caseid")
-                .contains("funding.source_ap_ledger_id in (:targets)")
-                .contains("fn_procurement_iqc_slice_offset_authorized(:caseid,:source,funding.source_ap_ledger_id)");
+                .contains("fn_finance_iqc_funding_ap(funding.id) in (:targets)")
+                .contains("fn_procurement_iqc_slice_offset_authorized(:caseid,:source,fn_finance_iqc_funding_ap(funding.id))");
         assertThat(guard.authorizedIqcCreditOffset(
                 UUID.randomUUID(), creditLedgerId, List.of(targetLedgerId))).isFalse();
         assertThat(guard.authorizedIqcCreditOffset(

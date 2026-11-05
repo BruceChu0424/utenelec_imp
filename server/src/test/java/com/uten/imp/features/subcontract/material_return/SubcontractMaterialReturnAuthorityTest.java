@@ -66,6 +66,15 @@ class SubcontractMaterialReturnAuthorityTest {
                         mock(com.uten.imp.features.subcontract.LinkedOrderReadGate.class),
                 org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                         materialPlans);
+        // 2026-11-04 数量采用契约（0aaffa3aa 范式）：批准路径须核对原发料实际可退量并
+        // 保存原数量换算依据；Spring 环境恒注入这两个端口，单测手工构造需显式提供。
+        var materialQuantities = mock(com.uten.imp.application.port.SubcontractMaterialQuantityPort.class);
+        when(materialQuantities.returnableBaseQuantity(any())).thenReturn(BigDecimal.TEN);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "materialQuantities", materialQuantities);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "numericInputEvidence",
+                mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class));
+        when(stockService.recordMovement(any())).thenReturn(
+                new StockService.PostedMovement(UUID.randomUUID(), null, null, false));
 
         UUID id = UUID.randomUUID();
         SubcontractMaterialReturn document = document(id);

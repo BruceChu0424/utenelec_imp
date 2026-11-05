@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.statement;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -16,10 +17,13 @@ import static com.uten.imp.features.finance.statement.FinanceStatementDocumentCo
 @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all')")
 public class FinanceStatementDocumentController {
     private final FinanceStatementDocumentService service;
+    private final AuditDetailViewRecorder detailViewAudit;
     @GetMapping("/profiles") public Map<String,Object> profiles(@RequestParam String kind,@RequestParam String templateKey,
             @RequestParam(required=false)String partyRole,@RequestParam(required=false)UUID partyId,@RequestParam UUID currencyId,
             @RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.profiles(kind,templateKey,partyRole,partyId,currencyId,page,size);}
-    @GetMapping("/profiles/{id}") public Map<String,Object> profile(@PathVariable UUID id){return service.profile(id);}
+    // 2026-11-04 对账: 0aaffa3aa 财务复刻端点补 DirectView 审计登记(参照 FinanceApplicationController 范式)。
+    @GetMapping("/profiles/{id}") public Map<String,Object> profile(@PathVariable UUID id){var result=service.profile(id);
+        detailViewAudit.record("view_finance_statement_profile_detail","finance_statement_profiles",id,null,null,"结算单模板档案");return result;}
     @PostMapping("/profiles") public Map<String,Object> save(@RequestBody ProfileSave input){return service.saveProfile(input);}
     @PostMapping("/profiles/{id}/review") public Map<String,Object> review(@PathVariable UUID id,@RequestBody Decision input){return service.decideProfile(id,input);}
     /** Context only: period totals are supplied internally by the exact original report, never editable HTTP money. */
@@ -29,7 +33,8 @@ public class FinanceStatementDocumentController {
     @PostMapping("/settlement-preview") public Map<String,Object> settlementPreview(@RequestBody SettlementPreview input){return service.previewSettlement(input);}
     @PostMapping("/settlement-reviews") public Map<String,Object> settlementSubmit(@RequestBody SettlementSave input){return service.submitSettlement(input);}
     @PostMapping("/reviews/query") public Map<String,Object> reviews(@RequestBody Context context,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.reviews(context,page,size);}
-    @GetMapping("/reviews/{id}") public Map<String,Object> review(@PathVariable UUID id){return service.review(id);}
+    @GetMapping("/reviews/{id}") public Map<String,Object> review(@PathVariable UUID id){var result=service.review(id);
+        detailViewAudit.record("view_finance_statement_review_detail","finance_statement_document_reviews",id,null,null,"结算单复核");return result;}
     @GetMapping("/reviews/{id}/original-table")public com.uten.imp.features.finance.report.ReportTableResponse originalTable(@PathVariable UUID id,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.originalTable(id,page,size);}
     @PostMapping("/reviews/{id}/decision")public Map<String,Object> decision(@PathVariable UUID id,@RequestBody Decision input){return service.decideReview(id,input);}
     @PostMapping(value="/reviews/{id}/counterpart",consumes=MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -254,7 +254,8 @@ class DailyReportOutputAllocationServiceTest {
         assertFalse(pieces.get(1).isOverLimit());assertTrue(pieces.get(2).isOverLimit());
         assertEquals("设备停机惯性产出",pieces.get(2).getOverLimitReason());
         assertNull(pieces.get(0).getOverLimitReason());assertNull(pieces.get(1).getOverLimitReason());
-        assertEquals(new BigDecimal("12.0000"),pieces.stream().map(DailyReportItemLine::getWeight).reduce(BigDecimal.ZERO,BigDecimal::add));
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：精确分摊按原样保留（尾零剥离），按数值比较。
+        assertEquals(0,new BigDecimal("12").compareTo(pieces.stream().map(DailyReportItemLine::getWeight).reduce(BigDecimal.ZERO,BigDecimal::add)));
         assertTrue(pieces.get(2).isActualSurplus());assertTrue(pieces.get(2).isPublicOutput());
         assertFalse(Boolean.TRUE.equals(pieces.get(2).getIsFinal()));
     }
@@ -273,15 +274,20 @@ class DailyReportOutputAllocationServiceTest {
         assertEquals("overLimitReason",error.getFieldErrors().getFirst().field());
         assertEquals(new BigDecimal("1200"),input.getQty());
     }
-    @Test void splitWeightPreservesOriginalTotalIncludingRoundingResidual() {
-        var original=new DailyReportItemLine();original.setQty(new BigDecimal("3"));original.setWeight(BigDecimal.ONE);
-        var first=new DailyReportItemLine();first.setQty(BigDecimal.ONE);
-        var second=new DailyReportItemLine();second.setQty(BigDecimal.ONE);
-        var last=new DailyReportItemLine();last.setQty(BigDecimal.ONE);
-        DailyReportOutputAllocationService.distributeWeight(original,List.of(first,second,last));
-        assertEquals(new BigDecimal("0.3333"),first.getWeight());
-        assertEquals(new BigDecimal("0.3333"),last.getWeight());
-        assertEquals(0,BigDecimal.ONE.compareTo(first.getWeight().add(second.getWeight()).add(last.getWeight())));
+    @Test void splitWeightPreservesOriginalTotalIncludingRoundingResidual()throws Exception {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：1/3 重量切片除不尽，
+        // 按四位 HALF_UP 分摊，末片收回余量使合计仍等于原重量。
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "quantity.slice",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")))){
+            var original=new DailyReportItemLine();original.setQty(new BigDecimal("3"));original.setWeight(BigDecimal.ONE);
+            var first=new DailyReportItemLine();first.setQty(BigDecimal.ONE);
+            var second=new DailyReportItemLine();second.setQty(BigDecimal.ONE);
+            var last=new DailyReportItemLine();last.setQty(BigDecimal.ONE);
+            DailyReportOutputAllocationService.distributeWeight(original,List.of(first,second,last));
+            assertEquals(new BigDecimal("0.3333"),first.getWeight());
+            assertEquals(new BigDecimal("0.3333"),last.getWeight());
+            assertEquals(0,BigDecimal.ONE.compareTo(first.getWeight().add(second.getWeight()).add(last.getWeight())));
+        }
     }
     @Test void tinyWeightSplitNeverProducesANegativeLastSlice() {
         var original=new DailyReportItemLine();original.setQty(new BigDecimal("4"));original.setWeight(new BigDecimal("0.0002"));

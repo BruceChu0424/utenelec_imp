@@ -3,7 +3,6 @@ package com.uten.imp.features.auth;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -78,7 +77,6 @@ public class SessionWatchService {
     }
 
     /** Also observes revocations committed by another server process and idle expiry. */
-    @Scheduled(fixedDelay = 2000L)
     public void reconcile() {
         List<Waiter> snapshot;
         synchronized (waiting) {

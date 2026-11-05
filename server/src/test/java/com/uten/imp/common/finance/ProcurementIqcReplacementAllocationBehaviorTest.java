@@ -111,8 +111,9 @@ class ProcurementIqcReplacementAllocationBehaviorTest {
                 "insert into procurement_iqc_replacement_allocations");
         assertThat(allocation.parameters().get("qty"))
                 .isEqualTo(new BigDecimal("2"));
-        assertThat(allocation.parameters().get("baseQty"))
-                .isEqualTo(new BigDecimal("4.0000"));
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：精确积按原样保留（尾零剥离），按数值比较。
+        assertThat((BigDecimal) allocation.parameters().get("baseQty"))
+                .isEqualByComparingTo("4");
         assertThat((BigDecimal) allocation.parameters().get("original"))
                 .isEqualByComparingTo("0.0000");
         assertThat((BigDecimal) allocation.parameters().get("local"))

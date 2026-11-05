@@ -376,10 +376,14 @@ class ApwEstimatorTest {
         assertThat(GoodsWeightObservationService.skipBeforeLookup(false, BigDecimal.TEN, BigDecimal.ZERO)).isTrue();
         assertThat(GoodsWeightObservationService.skipBeforeLookup(false, BigDecimal.TEN, BigDecimal.ONE)).isFalse();
 
-        // 实称等于提示的应称重量 (4 位) → ECHO
-        assertThat(GoodsWeightObservationService.exclusionReason(new BigDecimal("5000"), new BigDecimal("9.9951"),
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：ECHO 改为实称与应称精确相等才排除；
+        // 仅四位近似不再算 ECHO——下例数量恰等于 实称/单重 取整，落入 QTY_ECHO。
+        assertThat(GoodsWeightObservationService.exclusionReason(new BigDecimal("5000"), new BigDecimal("9.995123"),
                 new BigDecimal("9.995123"), new BigDecimal("0.001999024615")))
                 .isEqualTo(GoodsWeightObservationService.EXCLUDED_ECHO);
+        assertThat(GoodsWeightObservationService.exclusionReason(new BigDecimal("5000"), new BigDecimal("9.9951"),
+                new BigDecimal("9.995123"), new BigDecimal("0.001999024615")))
+                .isEqualTo(GoodsWeightObservationService.EXCLUDED_QTY_ECHO);
         // 数量恰好等于 实称/单重 取整且 ≥100 件 → QTY_ECHO
         assertThat(GoodsWeightObservationService.exclusionReason(new BigDecimal("5003"), new BigDecimal("10.0010"),
                 new BigDecimal("9.995123"), new BigDecimal("0.001999")))
@@ -504,7 +508,9 @@ class ApwEstimatorTest {
         GoodsWeightObservationService.Snapshot far = GoodsWeightObservationService.snapshot(master,
                 new BigDecimal("10000"), new BigDecimal("15.0000"), SourceKind.RECEIPT.eps());
         assertThat(far.alert()).isEqualTo(Alert.NONE);
-        assertThat(far.deviationPct()).isEqualByComparingTo("-25.0000");
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：偏差不再四位 HALF_UP 归一，
+        // 保留 double 换算原值（约 -25%），按相对误差核对。
+        assertRel(far.deviationPct().doubleValue(), -25.0);
     }
 
     // ------------------------------------------------------------------ 19. 红冲

@@ -204,7 +204,10 @@ class SubcontractLossValueEndToEndTest {
         // background worker cannot race the pending-state assertion.
         new TransactionTemplate(transactionManager).executeWithoutResult(status->{
             inventoryLocks.lock(new InventoryKey(free.world().goodsD(),null));
-            UUID adjustment=queueCostCorrection(free.world(),source,BigDecimal.ONE);
+            // 2026-11-04 显式终值契约：0aaffa3aa 起「未知原成本不能由一笔追加费用自动核定」
+            // (adjustSource 拒绝对未核定来源 markFinal)；本用例只需要一笔留在队列的无关
+            // 待处理成本修正，追加费用不再顺带核定终值，与真实入口的显式核定语义一致。
+            UUID adjustment=queueCostCorrection(free.world(),source,BigDecimal.ONE,false);
             assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,adjustment));
             var known=claims.detail(freeCase);
             money(new BigDecimal(known.summary().lossBookValueLocal()),"0");
@@ -340,11 +343,14 @@ class SubcontractLossValueEndToEndTest {
         command.setItems(List.of(line));UUID document=stockDocs.create(command).getId();stockDocs.approve(document);return document;
     }
     private UUID queueCostCorrection(FullChainEndToEndTest.World w,Map<String,Object> source,BigDecimal delta){
+        return queueCostCorrection(w,source,delta,true);
+    }
+    private UUID queueCostCorrection(FullChainEndToEndTest.World w,Map<String,Object> source,BigDecimal delta,boolean markFinal){
         beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
         UUID event=UUID.randomUUID();
         var context=new InventoryValuationPort.EventContext(event,"TEST_SUBCONTRACT_LOSS_COST",(UUID)source.get("source_doc_id"),
                 (UUID)source.get("source_item_id"),1,w.superAdminUserId(),w.employeeId(),event.toString(),OffsetDateTime.now());
-        var correction=values.adjustSource(new InventoryValuationPort.SourceAdjustment(context,(UUID)source.get("result_node_id"),delta,true));
+        var correction=values.adjustSource(new InventoryValuationPort.SourceAdjustment(context,(UUID)source.get("result_node_id"),delta,markFinal));
         assertTrue(correction.pendingTasks()>0,"the regression must create real durable propagation work");
         return correction.eventId();
     }

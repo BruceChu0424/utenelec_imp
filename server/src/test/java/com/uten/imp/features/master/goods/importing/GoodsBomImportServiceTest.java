@@ -260,7 +260,8 @@ class GoodsBomImportServiceTest {
         try (XSSFWorkbook book = new XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx))) {
             int qtyColumn = GoodsBomService.EXPORT_COLUMNS.stream().map(c -> c.key()).toList().indexOf("qty");
             var cell = book.getSheetAt(0).getRow(2).getCell(qtyColumn);
-            assertEquals("General", cell.getCellStyle().getDataFormatString());
+            // 2026-11-04 起按 0aaffa3aa 导出契约：数量单元格按存储值小数位显式定格式（0.004 -> "0.000"），不再是 General。
+            assertEquals("0.000", cell.getCellStyle().getDataFormatString());
             assertEquals("0.004", new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(cell));
         }
 
@@ -372,14 +373,20 @@ class GoodsBomImportServiceTest {
 
     @Test
     void extremeExponentsAndValuesOutsideStoredPrecisionAreRowErrors() throws Exception {
-        for (String invalid : List.of("1e999999999", "1e-999999999", "1e14", "0.000001", "99999999999999")) {
+        // 2026-11-04 起按 0aaffa3aa 精确原数契约：可保存边界放宽到 40 位整数、24 位有效小数，
+        // 极端指数（无法审计表示）仍是整行错误；旧的 13 位整数/5 位小数上限不再适用。
+        for (String invalid : List.of("1e999999999", "1e-999999999", "0.1234567890123456789012345")) {
             BomImportReport report = service(repoWithAllCodes()).detect(targetId,
                     workbook(new String[][]{{"1", "K01", invalid}}));
             assertTrue(report.hasErrors(), invalid);
-            assertTrue(report.errors().getFirst().message().contains("位小数"));
+            assertTrue(report.errors().getFirst().message().contains("请核对原文件")
+                    || report.errors().getFirst().message().contains("有效小数"), invalid);
         }
-        assertFalse(service(repoWithAllCodes()).detect(targetId,
-                workbook(new String[][]{{"1", "K01", "0.00001"}})).hasErrors());
+        // 边界内原数（含 6 位小数与 14~15 位整数）不再被截断或报错。
+        for (String valid : List.of("1e14", "0.000001", "99999999999999", "0.00001")) {
+            assertFalse(service(repoWithAllCodes()).detect(targetId,
+                    workbook(new String[][]{{"1", "K01", valid}})).hasErrors(), valid);
+        }
     }
 
     @Test

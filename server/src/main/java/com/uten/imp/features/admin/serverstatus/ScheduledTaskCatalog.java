@@ -23,7 +23,7 @@ public final class ScheduledTaskCatalog {
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
             Map.entry("LoginFailureAlertScheduler.scan", new Entry("登录安全提醒",
                     "每分钟核对近期登录失败记录, 同一网络来源在 10 分钟内连续失败达到 10 次时提醒管理员检查。")),
-            Map.entry("SessionWatchService.reconcile", new Entry("登录会话核对",
+            Map.entry("SessionWatchReconcileScheduler.reconcile", new Entry("登录会话核对",
                     "每 2 秒核对等待中的登录会话是否已在别处被顶替或闲置过期, 一旦失效立即答复等待的客户端; 核对异常时保留等待, 不让任何人提前下线。")),
             Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据整理",
                     "每 10 分钟整理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"

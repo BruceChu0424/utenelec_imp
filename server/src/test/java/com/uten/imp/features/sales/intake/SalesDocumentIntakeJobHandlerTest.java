@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.AiCompletionPort;
 import com.uten.imp.application.port.AiJobHandler.AiJobInput;
 import com.uten.imp.application.port.AiJobUsagePort;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -42,6 +44,22 @@ class SalesDocumentIntakeJobHandlerTest {
     private final SalesDocumentIntakeJobHandler handler = new SalesDocumentIntakeJobHandler(lookup, new FakeReferenceData(),
             new ObjectMapper(), aiPort, new SecurityContextCurrentUser(),
             Clock.fixed(fixture.asOf.atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant(), ZoneId.of("Asia/Shanghai")));
+
+    private AutoCloseable discountPrecision;
+
+    @BeforeEach
+    void bindDiscountRoundingChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：JobHandler → SalesIntakePipeline →
+        // IntakePricing → MoneyPolicy.discountFromUnitPrice 反推折扣（divide key=money.discount，maximum=24），
+        // 除不尽时按用户显式四位 HALF_UP 取舍；精确商保留原样。
+        discountPrecision = BusinessPrecisionContext.use(Map.of(
+                "money.discount", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseDiscountRoundingChoice() throws Exception {
+        discountPrecision.close();
+    }
 
     @AfterEach
     void clear() {

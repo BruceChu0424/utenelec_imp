@@ -1,6 +1,9 @@
 package com.uten.imp.features.sales.intake;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -23,6 +26,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SalesIntakeMatchingRegressionTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    private AutoCloseable discountPrecision;
+
+    @BeforeEach
+    void bindDiscountRoundingChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：流水线经 IntakePricing →
+        // MoneyPolicy.discountFromUnitPrice 反推折扣（divide key=money.discount，maximum=24），
+        // 除不尽时按用户显式四位 HALF_UP 取舍；精确商保留原样。
+        discountPrecision = BusinessPrecisionContext.use(java.util.Map.of(
+                "money.discount", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseDiscountRoundingChoice() throws Exception {
+        discountPrecision.close();
+    }
 
     /**
      * @param priceBlockedCorrect 货品已确切对上、只因标价为0/客户价高于标价被转为待核对(定价阻断)且对应正确的行

@@ -119,6 +119,10 @@ class MaterialAnalysisOneTableContractTest {
                 "row.requiredQty()!=null", "row.requiredQty().signum()>0",
                 "row.shortageQty()!=null", "row.shortageQty().signum()>0");
         assertThat(service).contains("&& row.confirmedRoute() == null");
+        // 2026-11-04：只对真有物理缺口的行挂「路线未定」——库存已覆盖的行
+        // (required>0、shortage=0)按 actionable 同款判据永远确认不了路线，
+        // 挂旗就成了永远消不掉的死锁；这类行由客户端按库存覆盖(已齐套)口径展示。
+        assertThat(routePredicate).contains("row.shortageQty().signum()>0");
         // 根供给行另有根路线冻结机制，不进这个分支。
         assertThat(service).contains("MaterialAnalysisFlowStageService.ROUTE_PENDING_INPUT");
     }

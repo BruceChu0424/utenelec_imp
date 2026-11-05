@@ -67,6 +67,19 @@ class WorkshopDirectTransferAvailabilityEndToEndTest {
         UUID target = helper.demand(helper.segment(parent));
         UUID first = helper.transfer(c, source, target, "1", "2");
         assertEquals(0, BigDecimal.ONE.compareTo(netIssued(target)));
+        // V1025（2026-11-04 对齐）：首次直拨报工审核把整目标成本核对工作留在持久队列，
+        // 未应用前同池后续实物写入按 40001 拒绝；真实运行由轮询工作器数秒内完成，这里
+        // 同步驱动同一真实工作器后再继续第二笔直拨，与
+        // PreplanReallocationMakeSupplementEndToEndTest 同款。
+        var operator = SecurityContextHolder.getContext();
+        SecurityContextHolder.clearContext();
+        try {
+            InventoryValueWorkTestSupport.drain(beans.getBean(
+                    com.uten.imp.features.stock.valuation.InventoryValueWorkService.class), db,
+                    List.of(c.common(), c.child(), c.material()));
+        } finally {
+            SecurityContextHolder.setContext(operator);
+        }
         UUID second = helper.transfer(c, source, target, "1", "2");
         assertNotEquals(first, second);
         assertEquals(0, new BigDecimal("2").compareTo(netIssued(target)));

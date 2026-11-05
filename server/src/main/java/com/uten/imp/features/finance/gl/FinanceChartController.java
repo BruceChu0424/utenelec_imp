@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.files.document.BoundedBodyReader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +16,7 @@ import static com.uten.imp.features.finance.gl.FinanceChartContracts.*;
 @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all')")
 public class FinanceChartController {
     private final FinanceChartService service;
+    private final AuditDetailViewRecorder detailViewAudit;
     @GetMapping public Map<String,Object> list(){return Map.of("items",service.list());}
     @GetMapping("/options") public Map<String,Object> options(){return service.options();}
     @PostMapping
@@ -27,7 +29,9 @@ public class FinanceChartController {
         byte[] bytes;try(var stream=file.getInputStream()){bytes=BoundedBodyReader.read(stream,file.getSize(),15L*1024*1024);}
         return service.preview(file.getOriginalFilename(),bytes);
     }
-    @GetMapping("/imports/{id}") public Preview imported(@PathVariable UUID id){return service.imported(id);}
+    // 2026-11-04 对账: 0aaffa3aa 财务复刻端点补 DirectView 审计登记(参照 FinanceApplicationController 范式)。
+    @GetMapping("/imports/{id}") public Preview imported(@PathVariable UUID id){var result=service.imported(id);
+        detailViewAudit.record("view_finance_chart_import_detail","finance_chart_imports",id,result.sourceName(),null,"科目导入批次");return result;}
     @PostMapping("/import-apply")
     @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public Result apply(@RequestBody Apply request){return service.apply(request);}

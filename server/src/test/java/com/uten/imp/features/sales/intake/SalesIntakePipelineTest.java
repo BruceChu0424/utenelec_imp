@@ -13,12 +13,15 @@ import com.uten.imp.application.port.MasterIntakeLookupPort.ClientProfile;
 import com.uten.imp.application.port.MasterIntakeLookupPort.DuplicateDocLine;
 import com.uten.imp.application.port.MasterIntakeLookupPort.DuplicateDocRow;
 import com.uten.imp.common.files.document.DocumentGrid;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.web.ApiException;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.uten.imp.common.files.document.DocumentGrid.Sheet;
@@ -45,6 +48,22 @@ class SalesIntakePipelineTest {
     private final IntakeFixture fixture = IntakeFixture.load();
     private final FixtureLookup lookup = new FixtureLookup(fixture);
     private final FakeReferenceData data = new FakeReferenceData();
+
+    private AutoCloseable discountPrecision;
+
+    @BeforeEach
+    void bindDiscountRoundingChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：流水线经 IntakePricing →
+        // MoneyPolicy.discountFromUnitPrice 反推折扣（divide key=money.discount，maximum=24），
+        // 除不尽时按用户显式四位 HALF_UP 取舍；精确商保留原样，不再人为固定四位刻度。
+        discountPrecision = BusinessPrecisionContext.use(java.util.Map.of(
+                "money.discount", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseDiscountRoundingChoice() throws Exception {
+        discountPrecision.close();
+    }
 
     private Map<String, Object> run(FakeJobContext ctx, boolean vision) {
         return new SalesIntakePipeline(lookup, data, new ObjectMapper(), () -> vision,

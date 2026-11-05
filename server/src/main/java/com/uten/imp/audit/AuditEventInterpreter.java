@@ -152,7 +152,38 @@ public class AuditEventInterpreter {
             Map.entry("view_production_material_discovery_detail", "查看实际领料登记详情"),
             Map.entry("view_production_overproduction_rate_detail", "查看超产比例申请详情"),
             Map.entry("view_stock_document_detail", "查看库存单据详情"),
-            Map.entry("view_stock_count_request_detail", "查看库存盘点申请详情"));
+            Map.entry("view_stock_count_request_detail", "查看库存盘点申请详情"),
+            // 2026-11-04 对账: 0aaffa3aa 财务复刻批次的明细查看动作(DetailViewAuditCoverageArchitectureTest 逐项核对具体中文主语)。
+            Map.entry("view_finance_asset_opening_group_detail", "查看资产期初接续组详情"),
+            Map.entry("view_finance_asset_template_operation_detail", "查看资产模板保存结果详情"),
+            Map.entry("view_finance_plastic_input_detail", "查看塑胶成本录入详情"),
+            Map.entry("view_finance_material_order_reference_detail", "查看订单成本参考详情"),
+            Map.entry("view_finance_copper_input_detail", "查看铜价成本录入详情"),
+            Map.entry("view_finance_cost_input_operation_detail", "查看成本录入保存结果详情"),
+            Map.entry("view_finance_accounting_import_detail", "查看凭证导入批次详情"),
+            Map.entry("view_finance_chart_import_detail", "查看科目导入批次详情"),
+            Map.entry("view_finance_expense_analysis_entry_detail", "查看销售费用归集行详情"),
+            Map.entry("view_finance_note_import_detail", "查看费用备注导入批次详情"),
+            Map.entry("view_finance_legacy_opening_review_detail", "查看旧期初对应复核详情"),
+            Map.entry("view_finance_payable_adjustment_detail", "查看应付费用调整详情"),
+            Map.entry("view_finance_payable_recognition_detail", "查看采购应付确认详情"),
+            Map.entry("view_finance_supplier_advance_detail", "查看供应商预付款详情"),
+            Map.entry("view_finance_supplier_advance_refund_detail", "查看供应商预付退款详情"),
+            Map.entry("view_finance_template_import_detail", "查看财务模板导入来源详情"),
+            Map.entry("view_finance_auxiliary_import_detail", "查看辅助明细导入批次详情"),
+            Map.entry("view_finance_material_context_detail", "查看物料对账单详情"),
+            Map.entry("view_finance_material_evidence_detail", "查看物料对账证据详情"),
+            Map.entry("view_finance_material_operation_detail", "查看物料对账操作详情"),
+            Map.entry("view_finance_material_source_detail", "查看物料对账来源行详情"),
+            Map.entry("view_finance_payment_line_detail", "查看付款单明细行详情"),
+            Map.entry("view_finance_receipt_line_detail", "查看收款单明细行详情"),
+            Map.entry("view_supplier_open_item_offset_detail", "查看供应商往来抵销详情"),
+            Map.entry("view_customer_open_item_offset_detail", "查看客户往来抵销详情"),
+            Map.entry("view_finance_statement_profile_detail", "查看结算单模板档案详情"),
+            Map.entry("view_finance_statement_review_detail", "查看结算单复核详情"),
+            Map.entry("view_finance_subcontract_loss_policy_detail", "查看委外损耗政策详情"),
+            Map.entry("view_finance_subcontract_quantity_evidence_detail", "查看委外数量证据详情"),
+            Map.entry("view_finance_subcontract_source_detail", "查看委外数量证据来源详情"));
     /** 公共 AI 平台的语义/显式事件(ADR-133): 按「资源.方法」给出具体中文动作。 */
     private static final Map<String, String> AI_ACTION_LABELS = Map.ofEntries(            Map.entry("ai_provider.create", "新增 AI 服务"),
             Map.entry("ai_provider.update", "修改 AI 服务"),
@@ -1343,6 +1374,33 @@ public class AuditEventInterpreter {
         values.put("da_amortization_log", "待摊费用摊销记录");
         values.put("customer_open_item_offset_batches", "客户未清项核销批次");
         values.put("customer_open_item_offsets", "客户未清项核销");
+        // 2026-11-04 对账: 0aaffa3aa 财务复刻批次新登记的明细查看对象(DetailViewAuditCoverageArchitectureTest 逐项核对人话名称)。
+        values.put("finance_asset_opening_groups", "资产期初接续组");
+        values.put("finance_asset_template_operations", "资产模板保存结果");
+        values.put("finance_plastic_template_inputs", "塑胶成本录入");
+        values.put("finance_material_order_references", "订单成本参考");
+        values.put("finance_copper_template_inputs", "铜价成本录入");
+        values.put("finance_cost_input_operations", "成本录入保存结果");
+        values.put("finance_accounting_import_batches", "凭证导入批次");
+        values.put("finance_chart_imports", "科目导入批次");
+        values.put("finance_sales_expense_pool", "销售费用归集行");
+        values.put("finance_expense_note_imports", "费用备注导入批次");
+        values.put("finance_native_legacy_opening_reviews", "旧期初对应复核");
+        values.put("finance_payable_statement_adjustments", "应付费用调整");
+        values.put("finance_procurement_ap_recognitions", "采购应付确认");
+        values.put("finance_supplier_advances", "供应商预付款");
+        values.put("finance_supplier_advance_refunds", "供应商预付退款");
+        values.put("finance_template_sources", "财务模板导入来源");
+        values.put("finance_statement_source_reviews", "辅助明细导入批次");
+        values.put("finance_material_contexts", "物料对账单");
+        values.put("finance_material_evidence", "物料对账证据");
+        values.put("finance_material_operations", "物料对账操作");
+        values.put("finance_material_sources", "物料对账来源行");
+        values.put("finance_statement_profiles", "结算单模板档案");
+        values.put("finance_statement_document_reviews", "结算单复核");
+        values.put("finance_subcontract_loss_policies", "委外损耗政策");
+        values.put("finance_subcontract_quantity_evidence", "委外数量证据");
+        values.put("finance_subcontract_quantity_sources", "委外数量证据来源");
         // 报表导出事件的虚拟对象（export_*_report 系列的 targetType）
         values.put("purchase_reports", "采购报表");
         values.put("sales_reports", "销售报表");

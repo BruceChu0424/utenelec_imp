@@ -201,15 +201,24 @@ class StockServiceTest {
 
         var movement = org.mockito.ArgumentCaptor.forClass(StockMovement.class);
         verify(movementRepo).save(movement.capture());
-        assertEquals(actualWeight, movement.getValue().getWeight());
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：精确值经 WeightMath 边界剥离尾零，
+        // 不再人为固定四位刻度，断言按数值比较。
+        org.assertj.core.api.Assertions.assertThat(movement.getValue().getWeight()).isEqualByComparingTo(actualWeight);
         assertEquals("MEASURED", movement.getValue().getWeightSource());
-        assertEquals(actualWeight, movement.getValue().getBalanceWeightAfter());
-        assertEquals(new StockService.PostedMovement(movement.getValue().getId(), actualWeight,
-                WeightSource.MEASURED, false), posted);
+        org.assertj.core.api.Assertions.assertThat(movement.getValue().getBalanceWeightAfter()).isEqualByComparingTo(actualWeight);
+        assertEquals(movement.getValue().getId(), posted.movementId());
+        org.assertj.core.api.Assertions.assertThat(posted.weightKg()).isEqualByComparingTo(actualWeight);
+        assertEquals(WeightSource.MEASURED, posted.weightSource());
+        assertEquals(false, posted.replayed());
         verify(balanceRepo).upsertBalance(
-                warehouseId, goodsId, null, new BigDecimal("20"),
-                BigDecimal.ZERO, actualWeight, false,
-                movement.getValue().getTransactionDate());
+                org.mockito.ArgumentMatchers.eq(warehouseId),
+                org.mockito.ArgumentMatchers.eq(goodsId),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("20")),
+                org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
+                org.mockito.ArgumentMatchers.argThat(weight -> weight != null && weight.compareTo(actualWeight) == 0),
+                org.mockito.ArgumentMatchers.eq(false),
+                org.mockito.ArgumentMatchers.eq(movement.getValue().getTransactionDate()));
     }
 
     @Test
@@ -247,7 +256,8 @@ class StockServiceTest {
                 BigDecimal.ONE, UUID.randomUUID(), BigDecimal.ONE,
                 BigDecimal.ZERO, null, CapturedWeight.measured(new BigDecimal("5.0000"))));
 
-        assertEquals(new BigDecimal("5.0000"), posted.weightKg());
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：精确值保留原刻度（尾零已剥离），按数值比较。
+        org.assertj.core.api.Assertions.assertThat(posted.weightKg()).isEqualByComparingTo("5");
         assertEquals(WeightSource.MEASURED, posted.weightSource());
         // 尾差行先写: 账面 4.5 纠正到 50(= 剩 9 个按本次均重 45 + 本次 5), 流水出 5 后正好落在 45。
         var ordered = org.mockito.Mockito.inOrder(weightAdjustments, movementRepo);
@@ -255,10 +265,10 @@ class StockServiceTest {
         var movement = org.mockito.ArgumentCaptor.forClass(StockMovement.class);
         ordered.verify(weightAdjustments).insert(residual.capture());
         ordered.verify(movementRepo).save(movement.capture());
-        assertEquals(new BigDecimal("45.0000"), movement.getValue().getBalanceWeightAfter());
+        org.assertj.core.api.Assertions.assertThat(movement.getValue().getBalanceWeightAfter()).isEqualByComparingTo("45");
         assertEquals("RESIDUAL", residual.getValue().kind());
-        assertEquals(new BigDecimal("4.5000"), residual.getValue().weightBefore());
-        assertEquals(new BigDecimal("50.0000"), residual.getValue().weightAfter());
+        org.assertj.core.api.Assertions.assertThat(residual.getValue().weightBefore()).isEqualByComparingTo("4.5");
+        org.assertj.core.api.Assertions.assertThat(residual.getValue().weightAfter()).isEqualByComparingTo("50");
         assertEquals(movement.getValue().getId(), residual.getValue().movementId());
         verify(balanceRepo).upsertBalance(
                 org.mockito.ArgumentMatchers.eq(warehouseId),
@@ -266,7 +276,7 @@ class StockServiceTest {
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("-1")),
                 org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
-                org.mockito.ArgumentMatchers.eq(new BigDecimal("45.0000")),
+                org.mockito.ArgumentMatchers.argThat(weight -> weight != null && weight.compareTo(new BigDecimal("45")) == 0),
                 org.mockito.ArgumentMatchers.eq(true),
                 org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
     }
@@ -282,7 +292,8 @@ class StockServiceTest {
         StockService.PostedMovement posted = service.recordMovement(request(
                 warehouseId, goodsId, StockService.DIR_OUT, "4", StockService.TYPE_CHECK_LOSS));
 
-        assertEquals(new BigDecimal("1.8000"), posted.weightKg());
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：精确商 1.8 保留原刻度，按数值比较。
+        org.assertj.core.api.Assertions.assertThat(posted.weightKg()).isEqualByComparingTo("1.8");
         assertEquals(WeightSource.AVERAGE, posted.weightSource());
         verify(balanceRepo).upsertBalance(
                 org.mockito.ArgumentMatchers.eq(warehouseId),
@@ -290,7 +301,7 @@ class StockServiceTest {
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("-4")),
                 org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
-                org.mockito.ArgumentMatchers.eq(new BigDecimal("2.7000")),
+                org.mockito.ArgumentMatchers.argThat(weight -> weight != null && weight.compareTo(new BigDecimal("2.7")) == 0),
                 org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
         org.mockito.Mockito.verifyNoInteractions(weightAdjustments);
@@ -321,7 +332,8 @@ class StockServiceTest {
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("4")),
                 org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
-                org.mockito.ArgumentMatchers.eq(new BigDecimal("2.0000")),
+                // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：实称 2 保留原刻度，按数值比较。
+                org.mockito.ArgumentMatchers.argThat(weight -> weight != null && weight.compareTo(new BigDecimal("2")) == 0),
                 org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
         assertEquals("ANCHOR", anchor.getValue().kind());
@@ -349,7 +361,8 @@ class StockServiceTest {
                 BigDecimal.ZERO, null, CapturedWeight.measured(new BigDecimal("9"))));
 
         // 斤计量的货品: 3 斤 = 1.5 千克, 客户端带的实称不参与(精确优先)。
-        assertEquals(new BigDecimal("1.5000"), posted.weightKg());
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：精确商 1.5 保留原刻度，按数值比较。
+        org.assertj.core.api.Assertions.assertThat(posted.weightKg()).isEqualByComparingTo("1.5");
         assertEquals(WeightSource.EXACT, posted.weightSource());
         verify(balanceRepo).upsertBalance(
                 org.mockito.ArgumentMatchers.eq(warehouseId),
@@ -357,7 +370,7 @@ class StockServiceTest {
                 org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.eq(new BigDecimal("3")),
                 org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
-                org.mockito.ArgumentMatchers.eq(new BigDecimal("1.5000")),
+                org.mockito.ArgumentMatchers.argThat(weight -> weight != null && weight.compareTo(new BigDecimal("1.5")) == 0),
                 org.mockito.ArgumentMatchers.eq(false),
                 org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
     }

@@ -244,6 +244,11 @@ class ProductionFqcPreStockBatchEndToEndTest {
         quality.decide(first, new DecisionRequest("PASS", new BigDecimal("0.4"), null,
                 null, null, "fqc-earlier-partial-" + first));
         assertEquals(0, new BigDecimal("0.4").compareTo(balance(scenario)));
+        // V1025（2026-11-04 对齐）：早先部分放行的收货把整目标成本核对工作留在持久队列，
+        // 未应用前同池后续实物写入按 40001 拒绝；真实运行由轮询工作器数秒内完成（本类为
+        // SQL 计数确定性关了调度器），这里同步驱动同一真实工作器后再继续剩余批次收货，
+        // 与 PreplanReallocationMakeSupplementEndToEndTest 同款。
+        drainValuationCostWork(scenario);
         var request = new PassAllBatchRequest(scenario.inspections(), "fqc-remaining-" + scenario.reportId());
         var result = quality.passAll(request);
         assertFalse(result.replay());
@@ -629,6 +634,19 @@ class ProductionFqcPreStockBatchEndToEndTest {
 
     private Scenario prepare(int size, String mode) {
         return prepareReports(size, mode, 1).getFirst();
+    }
+
+    /** V1025 之后续实物写入前，同步驱动真实价值工作器收口本世界(A 及其投入 B2/E1)的待核对成本。 */
+    private void drainValuationCostWork(Scenario scenario) {
+        var operator = SecurityContextHolder.getContext();
+        SecurityContextHolder.clearContext();
+        try {
+            InventoryValueWorkTestSupport.drain(beans.getBean(
+                            com.uten.imp.features.stock.valuation.InventoryValueWorkService.class), db,
+                    List.of(scenario.world().goodsA(), scenario.world().goodsB(), scenario.world().goodsE()));
+        } finally {
+            SecurityContextHolder.setContext(operator);
+        }
     }
 
     private List<Scenario> prepareReports(int size, String mode, int reportCount) {

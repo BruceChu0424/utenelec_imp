@@ -272,9 +272,11 @@ class GlPostingServiceReceiptAccountingTest {
                 .filter(sql -> sql.contains("v.source_type = 'AR_POST'"))
                 .findFirst()
                 .orElseThrow();
+        // 2026-11-04 财务整合（0aaffa3aa）后 AR 立账分录改用冻结债务科目函数取稳定角色，
+        // 不再按 system_posting_style_id 全局角色直接取数。
         assertThat(arEntries)
-                .contains("system_posting_style_id('AR_CONTROL')")
-                .contains("system_posting_style_id('SALES_REVENUE')")
+                .contains("fn_finance_native_debt_style(l.id,'AR_CONTROL')")
+                .contains("fn_finance_native_debt_style(l.id,'SALES_REVENUE')")
                 .doesNotContain("path='");
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
                 .contains("FROM ar_ap_ledger ledger")

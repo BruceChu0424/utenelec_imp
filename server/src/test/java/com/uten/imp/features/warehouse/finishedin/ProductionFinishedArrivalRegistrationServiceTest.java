@@ -94,17 +94,22 @@ class ProductionFinishedArrivalRegistrationServiceTest {
     }
 
     @Test
-    void wholeLotWeightIsSplitByQuantityWithTheRemainderOnTheLastSlice() {
-        var split = ProductionFinishedArrivalRegistrationService.splitWeight(new BigDecimal("11.0000"), List.of(
-                new LotMember(UUID.randomUUID(), new BigDecimal("1000"), 0),
-                new LotMember(UUID.randomUUID(), new BigDecimal("100"), 2)));
-        assertThat(split.get(0)).isEqualByComparingTo("10.0000");
-        assertThat(split.get(1)).isEqualByComparingTo("1.0000");
-        var tiny = ProductionFinishedArrivalRegistrationService.splitWeight(new BigDecimal("0.0001"), List.of(
-                new LotMember(UUID.randomUUID(), new BigDecimal("1"), 0),
-                new LotMember(UUID.randomUUID(), new BigDecimal("1000"), 2)));
-        assertThat(tiny.get(0)).as("分到 0 的份记为没称").isNull();
-        assertThat(tiny.get(1)).isEqualByComparingTo("0.0001");
+    void wholeLotWeightIsSplitByQuantityWithTheRemainderOnTheLastSlice() throws Exception {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：0.0001×1/1001 除不尽，
+        // 按四位 HALF_UP 取份数边界（分到 0 的份记为没称，末份收回全部余量）。
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "quantity.slice", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
+            var split = ProductionFinishedArrivalRegistrationService.splitWeight(new BigDecimal("11.0000"), List.of(
+                    new LotMember(UUID.randomUUID(), new BigDecimal("1000"), 0),
+                    new LotMember(UUID.randomUUID(), new BigDecimal("100"), 2)));
+            assertThat(split.get(0)).isEqualByComparingTo("10.0000");
+            assertThat(split.get(1)).isEqualByComparingTo("1.0000");
+            var tiny = ProductionFinishedArrivalRegistrationService.splitWeight(new BigDecimal("0.0001"), List.of(
+                    new LotMember(UUID.randomUUID(), new BigDecimal("1"), 0),
+                    new LotMember(UUID.randomUUID(), new BigDecimal("1000"), 2)));
+            assertThat(tiny.get(0)).as("分到 0 的份记为没称").isNull();
+            assertThat(tiny.get(1)).isEqualByComparingTo("0.0001");
+        }
     }
 
     @Test

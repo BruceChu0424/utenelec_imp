@@ -36,10 +36,15 @@ class StockCountPolicyTest {
                 ApiException.class,
                 () -> StockCountPolicy.requireCountQuantity(
                         new BigDecimal("-0.0001"), 3));
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：实盘数量按 FinancialExactAmount
+        // 无损口径保存（小数最多 24 位、整数最多 40 位），不再限制四位小数/14 位整数；超界仍拒绝。
+        assertDoesNotThrow(() -> StockCountPolicy.requireCountQuantity(new BigDecimal("1.00005"), 4));
+        assertDoesNotThrow(() -> StockCountPolicy.requireCountQuantity(new BigDecimal("100000000000000"), 5));
         assertThrows(ApiException.class,
-                () -> StockCountPolicy.requireCountQuantity(new BigDecimal("1.00005"), 4));
+                () -> StockCountPolicy.requireCountQuantity(
+                        new BigDecimal("1.00000000000000000000000005"), 6));
         assertThrows(ApiException.class,
-                () -> StockCountPolicy.requireCountQuantity(new BigDecimal("100000000000000"), 5));
+                () -> StockCountPolicy.requireCountQuantity(new BigDecimal("1".repeat(41)), 7));
     }
 
     @Test

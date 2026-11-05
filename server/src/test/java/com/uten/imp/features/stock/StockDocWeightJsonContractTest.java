@@ -89,8 +89,10 @@ class StockDocWeightJsonContractTest {
                  "lines":[{"itemId":"%s","weightKg":0.2}]}
                 """.formatted(WAREHOUSE, ITEM), ProductionMaterialReturnConfirmRequest.class);
         assertEquals(WAREHOUSE, weighed.warehouseId());
-        assertEquals(Map.of(ITEM, new BigDecimal("0.2000")),
-                StockDocService.materialReturnWeights(weighed.lines()));
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：收料重量完整保留（尾零剥离），按数值比较。
+        Map<UUID, BigDecimal> parsedWeights = StockDocService.materialReturnWeights(weighed.lines());
+        assertEquals(java.util.List.of(ITEM), java.util.List.copyOf(parsedWeights.keySet()));
+        assertThat(parsedWeights.get(ITEM)).isEqualByComparingTo("0.2");
 
         ProductionMaterialReturnConfirmRequest plain = STRICT.readValue("""
                 {"warehouseId":"%s","idempotencyKey":"material-return-confirm-0123456789abcdef"}

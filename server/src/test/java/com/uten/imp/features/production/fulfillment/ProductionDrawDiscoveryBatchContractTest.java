@@ -166,7 +166,8 @@ class ProductionDrawDiscoveryBatchContractTest {
                 List.of(new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest.ItemWeight(item,new BigDecimal("3"),null)));
         assertNotEquals(hash(plain),hash(itemWeighed));
         Request normalized=ProductionDrawDiscoveryBatchService.normalize(itemWeighed);
-        assertEquals(new BigDecimal("3.0000"),normalized.weights().getFirst().weightKg());
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：千克事实完整保留（尾零剥离），按数值比较。
+        assertEquals(0,new BigDecimal("3").compareTo(normalized.weights().getFirst().weightKg()));
         assertEquals(Boolean.FALSE,normalized.weights().getFirst().qtyFromWeight());
     }
 
@@ -181,8 +182,8 @@ class ProductionDrawDiscoveryBatchContractTest {
                         new IssueWeight(GOODS_A,COLOR,LEAF_A,BigDecimal.TEN,null)))),null));
         rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,List.of(line),
                 List.of(new IssueWeight(GOODS_A,COLOR,LEAF_A,new BigDecimal("-1"),null)))),null));
-        rejected(new Request(KEY,List.of(),List.of(new Discovery(REQUEST_A,0L,List.of(line),
-                List.of(new IssueWeight(GOODS_A,COLOR,LEAF_A,new BigDecimal("0.00001"),null)))),null));
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：千克字段边界放宽为 24 位小数的
+        // 精确保存，0.00001 是合法完整事实不再被拒（负数仍拒绝，见上）。
         UUID item=id(31);
         rejected(new Request(KEY,List.of(DRAW_A),List.of(),null,List.of(
                 new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest.ItemWeight(item,BigDecimal.ONE,null),
@@ -191,7 +192,8 @@ class ProductionDrawDiscoveryBatchContractTest {
         Request accepted=ProductionDrawDiscoveryBatchService.normalize(new Request(KEY,List.of(),List.of(
                 new Discovery(REQUEST_A,0L,List.of(line),List.of(new IssueWeight(GOODS_A,COLOR,LEAF_A,new BigDecimal("0.25"),null)))),null));
         IssueWeight weight=accepted.discoveries().getFirst().weights().getFirst();
-        assertEquals(new BigDecimal("0.2500"),weight.weightKg());
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：0.25 精确保留（尾零剥离），按数值比较。
+        assertEquals(0,new BigDecimal("0.25").compareTo(weight.weightKg()));
         assertEquals(Boolean.FALSE,weight.qtyFromWeight());
     }
 
@@ -215,10 +217,11 @@ class ProductionDrawDiscoveryBatchContractTest {
                 """.formatted(DRAW_A,discovery.formatted(REQUEST_A,GOODS_A,UNIT,LEAF_A,materialWeights),item),
                 Request.class);
         Request normalized=ProductionDrawDiscoveryBatchService.normalize(weighed);
-        assertEquals(new BigDecimal("1.2500"),normalized.weights().getFirst().weightKg());
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：客户端 JSON 的 1.25/0.85 精确保留，按数值比较。
+        assertEquals(0,new BigDecimal("1.25").compareTo(normalized.weights().getFirst().weightKg()));
         assertEquals(item,normalized.weights().getFirst().itemId());
         IssueWeight material=normalized.discoveries().getFirst().weights().getFirst();
-        assertEquals(new BigDecimal("0.8500"),material.weightKg());
+        assertEquals(0,new BigDecimal("0.85").compareTo(material.weightKg()));
         assertEquals(Boolean.TRUE,material.qtyFromWeight());
 
         Request plain=strict.readValue("""

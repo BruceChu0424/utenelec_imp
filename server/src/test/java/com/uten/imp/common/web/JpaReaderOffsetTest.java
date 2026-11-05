@@ -44,6 +44,9 @@ class JpaReaderOffsetTest {
 
     @Test void handoverCandidateReaderCannotSelectAnotherPageAfterIntegerOverflow() {
         queries();
+        // 2026-11-04：候选人读取在计数为空时先行短路返回，页码溢出守卫只在确有候选、
+        // 需要计算偏移时触发；此处给非空计数以继续覆盖该守卫。
+        when(query.getSingleResult()).thenReturn(1L);
         var authorization = mock(EmployeeHandoverAuthorization.class);
         when(authorization.candidateScope()).thenReturn(new EmployeeHandoverAuthorization.CandidateScope(true, UUID.randomUUID()));
         var service = new DataHandoverCandidateService(em, authorization);

@@ -34,23 +34,28 @@ import static org.mockito.Mockito.when;
 class ProcurementIqcDispositionAmountBehaviorTest {
 
     @Test
-    void legacyAmountProjectionSharesOneResolvedCursorWithoutClaimingActualCostAuthority() {
-        BigDecimal amount = new BigDecimal("0.0247");
-        BigDecimal received = new BigDecimal("3");
+    void legacyAmountProjectionSharesOneResolvedCursorWithoutClaimingActualCostAuthority() throws Exception {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：0.0247×1/3 等累计份额
+        // 除不尽，按 ADR-112 既有四位 HALF_UP 口径投影，末片收回余量。
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.cumulative-share", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
+            BigDecimal amount = new BigDecimal("0.0247");
+            BigDecimal received = new BigDecimal("3");
 
-        BigDecimal passFirst = ProcurementInspectionService.releasedAmountSlice(
-                amount, received, BigDecimal.ZERO, BigDecimal.ONE);
-        BigDecimal failMiddle = ProcurementInspectionService.releasedAmountSlice(
-                amount, received, BigDecimal.ONE, BigDecimal.ONE);
-        BigDecimal passLast = ProcurementInspectionService.releasedAmountSlice(
-                amount, received, new BigDecimal("2"), BigDecimal.ONE);
+            BigDecimal passFirst = ProcurementInspectionService.releasedAmountSlice(
+                    amount, received, BigDecimal.ZERO, BigDecimal.ONE);
+            BigDecimal failMiddle = ProcurementInspectionService.releasedAmountSlice(
+                    amount, received, BigDecimal.ONE, BigDecimal.ONE);
+            BigDecimal passLast = ProcurementInspectionService.releasedAmountSlice(
+                    amount, received, new BigDecimal("2"), BigDecimal.ONE);
 
-        // ADR-112: 累计份额取到 4 位(0.0082 / 0.0165), 末片取余; 三片恰好等于收货金额(与库级守卫同式)。
-        assertThat(passFirst).isEqualByComparingTo("0.0082");
-        assertThat(failMiddle).isEqualByComparingTo("0.0083");
-        assertThat(passLast).isEqualByComparingTo("0.0082");
-        assertThat(passFirst.add(failMiddle).add(passLast))
-                .isEqualByComparingTo(amount);
+            // ADR-112: 累计份额取到 4 位(0.0082 / 0.0165), 末片取余; 三片恰好等于收货金额(与库级守卫同式)。
+            assertThat(passFirst).isEqualByComparingTo("0.0082");
+            assertThat(failMiddle).isEqualByComparingTo("0.0083");
+            assertThat(passLast).isEqualByComparingTo("0.0082");
+            assertThat(passFirst.add(failMiddle).add(passLast))
+                    .isEqualByComparingTo(amount);
+        }
     }
 
     @Test

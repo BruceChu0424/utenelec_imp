@@ -43,7 +43,10 @@ class SecurityDefaultsTest {
                         // ADR-110: 用户已有一段时间没操作时发出的请求 (轮询/定时刷新) 不续期会话。
                         "X-Uten-Automatic",
                         "X-Uten-Operation-Id",
-                        "X-Uten-Audit-Context"),
+                        "X-Uten-Audit-Context",
+                        // 2026-11-04 对账: 0aaffa3aa 显式精度选择契约跨源也要能过预检
+                        // (BusinessPrecisionContext.HEADER, 每个计算用途一次明确选择)。
+                        "X-Uten-Precision-Choices"),
                 configuration.getAllowedHeaders());
         assertEquals(
                 java.util.List.of(

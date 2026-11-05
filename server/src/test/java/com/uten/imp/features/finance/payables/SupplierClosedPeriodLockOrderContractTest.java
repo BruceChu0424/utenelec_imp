@@ -77,8 +77,9 @@ class SupplierClosedPeriodLockOrderContractTest {
         String method = between(
                 read("finance", "payables", "SupplierOpenItemOffsetService.java"),
                 "public void reverseBatch", "private Map<UUID, OpenItem> lock");
+        // 2026-11-04 财务整合（0aaffa3aa）后抵销行锁降为 FOR NO KEY UPDATE（仍阻止并发改写、不阻塞读取）。
         assertOrdered(method, "SELECT DISTINCT supplier_id,currency_id",
-                "closedPeriodGuard.requireOpen", "FOR UPDATE",
+                "closedPeriodGuard.requireOpen", "FOR NO KEY UPDATE",
                 "Map<UUID, OpenItem> locked");
         assertThat(method).contains("抵销批次身份已变化");
     }

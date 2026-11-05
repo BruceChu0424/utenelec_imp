@@ -23,6 +23,23 @@ import static org.mockito.Mockito.when;
 /** ADR-134 销售单价权威: 预览价校验、折扣规范、文件单价反推折扣(币种规则)、既有行配对。 */
 class SalesPriceAuthorityTest {
 
+    private AutoCloseable discountPrecision;
+
+    @org.junit.jupiter.api.BeforeEach
+    void bindDiscountRoundingChoice() {
+        // 2026-11-04 显式精度选择契约（d533807ca 范式，同 MoneyPolicyDiscountFromUnitPriceTest）：
+        // 反推折扣走 money.discount 取位，除不尽时按用户显式四位 HALF_UP；精确商保留原样
+        //（9/10=0.9 不再人为四位刻度），断言改为值比较。
+        discountPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(
+                java.util.Map.of("money.discount",
+                        new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void releaseDiscountRoundingChoice() throws Exception {
+        discountPrecision.close();
+    }
+
     @Test
     void previewPriceMustEqualAuthorityAndPendingPriceAcceptsNoPreview() {
         assertThatCode(() -> SalesPriceAuthority.requirePreviewMatches(null, null, "报价"))
@@ -85,7 +102,7 @@ class SalesPriceAuthorityTest {
         SalesPriceAuthority authority = new SalesPriceAuthority(currencies());
         // 人民币文件: 9 ÷ 10 = 0.9。
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("9"), authority.resolveFileCurrency("RMB"), BigDecimal.TEN))
-                .contains(new BigDecimal("0.9000"));
+                .hasValueSatisfying(discount -> assertThat(discount).isEqualByComparingTo("0.9"));
         // 没写币种按本位币; 超出合理区间(0.1)推不出。
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(BigDecimal.ONE, authority.resolveFileCurrency(null), BigDecimal.TEN)).isEmpty();
         // 高于标价推不出(绝不截成 1)。
@@ -99,19 +116,19 @@ class SalesPriceAuthorityTest {
         SalesPriceAuthority authority = new SalesPriceAuthority(currencies());
         // 美元 9, 标价 70: 按 1 → 0.1286(不合理); 按财务汇率 7 → 0.9 → 用 0.9。
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("9"), authority.resolveFileCurrency("USD"), new BigDecimal("70")))
-                .contains(new BigDecimal("0.9000"));
+                .hasValueSatisfying(discount -> assertThat(discount).isEqualByComparingTo("0.9"));
         // 美元 9, 标价 10: 按 1 → 0.9(合理); 按 7 → 6.3(高于标价) → 用 0.9(按美元标价)。
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("9"), authority.resolveFileCurrency("USD"), BigDecimal.TEN))
-                .contains(new BigDecimal("0.9000"));
+                .hasValueSatisfying(discount -> assertThat(discount).isEqualByComparingTo("0.9"));
         // 两种都不合理: 美元 5, 标价 20 → 按 1 为 0.25(太低) / 按 7 为 1.75(高于标价) → 推不出。
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("5"), authority.resolveFileCurrency("USD"), new BigDecimal("20")))
                 .isEmpty();
         // 汇率没维护(港币 0): 只看按 1 的比值。
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("9"), authority.resolveFileCurrency("HKD"), BigDecimal.TEN))
-                .contains(new BigDecimal("0.9000"));
+                .hasValueSatisfying(discount -> assertThat(discount).isEqualByComparingTo("0.9"));
         // 美元 12, 标价 100: 按 1 为 0.12(太低) / 按 7 为 0.84 → 只有一个合理 → 用 0.84。
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("12"), authority.resolveFileCurrency("USD"), new BigDecimal("100")))
-                .contains(new BigDecimal("0.8400"));
+                .hasValueSatisfying(discount -> assertThat(discount).isEqualByComparingTo("0.84"));
         SalesPriceAuthority unitRate = new SalesPriceAuthority(currencies("1.000000"));
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("9"), unitRate.resolveFileCurrency("USD"), BigDecimal.TEN))
                 .as("汇率恰为 1 时两种比值相同, 都合理即不猜")
@@ -127,7 +144,7 @@ class SalesPriceAuthorityTest {
         assertThat(usd.financeRate()).isEqualByComparingTo("7");
         for (int line = 0; line < 50; line++) {
             assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(
-                    new BigDecimal("9"), usd, new BigDecimal("70"))).contains(new BigDecimal("0.9000"));
+                    new BigDecimal("9"), usd, new BigDecimal("70"))).hasValueSatisfying(discount -> assertThat(discount).isEqualByComparingTo("0.9"));
         }
         // 50 行只查一次币种资料(每次保存解析一次, 逐行反推不再查库)。
         verify(em, times(1)).createNativeQuery(anyString());
@@ -136,7 +153,7 @@ class SalesPriceAuthorityTest {
         assertThat(new SalesPriceAuthority(untouched).resolveFileCurrency("  ").base()).isTrue();
         verifyNoInteractions(untouched);
         assertThat(SalesPriceAuthority.deriveDiscountFromClientPrice(new BigDecimal("9"), null, BigDecimal.TEN))
-                .as("文件币种未解析(空)按本位币").contains(new BigDecimal("0.9000"));
+                .as("文件币种未解析(空)按本位币").hasValueSatisfying(discount -> assertThat(discount).isEqualByComparingTo("0.9"));
     }
 
     @Test

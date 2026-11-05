@@ -232,8 +232,10 @@ class FinanceReportPartyStatementTest {
         String sql = String.join("\n", sqlStatements).replaceAll("\\s+", " ");
         assertThat(sql)
                 .contains("COALESCE(c.credit_floor,0) AS \"creditFloor\"")
-                .contains("- COALESCE(c.credit_floor,0) AS \"overFloor\"")
-                .contains("AND (open_item_kind='RECEIVABLE' OR legacy_import_run_id IS NOT NULL)")
+                // 2026-11-04 财务整合（0aaffa3aa）后超出铺底额保留负差且按 unknown_total 失败关闭，
+                // 抵销行资格改为「非客户预收或历史导入」。
+                .contains("COALESCE(p.total_posted,0)-COALESCE(co.total_applied,0)-COALESCE(c.credit_floor,0) END AS \"overFloor\"")
+                .contains("open_item_kind<>'CUSTOMER_PREPAYMENT' OR legacy_import_run_id IS NOT NULL")
                 .contains("FROM customer_open_item_offsets allocation")
                 .doesNotContain("open_item_kind='CUSTOMER_PREPAYMENT'")
                 .doesNotContain("GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) - COALESCE(c.credit_floor,0), 0)");

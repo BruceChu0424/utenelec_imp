@@ -29,6 +29,7 @@ class CustomerPrepaymentGlAccountingContractTest {
         String receipt = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java"),
                 StandardCharsets.UTF_8).replaceAll("\\s+", " ");
-        assertThat(receipt).contains("\"CUSTOMER_PREPAYMENT\".equals(receipt.getReceiptKind()) ?\"CUSTOMER_ADVANCE\":\"AR_CONTROL\"");
+        // 2026-11-04 财务整合（0aaffa3aa）后该调用点不再在 ) 与 ? 之间留空格，语义不变。
+        assertThat(receipt).contains("\"CUSTOMER_PREPAYMENT\".equals(receipt.getReceiptKind())?\"CUSTOMER_ADVANCE\":\"AR_CONTROL\"");
     }
 }

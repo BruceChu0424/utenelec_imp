@@ -63,7 +63,9 @@ class ProcurementReceiptAmountAuthorityContractTest {
         int apply = service.indexOf(call);
         assertThat(apply).isGreaterThanOrEqualTo(0);
         assertThat(apply).isLessThan(service.indexOf("inspectionService.receive"));
-        assertThat(apply).isLessThan(service.indexOf("arApService.postArAp"));
+        // 2026-11-04 财务整合（0aaffa3aa）后 AP 立账经 postOrDefer 委托 ProcurementPayablePosting，
+        // 服务内不再直接调用 arApService.postArAp；顺序契约改为先金额权威再 IQC 再 AP 立账。
+        assertThat(apply).isLessThan(service.indexOf("postOrDefer("));
         assertThat(authority)
                 .contains(sourceTable)
                 .contains("FOR UPDATE OF source_item, source_order")

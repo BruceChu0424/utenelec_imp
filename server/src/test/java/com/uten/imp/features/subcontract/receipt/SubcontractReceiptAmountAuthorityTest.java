@@ -1,16 +1,36 @@
 package com.uten.imp.features.subcontract.receipt;
 
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.web.ApiException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SubcontractReceiptAmountAuthorityTest {
+
+    private AutoCloseable precision;
+
+    @BeforeEach
+    void bindExplicitPrecisionChoices() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：100/3000 参考单价与
+        // 100×1000/3000 累计份额均除不尽，按四位 HALF_UP 分摊，末批收回全部余量。
+        precision = BusinessPrecisionContext.use(Map.of(
+                "money.reference-unit-price", new BusinessPrecisionContext.Choice(4, "HALF_UP"),
+                "money.cumulative-share", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseExplicitPrecisionChoices() throws Exception {
+        precision.close();
+    }
 
     @Test
     void threeThousandBagsForOneHundredCloseExactlyAfterThreeReceipts() {

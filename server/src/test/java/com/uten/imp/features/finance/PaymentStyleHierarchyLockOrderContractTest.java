@@ -65,6 +65,13 @@ class PaymentStyleHierarchyLockOrderContractTest {
                         "features/finance/gl/GlPostingService.java",
                         "public UUID postExpenseDoc(",
                         "List<Object[]> docs = em.createNativeQuery("),
+                // 2026-11-04 财务整合（0aaffa3aa）后资产凭证过账/红冲统一委托受控凭证服务，
+                // PaymentStyleHierarchyLock 移入其 lock(date)：层级锁先于自动投影期间锁；
+                // 原 FinanceAssetLedgerPostingService.post/reverse 两条契约由该入口承接。
+                new LockOrderContract(
+                        "features/finance/gl/FinanceControlledJournalService.java",
+                        "private void lock(",
+                        "periods.lockAutoProjectionPeriod(date);"),
                 new LockOrderContract(
                         "features/finance/asset/application/FinanceAssetCategoryService.java",
                         "public AssetCategoryContracts.Category create(",
@@ -104,15 +111,7 @@ class PaymentStyleHierarchyLockOrderContractTest {
                 new LockOrderContract(
                         "features/finance/asset/application/FinanceAssetPostingService.java",
                         "public AssetWorkbenchResponses.PostingRun reverse(",
-                        "Run original = lock(originalRunId);"),
-                new LockOrderContract(
-                        "features/finance/asset/application/FinanceAssetLedgerPostingService.java",
-                        "public UUID post(",
-                        "return postInternal("),
-                new LockOrderContract(
-                        "features/finance/asset/application/FinanceAssetLedgerPostingService.java",
-                        "public UUID reverse(",
-                        "List<Object[]> rows = em.createNativeQuery("));
+                        "Run original = lock(originalRunId);"));
     }
 
     private static String source(String relativePath) throws Exception {

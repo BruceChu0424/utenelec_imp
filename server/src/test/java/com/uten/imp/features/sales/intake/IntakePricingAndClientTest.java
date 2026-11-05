@@ -3,8 +3,11 @@ package com.uten.imp.features.sales.intake;
 import com.uten.imp.application.port.MasterIntakeLookupPort.ClientCandidate;
 import com.uten.imp.application.port.MasterIntakeLookupPort.ClientCandidateQuery;
 import com.uten.imp.application.port.MasterIntakeLookupPort.ClientSignal;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.features.sales.intake.IntakePricing.CandidatePricing;
 import com.uten.imp.features.sales.intake.IntakePricing.CurrencyInfo;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -16,6 +19,22 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class IntakePricingAndClientTest {
+
+    private AutoCloseable discountPrecision;
+
+    @BeforeEach
+    void bindDiscountRoundingChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：IntakePricing →
+        // MoneyPolicy.discountFromUnitPrice 反推折扣（divide key=money.discount，maximum=24），
+        // 除不尽时按用户显式四位 HALF_UP 取舍；精确商保留原样，不再人为固定四位刻度。
+        discountPrecision = BusinessPrecisionContext.use(Map.of(
+                "money.discount", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseDiscountRoundingChoice() throws Exception {
+        discountPrecision.close();
+    }
 
     private static final CurrencyInfo RMB = new CurrencyInfo("CNY", UUID.randomUUID(), "人民币", false, null, "人民币");
     private static final CurrencyInfo USD = new CurrencyInfo("USD", UUID.randomUUID(), "人民币", true, new BigDecimal("7.1"), "美元");
@@ -44,21 +63,23 @@ class IntakePricingAndClientTest {
     }
 
     @Test
-    void rangeIsJudgedOnTheRoundedDiscountLikeTheMaskedSavePath() {
-        // 30.004 / 100 取 4 位是 0.3000: 不在 (0.3, 1], 与看不到价格的人保存时的反推一致(不给折扣)。
+    void rangeIsJudgedOnTheComputedDiscountLikeTheMaskedSavePath() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）改写：MoneyPolicy 不再把商统一取四位，
+        // 精确商原样保留，只有除不尽才按用户显式选择取舍；合理区间 (0.3, 1] 判在计算出的折扣上。
+        // 30.004 / 100 = 0.30004 精确商 > 0.3: 在合理区间内, 与看不到价格的人保存时的反推一致(给折扣)。
         CandidatePricing floor = price("30.004", "100", RMB);
-        assertThat(floor.flag()).isEqualTo("OUT_OF_RANGE");
-        assertThat(floor.discount()).isNull();
+        assertThat(floor.flag()).isEqualTo("OK");
+        assertThat(floor.discount()).isEqualByComparingTo("0.30004");
         assertThat(com.uten.imp.features.sales.SalesPriceAuthority.deriveDiscountFromClientPrice(
-                new BigDecimal("30.004"), null, new BigDecimal("100"))).isEmpty();
-        // 100.004 / 100 取 4 位是 1.0000: 按 1 折导入, 不当成「高于标价」拦下, 保存路径同样得 1。
+                new BigDecimal("30.004"), null, new BigDecimal("100"))).hasValueSatisfying(
+                d -> assertThat(d).isEqualByComparingTo("0.30004"));
+        // 100.004 / 100 = 1.00004 精确商 > 1: 高于标价拦下待核对(不再四舍五入成 1 折导入), 保存路径同样推不出。
         CandidatePricing ceiling = price("100.004", "100", RMB);
-        assertThat(ceiling.flag()).isEqualTo("ROUNDED");
-        assertThat(ceiling.discount()).isEqualByComparingTo("1");
-        assertThat(ceiling.blocking()).isFalse();
+        assertThat(ceiling.flag()).isEqualTo("ABOVE_LIST");
+        assertThat(ceiling.discount()).isNull();
+        assertThat(ceiling.blocking()).isTrue();
         assertThat(com.uten.imp.features.sales.SalesPriceAuthority.deriveDiscountFromClientPrice(
-                new BigDecimal("100.004"), null, new BigDecimal("100"))).hasValueSatisfying(
-                d -> assertThat(d).isEqualByComparingTo("1"));
+                new BigDecimal("100.004"), null, new BigDecimal("100"))).isEmpty();
     }
 
     @Test

@@ -123,7 +123,7 @@ class ProcurementArrivalWorkflowContractTest {
     }
 
     @Test
-    void customApprovalIsStrictAfterFourDecimalNormalization()
+    void customApprovalKeepsTheExactQuantityWithinTheRequestedExcess()
             throws Exception {
         Method helper = ProcurementArrivalControlService.class
                 .getDeclaredMethod(
@@ -132,14 +132,22 @@ class ProcurementArrivalWorkflowContractTest {
                         BigDecimal.class);
         helper.setAccessible(true);
 
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：数量事实不再静默按四位
+        // 舍入，自定义批准超量按原值保留（仍必须大于 0 且小于本次请求超量）。
         assertThat(helper.invoke(
                 null, new BigDecimal("5.00004"), new BigDecimal("10.0000")))
-                .isEqualTo(new BigDecimal("5"));
+                .isEqualTo(new BigDecimal("5.00004"));
+        assertThat(helper.invoke(
+                null, new BigDecimal("0.00001"), new BigDecimal("10")))
+                .isEqualTo(new BigDecimal("0.00001"));
+        assertThat(helper.invoke(
+                null, new BigDecimal("9.99999"), new BigDecimal("10")))
+                .isEqualTo(new BigDecimal("9.99999"));
         assertInvalidCustom(helper, "0", "10");
-        assertInvalidCustom(helper, "0.00001", "10");
         assertInvalidCustom(helper, "10", "10");
-        assertInvalidCustom(helper, "9.99999", "10");
         assertInvalidCustom(helper, "1", "0");
+        // 可无损保存边界（24 位小数）之外的输入仍拒绝，不静默取位。
+        assertInvalidCustom(helper, "0.1234567890123456789012345", "10");
     }
 
     @Test
@@ -224,7 +232,11 @@ class ProcurementArrivalWorkflowContractTest {
                 .contains("DELETE FROM %s item")
                 .contains("USING %s receipt")
                 .contains("requireChanged(jdbc.update(\"\"\"\n                    DELETE FROM %s item")
-                .contains("requireChanged(jdbc.update(\"\"\"\n                    UPDATE %s item")
+                // 2026-11-04 数量采用契约（0aaffa3aa/d533807ca V1033 范式）：收货行收窄
+                // 时同步再采用 charged/gift 基本量，UPDATE 文本块因此改为拼接格式参数。
+                .contains("requireChanged(jdbc.update((\"\"\"\n                    UPDATE %s item")
+                .contains("charged_base_qty = ? * item.unit_rate")
+                .contains("gift_base_qty = CASE WHEN item.quantity_semantics = 'CHARGED_PLUS_GIFT_V1'")
                 .contains("requireChanged(jdbc.update(\"\"\"\n                UPDATE %s receipt")
                 .contains("arrival_overage_posted_qty =")
                 .contains("status = 'RECEIPT_ADJUSTED'")

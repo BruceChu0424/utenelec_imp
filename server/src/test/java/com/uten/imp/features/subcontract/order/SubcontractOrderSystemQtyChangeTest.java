@@ -77,6 +77,15 @@ class SubcontractOrderSystemQtyChangeTest {
                 .thenReturn(settledLoss);
         when(settledLoss.setParameter(anyString(), any())).thenReturn(settledLoss);
         when(settledLoss.getSingleResult()).thenReturn(BigDecimal.ZERO);
+        // 2026-11-04 数量采用契约（0aaffa3aa）：receipts() 另发 adoptedRetainedBase 的 8 列
+        // 标量查询; 本用例无收货/退回明细行, 而 oi.received_qty=950>0, 采用事实不可用
+        // (返回 NULL), 守卫继续用上面的保守 legacy 边界。
+        Query adoptedFacts = mock(Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("CROSS JOIN iqc")))
+                .thenReturn(adoptedFacts);
+        when(adoptedFacts.setParameter(anyString(), any())).thenReturn(adoptedFacts);
+        when(adoptedFacts.getSingleResult()).thenReturn(new Object[]{
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0L, 0L, 0L, new BigDecimal("950"), BigDecimal.ZERO});
         when(materialPlans.minimumOrderQtyFromIssued(any(), any())).thenReturn(BigDecimal.ZERO);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());

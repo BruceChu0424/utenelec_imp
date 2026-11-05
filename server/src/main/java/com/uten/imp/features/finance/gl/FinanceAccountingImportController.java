@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.files.document.BoundedBodyReader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,9 +15,12 @@ import static com.uten.imp.features.finance.gl.FinanceAccountingContracts.*;
 @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('finance_post:execute')")
 public class FinanceAccountingImportController {
     private final FinanceAccountingImportService service;
+    private final AuditDetailViewRecorder detailViewAudit;
     @GetMapping public Map<String,Object> recent(){return Map.of("items",service.recent());}
     @GetMapping("/options") public Map<String,Object> options(){return service.options();}
-    @GetMapping("/{id}") public Preview get(@PathVariable UUID id){return service.get(id);}
+    // 2026-11-04 对账: 0aaffa3aa 财务复刻端点补 DirectView 审计登记(参照 FinanceApplicationController 范式)。
+    @GetMapping("/{id}") public Preview get(@PathVariable UUID id){var result=service.get(id);
+        detailViewAudit.record("view_finance_accounting_import_detail","finance_accounting_import_batches",id,result.sourceName(),null,"凭证导入批次");return result;}
     @GetMapping("/{id}/compare") public Map<String,Object> compare(@PathVariable UUID id,@RequestParam UUID balanceImportId){return Map.of("issues",service.compare(id,balanceImportId));}
     @PostMapping(value="/preview",consumes="multipart/form-data")
     public Preview preview(@RequestParam String kind,@RequestParam String sourceSystem,@RequestParam("file")MultipartFile file)throws IOException {

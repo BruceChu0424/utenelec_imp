@@ -15,8 +15,12 @@ class DailyReportMaterialReviewContractTest {
         var line=new DailyReportMaterialUsageLine();line.setDemandId(first);line.setQtyBase(new BigDecimal("99999999999999.9999"));
         assertDoesNotThrow(()->ProductionDailyReportService.requireValidMaterialLine(line));
         line.setQtyBase(BigDecimal.ZERO);assertDoesNotThrow(()->ProductionDailyReportService.requireValidMaterialLine(line));
-        line.setQtyBase(new BigDecimal("100000000000000"));assertThrows(ApiException.class,()->ProductionDailyReportService.requireValidMaterialLine(line));
-        line.setQtyBase(BigDecimal.ZERO);line.setCountedLeftoverQty(new BigDecimal("100000000000000"));
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：可无损保存边界从库列 14 位整数
+        // 放宽为 40 位整数（报工数量仍最多 4 位小数），1e14 不再被拒；越界与超 4 位小数仍拒绝。
+        line.setQtyBase(new BigDecimal("100000000000000"));assertDoesNotThrow(()->ProductionDailyReportService.requireValidMaterialLine(line));
+        line.setQtyBase(new BigDecimal("0.00001"));assertThrows(ApiException.class,()->ProductionDailyReportService.requireValidMaterialLine(line));
+        line.setQtyBase(new BigDecimal("1E+40"));assertThrows(ApiException.class,()->ProductionDailyReportService.requireValidMaterialLine(line));
+        line.setQtyBase(BigDecimal.ZERO);line.setCountedLeftoverQty(new BigDecimal("1E+40"));
         assertThrows(ApiException.class,()->ProductionDailyReportService.requireValidMaterialLine(line));
     }
     @Test void compactHugeExponentCannotExpandBeforeCreateQuantityValidationOrChangeZeroCanonicalBytes() {

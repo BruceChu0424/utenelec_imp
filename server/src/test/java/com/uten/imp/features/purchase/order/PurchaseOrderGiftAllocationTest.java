@@ -1,9 +1,12 @@
 package com.uten.imp.features.purchase.order;
 
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.finance.ProcurementQuantities;
+import com.uten.imp.common.util.FinancialExactAmount;
 import com.uten.imp.common.web.ApiException;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,11 +17,15 @@ class PurchaseOrderGiftAllocationTest {
     private static PurchaseOrderService.PhysicalShare source(String quantity){
         return new PurchaseOrderService.PhysicalShare(UUID.randomUUID(),n(quantity));
     }
-    @Test void sourceRemainderRetainsEveryPhysicalGiftAndChargedQuantityIsSeparate(){
-        var sources=List.of(source("1"),source("1"),source("1"));
-        var splits=PurchaseOrderService.allocateSourceShares(sources,n("2"),n("1"));
-        assertEquals(List.of(n("0.6666"),n("0.6666"),n("0.6668")),splits.stream().map(PurchaseOrderService.SourceSplit::allocQty).toList());
-        assertConserved(sources,splits,n("2"),n("1"));
+    @Test void sourceRemainderRetainsEveryPhysicalGiftAndChargedQuantityIsSeparate()throws Exception{
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：2/3 除不尽，
+        // 沿用旧口径四位 DOWN，余量由末位来源吸收。
+        try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(4,"DOWN")))){
+            var sources=List.of(source("1"),source("1"),source("1"));
+            var splits=PurchaseOrderService.allocateSourceShares(sources,n("2"),n("1"));
+            assertEquals(List.of(n("0.6666"),n("0.6666"),n("0.6668")),splits.stream().map(PurchaseOrderService.SourceSplit::allocQty).toList());
+            assertConserved(sources,splits,n("2"),n("1"));
+        }
     }
     @Test void onlyGiftRetainsItsExplicitPrincipalSourceAndNeverCreatesPaidAllocation(){
         var sources=List.of(source("1.25"));
@@ -33,12 +40,16 @@ class PurchaseOrderGiftAllocationTest {
     @Test void manualDocumentCreatesNoFakeUpstreamGiftShare(){
         assertTrue(PurchaseOrderService.allocateSourceShares(List.of(),n("10"),n("1")).isEmpty());
     }
-    @Test void mixedFreeResidualAndPaidSourceKeepTheirOwnPhysicalOwnership(){
-        var sources=List.of(source("1"),source("10"));
-        var splits=PurchaseOrderService.allocateSourceShares(sources,n("10"),n("1"));
-        assertConserved(sources,splits,n("10"),n("1"));
-        assertEquals(0,splits.getFirst().allocQty().compareTo(n("0.9090")));
-        assertEquals(0,splits.getFirst().allocGiftQty().compareTo(n("0.0910")));
+    @Test void mixedFreeResidualAndPaidSourceKeepTheirOwnPhysicalOwnership()throws Exception{
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：10/11 除不尽，
+        // 沿用旧口径四位 DOWN（0.9090/0.0910）。
+        try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(4,"DOWN")))){
+            var sources=List.of(source("1"),source("10"));
+            var splits=PurchaseOrderService.allocateSourceShares(sources,n("10"),n("1"));
+            assertConserved(sources,splits,n("10"),n("1"));
+            assertEquals(0,splits.getFirst().allocQty().compareTo(n("0.9090")));
+            assertEquals(0,splits.getFirst().allocGiftQty().compareTo(n("0.0910")));
+        }
     }
     @Test void allFreeMergedSourcesRetainEverySource(){
         var sources=List.of(source("1"),source("2"));
@@ -49,17 +60,23 @@ class PurchaseOrderGiftAllocationTest {
     }
     @Test void aThousandSmallestSourcesCannotOverflowTheLastSourceWithRoundingRemainders(){
         var sources=java.util.stream.IntStream.range(0,1000).mapToObj(index->source("0.0001")).toList();
+        // 各份额 0.0999*0.0001/0.1 = 0.0000999 为精确商（自然七位），无需显式选择。
         var splits=PurchaseOrderService.allocateSourceShares(sources,n("0.0999"),n("0.0001"));
         assertConserved(sources,splits,n("0.0999"),n("0.0001"));
     }
-    @Test void everyPaidFreeCombinationOfTinySourcesPreservesFourPlaceCapacity(){
-        for(int count=1;count<=25;count++){
-            var sources=java.util.stream.IntStream.range(0,count).mapToObj(index->source("0.0001")).toList();
-            BigDecimal physical=n("0.0001").multiply(BigDecimal.valueOf(count));
-            for(int paidUnits=0;paidUnits<=count;paidUnits++){
-                BigDecimal paid=n("0.0001").multiply(BigDecimal.valueOf(paidUnits));
-                var splits=PurchaseOrderService.allocateSourceShares(sources,paid,physical.subtract(paid));
-                assertConserved(sources,splits,paid,physical.subtract(paid));
+    @Test void everyPaidFreeCombinationOfTinySourcesPreservesFourPlaceCapacity()throws Exception{
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：0.0001 级来源的
+        // 除不尽份额（如 3/5、17/18 个 0.0001）四位选择不可行（守卫会拒绝），
+        // 最小可行显式选择为七位 HALF_UP；精确商仍按原样保留。
+        try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(7,"HALF_UP")))){
+            for(int count=1;count<=25;count++){
+                var sources=java.util.stream.IntStream.range(0,count).mapToObj(index->source("0.0001")).toList();
+                BigDecimal physical=n("0.0001").multiply(BigDecimal.valueOf(count));
+                for(int paidUnits=0;paidUnits<=count;paidUnits++){
+                    BigDecimal paid=n("0.0001").multiply(BigDecimal.valueOf(paidUnits));
+                    var splits=PurchaseOrderService.allocateSourceShares(sources,paid,physical.subtract(paid));
+                    assertConserved(sources,splits,paid,physical.subtract(paid));
+                }
             }
         }
     }
@@ -73,7 +90,10 @@ class PurchaseOrderGiftAllocationTest {
             var split=splits.get(index);assertEquals(sources.get(index).requestItemId(),split.requestItemId());
             assertTrue(split.allocQty().signum()>=0);assertTrue(split.allocGiftQty().signum()>=0);
             assertEquals(0,split.allocQty().add(split.allocGiftQty()).compareTo(sources.get(index).physicalQty()));
-            assertTrue(split.allocQty().scale()<=4);assertTrue(split.allocGiftQty().scale()<=4);
+            // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：精确商按原样保留，
+            // 刻度上限改为精确数值字段边界（MAX_FRACTION_DIGITS），不再钉死四位。
+            assertTrue(split.allocQty().scale()<=FinancialExactAmount.MAX_FRACTION_DIGITS);
+            assertTrue(split.allocGiftQty().scale()<=FinancialExactAmount.MAX_FRACTION_DIGITS);
         }
         assertEquals(0,splits.stream().map(PurchaseOrderService.SourceSplit::allocQty).reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(paid));
         assertEquals(0,splits.stream().map(PurchaseOrderService.SourceSplit::allocGiftQty).reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(gift));
@@ -91,13 +111,17 @@ class PurchaseOrderGiftAllocationTest {
   var splits=PurchaseOrderService.allocateSourceShares(List.of(physical("10"),physical("10")),n("18"),n("2"));
   assertThat(splits).hasSize(2);for(var split:splits){assertThat(split.allocQty()).isEqualByComparingTo("9");assertThat(split.allocGiftQty()).isEqualByComparingTo("1");}
  }
- @Test void tinyRemaindersStayWithinEachActualPhysicalSourceAndNoQuantityIsLost(){
+ @Test void tinyRemaindersStayWithinEachActualPhysicalSourceAndNoQuantityIsLost()throws Exception{
+  // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：1/3、2/3 个 0.0001 除不尽；
+  // 四位 DOWN 会把余量推出末位来源容量被守卫拒绝，四位 HALF_UP 可行且守恒。
+  try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(4,"HALF_UP")))){
   var sources=List.of(physical("0.0001"),physical("0.0001"),physical("0.0001"));
   for(String paid:List.of("0.0001","0.0002")){
    BigDecimal free=n("0.0003").subtract(n(paid));var splits=PurchaseOrderService.allocateSourceShares(sources,n(paid),free);
    assertThat(splits.stream().map(PurchaseOrderService.SourceSplit::allocQty).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo(paid);
    assertThat(splits.stream().map(PurchaseOrderService.SourceSplit::allocGiftQty).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo(free);
    for(var split:splits){assertThat(split.allocQty()).isNotNegative();assertThat(split.allocGiftQty()).isNotNegative();assertThat(split.allocQty().add(split.allocGiftQty())).isEqualByComparingTo("0.0001");}
+  }
   }
  }
  @Test void freeOnlyMergedSourcesOwnTheirOwnFreeSharesAndCreateNoPaidAllocation(){

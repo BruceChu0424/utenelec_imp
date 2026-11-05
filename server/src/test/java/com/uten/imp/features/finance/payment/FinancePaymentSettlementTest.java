@@ -332,8 +332,10 @@ class FinancePaymentSettlementTest {
 
         assertThatThrownBy(() -> service.approve(draft.getId()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("供应商预付资产科目")
-                .hasMessageContaining("当前禁止审核");
+                // 2026-11-04 财务整合（0aaffa3aa）后直接付款的预付资产链由 SupplierPrepaymentPort 提供；
+                // 端口缺失时按来源未就绪失败关闭，原单据保留，不再是旧的科目缺失文案。
+                .hasMessageContaining("供应商预付资产来源尚未准备好")
+                .hasMessageContaining("原单据已保留");
 
         assertThat(payments.get(draft.getId()).getStatus()).isZero();
         verify(accountUpdate, never()).executeUpdate();

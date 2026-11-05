@@ -41,12 +41,18 @@ class PlanItemQuantityWireTest {
     }
 
     @Test
-    void theExistingServerQuantityGuardAcceptsFourPlacesAndRejectsFiveAndOverflow() {
+    void theServerQuantityGuardKeepsLosslessBoundsInsteadOfSilentlyRounding() {
+        // 2026-11-04 显式精度契约（0aaffa3aa/d533807ca 范式）：可无损保存边界从库列
+        // 14 位整数/4 位小数放宽为 40 位整数/24 位小数，1.23456 与 1e14 都是合法精确保存；
+        // 超出无损边界的输入仍拒绝，不再静默取位。
         BigDecimal maximum=new BigDecimal("99999999999999.1234");
         assertEquals(maximum,FinancialExactAmount.quantity(maximum,"生产计划数量"));
         assertEquals(new BigDecimal("1.2345"),FinancialExactAmount.quantity(new BigDecimal("1.2345"),"生产计划数量"));
-        assertThrows(ApiException.class,()->FinancialExactAmount.quantity(new BigDecimal("1.23456"),"生产计划数量"));
-        assertThrows(ApiException.class,()->FinancialExactAmount.quantity(new BigDecimal("100000000000000"),"生产计划数量"));
+        assertEquals(new BigDecimal("1.23456"),FinancialExactAmount.quantity(new BigDecimal("1.23456"),"生产计划数量"));
+        assertEquals(0,new BigDecimal("100000000000000").compareTo(
+                FinancialExactAmount.quantity(new BigDecimal("100000000000000"),"生产计划数量")),"尾零剥离后的紧凑形式按数值比较");
+        assertThrows(ApiException.class,()->FinancialExactAmount.quantity(new BigDecimal("0.1234567890123456789012345"),"生产计划数量"));
+        assertThrows(ApiException.class,()->FinancialExactAmount.quantity(new BigDecimal("1E+40"),"生产计划数量"));
     }
 
     private static PlanItemDto dto(BigDecimal qty,BigDecimal oqty) {

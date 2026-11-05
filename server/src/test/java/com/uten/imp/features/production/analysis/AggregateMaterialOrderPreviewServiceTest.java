@@ -529,17 +529,22 @@ class AggregateMaterialOrderPreviewServiceTest {
         }
     }
 
-    @Test void legacyPublicQuantityIsRoundedAfterTheSelectedSourceSharesAreCombined() {
-        SupplyActionView action=sharedAction("3","1");when(action.operationType()).thenReturn("SUPPLY");
-        List<MaterialView> members=new ArrayList<>();
-        for(int i=0;i<3;i++) {
-            MaterialView member=material(UUID.randomUUID(),"source"+i,"0");
-            DownstreamReference ref=reference(action,"1");when(member.downstreamReferences()).thenReturn(List.of(ref));members.add(member);
+    @Test void legacyPublicQuantityIsRoundedAfterTheSelectedSourceSharesAreCombined()throws Exception {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：4×2/3 公共余量份额除不尽，
+        // 按旧展示口径四位 HALF_UP 取整。
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "quantity.share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")))){
+            SupplyActionView action=sharedAction("3","1");when(action.operationType()).thenReturn("SUPPLY");
+            List<MaterialView> members=new ArrayList<>();
+            for(int i=0;i<3;i++) {
+                MaterialView member=material(UUID.randomUUID(),"source"+i,"0");
+                DownstreamReference ref=reference(action,"1");when(member.downstreamReferences()).thenReturn(List.of(ref));members.add(member);
+            }
+            GroupPreview shown=service().resolve(ANALYSIS,request(List.of(group(members,"0",false))),view(List.of(),members,List.of(action))).groups().getFirst();
+            assertThat(shown.orderedQty()).isEqualByComparingTo("4");
+            GroupPreview subset=service().resolve(ANALYSIS,request(List.of(group(members.subList(0,2),"0",false))),view(List.of(),members,List.of(action))).groups().getFirst();
+            assertThat(subset.orderedQty()).isEqualByComparingTo("2.6667");
         }
-        GroupPreview shown=service().resolve(ANALYSIS,request(List.of(group(members,"0",false))),view(List.of(),members,List.of(action))).groups().getFirst();
-        assertThat(shown.orderedQty()).isEqualByComparingTo("4");
-        GroupPreview subset=service().resolve(ANALYSIS,request(List.of(group(members.subList(0,2),"0",false))),view(List.of(),members,List.of(action))).groups().getFirst();
-        assertThat(subset.orderedQty()).isEqualByComparingTo("2.6667");
     }
 
     @Test void aSharedAppendKeepsEarlierIndependentManufacturingPlanInOrderedTotal() {

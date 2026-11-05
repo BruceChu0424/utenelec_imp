@@ -238,6 +238,11 @@ public final class ReviewNoticeCatalog {
             java.util.Map.entry("PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED", "车间任务待办理"),
             java.util.Map.entry("PROCUREMENT_IQC_STOCK_IN_PENDING", "品质放行待入库"),
             java.util.Map.entry("PRODUCTION_DRAW_PENDING", "领料单待出库"),
+            // 0aaffa3aa 财务申请通知三事件（FinanceApplicationNoticeAdapter）补配中文名，
+            // 与通知标题口径一致（待办理/待登记付款/已退回）。
+            java.util.Map.entry("FINANCE_APPLICATION_REVIEW_REQUIRED", "申请待办理"),
+            java.util.Map.entry("FINANCE_APPLICATION_PAYMENT_REQUIRED", "申请待登记付款"),
+            java.util.Map.entry("FINANCE_APPLICATION_RETURNED", "申请已退回"),
             java.util.Map.entry("PROCUREMENT_FINANCE_APPROVED", "财务已批预计到货"),
             java.util.Map.entry("SUBCONTRACT_DRAW_AVAILABLE", "委外可领料"),
             java.util.Map.entry("SUBCONTRACT_ORDER_KIT_READY", "委外可下单"),

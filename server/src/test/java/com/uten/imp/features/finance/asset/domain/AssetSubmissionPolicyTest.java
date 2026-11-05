@@ -1,6 +1,9 @@
 package com.uten.imp.features.finance.asset.domain;
 
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.web.ApiException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -11,6 +14,21 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AssetSubmissionPolicyTest {
+
+    private AutoCloseable precision;
+
+    @BeforeEach
+    void bindStraightLineShareChoice() {
+        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：月折旧/摊销额经
+        // MoneyPolicy.cumulativeShare 的 money.cumulative-share 除法，测试按两位账面货币 HALF_UP 给出显式选择。
+        precision = BusinessPrecisionContext.use(java.util.Map.of(
+                "money.cumulative-share", new BusinessPrecisionContext.Choice(2, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseStraightLineShareChoice() throws Exception {
+        precision.close();
+    }
 
     @Test
     void fixedAssetRequiresAllFourAccountsAndOrderedDates() {

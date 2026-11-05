@@ -65,13 +65,18 @@ void main() {
         find.byKey(const ValueKey('finance-payables-search')).hitTestable(),
         findsOneWidget,
       );
+      // 2026-11-04 用户口径：日期筛选只留「立账日期」一个入口（到期/重置已删）。
       expect(
         find.byKey(const ValueKey('finance-payables-bill-date')).hitTestable(),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey('finance-payables-due-date')).hitTestable(),
-        findsOneWidget,
+        find.byKey(const ValueKey('finance-payables-due-date')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('finance-payables-reset-filters')),
+        findsNothing,
       );
       expect(tester.takeException(), isNull);
     });
@@ -366,10 +371,18 @@ void main() {
       findsOneWidget,
     );
     final billDate = find.byKey(const ValueKey('finance-payables-bill-date'));
-    final dueDate = find.byKey(const ValueKey('finance-payables-due-date'));
     expect(billDate.hitTestable(), findsOneWidget);
-    expect(dueDate.hitTestable(), findsOneWidget);
-    expect(find.byType(FinanceDateRangeFilter), findsNWidgets(2));
+    // 2026-11-04 用户口径：日期筛选只留「立账日期」一个入口；
+    // 「到期日期」按钮与「重置筛选」icon 已删除，到期参数不再由本页发送。
+    expect(find.byType(FinanceDateRangeFilter), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('finance-payables-due-date')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('finance-payables-reset-filters')),
+      findsNothing,
+    );
     await tester.tap(
       find.descendant(of: billDate, matching: find.byType(UtenButton)),
     );
@@ -392,26 +405,16 @@ void main() {
     expect(api.lastQuery?['dateTo'], isNotNull);
     expect(api.lastQuery?['dueFrom'], isNull);
     expect(api.lastQuery?['dueTo'], isNull);
-    // 开放范围仍直接映射原查询边界，不为了统一视觉补造另一端日期。
-    tester
-        .widget<FinanceDateRangeFilter>(dueDate)
-        .onChanged(null, DateTime(2026, 9, 30));
-    await tester.pumpAndSettle();
-    expect(api.lastQuery?['dueFrom'], isNull);
-    expect(api.lastQuery?['dueTo'], '2026-09-30');
-    await tester.tap(
-      find.byKey(const ValueKey('finance-payables-reset-filters')),
-    );
+    // 清除走框内红色圆形关闭按钮（同全站日期筛选口径），不再有重置 icon。
+    await tester.tap(find.byKey(const Key('uten-date-range-clear')));
     await tester.pumpAndSettle();
     expect(api.lastQuery?['dateFrom'], isNull);
     expect(api.lastQuery?['dateTo'], isNull);
-    expect(api.lastQuery?['dueTo'], isNull);
     MasterDataTableView<FinancePayableItem> table() =>
         tester.widget(find.byType(MasterDataTableView<FinancePayableItem>));
     table().onFilterChanged('businessType', 'PURCHASE');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['businessType'], 'PURCHASE');
-    expect(find.byTooltip('重置筛选 (1)'), findsOneWidget);
     table().onFilterChanged('status', 'OPEN');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['businessType'], 'PURCHASE');

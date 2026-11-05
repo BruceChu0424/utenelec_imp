@@ -85,8 +85,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
   String? _currencyId;
   DateTime? _dateFrom = recentMonthStart();
   DateTime? _dateTo = ChinaDateTime.today();
-  DateTime? _dueFrom;
-  DateTime? _dueTo;
   // 列排序 + 2026-09-25 单号列统一（来源单号表头值筛选 + 服务端桶 + 防串台
   // 代数）：共享状态见 MasterServerColumnFilters。
   final _columnFilters = MasterServerColumnFilters();
@@ -158,8 +156,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
         _currencyId = null;
         _dateFrom = recentMonthStart();
         _dateTo = ChinaDateTime.today();
-        _dueFrom = null;
-        _dueTo = null;
         _columnFilters.reset();
         ++_panelRefreshTick;
       }),
@@ -205,8 +201,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
         keyword: _keyword,
         dateFrom: _fmt(_dateFrom),
         dateTo: _fmt(_dateTo),
-        dueFrom: _fmt(_dueFrom),
-        dueTo: _fmt(_dueTo),
         sourceDocNo: withSourceDocNo ? _columnFilters['sourceDocNo'] : null,
       );
 
@@ -233,8 +227,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     'currencyId': _currencyId,
     'dateFrom': _dateFrom,
     'dateTo': _dateTo,
-    'dueFrom': _dueFrom,
-    'dueTo': _dueTo,
     'columns': Map.of(_columnFilters.values),
     'sort': _columnFilters.sortColumn,
     'ascending': _columnFilters.sortAscending,
@@ -338,37 +330,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
       _selectedItemsById.clear();
     });
     return _load(1);
-  }
-
-  int get _activeFilterCount {
-    return <bool>[
-      _keyword.trim().isNotEmpty,
-      _businessType != null,
-      _supplierId != null,
-      _status != null,
-      _settlementMethodId != null,
-      _currencyId != null,
-      _columnFilters['sourceDocNo'] != null,
-      _dateFrom != null || _dateTo != null,
-      _dueFrom != null || _dueTo != null,
-    ].where((active) => active).length;
-  }
-
-  void _resetFilters() {
-    if (_activeFilterCount == 0) return;
-    _changeFilter(() {
-      _keyword = '';
-      _businessType = null;
-      _supplierId = null;
-      _status = null;
-      _settlementMethodId = null;
-      _currencyId = null;
-      _columnFilters.clearValues();
-      _dateFrom = null;
-      _dateTo = null;
-      _dueFrom = null;
-      _dueTo = null;
-    });
   }
 
   void _setSelectedIds(Set<String> ids) {
@@ -923,14 +884,19 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                     if (_workspace == _PayablesWorkspaceView.payables &&
                         _canViewPayables)
                       Expanded(
-                        child: UtenCollapsingHeaderScrollView(
-                          collapsingHeader: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              FinancePayablesKpiStrip(
-                                summary: _result?.summary,
-                                loading: _loading && _result == null,
-                              ),
+                        child: LayoutBuilder(
+                          // 矮视口判定只能在有界约束处做：折叠头在滚动分支里
+                          // 拿不到有界高度（2026-11-04 844×390 初屏筛选命中）。
+                          builder: (context, constraints) =>
+                              UtenCollapsingHeaderScrollView(
+                            collapsingHeader: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                FinancePayablesKpiStrip(
+                                  summary: _result?.summary,
+                                  loading: _loading && _result == null,
+                                  compact: constraints.maxHeight < 420,
+                                ),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
                           ),
@@ -942,6 +908,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                             total: total,
                             canCreatePayment: canCreatePayment,
                             canApplyOffset: canApplyOffset,
+                          ),
                           ),
                         ),
                       )
@@ -1029,8 +996,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
               _currencyId,
               _dateFrom,
               _dateTo,
-              _dueFrom,
-              _dueTo,
             ),
             tableKey:
                 'features.finance.payables.pages.finance_payables_page.FinancePayablesPageState._buildPayablesTablePane.1',
@@ -1068,8 +1033,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                   'keyword': _keyword,
                   'dateFrom': _payablesFilter(withSourceDocNo: false).dateFrom,
                   'dateTo': _payablesFilter(withSourceDocNo: false).dateTo,
-                  'dueFrom': _payablesFilter(withSourceDocNo: false).dueFrom,
-                  'dueTo': _payablesFilter(withSourceDocNo: false).dueTo,
                 },
               ),
             },
@@ -1083,8 +1046,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                   'keyword': _keyword,
                   'dateFrom': _payablesFilter(withSourceDocNo: false).dateFrom,
                   'dateTo': _payablesFilter(withSourceDocNo: false).dateTo,
-                  'dueFrom': _payablesFilter(withSourceDocNo: false).dueFrom,
-                  'dueTo': _payablesFilter(withSourceDocNo: false).dueTo,
                 }),
             nullCounts: const {},
             filters: {
@@ -1120,40 +1081,15 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     );
   }
 
-  Widget _dateFilters() => Wrap(
-    spacing: UtenSpacing.s8,
-    runSpacing: UtenSpacing.s8,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    children: [
-      FinanceDateRangeFilter(
-        key: const ValueKey('finance-payables-bill-date'),
-        label: '立账日期',
-        from: _dateFrom,
-        to: _dateTo,
-        allowOpenRange: true,
-        onChanged: (from, to) => _changeFilter(() {
-          _dateFrom = from;
-          _dateTo = to;
-        }),
-      ),
-      FinanceDateRangeFilter(
-        key: const ValueKey('finance-payables-due-date'),
-        label: '到期日期',
-        from: _dueFrom,
-        to: _dueTo,
-        allowOpenRange: true,
-        onChanged: (from, to) => _changeFilter(() {
-          _dueFrom = from;
-          _dueTo = to;
-        }),
-      ),
-      if (_activeFilterCount > 0)
-        IconButton(
-          key: const ValueKey('finance-payables-reset-filters'),
-          tooltip: '重置筛选 ($_activeFilterCount)',
-          onPressed: _loading ? null : _resetFilters,
-          icon: const Icon(Icons.filter_alt_off_outlined),
-        ),
-    ],
+  Widget _dateFilters() => FinanceDateRangeFilter(
+    key: const ValueKey('finance-payables-bill-date'),
+    label: '立账日期',
+    from: _dateFrom,
+    to: _dateTo,
+    allowOpenRange: true,
+    onChanged: (from, to) => _changeFilter(() {
+      _dateFrom = from;
+      _dateTo = to;
+    }),
   );
 }

@@ -9,10 +9,17 @@ class FinancePayablesKpiStrip extends StatelessWidget {
     super.key,
     required this.summary,
     this.loading = false,
+    this.compact = false,
   });
 
   final FinancePayablesSummary? summary;
   final bool loading;
+
+  /// 2026-11-04 矮横屏初屏口径（844×390 逻辑视口复现）：内容区过矮时压成
+  /// 单行主指标横滚，退役标题行与明细行。折叠头在滚动分支里拿不到有界
+  /// 高度约束，由页面层（Expanded 内约束有界）判定后传入——保证表格工具
+  /// 条里的「立账日期」筛选初屏可命中（滚动找筛选不算命中）。
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +65,20 @@ class FinancePayablesKpiStrip extends StatelessWidget {
       builder: (context, constraints) {
         final theme = Theme.of(context);
         final useHorizontalPrimary = constraints.maxWidth < 840;
+        if (compact) {
+          return DecoratedBox(
+            key: const ValueKey('finance-payables-summary-panel'),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: UtenRadius.lgAll,
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s8),
+              child: _PrimaryKpiScroll(items: primaryItems, loading: loading),
+            ),
+          );
+        }
         return DecoratedBox(
           key: const ValueKey('finance-payables-summary-panel'),
           decoration: BoxDecoration(
@@ -94,29 +115,7 @@ class FinancePayablesKpiStrip extends StatelessWidget {
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 if (useHorizontalPrimary)
-                  SingleChildScrollView(
-                    key: const ValueKey('finance-payables-kpi-scroll'),
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (
-                          var index = 0;
-                          index < primaryItems.length;
-                          index++
-                        ) ...[
-                          SizedBox(
-                            width: 188,
-                            child: _PrimaryKpiTile(
-                              data: primaryItems[index],
-                              loading: loading,
-                            ),
-                          ),
-                          if (index != primaryItems.length - 1)
-                            const SizedBox(width: UtenSpacing.s8),
-                        ],
-                      ],
-                    ),
-                  )
+                  _PrimaryKpiScroll(items: primaryItems, loading: loading)
                 else
                   Row(
                     children: [
@@ -179,6 +178,35 @@ class FinancePayablesKpiStrip extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 主指标单行横滚：矮屏紧凑分支与窄宽横排共用，key 保持
+/// `finance-payables-kpi-scroll` 供契约测试定位。
+class _PrimaryKpiScroll extends StatelessWidget {
+  const _PrimaryKpiScroll({required this.items, required this.loading});
+
+  final List<_KpiData> items;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      key: const ValueKey('finance-payables-kpi-scroll'),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var index = 0; index < items.length; index++) ...[
+            SizedBox(
+              width: 188,
+              child: _PrimaryKpiTile(data: items[index], loading: loading),
+            ),
+            if (index != items.length - 1)
+              const SizedBox(width: UtenSpacing.s8),
+          ],
+        ],
+      ),
     );
   }
 }

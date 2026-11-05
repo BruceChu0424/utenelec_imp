@@ -90,26 +90,31 @@ class SalesDeliveryUpdateFootprintPostgresTest {
         });
         assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null));
     }
-    @Test void periodicBranchAndItsRequiredWorkNeverExpandProposedPhysicalLocksButFrozenFactsRemainLocked() {
-        var w=world();UUID periodic=UUID.randomUUID(),descendant=UUID.randomUUID();
+    @Test void periodicCustomerDeliveryCandidatesKeepConfigurationAndHistoricalLocks() {
+        var w=world();UUID periodic=UUID.randomUUID(),descendant=UUID.randomUUID(),historical=UUID.randomUUID();
         UUID periodicEdge=UUID.randomUUID(),nestedEdge=UUID.randomUUID();
-        db.update("INSERT INTO goods(id,issue_method) VALUES(?,'PERIODIC'),(?,'PER_ORDER')",periodic,descendant);
+        db.update("INSERT INTO goods(id,issue_method) VALUES(?,'PERIODIC'),(?,'PER_ORDER'),(?,'PERIODIC')",periodic,descendant,historical);
         db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id) VALUES(?,?,?),(?,?,?)",
                 periodicEdge,w.root(),periodic,nestedEdge,periodic,descendant);
-        db.update("INSERT INTO goods_bom_delivery_rules(bom_edge_id,required_operations) VALUES(?,'[\"LASER\"]'),(?,'[\"LASER\"]')",
-                periodicEdge,nestedEdge);
         var taken=new AtomicReference<Set<InventoryDimension>>();var sales=service(taken,null);
         transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,false))));
         assertThat(taken.get()).containsExactly(new InventoryDimension(w.root(),null));
+        // A not-yet-reviewed BOM choice can select PERIODIC customer goods;
+        // discover the complete candidate graph before any source/inventory lock.
         transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,true))));
-        assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null));
-        // A previous source snapshot is historical physical evidence. A later
-        // issue-method change must not erase its reverse/review lock dimensions.
+        assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null),
+                new InventoryDimension(periodic,null),new InventoryDimension(descendant,null));
+        db.update("INSERT INTO goods_bom_delivery_rules(bom_edge_id,required_operations) VALUES(?,'[\"LASER\"]')",periodicEdge);
+        transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,false))));
+        assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null),
+                new InventoryDimension(periodic,null),new InventoryDimension(descendant,null));
+        // Prior reviewed physical facts remain protected even when the current
+        // recipe no longer contains that old PERIODIC component.
         db.update("UPDATE sales_order_items SET delivery_plan='{\"mode\":\"BOM\"}',delivery_bom_snapshot=CAST(? AS jsonb) WHERE id=?",
-                snapshot(w.root(),periodic),w.item());
+                snapshot(w.root(),historical),w.item());
         transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,true))));
-        assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null),new InventoryDimension(periodic,null));
-        assertThat(taken.get()).doesNotContain(new InventoryDimension(descendant,null));
+        assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null),
+                new InventoryDimension(periodic,null),new InventoryDimension(descendant,null),new InventoryDimension(historical,null));
     }
     @Test void changedAuthoritativeEdgeColorFailsTheOriginalPrewriteFingerprintAndCanRetryFresh() {
         var w=world();UUID changedColor=UUID.randomUUID();var taken=new AtomicReference<Set<InventoryDimension>>();var once=new AtomicBoolean();

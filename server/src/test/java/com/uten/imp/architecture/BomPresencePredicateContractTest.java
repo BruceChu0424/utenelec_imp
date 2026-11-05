@@ -26,7 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>以 SQL 片段为单位检查: 一个文本块, 或只用 + 连起来的一串字符串字面量算一个片段; 注释不算。
  * 出现 goods_bom_items 的片段必须同时出现上面两种写法之一。白名单按文件与按片段两级, 逐条写明理由;
- * 新增的生产计算读者不许进白名单, 应当改用判定函数或加谓词。基础资料完整版本恢复属于维护，
+ * 新增的生产计算读者不许进白名单, 应当改用判定函数或加谓词。客户交付配置/预锁与制造耗料
+ * 职责不同：精确片段例外须有实际交付前沿与锁域行为证据，不能整文件豁免普通生产查询。
+ * 基础资料完整版本恢复属于维护，
  * 必须另有真实期间边可见性和原生恢复拒绝回归证明它不能过滤掉期间边。
  */
 class BomPresencePredicateContractTest {
@@ -77,7 +79,23 @@ class BomPresencePredicateContractTest {
                     "领料发现的组件环检测: 环要看全部边"),
             new FragmentExemption("features/production/mrp/MrpService.java",
                     "has_cycle",
-                    "MRP 展开前的环与超深检测: 环要看全部边, 不改"));
+                    "MRP 展开前的环与超深检测: 环要看全部边, 不改"),
+            new FragmentExemption("common/delivery/BomDeliveryService.java",
+                    "SELECT EXISTS(SELECT 1 FROM reachable r JOIN goods_bom_items b",
+                    "交付工程规则探测，不是制造耗料需求；完整交付图的显式必要加工不能因组件PERIODIC属性丢失。"
+                            + "SalesBomDeliveryEndToEndTest.periodicGoodsRemainInDeliveryConfigurationAndOnlyExplicitFrontiersShipThem验证期间边规则仍可维护/探测。"),
+            new FragmentExemption("common/delivery/BomDeliveryService.java",
+                    "SELECT b.id,b.goods_id,b.component_goods_id,b.qty",
+                    "客户交付配置须冻结完整BOM，期间货品可在透明父链下成为真实交付前沿；普通制造内部仍排除期间耗料。"
+                            + "SalesDeliveryPrivateSourceEndToEndTest.customerFrontierIncludesPeriodicGoodsOnlyThroughTransparentDeliveryAncestors验证两种交付层级。"),
+            new FragmentExemption("common/delivery/BomDeliveryService.java",
+                    "SELECT goods_id,component_goods_id FROM goods_bom_items WHERE id=:id",
+                    "工程交付规则维护的边身份读取，不是生产耗料展开；保留可见性、图锁和整图指纹校验。"
+                            + "期间货品也可被客户按BOM实际交付，不能借普通制造过滤禁掉合法规则维护。"),
+            new FragmentExemption("features/sales/SalesMutationFootprintService.java",
+                    "WITH RECURSIVE proposed(root_id)",
+                    "销售改量前按拟配置完整交付图发现S/I锁；显式客户前沿可能包含PERIODIC货品，过滤会漏锁。"
+                            + "SalesDeliveryUpdateFootprintPostgresTest.periodicCustomerDeliveryCandidatesKeepConfigurationAndHistoricalLocks验证普通无工序根锁、配置全图及历史快照边界。"));
 
     @Test
     void everyBomReaderSkipsPeriodicEdgesOrCallsThePresenceFunctions() throws IOException {

@@ -31,6 +31,15 @@ import static org.mockito.Mockito.*;
 /** Actual V753 DDL and command/query SQL, isolated from business databases and other build outputs. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class GoodsCostSheetsPostgresTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "cost.fraction", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "HALF_UP"),
+                "cost.calculation", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine")
             .withCreateContainerCmdModifier(command->command.getHostConfig().withMemory(512L*1024*1024).withNanoCPUs(1_000_000_000L));
     static DriverManagerDataSource dataSource;

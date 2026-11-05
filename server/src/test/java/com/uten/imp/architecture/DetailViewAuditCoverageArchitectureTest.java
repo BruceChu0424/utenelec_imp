@@ -120,11 +120,12 @@ class DetailViewAuditCoverageArchitectureTest {
                 .map(java.lang.reflect.RecordComponent::getName).collect(java.util.stream.Collectors.toSet());
         assertTrue(fields.equals(java.util.Set.of("id", "domain", "report", "format", "status",
                 "cancelRequested", "rows", "bytes", "snapshotAt", "error", "createdAt", "finishedAt",
-                "request")),
+                "request", "attempt", "precisionRequirement", "precisionChoices")),
                 "status polling must not expose private artifact paths; the echoed 'request' is the "
                 + "owner's own ReportExportRequest for idempotent dedupe and same-parameter re-run "
                 + "(parameter keys matching password/token/secret/authorization are rejected at "
-                + "submit time and passwords are supplied only at download time)");
+                + "submit time and passwords are supplied only at download time); precision metadata "
+                + "is returned only for a compatible reader with current data/projection access");
     }
 
     @Test

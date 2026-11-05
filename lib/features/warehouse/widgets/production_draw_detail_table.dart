@@ -65,14 +65,15 @@ class ProductionDrawDetailRow {
 /// 一行待出库行的校验结果（页面提交前逐行核对）。
 String? drawIssueQtyError(ProductionDrawDetailRow row, String input) {
   final text = nonNegativeDocumentQuantityText(input.trim());
-  if (text == null) return '请输入有效数量（最多 14 位整数、4 位小数）';
+  if (text == null) return '请输入有效数量（最多 40 位整数、24 位小数）';
   if (text == '0') return '出库数量需大于 0';
   final maximum = row.item?.remainingQtyText;
-  if (row.item != null && financeExactDecimalUnits(maximum) == null) {
+  if (row.item != null && nonNegativeDocumentQuantityUnits(maximum) == null) {
     return '待出库数量原文缺失，请刷新核对后再出库';
   }
   if (maximum != null &&
-      financeExactDecimalUnits(text)! > financeExactDecimalUnits(maximum)!) {
+      nonNegativeDocumentQuantityUnits(text)! >
+          nonNegativeDocumentQuantityUnits(maximum)!) {
     return '不能超过待出库 ${financeExactTrimmed(maximum)}';
   }
   return null;
@@ -82,10 +83,10 @@ String? drawIssueQtyError(ProductionDrawDetailRow row, String input) {
 /// upper-bound rules; zero means this line is not reversed this time.
 String? drawCancelIssueQtyError(StockDocItem item, String input) {
   final text = nonNegativeDocumentQuantityText(input.trim());
-  if (text == null) return '请输入有效数量（最多 14 位整数、4 位小数）';
-  final maximum = financeExactDecimalUnits(item.issuedQtyText);
+  if (text == null) return '请输入有效数量（最多 40 位整数、24 位小数）';
+  final maximum = nonNegativeDocumentQuantityUnits(item.issuedQtyText);
   if (maximum == null) return '已出库数量原文缺失，请刷新核对后再取消';
-  if (financeExactDecimalUnits(text)! > maximum) {
+  if (nonNegativeDocumentQuantityUnits(text)! > maximum) {
     return '不能超过已出库 ${financeExactTrimmed(item.issuedQtyText!)}';
   }
   return null;
@@ -273,7 +274,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
               enabledOf: (row) =>
                   !issueSaving &&
                   (row.discovery != null ||
-                      (financeExactDecimalUnits(row.item?.remainingQtyText) ??
+                      (nonNegativeDocumentQuantityUnits(
+                                row.item?.remainingQtyText,
+                              ) ??
                               BigInt.zero) >
                           BigInt.zero),
               baseUnitNameOf: (entry) => _baseUnitName(entry.goodsId),
@@ -605,7 +608,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
                   hintText: '本次出库',
                   enabled:
                       !issueSaving &&
-                      (financeExactDecimalUnits(row.item?.remainingQtyText) ??
+                      (nonNegativeDocumentQuantityUnits(
+                                row.item?.remainingQtyText,
+                              ) ??
                               BigInt.zero) >
                           BigInt.zero,
                   unitName: _unitOf(row),
@@ -632,7 +637,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
                   controller: controller,
                   enabled:
                       !issueSaving &&
-                      (financeExactDecimalUnits(row.item?.remainingQtyText) ??
+                      (nonNegativeDocumentQuantityUnits(
+                                row.item?.remainingQtyText,
+                              ) ??
                               BigInt.zero) >
                           BigInt.zero,
                   maxLength: 60,

@@ -21,26 +21,29 @@ Map<String, String?> recordedDecimalFields(
     ),
 });
 
-String? nonNegativeDocumentQuantityText(String raw) {
+/// Native command quantities and their source bounds use the same 40/24
+/// representation. Display estimates never participate in this conversion.
+BigInt? nonNegativeDocumentQuantityUnits(String? raw) =>
+    _documentQuantityValue(raw)?.units;
+
+({String text, BigInt units})? _documentQuantityValue(String? raw) {
   final text = financeExactTrimmed(financeExactDecimal(raw));
+  if (text == null) return null;
   final units = financeExactDecimalUnits(text, scale: 24);
   if (units == null ||
       units < BigInt.zero ||
       units >= BigInt.from(10).pow(64)) {
     return null;
   }
-  return financeExactTrimmed(text!);
+  return (text: text, units: units);
 }
+
+String? nonNegativeDocumentQuantityText(String raw) =>
+    _documentQuantityValue(raw)?.text;
 
 /// 40-integer/24-fraction input remains decimal text until the server validates it.
 /// A binary number cannot preserve every valid 40-integer/24-fraction quantity.
 String? positiveDocumentQuantityText(String raw) {
-  final text = financeExactTrimmed(financeExactDecimal(raw));
-  final units = financeExactDecimalUnits(text, scale: 24);
-  if (units == null ||
-      units <= BigInt.zero ||
-      units >= BigInt.from(10).pow(64)) {
-    return null;
-  }
-  return financeExactTrimmed(text);
+  final value = _documentQuantityValue(raw);
+  return value == null || value.units == BigInt.zero ? null : value.text;
 }

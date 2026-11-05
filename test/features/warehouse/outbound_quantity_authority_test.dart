@@ -73,6 +73,79 @@ void main() {
     expect(row.toPayload, throwsFormatException);
   });
 
+  test(
+    'native 40/24 quantities preserve input and reject only beyond the actual contract',
+    () {
+      final maximum = '${'9' * 40}.${'9' * 24}';
+      final row = subcontract(maximum);
+      addTearDown(row.dispose);
+      expect(row.validate(), isNull);
+      expect(row.toPayload()['qty'], maximum);
+      for (final input in [
+        '1.00001',
+        '0.000000000000000000000001',
+        '1e3',
+        '0001.2300',
+      ]) {
+        row.qty.text = input;
+        expect(row.validate(), isNull);
+        row.toPayload();
+        expect(
+          row.qty.text,
+          input,
+          reason:
+              'Validation and publication do not rewrite the original draft input',
+        );
+      }
+      row.qty.text = '1e3';
+      expect(row.toPayload()['qty'], '1000');
+      row.qty.text = '1${'0' * 40}';
+      expect(row.validate(), isNotNull);
+      expect(row.toPayload, throwsFormatException);
+    },
+  );
+
+  test(
+    'last native fractional unit remains an authoritative subcontract bound',
+    () {
+      final row = subcontract('1.000000000000000000000001');
+      addTearDown(row.dispose);
+      row.qty.text = '1.000000000000000000000002';
+      expect(row.validate(), subcontractOutboundQuantityInvalid);
+      expect(row.toPayload, throwsFormatException);
+      row.qty.text = '1.000000000000000000000001';
+      expect(row.validate(), isNull);
+    },
+  );
+
+  test(
+    'DRAW forward and cancel comparisons use all 24 native fraction digits',
+    () {
+      final item = draw(
+        requested: '1.000000000000000000000002',
+        issued: '1.000000000000000000000001',
+      );
+      expect(item.remainingQtyText, '0.000000000000000000000001');
+      final row = ProductionDrawDetailRow(
+        const StockDocDetail(id: 'draw'),
+        item,
+      );
+      expect(drawIssueQtyError(row, '0.000000000000000000000001'), isNull);
+      expect(
+        drawIssueQtyError(row, '0.000000000000000000000002'),
+        contains('不能超过'),
+      );
+      expect(
+        drawCancelIssueQtyError(item, '1.000000000000000000000001'),
+        isNull,
+      );
+      expect(
+        drawCancelIssueQtyError(item, '1.000000000000000000000002'),
+        contains('不能超过'),
+      );
+    },
+  );
+
   test('minimum quantity remains exact and zero retains skip semantics', () {
     final row = subcontract('0.0001');
     addTearDown(row.dispose);
@@ -83,9 +156,9 @@ void main() {
   });
 
   for (final invalid in [
-    '1.00001',
+    '0.0000000000000000000000001',
     '100000000000000',
-    '1e3',
+    '10000000000000000000000000000000000000000',
     '-1',
     'NaN',
     '',
@@ -129,7 +202,8 @@ void main() {
       );
       expect(drawIssueQtyError(row, '0.0001'), isNull);
       expect(drawIssueQtyError(row, '0.0002'), contains('不能超过'));
-      expect(drawIssueQtyError(row, '0.00001'), isNotNull);
+      expect(drawIssueQtyError(row, '0.00001'), isNull);
+      expect(drawIssueQtyError(row, '0.0000000000000000000000001'), isNotNull);
     },
   );
 
@@ -162,7 +236,11 @@ void main() {
         contains('不能超过'),
       );
       expect(drawCancelIssueQtyError(item, '0'), isNull);
-      expect(drawCancelIssueQtyError(item, '1.00001'), isNotNull);
+      expect(drawCancelIssueQtyError(item, '1.00001'), isNull);
+      expect(
+        drawCancelIssueQtyError(item, '0.0000000000000000000000001'),
+        isNotNull,
+      );
       expect(
         drawCancelIssueQtyError(draw(issued: null), '1'),
         contains('原文缺失'),
@@ -245,6 +323,9 @@ void main() {
       expect(row.quantity.text, '99999999999999.9999');
       expect(row.toJson()['qty'], '99999999999999.9999');
       row.quantity.text = '100000000000000';
+      expect(row.quantityError, isNull);
+      expect(row.toJson()['qty'], '100000000000000');
+      row.quantity.text = '10000000000000000000000000000000000000000';
       expect(row.quantityError, isNotNull);
       expect(row.toJson, throwsFormatException);
       final unknown = ProductionDrawDiscoveryRow(

@@ -3,8 +3,13 @@ import java.util.*;
 
 public final class FinanceApplicationContracts {
     private FinanceApplicationContracts() { }
-    public record SettingsInput(long expectedVersion,boolean enabled,String sourceReference) { }
-    public record RoleInput(UUID id,long expectedVersion,String roleKey,UUID departmentId,UUID employeeId,String sourceReference) { }
+    public record SettingsInput(long expectedVersion,boolean enabled,String sourceReference,UUID requestId) {
+        public SettingsInput(long expectedVersion,boolean enabled,String sourceReference){this(expectedVersion,enabled,sourceReference,UUID.randomUUID());}
+    }
+    public record RoleInput(UUID id,long expectedVersion,String roleKey,UUID departmentId,UUID employeeId,String sourceReference,UUID requestId) {
+        public RoleInput(UUID id,long expectedVersion,String roleKey,UUID departmentId,UUID employeeId,String sourceReference){this(id,expectedVersion,roleKey,departmentId,employeeId,sourceReference,UUID.randomUUID());}
+    }
+    public record RoleRemoval(UUID id,long expectedVersion) { }
     public record RequestLine(UUID id,String label,String amountOriginal,UUID appliedLedgerId,UUID expenseStyleId) { }
     public record DraftInput(UUID requestId,UUID id,long expectedVersion,String kind,String title,String remark,String requestedDate,
             UUID sourceId,UUID travelApplicationId,String paymentNature,UUID supplierId,UUID currencyId,List<RequestLine> lines,

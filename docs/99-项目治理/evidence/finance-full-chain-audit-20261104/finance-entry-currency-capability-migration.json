@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "status": "source migration and final UI-owner regressions complete; actual standard-app UAT maintained by root",
+  "authority": [
+    {
+      "source": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseService.java",
+      "rule": "AccountPosting.CurrencyRule.BASE_ONLY"
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeService.java",
+      "rule": "AccountPosting.CurrencyRule.BASE_ONLY"
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferService.java",
+      "rule": "both out/in accounts use BASE_ONLY"
+    }
+  ],
+  "singleClientRule": "lib/features/finance/shared/finance_entry_capabilities.dart",
+  "migratedLaunchers": [
+    {
+      "source": "lib/features/finance/widgets/finance_entry_columns.dart",
+      "entry": "row currency choice / amount primary visibility / method and currency accessible hints"
+    },
+    {
+      "source": "lib/features/finance/widgets/finance_grid_columns.dart",
+      "entry": "transfer incoming account choices"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+      "entry": "_pickEntryAccount; batch fill account/currency/incoming account; row settlement account references; _saveEntryBatch pre-dispatch base-only gate"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "entry": "existing document account picker; header account/currency dropdown; _save pre-dispatch gate; unsupported current selection remains visible/disabled"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_edit_command.dart",
+      "entry": "shared account/currency maps retain original selected UUID/name, never infer a new currency or rate"
+    }
+  ],
+  "preserved": [
+    "expense/other income/bank transfer only select currently supported base-currency account/currency for new writes",
+    "existing history and persisted drafts retain original foreign currency, account UUID, exact amount/rate text and rows; no silent conversion or rewrite",
+    "receipt/payment keep established base-or-document/account-currency policies",
+    "all original report/spreadsheet column names and ordering unaffected; only entry-grid essential amount moved earlier",
+    "server remains accounting and currency authority; UI selection filtering is not permission or posting evidence"
+  ],
+  "platforms": {
+    "web": "shared Flutter paths",
+    "windows_flutter": "shared Flutter paths",
+    "windows_wpf_legacy": "explicitly excluded, not migrated/accepted"
+  },
+  "evidence": [
+    {
+      "log": "build/finance-final-audit/document-edit-recovery-v4.log",
+      "passed": 3,
+      "scope": "actual edit + real application guard/detail launcher, view-only original command proof and explicit nullable-token adoption"
+    },
+    {
+      "log": "build/finance-final-audit/document-command-recovery-v8.log",
+      "passed": 7,
+      "scope": "review original-body/choice recovery before later shared-menu refinement; overlapping, not final whole-group count"
+    },
+    {
+      "log": "build/finance-final-audit/document-review-layout-v3.log",
+      "passed": 2,
+      "scope": "Noto real component fixtures, wide + narrow keyboard scroll reachability; later screenshots recaptured at physical viewport scale"
+    }
+  ],
+  "nullableDefaultsReview": {
+    "AP": {
+      "previousDefect": "legal never-configured row sourceReference=null was incorrectly rejected as non-String",
+      "legalFixture": {
+        "enabled": false,
+        "effectiveFrom": null,
+        "sourceReference": null,
+        "revision": 0
+      },
+      "guard": "present nullable date/reference are allowed; revision/bool and nullable-field types remain strict; enabled dates locally require today/future",
+      "evidence": "build/finance-final-audit/ap-default-policy-v2.log: 6/6"
+    },
+    "otherSix": "inventory policy keeps nullable date/reference; version/period source range/CAS fingerprint remain genuinely required; report defaults has no editable nullable source fields"
+  },
+  "finalReceipt": "ui-final-receipt-20261105.json"
+}

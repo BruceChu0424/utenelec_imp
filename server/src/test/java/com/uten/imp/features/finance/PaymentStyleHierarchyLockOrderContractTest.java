@@ -55,6 +55,21 @@ class PaymentStyleHierarchyLockOrderContractTest {
         }
     }
 
+    @Test void assetPostingAndReversalFollowTheUniqueControlledWriterHierarchyThenPeriodThenBusinessLockOrder() throws Exception {
+        String adapter=source("features/finance/asset/application/FinanceAssetLedgerPostingService.java");
+        assertThat(method(adapter,"public UUID post(")).contains("return journals.post(");
+        assertThat(method(adapter,"public UUID reverse(")).contains("return journals.reverse(");
+        String writer=source("features/finance/gl/FinanceControlledJournalService.java");
+        String lock=method(writer,"private void lock(");
+        assertThat(lock.indexOf(HIERARCHY_LOCK)).isGreaterThanOrEqualTo(0).isLessThan(lock.indexOf("periods.lockAutoProjectionPeriod(date);"));
+        String post=method(writer,"public Posted post(");
+        assertThat(post.indexOf("lock(voucherDate);")).isGreaterThanOrEqualTo(0).isLessThan(post.indexOf("lockStyles("));
+        assertThat(post.indexOf("lockStyles(")).isLessThan(post.indexOf("return insert("));
+        String reverse=method(writer,"public Posted reverse(");
+        assertThat(reverse.indexOf("lock(voucherDate);")).isGreaterThanOrEqualTo(0).isLessThan(reverse.indexOf("FROM gl_vouchers WHERE id=? FOR UPDATE"));
+        assertThat(reverse.indexOf("FROM gl_vouchers WHERE id=? FOR UPDATE")).isLessThan(reverse.indexOf("lockStyles("));
+    }
+
     private static List<LockOrderContract> contracts() {
         return List.of(
                 new LockOrderContract(
@@ -111,7 +126,11 @@ class PaymentStyleHierarchyLockOrderContractTest {
                 new LockOrderContract(
                         "features/finance/asset/application/FinanceAssetPostingService.java",
                         "public AssetWorkbenchResponses.PostingRun reverse(",
-                        "Run original = lock(originalRunId);"));
+                        "Run original = lock(originalRunId);"),
+                new LockOrderContract(
+                        "features/finance/gl/FinanceControlledJournalService.java",
+                        "private void lock(",
+                        "periods.lockAutoProjectionPeriod(date);"));
     }
 
     private static String source(String relativePath) throws Exception {

@@ -32,6 +32,9 @@ class FinanceInteractiveUatHarnessTest {
  private static MigratedSchemaBaseline.ScopedDatabase database;
  private static org.testcontainers.postgresql.PostgreSQLContainer candidateDatabase;
  @DynamicPropertySource static void database(DynamicPropertyRegistry registry)throws Exception{
+  int port=Integer.getInteger("uten.finance.uat.port",18089);
+  if(!java.util.Set.of(18089,18091).contains(port))throw new IllegalArgumentException("Invalid task-owned UAT port");
+  registry.add("server.port",()->port);
   String candidate=System.getProperty("uten.finance.uat.migrations");
   if(candidate==null){
    database=MigratedSchemaBaseline.openDatabase("finance_interactive_uat");
@@ -54,19 +57,58 @@ class FinanceInteractiveUatHarnessTest {
  }
  @Autowired AutowireCapableBeanFactory beans;
  @Autowired JdbcTemplate jdbc;
+ @Autowired org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
  @Test void serveActualAnonymousFinanceApplicationUntilTheManualStopMarker()throws Exception{
+  String scenarioKind=System.getProperty("uten.finance.uat.scenario","business");
+  if(!java.util.Set.of("business","book").contains(scenarioKind))throw new IllegalArgumentException("Unknown isolated UAT scenario");
+  boolean bookMode=scenarioKind.equals("book");
   // Reuse the already verified original purchase/IQC/stock/AP/actual-bank,
   // independent-review, statement and graph fixture; assertions remain active.
-  var scenario=new PayableStatementAdjustmentPostgresTest();beans.autowireBean(scenario);
-  scenario.originalFeeDecisionKeepsPeriodNetApartFromRemainingCashAndReversesOnlyAfterLaterRealPayments();
+  if(bookMode){
+   var scenario=new FinanceReviewedJanuaryUiFixture();beans.autowireBean(scenario);scenario.seed();
+  }else{
+   var scenario=new PayableStatementAdjustmentPostgresTest();beans.autowireBean(scenario);
+   scenario.originalFeeDecisionKeepsPeriodNetApartFromRemainingCashAndReversesOnlyAfterLaterRealPayments();
+  }
+  var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);
+  // Additional current base-currency entries use the existing real financial
+  // fixture factory. Its opening 500 is synthetic; acceptance compares actual
+  // posting deltas and never presents that opening as a reconciled company GL.
+  if(!bookMode){
+   var entryFactory=new FinanceUnapprovalEligibilityEndToEndTest();beans.autowireBean(entryFactory);entryFactory.prepare();
+   var entryFixture=entryFactory.fixture("finance-ui-entry");
+   jdbc.update("UPDATE accounts SET name=? WHERE id=?","匿名本位币收支账户 A",entryFixture.bank());
+   jdbc.update("UPDATE accounts SET name=? WHERE id=?","匿名本位币收支账户 B",entryFixture.otherBank());
+   jdbc.update("UPDATE payment_styles SET name=? WHERE id=?","匿名界面费用项目",entryFixture.expenseStyle());
+   jdbc.update("UPDATE payment_styles SET name=? WHERE id=?","匿名界面收入项目",entryFixture.incomeStyle());
+  }
+  // Independent synthetic identities prevent Web/native single-device leases
+  // from kicking each other. Both use ordinary login and the real permission resolver.
+  for(String surface:java.util.List.of("web","windows")){
+   var world=fixture.seedWorld("finance-ui-"+surface);
+   jdbc.update("UPDATE users SET password_hash=?,must_change_password=false WHERE id=?",
+      passwordEncoder.encode("FinanceUiSynthetic-2026!"),world.superAdminUserId());
+  }
+  fixture.loginAs(fixture.lastSeedSuperAdminUserId);
+  // A deliberately unbound anonymous directory exercises complete reference
+  // reads and filtering. It creates no GL, cash, payable or receivable facts.
+  if(!bookMode)for(int start=1;start<=10003;start+=250)jdbc.update("""
+    INSERT INTO finance_chart_codes(code,name,currency_name,classification,source_kind,source_reference,sort_order,source_row,updated_by)
+    SELECT ('9'||lpad(n::text,7,'0')),'匿名压力科目'||n,'','ASSET','MANUAL','隔离界面压力夹具；未形成业务金额',10000+n,n,?
+    FROM generate_series(?,?) n ON CONFLICT(code) DO NOTHING
+    """,fixture.lastSeedSuperAdminUserId,start,Math.min(10003,start+249));
+  if(!bookMode&&jdbc.queryForObject("SELECT count(*) FROM finance_chart_codes WHERE source_reference=?",Integer.class,
+      "隔离界面压力夹具；未形成业务金额")!=10003)throw new IllegalStateException("Incomplete isolated directory fixture");
   SecurityContextHolder.clearContext();
   // This disposable synthetic bootstrap identity is never a company account.
   jdbc.update("UPDATE users SET must_change_password=false WHERE login_account=?",FullChainEndToEndTest.SHARED_ADMIN_LOGIN);
   String run=System.getProperty("uten.finance.uat.run","default");
   if(!run.matches("[a-zA-Z0-9_-]{1,80}"))throw new IllegalArgumentException("Invalid task-owned UAT run identifier");
   var directory=Path.of("../tmp/finance-interactive",run);Files.createDirectories(directory);
-  Files.writeString(directory.resolve("ready.json"),"{\"localOnly\":true,\"syntheticData\":true,\"api\":\"http://127.0.0.1:18089/api\",\"pid\":"+ProcessHandle.current().pid()+",\"run\":\""+run+"\"}");
-  Instant deadline=Instant.now().plus(Duration.ofHours(4));
+  Files.writeString(directory.resolve("ready.json"),"{\"localOnly\":true,\"syntheticData\":true,\"api\":\"http://127.0.0.1:"+Integer.getInteger("uten.finance.uat.port",18089)+"/api\",\"scenario\":\""+scenarioKind+"\",\"pid\":"+ProcessHandle.current().pid()+",\"run\":\""+run+"\"}");
+  int holdHours=Integer.getInteger("uten.finance.uat.hold-hours",4);
+  if(holdHours<1||holdHours>12)throw new IllegalArgumentException("UAT hold must remain bounded to 1..12 hours");
+  Instant deadline=Instant.now().plus(Duration.ofHours(holdHours));
   while(!Files.exists(directory.resolve("stop"))&&Instant.now().isBefore(deadline))Thread.sleep(1000);
  }
 }

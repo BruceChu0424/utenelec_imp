@@ -300,6 +300,9 @@ void main() {
         final values = <String, dynamic>{...config.defaults, 'name': '直接新增'};
         switch (entry.key) {
           case 'accounts':
+            expect(config.showMissingFieldsAction, isFalse);
+            expect(fields['code']!.hint, '留空自动生成');
+            expect(fields['code']!.useFieldNameHint, isFalse);
             expect(fields['currencyId']!.required, isTrue);
             expect(fields['styleId']!.required, isTrue);
             expect(fields['styleId']!.customBuilder, isNotNull);

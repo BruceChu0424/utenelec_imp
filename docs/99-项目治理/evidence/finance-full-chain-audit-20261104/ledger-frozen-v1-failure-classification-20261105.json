@@ -1,0 +1,541 @@
+{
+  "snapshot": "head-frozen-backend-v1",
+  "log": "build\\finance-closeout-20261104\\backend-final-ledger.log",
+  "classes": 110,
+  "found": 518,
+  "passed": 486,
+  "failed": 32,
+  "skipped": 0,
+  "aborted": 0,
+  "containerFailed": 0,
+  "runFinishedNormally": true,
+  "sharedBinaryNeverChanged": true,
+  "failedCases": [
+    {
+      "class": "com.uten.imp.businesschain.FinanceDepartmentReferencePostgresTest",
+      "method": "otherIncomeDetailReadsOnlyItsReferencesInOneQueryIncludingHistoricalDeletedDepartment()",
+      "invocation": null,
+      "exception": "org.opentest4j.AssertionFailedError",
+      "classification": "confirmed_product_read_regression",
+      "owner": "source",
+      "note": "new review decoration repeats same bounded department labels3times instead1; Source owns sameRR/actor memoisation",
+      "latestResolution": {
+        "status": "SOURCE_TARGETED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "Source-owned same-RR/actor bounded label cache; Source reported42+22 targeted green; canonical class currently active, no full-suite claim"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceDepartmentReferencePostgresTest",
+      "method": "expenseDetailReadsOnlyItsReferencesInOneQueryIncludingHistoricalDeletedDepartment()",
+      "invocation": null,
+      "exception": "org.opentest4j.AssertionFailedError",
+      "classification": "confirmed_product_read_regression",
+      "owner": "source",
+      "note": "new review decoration repeats same bounded department labels3times instead1; Source owns sameRR/actor memoisation",
+      "latestResolution": {
+        "status": "SOURCE_TARGETED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "Source-owned same-RR/actor bounded label cache; Source reported42+22 targeted green; canonical class currently active, no full-suite claim"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftFreeOnlyOrderConservationEndToEndTest",
+      "method": "confirmedFreeReceiptUnapprovalKeepsExactZeroFactsWhileUnrelatedCostPublicationIsPending()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.web.ApiException",
+      "classification": "fixture_api_contract",
+      "owner": "ledger",
+      "note": "UNKNOWN acquisition cannot markFinal via delta1; explicit actual source TOTAL101 is authorised; keep pending worker and gift zero facts",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "method": "freeAndChargedReturnsCreditOnlyChargedUnitsAndMirrorOriginalIssueValueOnReverse()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "real100/11 inventory interval requires explicit stock.value.interval30DOWN at actual issue; keep quantities, zero gift AP and original inverse",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest",
+      "method": "combinedReceiptUsesItsFrozenGiftBaseForClosureFreeReturnAndUnapprovalReplay()",
+      "invocation": null,
+      "exception": "org.hibernate.exception.ConstraintViolationException",
+      "classification": "confirmed_product_successor_gap",
+      "owner": "ledger",
+      "note": "purchaseReturn copied inputs omit stored base/adoption; V1062 covers all applicable six quantity families, strict origin/deferred scope",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "GiftUnit entire3+Eligibility entire11 passed; complete15run remains14pass1Shortfail",
+        "log": "build/finance-closeout-20261104/ledger-last-fixtures-v3/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFinanceEffectiveExchangeRateEndToEndTest",
+      "method": "quantityRevisionsKeepTheOriginalDownReferenceAndFreezeOnlyTheNewTotalRatio(java.lang.String)",
+      "invocation": "#1",
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "money.cumulative-share choice belongs actual first receipt APPROVE, not CREATE; never add a new reference choice",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFinanceEffectiveExchangeRateEndToEndTest",
+      "method": "quantityRevisionsKeepTheOriginalDownReferenceAndFreezeOnlyTheNewTotalRatio(java.lang.String)",
+      "invocation": "#2",
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "money.cumulative-share choice belongs actual first receipt APPROVE, not CREATE; never add a new reference choice",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFinanceEffectiveExchangeRateEndToEndTest",
+      "method": "savedReferenceChoiceSurvivesReviewSameInputSaveAndReceiptTailWithoutAnotherReferenceChoice(java.lang.String)",
+      "invocation": "#1",
+      "exception": "org.springframework.dao.EmptyResultDataAccessException",
+      "classification": "fixture_public_lifecycle",
+      "owner": "ledger",
+      "note": "Purchase public edit replaces line UUID; use returned ID and exact old retained payload proof",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFinanceEffectiveExchangeRateEndToEndTest",
+      "method": "savedReferenceChoiceSurvivesReviewSameInputSaveAndReceiptTailWithoutAnotherReferenceChoice(java.lang.String)",
+      "invocation": "#2",
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "money.cumulative-share choice belongs actual first receipt APPROVE, not CREATE; never add a new reference choice",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "method": "freeReturnReadyButReceiptWithRealIssueHistoryStaysBlockedEvenAfterReturnUnapproval()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "real100/11 inventory interval requires explicit stock.value.interval30DOWN at actual issue; keep quantities, zero gift AP and original inverse",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "GiftUnit entire3+Eligibility entire11 passed; complete15run remains14pass1Shortfail",
+        "log": "build/finance-closeout-20261104/ledger-last-fixtures-v3/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "method": "previousPeriodReturnProjectionBlocksBeforeEitherInventoryOrLedgerChanges()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "real100/11 inventory interval requires explicit stock.value.interval30DOWN at actual issue; keep quantities, zero gift AP and original inverse",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "GiftUnit entire3+Eligibility entire11 passed; complete15run remains14pass1Shortfail",
+        "log": "build/finance-closeout-20261104/ledger-last-fixtures-v3/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "method": "subcontractReturnUsesOriginalActualIssueAndRemainsReversibleWithoutTouchingFeeCredit()",
+      "invocation": null,
+      "exception": "org.opentest4j.AssertionFailedError",
+      "classification": "fixture_compensated_reversal_contract",
+      "owner": "ledger",
+      "note": "Current exact compensation permits reversal; new fixture executes original receipt unapproval and verifies stock/value/AP/custody plus original movement immutability instead of assuming all former issues forever block.",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "GiftUnit entire3+Eligibility entire11 passed; complete15run remains14pass1Shortfail",
+        "log": "build/finance-closeout-20261104/ledger-last-fixtures-v3/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractShortDeliveryEndToEndTest",
+      "method": "shortDeliveryIsConfirmedByWarehouseDecidedBySubcontractAndSettledWithLossRatio()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.web.ApiException",
+      "classification": "fixture_timing_candidate",
+      "owner": "ledger",
+      "note": "insertEdge precision closure still pending; prove owned actual worker completion before later movement, never delete job/disable guard",
+      "latestResolution": {
+        "status": "OWNER_SCOPED_SUCCESS_PURE_V7_PLUS_ONE_TEST_ONLY_OVERLAY",
+        "log": "build/finance-closeout-20261104/short-delivery-independent-choice-v7-retry1/workflow.log",
+        "scope": "Whole Short class2/2 actual business pass,0skip/abort/containerfail; 1001 real migrations1065; original v7 Short binary not reclassified. All oldfailed runs preserved."
+      }
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractToleranceAutoSettleEndToEndTest",
+      "method": "warehouseStockInAutoSettlesToleratedShortDeliveryWithoutWeakeningTheManualOwnerGuard()",
+      "invocation": null,
+      "exception": "org.springframework.dao.DataIntegrityViolationException",
+      "classification": "confirmed_product_publication_order",
+      "owner": "root",
+      "note": "Owned PG diagnostic shows all original ids/qty/lossValue match, but insertion VALUED becomes normal projectionNULL/revaluation pending at beforeCommit; Root owns narrow publication phase fix, never weakenV525.",
+      "latestResolution": {
+        "status": "ROOT_ORIGINAL_WORKFLOW_TARGETED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "Root-owned phase publication fix; actual original method passed; independent read-only phase review found no new definite issue, not additional PG execution",
+        "log": "build/finance-closeout-20261104/root-loss-publication-v1/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementCaseBookAllocationPostgresTest",
+      "method": "bothUuidSignBoundariesMatchDatabaseAndConserveTheFinalRemainder()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "Use actual documented purpose at calculation; original total/final residual and Java/SQL equality stay; book-share30 vs actual-share domain must remain distinct",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementIqcReplacementAllocationBehaviorTest",
+      "method": "zeroPricedReturnedSliceStillReleasesQuantityForSubcontractReplacement()",
+      "invocation": null,
+      "exception": "org.opentest4j.AssertionFailedError",
+      "classification": "obsolete_representation_assertion",
+      "owner": "ledger",
+      "note": "actual4 equals expected4.0000 numerically; preserve qty/base/value assertions, stop equating scale with facts",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReceiptAmountPreviewTest",
+      "method": "enteredTotalWithoutExtraColumnsUsesSourceRemainderInDraft()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "Use actual documented purpose at calculation; original total/final residual and Java/SQL equality stay; book-share30 vs actual-share domain must remain distinct",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReceiptAmountPreviewTest",
+      "method": "multipleRowsForOneSourceWithinADraftShareTheRemainder()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "Use actual documented purpose at calculation; original total/final residual and Java/SQL equality stay; book-share30 vs actual-share domain must remain distinct",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReceiptAmountPreviewTest",
+      "method": "purchaseToleranceIsPricedOnlyBeyondTheOrderQuantity()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "Use actual documented purpose at calculation; original total/final residual and Java/SQL equality stay; book-share30 vs actual-share domain must remain distinct",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReceiptAmountPreviewTest",
+      "method": "fixedFeeIsAllocatedOnceWithFinalRemainder()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "Use actual documented purpose at calculation; original total/final residual and Java/SQL equality stay; book-share30 vs actual-share domain must remain distinct",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementTotalAmountPostgresTest",
+      "method": "javaAndDatabaseAgreeOnReferencesAndExactRevisionRatios()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "actual reference selection must be explicit; keep modern/legacy proof differences",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementTotalAmountPostgresTest",
+      "method": "pendingFinanceFreezesTheNewFactWhileOrderIsStillDraft()",
+      "invocation": null,
+      "exception": "org.postgresql.util.PSQLException",
+      "classification": "invalid_pseudo_legacy_fixture",
+      "owner": "ledger",
+      "note": "existing fixture SET session_replication_role then injects v1 at current schema; ALWAYS guards correctly reject. Replace with real pre1033 seed+forward upgrade; no suppression or pseudo legacy.",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementTotalAmountPostgresTest",
+      "method": "provenRevisionUpdatesTotalBasisAndHeaderWithoutReapplyingOldApproximatePrice()",
+      "invocation": null,
+      "exception": "org.postgresql.util.PSQLException",
+      "classification": "invalid_pseudo_legacy_fixture",
+      "owner": "ledger",
+      "note": "existing fixture SET session_replication_role then injects v1 at current schema; ALWAYS guards correctly reject. Replace with real pre1033 seed+forward upgrade; no suppression or pseudo legacy.",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementTotalAmountPostgresTest",
+      "method": "exactTotalRoundTripsAndFinanceChecksItInsteadOfTruncatedPriceProduct()",
+      "invocation": null,
+      "exception": "org.postgresql.util.PSQLException",
+      "classification": "invalid_pseudo_legacy_fixture",
+      "owner": "ledger",
+      "note": "existing fixture SET session_replication_role then injects v1 at current schema; ALWAYS guards correctly reject. Replace with real pre1033 seed+forward upgrade; no suppression or pseudo legacy.",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "FX4+real TotalAmountPG4 passed within45/45, before final raw-basis helper reservation guard; latest34/34 additionally covers six-family actual saved facts and raw legacy upgrades. Canonical v4 not complete yet",
+        "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncPostgresTest",
+      "method": "learnedPricesPreserveTenDecimalsAndTheFullAllowedIntegerRange()",
+      "invocation": null,
+      "exception": "java.lang.AssertionError",
+      "classification": "obsolete_range_assertion",
+      "owner": "ledger",
+      "note": "old14integer/10fraction rejection differs published40/24 financial domain. Keep old positives and reject1e40/25fraction with rollback.",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderGiftAllocationTest",
+      "method": "tinyRemaindersStayWithinEachActualPhysicalSourceAndNoQuantityIsLost()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "quantityShare requires explicit purpose for nonterminating portions; no automatic four-place default; retain actual physical capacity",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderGiftAllocationTest",
+      "method": "everyPaidFreeCombinationOfTinySourcesPreservesFourPlaceCapacity()",
+      "invocation": null,
+      "exception": "org.opentest4j.AssertionFailedError",
+      "classification": "obsolete_four_place_grid_assertion",
+      "owner": "ledger",
+      "note": "all source IDs, nonnegative paid/free, per-source exact capacity and global sums remain; exact native fractions must not be rounded to four places",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderGiftAllocationTest",
+      "method": "sourceRemainderRetainsEveryPhysicalGiftAndChargedQuantityIsSeparate()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "quantityShare requires explicit purpose for nonterminating portions; no automatic four-place default; retain actual physical capacity",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderGiftAllocationTest",
+      "method": "mixedFreeResidualAndPaidSourceKeepTheirOwnPhysicalOwnership()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_explicit_precision",
+      "owner": "ledger",
+      "note": "quantityShare requires explicit purpose for nonterminating portions; no automatic four-place default; retain actual physical capacity",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderGiftAllocationTest",
+      "method": "aThousandSmallestSourcesCannotOverflowTheLastSourceWithRoundingRemainders()",
+      "invocation": null,
+      "exception": "org.opentest4j.AssertionFailedError",
+      "classification": "obsolete_four_place_grid_assertion",
+      "owner": "ledger",
+      "note": "all source IDs, nonnegative paid/free, per-source exact capacity and global sums remain; exact native fractions must not be rounded to four places",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderTotalAmountTest",
+      "method": "financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_precision_and_private_caller",
+      "owner": "ledger",
+      "note": "reference calculation now requires choice; authority verifier is instance backed by shared saved-proof verifier. Test real instance with only verifier mocked; retain exact-total accepts/reference-product rejects.",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    },
+    {
+      "class": "com.uten.imp.features.subcontract.order.SubcontractOrderTotalAmountTest",
+      "method": "financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct()",
+      "invocation": null,
+      "exception": "com.uten.imp.common.finance.BusinessPrecisionRequiredException",
+      "classification": "fixture_precision_and_private_caller",
+      "owner": "ledger",
+      "note": "reference calculation now requires choice; authority verifier is instance backed by shared saved-proof verifier. Test real instance with only verifier mocked; retain exact-total accepts/reference-product rejects.",
+      "latestResolution": {
+        "status": "SCOPED_PASS_CANONICAL_V4_STILL_RUNNING",
+        "scope": "This original failure passed in corrected14-class89run; entire run remains78pass11fail, later separate followups tracked. No all89green claim",
+        "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log"
+      }
+    }
+  ],
+  "productionChangesOnlyAfterRootCoordination": true,
+  "v1062SqlSmokeIsNotBusinessApprovalAcceptance": true,
+  "followup14": {
+    "log": "build/finance-closeout-20261104/ledger-v1-fixture-followup/workflow.log",
+    "found": 89,
+    "passed": 78,
+    "failed": 11,
+    "skipped": 0,
+    "aborted": 0,
+    "runFinishedNormally": true,
+    "originalBaselinePreserved": true,
+    "subsequentCorrectionsNotYetReportedGreen": [
+      "GiftUnit and 2 Eligibility assertions now actually reverse exactly compensated sources and check original immutable movements, stock/value/AP zero.",
+      "4 FX receipt cases require the same declared money.cumulative-share at CREATE preview and APPROVE authority, not a new reference choice.",
+      "ShortDelivery real worker resolves precision closure, then ACCEPT_LOSS requires declared stock.value.interval 30/DOWN.",
+      "3 new TotalAmount real source cases needed actual subcontract material stock10000, preserving order3000->6000 and100+5."
+    ]
+  },
+  "lastFixturesV3": {
+    "found": 15,
+    "passed": 14,
+    "failed": 1,
+    "skipped": 0,
+    "aborted": 0,
+    "containerFailed": 0,
+    "runFinishedNormally": true,
+    "log": "build/finance-closeout-20261104/ledger-last-fixtures-v3/workflow.log",
+    "note": "GiftUnit3+allEligibility11pass including original3failedmethods; Shortbusy atlaterqualityPASSneeds realcostworker publication"
+  },
+  "shortWorkerFollowup": {
+    "found": 2,
+    "passed": 1,
+    "failed": 1,
+    "log": "build/finance-closeout-20261104/short-delivery-worker-closeout/workflow.log",
+    "note": "Real drain passed previous busy; next independent stockIn.confirm correctly requires its own interval30DOWN. This old run remains2=1pass1fail. Test-only choice subsequently applied with Root authorization after immutable v7 compilation."
+  },
+  "shortIndependentChoiceV7": {
+    "status": "NATURAL_EXIT_1_ENVIRONMENT_STARTUP_FAILURE_BEFORE_BUSINESS",
+    "allMoneyQuantityAssertionsUnchanged": true,
+    "expectedCases": 2,
+    "baseOriginalShortSha256": "17f726c5fa0d818898dcea562997142d9b59935ee4f2349a44004ed5d296675f",
+    "testSha256": "aaf8c6924b21310b163b3c740fd997304faf1c00ccf2e2d67d1e337669787e29",
+    "preflight": "build/finance-closeout-20261104/short-delivery-independent-choice-v7/preflight.json",
+    "log": "build/finance-closeout-20261104/short-delivery-independent-choice-v7/workflow.log",
+    "found": 2,
+    "passed": 0,
+    "failed": 2,
+    "skipped": 0,
+    "containerFailed": 0,
+    "naturalExit": 1,
+    "elapsedMs": 127977,
+    "cause": "New owned postgres16 container timed out waiting60s for ready after initdb post-bootstrap; first Spring context failed before any business call; second failure threshold. No code/threshold workaround.",
+    "retry": "Retry1 completed2/2businesspass with same source/class SHA; first startup failure retained unmodified"
+  },
+  "shortIndependentChoiceV7Retry1": {
+    "expectedCases": 2,
+    "status": "SCOPED_SUCCESS_PURE_V7_PLUS_ONE_TEST_ONLY_OVERLAY",
+    "startupThresholdUnchanged": true,
+    "log": "build/finance-closeout-20261104/short-delivery-independent-choice-v7-retry1/workflow.log",
+    "sourceSha256": "aaf8c6924b21310b163b3c740fd997304faf1c00ccf2e2d67d1e337669787e29",
+    "immutableOutputsWritten": false,
+    "postgresReadySeconds": 14.907,
+    "testClassSha256": "51c974f79174432a4b65c054af737e76fe09f9a66cf265a891b46744e4eda39f",
+    "found": 2,
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "aborted": 0,
+    "containerFailed": 0,
+    "naturalExit": 0,
+    "elapsedMs": 1137139,
+    "realMigrations": 1001,
+    "migratedTo": "1065",
+    "guardAndAmountQuantityAssertionsPreserved": true,
+    "completed": "2026-11-05T13:01:05-07:00"
+  },
+  "all32HaveExplicitLatestResolution": true,
+  "updated": "2026-11-05T12:44:10.4668112-07:00",
+  "all32HaveSpecificRemediationAndOwnerScopedEvidence": true,
+  "canonicalV4StillRunning": true
+}

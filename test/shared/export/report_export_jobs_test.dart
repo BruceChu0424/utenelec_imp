@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:convert';
+import '../../support/pump_until.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -601,7 +603,7 @@ void main() {
     final api = _Api()..loseCreate = true;
     await mountDialog(tester, api);
     await tester.pumpAndSettle();
-    expect(find.text('上次创建结果尚未确认，请先核查原任务。'), findsOneWidget);
+    expect(find.text('上次创建结果尚未确认'), findsOneWidget);
     final id = api.creates.single['id'];
     await tester.tap(find.text('核查任务'));
     await tester.pumpAndSettle();
@@ -618,13 +620,21 @@ void main() {
       ..status = 'RUNNING'
       ..asynchronousCancel = true;
     await mountDialog(tester, api);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await pumpUntil(
+      tester,
+      () =>
+          find.text('正在生成').evaluate().isNotEmpty &&
+          find.byType(UtenBusyOverlayCard).evaluate().isEmpty,
+      reason: 'The actual running-job response must render before cancellation',
+    );
     expect(find.text('正在生成'), findsOneWidget);
     expect(find.text('已处理 2000 行'), findsOneWidget);
     await tester.tap(find.text('取消任务'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await pumpUntil(
+      tester,
+      () => find.text('正在取消').evaluate().isNotEmpty,
+      reason: 'The server cancellation-requested state must render',
+    );
     expect(find.text('正在取消'), findsOneWidget);
     expect(find.text('已取消'), findsNothing);
     expect(find.text('取消任务'), findsNothing);

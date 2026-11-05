@@ -25,6 +25,9 @@ const financePaymentSourceGuidance =
     '普通应付付款请引用已入账的应付，金额由服务端按核销明细汇总。供应商预付请从各部门申请流程建立预付申请，批准后登记实际付款。';
 
 class FinanceDocConfig {
+  static const receiptAllocationAmountLabel = '本次收款';
+  static const paymentOriginalAmountLabel = financePaymentOriginalAmountLabel;
+
   const FinanceDocConfig({
     required this.type,
     required this.label,

@@ -16,6 +16,9 @@ import java.util.UUID;
 @Setter
 public class ReceiptItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
+    /** Optional original row locator; the server still proves parent and all quantity/source operands. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private UUID id;
     private Integer lineNo;
     /** Retained row identity required only by the dedicated review amendment. */
     private UUID sourceItemId;

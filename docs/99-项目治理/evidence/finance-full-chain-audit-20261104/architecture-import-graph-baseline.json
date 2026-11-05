@@ -1,0 +1,513 @@
+{
+  "schemaVersion": 1,
+  "readOnlyAudit": true,
+  "baselineSha": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "method": "Read git archive of exact baseline lib/features in memory; compare with all current feature Dart files using architecture_boundaries_test.dart identical import/export URI resolution. No checkout/test/source changes and no Flutter execution. Direction/site equality is not a business-call-semantic approval.",
+  "baseline": {
+    "dartFiles": 1173,
+    "directions": 78,
+    "uniqueCrossFeatureImportSites": 702,
+    "allowedDirectionsInTest": 67,
+    "unapprovedDirections": [
+      "applications->basic_data",
+      "applications->expense",
+      "applications->finance",
+      "approvals->applications",
+      "approvals->basic_data",
+      "approvals->expense",
+      "approvals->sales",
+      "expense->finance",
+      "finance->applications",
+      "finance->expense",
+      "sales->finance"
+    ],
+    "staleAllowedDirections": [],
+    "directionGraphSha256": "f9f995a6508bb06cbbc1a94e179dfcca987a69ac596debfcb3783c77886d1c9f",
+    "importSitesSha256": "52c35f34e7447423323a9963cd706f154474105a305fb3678e7aea569319e8d3"
+  },
+  "candidate": {
+    "dartFiles": 1175,
+    "directions": 78,
+    "uniqueCrossFeatureImportSites": 702,
+    "allowedDirectionsInTest": 67,
+    "unapprovedDirections": [
+      "applications->basic_data",
+      "applications->expense",
+      "applications->finance",
+      "approvals->applications",
+      "approvals->basic_data",
+      "approvals->expense",
+      "approvals->sales",
+      "expense->finance",
+      "finance->applications",
+      "finance->expense",
+      "sales->finance"
+    ],
+    "staleAllowedDirections": [],
+    "directionGraphSha256": "f9f995a6508bb06cbbc1a94e179dfcca987a69ac596debfcb3783c77886d1c9f",
+    "importSitesSha256": "52c35f34e7447423323a9963cd706f154474105a305fb3678e7aea569319e8d3"
+  },
+  "delta": {
+    "addedDirections": [],
+    "removedDirections": [],
+    "addedCrossFeatureImportSites": [],
+    "removedCrossFeatureImportSites": [],
+    "newDartFiles": [
+      "lib/features/finance/shared/finance_workbench_panel.dart",
+      "lib/features/finance/widgets/finance_chart_metadata_dialog.dart"
+    ]
+  },
+  "testEvidence": {
+    "candidateTestRawBytesEqualHEAD": true,
+    "headTestSha256": "ab8226807865ca50118351f48a40581b82b6b4c905b276cf8c0dd6d81c4f500f",
+    "candidateTestSha256": "ab8226807865ca50118351f48a40581b82b6b4c905b276cf8c0dd6d81c4f500f",
+    "mainDirtyTestSha256": "1030ad4874ac80e60be48531b3ffcb8817df285020840983665b5a6cf792c164",
+    "mainDirtyAllowedEdgeAdditions": [
+      "applications->basic_data",
+      "applications->expense",
+      "applications->finance",
+      "approvals->applications",
+      "approvals->basic_data",
+      "approvals->expense",
+      "approvals->sales",
+      "expense->finance",
+      "finance->applications",
+      "finance->expense",
+      "sales->finance"
+    ],
+    "mainDirtyAllowedEdgeRemovals": [],
+    "mainDirtyDiffIsEvidenceOnly": "Read the pre-existing main worktree diff; never copied/overwritten or accepted as ADR approval."
+  },
+  "existingUnapprovedDirectionWitnesses": [
+    {
+      "direction": "applications->basic_data",
+      "baselineSites": [
+        {
+          "source": "lib/features/applications/pages/business_application_edit_page.dart",
+          "line": 30,
+          "directive": "import",
+          "uri": "../../basic_data/widgets/uten_supplier_picker.dart",
+          "target": "lib/features/basic_data/widgets/uten_supplier_picker.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 29,
+          "directive": "import",
+          "uri": "../../basic_data/models/master_facet.dart",
+          "target": "lib/features/basic_data/models/master_facet.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 30,
+          "directive": "import",
+          "uri": "../../basic_data/widgets/master_data_table_view.dart",
+          "target": "lib/features/basic_data/widgets/master_data_table_view.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/applications/pages/business_application_edit_page.dart",
+          "line": 30,
+          "directive": "import",
+          "uri": "../../basic_data/widgets/uten_supplier_picker.dart",
+          "target": "lib/features/basic_data/widgets/uten_supplier_picker.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 29,
+          "directive": "import",
+          "uri": "../../basic_data/models/master_facet.dart",
+          "target": "lib/features/basic_data/models/master_facet.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 30,
+          "directive": "import",
+          "uri": "../../basic_data/widgets/master_data_table_view.dart",
+          "target": "lib/features/basic_data/widgets/master_data_table_view.dart"
+        }
+      ]
+    },
+    {
+      "direction": "applications->expense",
+      "baselineSites": [
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 31,
+          "directive": "import",
+          "uri": "../../expense/pages/expense_list_page.dart",
+          "target": "lib/features/expense/pages/expense_list_page.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 32,
+          "directive": "import",
+          "uri": "../../expense/providers/expense_providers.dart",
+          "target": "lib/features/expense/providers/expense_providers.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 31,
+          "directive": "import",
+          "uri": "../../expense/pages/expense_list_page.dart",
+          "target": "lib/features/expense/pages/expense_list_page.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_list_page.dart",
+          "line": 32,
+          "directive": "import",
+          "uri": "../../expense/providers/expense_providers.dart",
+          "target": "lib/features/expense/providers/expense_providers.dart"
+        }
+      ]
+    },
+    {
+      "direction": "applications->finance",
+      "baselineSites": [
+        {
+          "source": "lib/features/applications/pages/business_application_detail_page.dart",
+          "line": 22,
+          "directive": "import",
+          "uri": "../../finance/widgets/finance_native_original_section.dart",
+          "target": "lib/features/finance/widgets/finance_native_original_section.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_detail_page.dart",
+          "line": 36,
+          "directive": "import",
+          "uri": "../../finance/models/finance_doc.dart",
+          "target": "lib/features/finance/models/finance_doc.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_detail_page.dart",
+          "line": 37,
+          "directive": "import",
+          "uri": "../../finance/repositories/finance_repository.dart",
+          "target": "lib/features/finance/repositories/finance_repository.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/applications/pages/business_application_detail_page.dart",
+          "line": 22,
+          "directive": "import",
+          "uri": "../../finance/widgets/finance_native_original_section.dart",
+          "target": "lib/features/finance/widgets/finance_native_original_section.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_detail_page.dart",
+          "line": 36,
+          "directive": "import",
+          "uri": "../../finance/models/finance_doc.dart",
+          "target": "lib/features/finance/models/finance_doc.dart"
+        },
+        {
+          "source": "lib/features/applications/pages/business_application_detail_page.dart",
+          "line": 37,
+          "directive": "import",
+          "uri": "../../finance/repositories/finance_repository.dart",
+          "target": "lib/features/finance/repositories/finance_repository.dart"
+        }
+      ]
+    },
+    {
+      "direction": "approvals->applications",
+      "baselineSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 15,
+          "directive": "import",
+          "uri": "../../applications/pages/business_application_list_page.dart",
+          "target": "lib/features/applications/pages/business_application_list_page.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 15,
+          "directive": "import",
+          "uri": "../../applications/pages/business_application_list_page.dart",
+          "target": "lib/features/applications/pages/business_application_list_page.dart"
+        }
+      ]
+    },
+    {
+      "direction": "approvals->basic_data",
+      "baselineSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_policy_settings_page.dart",
+          "line": 26,
+          "directive": "import",
+          "uri": "../../basic_data/widgets/master_data_table_view.dart",
+          "target": "lib/features/basic_data/widgets/master_data_table_view.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_policy_settings_page.dart",
+          "line": 26,
+          "directive": "import",
+          "uri": "../../basic_data/widgets/master_data_table_view.dart",
+          "target": "lib/features/basic_data/widgets/master_data_table_view.dart"
+        }
+      ]
+    },
+    {
+      "direction": "approvals->expense",
+      "baselineSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 16,
+          "directive": "import",
+          "uri": "../../expense/pages/expense_approval_list_page.dart",
+          "target": "lib/features/expense/pages/expense_approval_list_page.dart"
+        },
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 17,
+          "directive": "import",
+          "uri": "../../expense/providers/expense_providers.dart",
+          "target": "lib/features/expense/providers/expense_providers.dart"
+        },
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 18,
+          "directive": "import",
+          "uri": "../../expense/repositories/expense_repository.dart",
+          "target": "lib/features/expense/repositories/expense_repository.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 16,
+          "directive": "import",
+          "uri": "../../expense/pages/expense_approval_list_page.dart",
+          "target": "lib/features/expense/pages/expense_approval_list_page.dart"
+        },
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 17,
+          "directive": "import",
+          "uri": "../../expense/providers/expense_providers.dart",
+          "target": "lib/features/expense/providers/expense_providers.dart"
+        },
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 18,
+          "directive": "import",
+          "uri": "../../expense/repositories/expense_repository.dart",
+          "target": "lib/features/expense/repositories/expense_repository.dart"
+        }
+      ]
+    },
+    {
+      "direction": "approvals->sales",
+      "baselineSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 19,
+          "directive": "import",
+          "uri": "../../sales/pages/sales_manager_review_page.dart",
+          "target": "lib/features/sales/pages/sales_manager_review_page.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/approvals/pages/approval_center_page.dart",
+          "line": 19,
+          "directive": "import",
+          "uri": "../../sales/pages/sales_manager_review_page.dart",
+          "target": "lib/features/sales/pages/sales_manager_review_page.dart"
+        }
+      ]
+    },
+    {
+      "direction": "expense->finance",
+      "baselineSites": [
+        {
+          "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
+          "line": 44,
+          "directive": "import",
+          "uri": "../../finance/widgets/finance_native_original_section.dart",
+          "target": "lib/features/finance/widgets/finance_native_original_section.dart"
+        },
+        {
+          "source": "lib/features/expense/pages/expense_claim_edit_page.dart",
+          "line": 59,
+          "directive": "import",
+          "uri": "../../finance/pages/finance_applications_page.dart",
+          "target": "lib/features/finance/pages/finance_applications_page.dart"
+        },
+        {
+          "source": "lib/features/expense/pages/expense_detail_page.dart",
+          "line": 36,
+          "directive": "import",
+          "uri": "../../finance/widgets/finance_native_original_section.dart",
+          "target": "lib/features/finance/widgets/finance_native_original_section.dart"
+        },
+        {
+          "source": "lib/features/expense/widgets/expense_financial_application_link.dart",
+          "line": 4,
+          "directive": "import",
+          "uri": "../../finance/config/finance_requirement_names.dart",
+          "target": "lib/features/finance/config/finance_requirement_names.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
+          "line": 44,
+          "directive": "import",
+          "uri": "../../finance/widgets/finance_native_original_section.dart",
+          "target": "lib/features/finance/widgets/finance_native_original_section.dart"
+        },
+        {
+          "source": "lib/features/expense/pages/expense_claim_edit_page.dart",
+          "line": 59,
+          "directive": "import",
+          "uri": "../../finance/pages/finance_applications_page.dart",
+          "target": "lib/features/finance/pages/finance_applications_page.dart"
+        },
+        {
+          "source": "lib/features/expense/pages/expense_detail_page.dart",
+          "line": 36,
+          "directive": "import",
+          "uri": "../../finance/widgets/finance_native_original_section.dart",
+          "target": "lib/features/finance/widgets/finance_native_original_section.dart"
+        },
+        {
+          "source": "lib/features/expense/widgets/expense_financial_application_link.dart",
+          "line": 4,
+          "directive": "import",
+          "uri": "../../finance/config/finance_requirement_names.dart",
+          "target": "lib/features/finance/config/finance_requirement_names.dart"
+        }
+      ]
+    },
+    {
+      "direction": "finance->applications",
+      "baselineSites": [
+        {
+          "source": "lib/features/finance/pages/finance_application_continuation_page.dart",
+          "line": 20,
+          "directive": "import",
+          "uri": "../../applications/models/business_application.dart",
+          "target": "lib/features/applications/models/business_application.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/finance/pages/finance_application_continuation_page.dart",
+          "line": 20,
+          "directive": "import",
+          "uri": "../../applications/models/business_application.dart",
+          "target": "lib/features/applications/models/business_application.dart"
+        }
+      ]
+    },
+    {
+      "direction": "finance->expense",
+      "baselineSites": [
+        {
+          "source": "lib/features/finance/widgets/finance_application_detail.dart",
+          "line": 28,
+          "directive": "import",
+          "uri": "../../expense/models/expense_claim.dart",
+          "target": "lib/features/expense/models/expense_claim.dart"
+        },
+        {
+          "source": "lib/features/finance/widgets/finance_application_detail.dart",
+          "line": 29,
+          "directive": "import",
+          "uri": "../../expense/models/expense_item.dart",
+          "target": "lib/features/expense/models/expense_item.dart"
+        },
+        {
+          "source": "lib/features/finance/widgets/finance_application_detail.dart",
+          "line": 30,
+          "directive": "import",
+          "uri": "../../expense/widgets/expense_invoice_section.dart",
+          "target": "lib/features/expense/widgets/expense_invoice_section.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/finance/widgets/finance_application_detail.dart",
+          "line": 28,
+          "directive": "import",
+          "uri": "../../expense/models/expense_claim.dart",
+          "target": "lib/features/expense/models/expense_claim.dart"
+        },
+        {
+          "source": "lib/features/finance/widgets/finance_application_detail.dart",
+          "line": 29,
+          "directive": "import",
+          "uri": "../../expense/models/expense_item.dart",
+          "target": "lib/features/expense/models/expense_item.dart"
+        },
+        {
+          "source": "lib/features/finance/widgets/finance_application_detail.dart",
+          "line": 30,
+          "directive": "import",
+          "uri": "../../expense/widgets/expense_invoice_section.dart",
+          "target": "lib/features/expense/widgets/expense_invoice_section.dart"
+        }
+      ]
+    },
+    {
+      "direction": "sales->finance",
+      "baselineSites": [
+        {
+          "source": "lib/features/sales/widgets/sales_shipment_print.dart",
+          "line": 1,
+          "directive": "import",
+          "uri": "../../finance/config/finance_requirement_names.dart",
+          "target": "lib/features/finance/config/finance_requirement_names.dart"
+        },
+        {
+          "source": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+          "line": 1,
+          "directive": "import",
+          "uri": "../../finance/config/finance_requirement_names.dart",
+          "target": "lib/features/finance/config/finance_requirement_names.dart"
+        }
+      ],
+      "candidateSites": [
+        {
+          "source": "lib/features/sales/widgets/sales_shipment_print.dart",
+          "line": 1,
+          "directive": "import",
+          "uri": "../../finance/config/finance_requirement_names.dart",
+          "target": "lib/features/finance/config/finance_requirement_names.dart"
+        },
+        {
+          "source": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+          "line": 1,
+          "directive": "import",
+          "uri": "../../finance/config/finance_requirement_names.dart",
+          "target": "lib/features/finance/config/finance_requirement_names.dart"
+        }
+      ]
+    }
+  ],
+  "existingUnapprovedSiteCount": 24,
+  "existingUnapprovedSourceFileCount": 13,
+  "relevantStronglyConnectedComponents": [
+    [
+      "applications",
+      "expense",
+      "finance",
+      "sales"
+    ]
+  ],
+  "conclusion": "All 11 reported directions and every concrete cross-feature import site existed in exact 0c baseline. No new dependency direction or site in this candidate; architecture test remains a real pre-existing failure, not green. Do not blindly whitelist the 11 directions.",
+  "nextArchitectureWork": [
+    "Review/assign public ownership under ADR-017 rather than copying the dirty main whitelist.",
+    "Move generic table/facet presentation out of feature-private basic_data; business pickers require shared read contracts, not copied implementations.",
+    "Break applications/expense/finance/sales cycles using explicit source read contracts and composition-root navigation/aggregation, preserving source identity, permissions and server business authority.",
+    "FinanceRepository/ExpenseRepository imports exist among the 24 sites; the dirty-test comment that all dependencies are UI-only is not established by this graph audit. Review actual consumers before any approval."
+  ]
+}

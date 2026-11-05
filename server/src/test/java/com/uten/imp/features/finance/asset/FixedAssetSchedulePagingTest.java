@@ -42,7 +42,8 @@ class FixedAssetSchedulePagingTest {
                     .contains("v_finance_asset_posting_facts")
                     .contains("COALESCE(sum(f.amount_local) FILTER(WHERE NOT f.pending),0)")
                     .contains("ORDER BY report.\"assetName\",report.\"__assetId\"")
-                    .contains("LIMIT :__limit OFFSET :__offset");
+                    .contains("LIMIT :__limit OFFSET :__offset")
+                    .contains("WHERE NOT a.is_deleted", "f.business_date<=:cutoff");
             verify(query).setParameter("__limit", 500);
             verify(query).setParameter("__offset", 1_073_741_823_000L);
             verify(query, never()).getSingleResult();
@@ -66,7 +67,7 @@ class FixedAssetSchedulePagingTest {
         // 计数包装与数据页同源：同一 template_facts 投影、同一活动资产谓词，不允许另起一套口径。
         assertThat(sql.getLast())
                 .contains("SELECT COUNT(*) FROM (SELECT report.* FROM (WITH template_facts")
-                .contains("WHERE NOT a.is_deleted");
+                .contains("WHERE NOT a.is_deleted", "v_finance_asset_posting_facts");
         verify(query).setParameter("__offset", 40L);
     }
 }

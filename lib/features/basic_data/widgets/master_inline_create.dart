@@ -11,6 +11,7 @@ class MasterInlineCreateConfig {
     this.defaults = const {},
     this.columnFields = const {},
     this.emptyRows = 3,
+    this.showMissingFieldsAction = true,
   });
   final String namespace;
   final List<MasterFieldDef> fields;
@@ -18,6 +19,7 @@ class MasterInlineCreateConfig {
   final Map<String, String> columnFields;
   final bool canCreate;
   final int emptyRows;
+  final bool showMissingFieldsAction;
   final Future<void> Function(String draftKey, Map<String, dynamic> values)
   onCreate;
   final Future<void> Function()? afterSave;
@@ -191,6 +193,9 @@ class _MasterInlineCreation<T> {
             builder: (context, _) {
               final current = config;
               if (current == null) return const SizedBox.shrink();
+              if (!current.showMissingFieldsAction) {
+                return const SizedBox.shrink();
+              }
               final mapped = {
                 for (final key in visible) current.columnFields[key] ?? key,
               };
@@ -244,6 +249,7 @@ class _MasterInlineCreation<T> {
       draft.changes[field.key] = next;
     }
     draft.errors.remove(field.key);
+    if (!draft.dirty) draft.errors.clear();
     owner.error = null;
     draft.changed();
     refresh(keepBlankKey: draft.key);
@@ -605,6 +611,7 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
     widget.draft.value(widget.field.key),
     widget.draft.errors[widget.field.key],
     widget.draft.externalRevision,
+    widget.field.required && widget.draft.dirty,
     _enabled,
   );
 
@@ -688,7 +695,7 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
         '${field.label} 편집',
       ),
       enabled: _enabled,
-      requiredEmpty: _enabled && field.required && value == null,
+      requiredEmpty: _enabled && draft.dirty && field.required && value == null,
       retainFocusWhenDisabled:
           field.customBuilder == null && field.type != MasterFieldType.select,
       preview: Text(
@@ -716,7 +723,7 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
               initialValue: value?.toString(),
               currentValue: value,
               onChanged: change,
-              required: field.required,
+              required: field.required && draft.dirty,
             ),
           ),
         ),
@@ -728,7 +735,7 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
         dense: true,
         enabled: enabled,
         allowClear: !field.required,
-        required: field.required,
+        required: field.required && draft.dirty,
         info: field.info,
         onAddNew: field.onAddNew == null
             ? null
@@ -773,9 +780,11 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
                     : null),
             error: utenFieldError(draft.errors[field.key]),
           ),
+          useFieldNameHint: field.useFieldNameHint,
         ),
         Theme.of(context),
-        requiredEmpty: enabled && field.required && value == null,
+        requiredEmpty:
+            enabled && draft.dirty && field.required && value == null,
       ),
       onChanged: change,
     );

@@ -1,4 +1,5 @@
 import '../widgets/workshop_material_close_retry_dialog.dart';
+import '../../../../shared/drafts/task_form_drafts.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 车间内料仓页 (/workshop-material/bin?workshopId=, ADR-131 §8.1)。
 //
@@ -658,7 +659,13 @@ class _WorkshopMaterialBinPageState
       context.appWarning('还没有可盘点的一期, 请刷新后再试');
       return;
     }
-    await context.push(RoutePath.workshopMaterialCount(periodId));
+    if (await resumeWorkshopMaterialPeriodTaskDraft(context, ref, periodId)) {
+      return;
+    }
+    if (mounted &&
+        _positionBoundary == ref.read(sensitiveReadBoundaryProvider)) {
+      await context.push(RoutePath.workshopMaterialCount(periodId));
+    }
   }
 
   Future<void> _retryClose() async {
@@ -666,6 +673,22 @@ class _WorkshopMaterialBinPageState
     if (period == null) return;
     setState(() => _retrying = true);
     try {
+      if (await resumeWorkshopMaterialPeriodTaskDraft(
+        context,
+        ref,
+        period.id,
+        closeRetryOnly: true,
+      )) {
+        if (mounted &&
+            _positionBoundary == ref.read(sensitiveReadBoundaryProvider)) {
+          await _reloadWorkshop();
+        }
+        return;
+      }
+      if (!mounted ||
+          _positionBoundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
       final status = await showWmCloseRetryDialog(context, periodId: period.id);
       if (status == null) return;
       if (!mounted) return;

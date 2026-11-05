@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -23,9 +24,8 @@ Future<void> showFinanceSupplierPrepaymentDialog(
   BuildContext context, {
   String? supplierId,
   String? currencyId,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
   builder: (_) =>
       _AdvanceDirectory(supplierId: supplierId, currencyId: currencyId),
 );

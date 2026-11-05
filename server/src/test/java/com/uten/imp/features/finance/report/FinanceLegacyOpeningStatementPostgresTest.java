@@ -43,6 +43,7 @@ class FinanceLegacyOpeningStatementPostgresTest {
         PG.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
         MigratedProjectionSchema.createCurrentTables(jdbc,TABLES);
+        com.uten.imp.support.FinanceReportProjectionSchema.supplierAdvanceReplay(jdbc);
         // Statement events and summary reconciliation resolve fn_business_exact_divide
         // when preparing FinanceCashEventSql; the projection fixture installs the
         // migrated function family explicitly (same trio as the summary fixture).
@@ -56,6 +57,7 @@ class FinanceLegacyOpeningStatementPostgresTest {
     @AfterAll static void stop(){if(sessions!=null){ sessions.close(); }PG.stop();}
     @BeforeEach void clear() {
         jdbc.execute("TRUNCATE "+String.join(",",TABLES));
+        jdbc.execute("TRUNCATE legacy_migration_runs");
         party=UUID.randomUUID();currency=UUID.randomUUID();ledger=UUID.randomUUID();run=UUID.randomUUID();
         jdbc.update("INSERT INTO clients(id,code,name,code_sequence) VALUES(?,'SYN-PARTY','Synthetic party',1)",party);
         jdbc.update("INSERT INTO suppliers(id,code,name,code_sequence) VALUES(?,'SYN-PARTY','Synthetic party',1)",party);
@@ -199,21 +201,25 @@ class FinanceLegacyOpeningStatementPostgresTest {
             assertMoney(annual(side,2026).rows().get(1),"balance","22");
         }
         jdbc.update("DELETE FROM "+lines);
-        assertMoney(annual(side,2026).rows().get(1),"balance","22");
+        if(side.equals("AP"))assertThatThrownBy(()->annual(side,2026)).isInstanceOf(ApiException.class);
+        else assertMoney(annual(side,2026).rows().get(1),"balance","22");
     }
 
     void opening(String side,String balance,String cutoff) {
         nativeLedger(side,ledger,"25","2025-01-02");
         jdbc.update("UPDATE ar_ap_ledger SET legacy_id=9001,legacy_import_run_id=?,open_item_kind='LEGACY_UNVERIFIED',amount_balance_original=?::numeric,legacy_source_resolution=jsonb_build_object('snapshotAsOfUtc',CAST(? AS text)) WHERE id=?",run,balance,cutoff,ledger);
+        jdbc.update("INSERT INTO legacy_migration_runs(run_id,status) VALUES (?,'SUCCESS')",run);
         jdbc.update("""
                 INSERT INTO legacy_finance_import_sources(id,run_id,target_id,target_table,source_kind,source_legacy_id,initial_state)
-                VALUES(?,?,?,'ar_ap_ledger',?,9001,jsonb_build_object('amount_balance',CAST(? AS numeric),'amount_balance_original',CAST(? AS numeric)))
-                """,UUID.randomUUID(),run,ledger,side+"_OPENING",balance,balance);
+                VALUES(?,?,?,'ar_ap_ledger',?,9001,jsonb_build_object('amount_balance',CAST(? AS numeric),'amount_balance_original',CAST(? AS numeric),
+                    'currency_id',CAST(? AS text),'sourceSnapshotAsOfUtc',CAST(? AS text),'legacy_source_resolution',jsonb_build_object('originalCurrencyProven',true)))
+                """,UUID.randomUUID(),run,ledger,side+"_OPENING",balance,balance,currency,cutoff);
     }
     void nativeLedger(String side,UUID id,String amount,String date) {
         String partyColumn=side.equals("AR")?"client_id":"supplier_id";
-        jdbc.update("INSERT INTO ar_ap_ledger(id,"+partyColumn+",currency_id,direction,status,bill_no,bill_date,source_doc_type,amount_original,amount_original_local,amount_balance_original,exchange_rate) VALUES(?,?,?, ?,1,?,?::date,?,?::numeric,?::numeric,?::numeric,1)",
-                id,party,currency,side,"SYN-"+id,date,side.equals("AR")?"SALES_SHIPMENT":"PURCHASE_RECEIPT",amount,amount,amount);
+        boolean credit=new BigDecimal(amount).signum()<0;
+        jdbc.update("INSERT INTO ar_ap_ledger(id,"+partyColumn+",currency_id,direction,status,bill_no,bill_date,source_doc_type,open_item_kind,amount_original,amount_original_local,amount_balance_original,exchange_rate) VALUES(?,?,?, ?,1,?,?::date,?,?,?::numeric,?::numeric,?::numeric,1)",
+                id,party,currency,side,"SYN-"+id,date,side.equals("AR")?"SALES_SHIPMENT":credit?"PURCHASE_RETURN":"PURCHASE_RECEIPT",side.equals("AR")?"RECEIVABLE":credit?"CREDIT":"PAYABLE",amount,amount,amount);
     }
     UUID cash(String side,String date,int amount,boolean historical) {
         UUID id=UUID.randomUUID(); boolean ar=side.equals("AR");
@@ -221,10 +227,12 @@ class FinanceLegacyOpeningStatementPostgresTest {
         jdbc.update("INSERT INTO "+table+"(id,"+partyColumn+",currency_id,bill_no,bill_date,status,amount_original,amount_local,exchange_rate,legacy_id) VALUES(?,?,?,?,?::date,1,?,?,1,?)",
                 id,party,currency,"CASH-"+id,date,amount,amount,historical?9002:null);
         if(ar) jdbc.update("UPDATE finance_receipts SET receipt_kind=? WHERE id=?",historical?"LEGACY_UNCLASSIFIED":"AR_SETTLEMENT",id);
+        else jdbc.update("UPDATE finance_payments SET amount_authority_version=1 WHERE id=?",id);
         if(!historical) {
             String child=ar?"finance_receipt_lines":"finance_payment_lines",parent=ar?"receipt_id":"payment_id";
             jdbc.update("INSERT INTO "+child+"(id,"+parent+",applied_ledger_id,amount_original,amount_local,applied_amount_local,exchange_diff"+(ar?",write_off_amount":"")+") VALUES(?,?,?,?,?,?,0"+(ar?",0":"")+")",
                     UUID.randomUUID(),id,ledger,amount,amount,amount);
+            if(!ar)jdbc.update("UPDATE finance_payment_lines SET supplier_id=? WHERE payment_id=?",party,id);
         }
         return id;
     }

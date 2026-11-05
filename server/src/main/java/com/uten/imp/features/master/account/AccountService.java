@@ -93,6 +93,13 @@ public class AccountService {
     private final TxSessionVars tx;
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
+    private final com.uten.imp.application.port.FundingAccountStylePort fundingStyles;
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('account:create','account:edit')")
+    public List<com.uten.imp.application.port.FundingAccountStylePort.Choice> postingStyles() {
+        return fundingStyles.choices();
+    }
 
     // ===== account_type 映射（迁移 CASE WHEN 的 Java 版本单一事实源） =====
 
@@ -922,6 +929,9 @@ public class AccountService {
                 && !Objects.equals(styleLegacyId, canonicalLegacyId)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "所选会计科目与系统记录不一致，请重新选择");
+        }
+        if (!Objects.equals(account.getStyleId(), styleId)) {
+            fundingStyles.requireSelectable(styleId);
         }
         account.setStyleId((UUID) resolved[0]);
         account.setStyleLegacyId(canonicalLegacyId);

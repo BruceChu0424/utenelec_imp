@@ -1,3 +1,8 @@
+import '../../support/finance_document_command_fixture.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'dart:io';
 
 import 'package:uten_imp/shared/models/user.dart';
@@ -954,7 +959,7 @@ void main() {
       for (final column in const [
         '出货单/原来源',
         '应收币种',
-        '本次收款金额',
+        '本次分配收款(原币)',
         '当前批次实际到账汇率',
         '分配折算毛额(人民币)',
         '冲减应收账面金额(人民币)',
@@ -1060,6 +1065,8 @@ Future<_ReceiptApi> _pumpEditor(
   GlobalKey? captureKey,
   bool dark = false,
 }) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -1103,9 +1110,15 @@ Future<_ReceiptApi> _pumpEditor(
       overrides: [
         ...nativeDetailReaderOverrides(includeSession: false),
         financeWriteAllDocumentScope(),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
-        currentPermissionsProvider.overrideWithValue(permissions),
+        currentPermissionsProvider.overrideWithValue({
+          ...permissions,
+          Perm.financeReceiptView,
+          Perm.financeReceiptEdit,
+        }),
       ],
       child: MaterialApp.router(
         routerConfig: router,
@@ -1278,7 +1291,7 @@ class _ReceiptApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    return detail;
+    return financeReviewedDetailFixture(detail, FinanceDocType.receipt);
   }
 
   @override
@@ -1366,7 +1379,12 @@ class _ReceiptApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     writeCalls++;
-    lastPutBody = Map<String, dynamic>.from(body! as Map);
-    return detail;
+    final command = Map<String, dynamic>.from(body! as Map);
+    lastPutBody = Map<String, dynamic>.from(command['document'] as Map);
+    return financeReviewReceiptFixture(
+      path: path,
+      command: command,
+      result: detail,
+    );
   }
 }

@@ -9,6 +9,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -47,6 +49,9 @@ class InventoryCostPostingBridgePostgresTest {
         db.execute(resource("/db/inventory-cost-bridge-fixture.sql"));
         db.execute(resource("/db/migration/V754__inventory_cost_posting_bridge.sql"));
         db.execute(resource("/db/migration/V756__production_cost_frozen_identity.sql"));
+        // Current sales revenue additionally carries dated reversal/legacy facts.
+        // This remains an intentionally partial V754/V756 projection oracle.
+        db.execute("ALTER TABLE ar_ap_ledger ADD COLUMN deleted_at timestamptz, ADD COLUMN legacy_id integer, ADD COLUMN legacy_import_run_id uuid, ADD COLUMN legacy_source text");
         // Sales-cost ratios call the real migrated precision functions; without them the
         // class-42 "function does not exist" surfaces as Spring bad SQL grammar.
         com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(db,
@@ -104,6 +109,32 @@ class InventoryCostPostingBridgePostgresTest {
         assertThat(withdrawal.summary().outputQtyBase()).isEqualByComparingTo("3");
         assertThat(withdrawal.summary().pending()).isTrue();
         assertThat(withdrawal.summary().actualUnitCostLocal()).isNull();
+    }
+    @ParameterizedTest @CsvSource({"false,false","false,true","true,false","true,true"})
+    void productionSnapshotPreservesItsFieldsAcrossBothOptionalSchemaCapabilities(boolean exactBook,boolean identity)throws Exception {
+        Case data=production();
+        db.execute("ALTER TABLE stock_value_nodes ADD COLUMN owned_value_local numeric,ADD COLUMN distributed_value_local numeric");
+        db.update("UPDATE stock_value_nodes SET owned_value_local=4.0001,distributed_value_local=7.9999 WHERE id=?",data.input());
+        var writer=new com.uten.imp.features.stock.valuation.InventoryProductionCostService(
+                new NamedParameterJdbcTemplate(db.getDataSource()),
+                org.mockito.Mockito.mock(com.uten.imp.features.stock.InventoryMutationLock.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.stock.valuation.InventoryValuationService.class));
+        // Exercise the four schema-derived branches without changing production
+        // capability detection or deleting either owning migration's functions.
+        org.springframework.test.util.ReflectionTestUtils.setField(writer,"exactBookValueInstalled",exactBook);
+        org.springframework.test.util.ReflectionTestUtils.setField(writer,"frozenIdentityInstalled",identity);
+        Map<String,Object> snapshot=org.springframework.test.util.ReflectionTestUtils.invokeMethod(writer,"snapshot",data.scope());
+        JsonNode input=new ObjectMapper().readTree(snapshot.get("inputs").toString()).get(0);
+        assertThat(input.path("node").asText()).isEqualTo(data.input().toString());
+        assertThat(input.path("value").decimalValue()).isEqualByComparingTo("12");
+        assertThat(input.has("returnCursor")).isTrue();assertThat(input.has("valuePrecisionVersion")).isTrue();
+        assertThat(input.has("bookedNetValue")).isEqualTo(exactBook);
+        if(exactBook)assertThat(input.path("bookedNetValue").decimalValue()).isEqualByComparingTo("12");
+        assertThat(input.has("identity")).isEqualTo(identity);
+        if(identity)assertThat(input.path("identity").path("goodsName").asText()).isEqualTo("material");
+        assertThat(((Number)snapshot.get("output_qty")).toString()).isEqualTo("6");
+        var outputs=new ObjectMapper().readTree(snapshot.get("outputs").toString());
+        assertThat(outputs.size()).isEqualTo(2);assertThat(outputs.get(0).has("identity")).isEqualTo(identity);
     }
 
     @Test void historicalRevisionCannotPublishAUnitCostWhenItsOutputExceedsItsOwnBasis() throws Exception {
@@ -256,7 +287,9 @@ class InventoryCostPostingBridgePostgresTest {
         assertThat((BigDecimal)row.get("saleAmount")).isEqualByComparingTo("-80");
         assertThat((BigDecimal)row.get("saleCost")).isEqualByComparingTo("-40");
         assertThat(row.get("saleCostExact")).isEqualTo("-40");
-        assertThat(row.get("netProfit")).isNull();assertThat(row.get("manageFee")).isNull();assertThat(row.get("taxFee")).isNull();
+        assertThat(row.get("netProfit")).isNull();
+        assertThat((BigDecimal)row.get("manageFee")).as("Original management-cost formula is actual signed cost times 8%").isEqualByComparingTo("-3.20");
+        assertThat(row.get("taxFee")).isNull();
         assertThat(row.get("currencyBasis")).isEqualTo("LOCAL");
     }
     @Test void financeReportAggregatesFrozenLocalAmountsAcrossCurrenciesAndRetainsConfirmedZero(){

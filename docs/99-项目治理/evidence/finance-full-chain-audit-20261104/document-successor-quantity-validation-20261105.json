@@ -1,0 +1,145 @@
+{
+  "status": "owned_implementation_frozen_current_34_pass_root_integration_pending",
+  "productDelta": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnUnapprovalAdapter.java",
+      "sha256": "e3228a83a6db13b0a021c2ed14e7de9947eef37b76ae57eac6514a2758d23a85"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptUnapprovalAdapter.java",
+      "sha256": "fae727a71177c0923cae72e51a360995fc9bb0ea90d865686e50e54e09bbe09a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/ret/SalesReturnUnapprovalAdapter.java",
+      "sha256": "7adf4473c6b7206b394b17f7e508662d124d880d9574c6f230c539bfd8e68919"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderUnapprovalAdapter.java",
+      "sha256": "483a174f0cc08efb522ada6340b24fbd1fcf7d9826f8b1a5a1a00025714fe47f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnUnapprovalAdapter.java",
+      "sha256": "0f3b7d75384482404d7d3fa355adec58405220c6d62ddc3ce8d72964c65d6cf5"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1062__shared_document_successor_quantity_facts.sql",
+      "sha256": "6306b7f6d40274b0bfafc16fb4f2b1cee4eb16c3362e1807dab6b08a38758595"
+    }
+  ],
+  "oldMigrationPreservation": [
+    {
+      "script": "V1057__purchase_receipt_successor_quantity_proof.sql",
+      "sourceSha256": "b2cf6ec6a11cc1568f52f8580eac591f1f16866a32aeb013eacce0cc82fd60f4",
+      "frozenV1Sha256": "b2cf6ec6a11cc1568f52f8580eac591f1f16866a32aeb013eacce0cc82fd60f4",
+      "identical": true
+    },
+    {
+      "script": "V1060__frozen_procurement_reference_price_adoption.sql",
+      "sourceSha256": "d4017574831f2df3cefad849362effb056f0340aa804a0cbbe4a40d71a159aec",
+      "frozenV1Sha256": "d4017574831f2df3cefad849362effb056f0340aa804a0cbbe4a40d71a159aec",
+      "identical": true
+    }
+  ],
+  "sqlOnly": {
+    "log": "build/finance-closeout-20261104/v1062-sql-probe.log",
+    "migrationsApplied": 998,
+    "target": "1062",
+    "closedFamilies": 7,
+    "exitCode": 0,
+    "acceptance": "DDL_only_not_business_workflow"
+  },
+  "workflowFirst": {
+    "log": "build/finance-closeout-20261104/v1062-workflow-first/workflow.log",
+    "found": 18,
+    "passed": 17,
+    "failed": 1,
+    "skipped": 0,
+    "aborted": 0,
+    "runFinishedNormally": true,
+    "remaining": "legacy SalesReturn editing logged in new unrelated world actor; responsible-maker test fixture corrected, original owner guard unchanged"
+  },
+  "workflowSecond": {
+    "log": "build/finance-closeout-20261104/v1062-workflow-second/workflow.log",
+    "found": 18,
+    "passed": 17,
+    "failed": 1,
+    "skipped": 0,
+    "runFinishedNormally": true,
+    "note": "legacy sales fixture still had null responsible owner; corrected genuine historical owner and current source ownership without changing guards"
+  },
+  "notFinalHead": "Private overlays5adapters and frozenv1 base; original full SQL resource snapshot. Root final unified fresh compile/regression remains required.",
+  "workflowThird": {
+    "log": "build/finance-closeout-20261104/v1062-workflow-third/workflow.log",
+    "found": 19,
+    "passed": 18,
+    "failed": 1,
+    "skipped": 0,
+    "runFinishedNormally": true,
+    "note": "includes a diagnostic that asserts existing wrong same-input v1-to-v2 behaviour; not acceptance. Remaining legacy Sales fixture source-owner guard correctly refused a different employee source."
+  },
+  "confirmedSameInputGap": {
+    "log": "build/finance-closeout-20261104/v1062-workflow-third/workflow.log",
+    "marker": "CONFIRMED_LEGACY_SAME_QUANTITY_SAVE_REPLACED_V1_WITH_V2=true",
+    "actualPublicService": "PurchaseOrderService.update",
+    "noTriggerSuppression": true,
+    "initialSourceIsActuallyPre1033": true
+  },
+  "sameInputFixFirst": {
+    "log": "build/finance-closeout-20261104/quantity-save-reuse-first/workflow.log",
+    "found": 18,
+    "passed": 13,
+    "failed": 5,
+    "skipped": 0,
+    "runFinishedNormally": true,
+    "note": "six negative copy matrix cases pass using independent source rows and assert assembly reached. Four new fixture guards (base unit/rate, return source, active customer) addressed; receipt implicit gift intent matching addressed with original stored representation retained; awaiting next real run."
+  },
+  "sameInputFixV2": {
+    "status": "running",
+    "log": "build/finance-closeout-20261104/quantity-save-reuse-v2/workflow.log",
+    "compileManifest": "build/finance-closeout-20261104/quantity-save-reuse-v2/compile-snapshot.json",
+    "main": 12,
+    "testSource": 4,
+    "compileWarnings": 0,
+    "sourceDrift": [],
+    "finalHeadAcceptance": false
+  },
+  "remainingBoundary": "Root unified final compile/full integration; the4 last fixture methods from original32 require current Rootloss owner classes (GiftUnit1,Eligibility2,ShortDelivery1) and are not falsely included in these34 or oldv4 45.",
+  "v4FullFocused": {
+    "log": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log",
+    "found": 45,
+    "passed": 45,
+    "failed": 0,
+    "skipped": 0,
+    "aborted": 0,
+    "containerFailed": 0,
+    "runFinishedNormally": true,
+    "elapsedMs": 2646958,
+    "scope": "six-family18+common11+FX4+realTotal4+SCSourceFifo8",
+    "notFinalHead": "before latest clone reservation and raw missing-basis guard; all previous logs retained"
+  },
+  "sameInputFixV5": {
+    "status": "complete",
+    "log": "build/finance-closeout-20261104/quantity-reference-save-v5/workflow.log",
+    "compileManifest": "build/finance-closeout-20261104/quantity-reference-save-v5/compile-snapshot.json",
+    "main": 13,
+    "testSources": 7,
+    "warnings": 0,
+    "currentScopeDrift": [],
+    "found": 34,
+    "passed": 34,
+    "failed": 0,
+    "skipped": 0,
+    "aborted": 0,
+    "containerFailed": 0,
+    "runFinishedNormally": true,
+    "scope": "common8+locatorJSON5+realPG21 (six-family v1/v2 same-save/header-date/edit/approve12, six real bad copy/map rollback matrices, nullable-native3 reject then explicitrepair)",
+    "finalHeadAcceptance": false
+  },
+  "subcontractSameInputRed": {
+    "log": "build/finance-closeout-20261104/subcontract-reference-save-red/workflow.log",
+    "found": 2,
+    "passed": 1,
+    "failed": 1,
+    "note": "actual absent-current-choice same-input publicsave: POrder fix passed, oldSC repeated choice; v4 closes it and real application-source workflow"
+  }
+}

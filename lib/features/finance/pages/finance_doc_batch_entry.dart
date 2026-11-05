@@ -22,6 +22,8 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       mounted &&
       formDraftIdentityIsCurrent &&
       !_saving &&
+      !_batchReviewing &&
+      ref.read(currentPermissionsProvider).contains(_cfg.createPerm) &&
       _createdBatchIds.isEmpty &&
       _batchCommand == null &&
       _grid.rows.contains(row);
@@ -86,11 +88,10 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
     final before = row.entry.accountId;
     final selected = await showFinanceAccountPickerPanel(
       context: context,
-      accounts: ref
-          .read(financeNameServiceProvider)
-          .accountReferences
-          .values
-          .toList(),
+      accounts: financeEntryAccountChoices(
+        _cfg,
+        ref.read(financeNameServiceProvider),
+      ),
       selectedId: before,
       title: '选择${_cfg.accountLabel}',
     );
@@ -469,7 +470,13 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                           _entryDropdown(
                             label: _cfg.accountLabel,
                             value: values.accountId,
-                            entries: names.accountEntries,
+                            entries: {
+                              for (final account in financeEntryAccountChoices(
+                                _cfg,
+                                names,
+                              ))
+                                account.id: names.account(account.id),
+                            },
                             onChanged: (value) =>
                                 update(() => values.accountId = value),
                           ),
@@ -487,7 +494,7 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                           _entryDropdown(
                             label: '币种',
                             value: values.currencyId,
-                            entries: names.currencyEntries,
+                            entries: financeEntryCurrencyChoices(_cfg, names),
                             onChanged: (value) => update(() {
                               values.currencyId = value;
                               rate.text = names.currencyIsBase(value) == true
@@ -547,7 +554,11 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             _entryDropdown(
                               label: '转入账户',
                               value: inAccountId,
-                              entries: names.accountEntries,
+                              entries: {
+                                for (final account
+                                    in financeEntryAccountChoices(_cfg, names))
+                                  account.id: names.account(account.id),
+                              },
                               onChanged: (value) =>
                                   update(() => inAccountId = value),
                             ),
@@ -791,7 +802,11 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             _entryDropdown(
                               label: '费用付款账户',
                               value: values.feeAccountId,
-                              entries: names.accountEntries,
+                              entries: {
+                                for (final account
+                                    in financeEntryAccountChoices(_cfg, names))
+                                  account.id: names.account(account.id),
+                              },
                               onChanged: (value) =>
                                   update(() => values.feeAccountId = value),
                             ),
@@ -848,6 +863,8 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
 
   Future<void> _saveEntryBatch() async {
     if (_saving ||
+        _batchReviewing ||
+        _batchRecoveryMenuOpen ||
         _intakeBusy ||
         _preparingLedgerRows ||
         _loading ||
@@ -860,95 +877,327 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       await _finishEntryBatch();
       return;
     }
-    final documents = <Map<String, dynamic>>[];
     final names = ref.read(financeNameServiceProvider);
-    if (_batchCommand == null) {
-      for (final row in _grid.rows) {
-        if (_entryIsBlank(row)) continue;
-        try {
-          if (row.entry.receiptKind == _receiptKindCustomerPrepayment) {
-            final permissions = ref.read(currentPermissionsProvider);
-            if (!permissions.contains(Perm.financeViewAll) ||
-                !permissions.contains(Perm.customerPrepaymentView)) {
-              throw const FinanceEntryError('当前无登记订单预收权限', 'entryKind');
-            }
+    final rows = _grid.rows.toList(growable: false);
+    final rowRevision = _grid.rowsRevision,
+        inputRevision = _entryDraftRevision.value;
+    final billDate = _billDate, operator = _operatorId, remark = _remark.text;
+    bool currentInput() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        rowRevision == _grid.rowsRevision &&
+        inputRevision == _entryDraftRevision.value &&
+        billDate == _billDate &&
+        operator == _operatorId &&
+        remark == _remark.text;
+    var dispatched = false;
+    final hadPending = _batchCommand != null;
+    _updateEntry(() {
+      _saving = true;
+      _batchBusyTitle = '正在核对批次输入';
+    });
+    try {
+      if (_batchCommand == null) {
+        if (financeEntryRequiresBaseCurrency(_cfg)) {
+          final unsupported = rows
+              .where((row) => !_entryIsBlank(row))
+              .where(
+                (row) =>
+                    row.entry.accountId != null &&
+                        names.accountIsBaseCurrency(row.entry.accountId) !=
+                            true ||
+                    row.entry.currencyId != null &&
+                        names.currencyIsBase(row.entry.currencyId) != true ||
+                    _cfg.isTransfer &&
+                        row.inAccountId != null &&
+                        names.accountIsBaseCurrency(row.inAccountId) != true,
+              )
+              .firstOrNull;
+          if (unsupported != null) {
+            context.appWarning(
+              '当前${_cfg.label}仅支持本币账户和本币入账；原币种与金额已保留，请核对后明确选择',
+            );
+            return;
           }
-          documents.add(
-            financeEntryRequest(
-              row,
-              config: _cfg,
-              names: names,
-              billDate: _fmt(_billDate),
-              commandKey: '$_createIdempotencyKey.${documents.length}',
-              operatorId: _operatorId,
-              remark: _remark.text.trim(),
-              requireMethod: _financeMethodOptionsAvailable,
-            ),
-          );
-        } on FinanceEntryError catch (error) {
-          if (!mounted) return;
+        }
+        if (rows.where((row) => !_entryIsBlank(row)).length >
+            financeBatchMaxDocuments) {
           context.appError(
-            '第 ${_grid.rows.indexOf(row) + 1} 行：${error.message}',
+            '本次最多保存$financeBatchMaxDocuments条明细。全部原行已保留，请整理本批后再保存',
           );
-          final settlementError = const {
-            'entryFee',
-            'entryAccountAmount',
-            'entrySettings',
-          }.contains(error.column);
-          await _grid.revealError(
-            row,
-            columnKey: settlementError ? 'entrySettings' : error.column,
-          );
-          if (settlementError && _entryCurrent(row)) {
-            await _entrySettlementSettings(row);
-          }
           return;
         }
+        if (_batchNeedsReview) {
+          await names.ensureLoaded(
+            refreshAccounts: true,
+            includeCounterparties: !_cfg.isAllocate,
+          );
+          if (!mounted || !currentInput()) throw const UiWorkCancelled();
+          _updateEntry(() {
+            _saving = false;
+            _batchReviewing = true;
+          });
+          var accepted = false;
+          var decided = false;
+          try {
+            accepted =
+                await showDialog<bool>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (dialogContext) => UtenAlertDialog(
+                    title: const UtenDialogTitleWithHint(
+                      title: Text('核对新批次'),
+                      info: '原批次已确认未写。全部原行、原币与精度选择保留；当前账户资料已重新读取，确认后才用新编号保存。',
+                    ),
+                    content: _entryBatchTotals(names),
+                    actions: [
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        onPressed: () {
+                          if (decided) return;
+                          decided = true;
+                          Navigator.pop(dialogContext, false);
+                        },
+                        child: const Text('返回原输入'),
+                      ),
+                      UtenButton(
+                        onPressed: () {
+                          if (decided) return;
+                          decided = true;
+                          Navigator.pop(dialogContext, true);
+                        },
+                        child: const Text('确认保存新批次'),
+                      ),
+                    ],
+                  ),
+                ) ??
+                false;
+          } finally {
+            if (mounted) _updateEntry(() => _batchReviewing = false);
+          }
+          if (!accepted || !currentInput()) return;
+          _updateEntry(() {
+            _saving = true;
+            _batchBusyTitle = '正在创建新批次';
+            _createIdempotencyKey = const Uuid().v4();
+            _batchNeedsReview = false;
+          });
+        }
+        final documents = <Map<String, dynamic>>[];
+        final work = UiWorkBudget(
+          isCurrent: currentInput,
+          debugLabel: 'finance-batch-request',
+        );
+        for (final row in rows) {
+          if (_entryIsBlank(row)) continue;
+          try {
+            if (row.entry.receiptKind == _receiptKindCustomerPrepayment) {
+              final permissions = ref.read(currentPermissionsProvider);
+              if (!permissions.contains(Perm.financeViewAll) ||
+                  !permissions.contains(Perm.customerPrepaymentView)) {
+                throw const FinanceEntryError('当前无登记订单预收权限', 'entryKind');
+              }
+            }
+            documents.add(
+              financeEntryRequest(
+                row,
+                config: _cfg,
+                names: names,
+                billDate: _fmt(_billDate),
+                commandKey: '$_createIdempotencyKey.${documents.length}',
+                operatorId: _operatorId,
+                remark: _remark.text.trim(),
+                requireMethod: _financeMethodOptionsAvailable,
+              ),
+            );
+          } on FinanceEntryError catch (error) {
+            if (!mounted) return;
+            _updateEntry(() => _saving = false);
+            context.appError('第 ${rows.indexOf(row) + 1} 行：${error.message}');
+            final settlementError = const {
+              'entryFee',
+              'entryAccountAmount',
+              'entrySettings',
+            }.contains(error.column);
+            await _grid.revealError(
+              row,
+              columnKey: settlementError ? 'entrySettings' : error.column,
+            );
+            if (settlementError && _entryCurrent(row)) {
+              await _entrySettlementSettings(row);
+            }
+            return;
+          }
+          await work.checkpoint();
+        }
+        if (!mounted || !currentInput()) throw const UiWorkCancelled();
+        if (documents.isEmpty) {
+          context.appError('请至少填写一条明细');
+          return;
+        }
+        final command =
+            await snapshotJsonValueResponsive({
+                  'idempotencyKey': _createIdempotencyKey,
+                  'documents': documents,
+                }, isCurrent: currentInput)
+                as Map<String, dynamic>;
+        final owner = ref.read(authenticatedScopeProvider);
+        if (!currentInput() || owner == null) return;
+        _batchCommand = command;
+        _batchOwner = {
+          'schema': 1,
+          'server': ref.read(apiBaseUrlProvider),
+          'userId': owner.userId,
+          'actorId': owner.actorId,
+        };
       }
-      if (!mounted) return;
-      if (documents.isEmpty) {
-        context.appError('请至少填写一条明细');
+      _updateEntry(() => _batchBusyTitle = '正在创建单据');
+      final scope = await captureFormDraftRequestScope();
+      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
+      final result = await runFormDraftSubmission(
+        () => scope.run(() {
+          dispatched = true;
+          return ref
+              .read(financeRepositoryProvider(widget.docType))
+              .createBatch(_batchCommand!);
+        }),
+        isDefiniteRejection: (_) => false,
+      );
+      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
+      await _acceptCreatedEntryBatch(result);
+    } on UiWorkCancelled {
+      if (!dispatched && !hadPending) {
+        _batchCommand = null;
+        try {
+          await releaseFormDraftBeforeDispatch();
+        } catch (_) {}
+        if (mounted && formDraftIdentityIsCurrent) {
+          context.appWarning('输入已变化，本次尚未发送。当前输入与草稿已保留');
+        }
+      } else {
+        try {
+          await saveFormDraftNow();
+        } catch (_) {}
+        if (mounted && formDraftIdentityIsCurrent) {
+          context.appWarning('原批次结果待核对，关闭等待不代表未写入。原请求继续保留');
+        }
+      }
+    } catch (error) {
+      if (!dispatched && !hadPending && _createdBatchIds.isEmpty) {
+        _batchCommand = null;
+        try {
+          await releaseFormDraftBeforeDispatch();
+        } catch (_) {}
+      } else {
+        try {
+          await saveFormDraftNow();
+        } catch (_) {}
+      }
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(
+          error is ApiException
+              ? error.message
+              : describeFormSaveError(error) ?? '保存结果待核对，原批次与输入已保留',
+        );
+      }
+    } finally {
+      if (mounted) _updateEntry(() => _saving = false);
+    }
+  }
+
+  Future<void> _acceptCreatedEntryBatch(
+    List<FinanceDocDetail> documents, {
+    bool originalReceiptAcknowledged = false,
+  }) async {
+    if (documents.isEmpty ||
+        documents.map((doc) => doc.id).toSet().length != documents.length) {
+      throw StateError('原批次未返回唯一创建结果');
+    }
+    _updateEntry(
+      () => _createdBatchIds = documents.map((doc) => doc.id).toList(),
+    );
+    try {
+      await checkpointFormDraftAfterConfirmedMutation(
+        originalReceiptAcknowledged: originalReceiptAcknowledged,
+      );
+    } catch (_) {
+      await checkpointFormDraftAfterCreation();
+    }
+    if (!mounted || !formDraftIdentityIsCurrent) return;
+    bumpListRefresh(ref, _cfg.refreshKey);
+    context.appSuccess('已生成 ${documents.length} 张${_cfg.label}');
+    await _finishEntryBatch();
+  }
+
+  Future<void> _recoverEntryBatch({bool cancel = false}) async {
+    if (_saving ||
+        _batchReviewing ||
+        _batchCommand == null ||
+        _createdBatchIds.isNotEmpty ||
+        !formDraftIdentityIsCurrent ||
+        !ref.read(currentPermissionsProvider).contains(_cfg.listPerm)) {
+      return;
+    }
+    final command = _batchCommand!;
+    final owner = ref.read(authenticatedScopeProvider);
+    if (owner == null) return;
+    _updateEntry(() {
+      _saving = true;
+      _batchBusyTitle = cancel ? '正在核实原批次是否写入' : '正在核对原批次结果';
+    });
+    try {
+      final scope = await captureFormDraftRequestScope();
+      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
+      final repository = ref.read(financeRepositoryProvider(widget.docType));
+      final receipt = await scope.run(
+        () => cancel
+            ? repository.cancelBatchUnwritten(
+                command,
+                owner.userId,
+                isCurrent: () =>
+                    mounted && scope.isCurrent && formDraftIdentityIsCurrent,
+              )
+            : repository.batchReceipt(
+                command,
+                owner.userId,
+                isCurrent: () =>
+                    mounted && scope.isCurrent && formDraftIdentityIsCurrent,
+              ),
+      );
+      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
+      if (receipt['found'] != true) {
+        context.appWarning('尚未取得原批次回执，原编号与全部输入继续保留');
         return;
       }
-      _batchCommand = {
-        'idempotencyKey': _createIdempotencyKey,
-        'documents': documents,
-      };
-    }
-    _updateEntry(() => _saving = true);
-    final wasUnknown = formDraftHasUnknownSubmission;
-    try {
-      await saveFormDraftNow();
-      final result = await runFormDraftSubmission(
-        () => ref
-            .read(financeRepositoryProvider(widget.docType))
-            .createBatch(_batchCommand!),
-        isDefiniteRejection: (error) =>
-            !wasUnknown &&
-            (error.httpStatus == 400 ||
-                error.httpStatus == 422 ||
-                (error.httpStatus == 409 && error.code == 'CONFLICT')),
-      );
-      if (!mounted || !formDraftIdentityIsCurrent) return;
-      if (result.isEmpty) throw StateError('批次未返回创建结果');
-      _updateEntry(
-        () => _createdBatchIds = result.map((doc) => doc.id).toList(),
-      );
-      await checkpointFormDraftAfterCreation();
-      if (!mounted || !formDraftIdentityIsCurrent) return;
-      bumpListRefresh(ref, _cfg.refreshKey);
-      context.appSuccess('已生成 ${result.length} 张${_cfg.label}');
-      await _finishEntryBatch();
-    } on ApiException catch (error) {
-      if (!formDraftHasUnknownSubmission) {
-        _batchCommand = null;
-        await saveFormDraftNow();
+      if (receipt['idempotencyKey'] != command['idempotencyKey'] ||
+          receipt['requestHash'] is! String ||
+          !RegExp(
+            r'^[a-f0-9]{64}$',
+          ).hasMatch(receipt['requestHash'] as String)) {
+        throw StateError('原批次来源证明不完整');
       }
-      if (mounted) context.appError(error.message);
-    } catch (error, stack) {
-      debugPrint('钱流批量创建失败: $error\n$stack');
-      if (mounted) {
-        context.appError(describeFormSaveError(error) ?? '保存结果待核对，请保留草稿后重试原批次');
+      if (receipt['outcome'] == 'CANCELLED_UNWRITTEN') {
+        _batchRetiredReceipt = {...receipt, 'requestBody': command};
+        _batchCommand = null;
+        _batchNeedsReview = true;
+        await checkpointFormDraftAfterConfirmedMutation(
+          originalReceiptAcknowledged: true,
+        );
+        if (mounted) setState(() {});
+      } else {
+        if (receipt['result'] is! Map) throw StateError('原批次创建结果不完整');
+        await _acceptCreatedEntryBatch(
+          repository.parseBatchResult(
+            Map<String, dynamic>.from(receipt['result'] as Map),
+          ),
+          originalReceiptAcknowledged: true,
+        );
+      }
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(
+          error is ApiException ? error.message : '原批次结果仍待核对，原输入与请求已保留',
+        );
       }
     } finally {
       if (mounted) _updateEntry(() => _saving = false);
@@ -956,7 +1205,10 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
   }
 
   Future<void> _finishEntryBatch() async {
-    _updateEntry(() => _saving = true);
+    _updateEntry(() {
+      _saving = true;
+      _batchBusyTitle = '正在办理单据凭证';
+    });
     try {
       final done = await flushPendingAttachments(
         context,
@@ -1066,11 +1318,23 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
     bool canApplyPrepayment,
   ) {
     final frozen =
-        _saving || _batchCommand != null || _createdBatchIds.isNotEmpty;
+        _saving ||
+        _batchReviewing ||
+        _batchCommand != null ||
+        _createdBatchIds.isNotEmpty ||
+        !ref.read(currentPermissionsProvider).contains(_cfg.createPerm);
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
           title: '新建${_cfg.label}',
+          titleWidget: UtenDialogTitleWithHint(
+            title: Text('新建${_cfg.label}'),
+            info: _batchCommand != null && _createdBatchIds.isEmpty
+                ? '原批次结果待核对。保留原编号与全部行，核对回执或核实未写；重试只发送原批次。'
+                : _batchNeedsReview
+                ? '原批次已确认未写，原币、金额与精度选择保留。重新核对后，由你明确保存新批次。'
+                : null,
+          ),
           leading: UtenBackButton(
             onPressed: () =>
                 popOrBackTo(context, defaultPath: RouteName.finance),
@@ -1263,8 +1527,8 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                 ),
               if (_saving || _preparingLedgerRows)
                 UtenBusyOverlay(
-                  title: _saving ? '正在创建单据' : '正在引入明细',
-                  description: '请稍候',
+                  title: _saving ? _batchBusyTitle : '正在引入明细',
+                  showDoNotLeaveHint: false,
                 ),
             ],
           ),
@@ -1274,8 +1538,40 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
         floatingActionButton: _loading || _initializationError != null
             ? null
             : UtenEditFloatingActions(
-                onCancel: () =>
-                    popOrBackTo(context, defaultPath: RouteName.finance),
+                onCancel: () {
+                  if (!_saving && !_batchReviewing && !_batchRecoveryMenuOpen) {
+                    popOrBackTo(context, defaultPath: RouteName.finance);
+                  }
+                },
+                cancelLabel: _batchCommand != null && _createdBatchIds.isEmpty
+                    ? '稍后核对'
+                    : '取消',
+                saveLabel: _createdBatchIds.isNotEmpty
+                    ? '继续办理凭证'
+                    : _batchCommand != null
+                    ? '重试原批次'
+                    : _batchNeedsReview
+                    ? '核对并保存新批次'
+                    : '保存',
+                extraLeading: [
+                  if (_batchCommand != null &&
+                      _createdBatchIds.isEmpty &&
+                      ref
+                          .read(currentPermissionsProvider)
+                          .contains(_cfg.listPerm))
+                    ...financeOriginalRequestActions(
+                      context,
+                      busy: _saving,
+                      receiptLabel: '核对原批次结果',
+                      receipt: () => _recoverEntryBatch(),
+                      cancel: () => _recoverEntryBatch(cancel: true),
+                      onMenuChanged: (value) {
+                        if (mounted) {
+                          setState(() => _batchRecoveryMenuOpen = value);
+                        }
+                      },
+                    ),
+                ],
                 onSave: _intakeBusy || _preparingLedgerRows
                     ? null
                     : _saveEntryBatch,

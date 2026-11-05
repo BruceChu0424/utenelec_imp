@@ -92,7 +92,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
         }
         var headers=new HashMap<UUID,JsonNode>();var result=new LinkedHashMap<UUID,RecordAccess>();
         for(UUID id:ids) {
-            JsonNode header=headers.computeIfAbsent(parents.get(id),key->json.valueToTree(historyDetail.apply(key)));
+            JsonNode header=headers.computeIfAbsent(parents.get(id),key->DocumentPlatformReadContext.withoutReuse(()->json.valueToTree(historyDetail.apply(key))));
             if(header==null||header.isNull()||!parents.get(id).toString().equals(header.path("id").asText()))throw missing();
             boolean price=canViewPrice()&&header.path("priceVisible").asBoolean(true)
                 && !header.path("priceMasked").asBoolean(false)&&!header.path("costMasked").asBoolean(false);
@@ -170,7 +170,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
         // Reading the old row identities must not veto a legal domain edit that revokes approval.
         // Keep the parent lock and the domain detail loader's visibility check; actual field
         // changes still go through authorize(..., true) before the business save.
-        Object detailResult = detail.apply(documentId);
+        Object detailResult = DocumentPlatformReadContext.withoutReuse(()->detail.apply(documentId));
         if (detailResult == null) throw missing();
         return json.valueToTree(detailResult);
     }
@@ -208,7 +208,12 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
             }
         }
         Map<UUID, JsonNode> documents = new HashMap<>();
-        for (UUID id : ordered) documents.put(id, json.valueToTree(detail.apply(id)));
+        Map<UUID,DocumentPlatformReadContext.Projection> projections=new HashMap<>();
+        for (UUID id : ordered) {
+            var projection=write?null:DocumentPlatformReadContext.projection(this,id,()->json.valueToTree(detail.apply(id)));
+            if(projection!=null)projections.put(id,projection);
+            documents.put(id,projection==null?(write?DocumentPlatformReadContext.withoutReuse(()->json.valueToTree(detail.apply(id))):json.valueToTree(detail.apply(id))):projection.header);
+        }
         Map<UUID, RecordAccess> access = new LinkedHashMap<>();
         for (UUID id : ids) {
             UUID parent = parents.get(id);
@@ -220,7 +225,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
             boolean allowed = created ? draft(header) && !header.hasNonNull("legacyId")
                     : writableDocument(parent, header);
             if (write && !allowed) throw new ApiException(ErrorCode.CONFLICT, "已提交或无编辑范围的记录不能修改扩展信息");
-            JsonNode row = parentLookup == null ? header : findItem(header, id);
+            JsonNode row = parentLookup == null ? header : projections.containsKey(parent)?projections.get(parent).item(id):findItem(header, id);
             if (row == null) throw missing();
             boolean price = canViewPrice() && !header.path("priceMasked").asBoolean(false)
                     && !header.path("costMasked").asBoolean(false);

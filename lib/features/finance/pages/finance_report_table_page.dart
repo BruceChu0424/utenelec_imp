@@ -33,6 +33,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_action_overflow.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -46,10 +47,10 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/responsive/compact_presentation.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../basic_data/models/client_node.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
@@ -465,8 +466,10 @@ class _FinanceReportTablePageState
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration;
     final epoch = ref.read(exportContextEpochProvider);
-    return loadBoundedReportPrintPreview(
-      rowLimit: _partyStatement || _materialStatement
+    final complete =
+        _partyStatement || _materialStatement || template && _statementTemplate;
+    final table = await loadBoundedReportPrintPreview(
+      rowLimit: complete
           ? maximumCompleteOriginalPrintRows
           : maximumTableOutputRows,
       useSuggestedWidths: template || _replicatedReport,
@@ -481,20 +484,18 @@ class _FinanceReportTablePageState
           epoch == ref.read(exportContextEpochProvider) &&
           identical(api, ref.read(apiClientProvider)),
     );
+    if (template &&
+        _statementTemplate &&
+        table.documentMetadata['paperLayout'] is! Map) {
+      throw const FormatException('服务端未提供完整财务原表版式，请刷新后重试');
+    }
+    return table;
   }
 
   Future<void> _openStatementTemplate() async {
     if (_preparingTemplate) return;
     setState(() => _preparingTemplate = true);
-    final generation = _loadGeneration;
-    final epoch = ref.read(exportContextEpochProvider);
     try {
-      final branding = await ref.read(platformBrandingProvider.future);
-      if (!mounted ||
-          generation != _loadGeneration ||
-          epoch != ref.read(exportContextEpochProvider)) {
-        return;
-      }
       await showUtenPrintPreview(
         context: context,
         title: _exportReport == 'gl/balance-sheet'
@@ -505,8 +506,6 @@ class _FinanceReportTablePageState
                 '${_to.year}',
               )
             : FinanceRequirementNames.monthlyProfitTitle,
-        subtitle:
-            '编制单位：${branding.companyName}  ${_exportReport == 'gl/balance-sheet' ? '会小企01表 · ${_fmt(_to)}' : '会小企02表 · ${_to.year}年${_to.month}月'}  单位：元',
         loader: () => _printLoader(template: true),
         applyTableProjection: false,
         exportEndpoint: '/finance/reports/export',
@@ -767,6 +766,9 @@ class _FinanceReportTablePageState
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
+        info: _pendingSourceNotes.isEmpty
+            ? null
+            : '待核对：$_pendingSourceNotes。未核对金额保留空白，可打开该行查看来源。${_statementTemplate ? '完整模板暂不可导出。' : ''}',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
@@ -911,14 +913,16 @@ class _FinanceReportTablePageState
         builder: (_) => UtenAlertDialog(
           showCloseButton: true,
           onClose: () => Navigator.pop(context),
-
-          title: Text(
-            (row['item'] ??
-                    row['styleName'] ??
-                    row['goodsName'] ??
-                    row['clientName'] ??
-                    _variant.label)
-                .toString(),
+          title: UtenDialogTitleWithHint(
+            title: Text(
+              (row['item'] ??
+                      row['styleName'] ??
+                      row['goodsName'] ??
+                      row['clientName'] ??
+                      _variant.label)
+                  .toString(),
+            ),
+            info: row['__pending'] == true ? '此行仍有待核对来源，空白金额不代表零。' : null,
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -927,7 +931,6 @@ class _FinanceReportTablePageState
               children: [
                 if (row['__basis'] != null)
                   SelectableText(row['__basis'].toString()),
-                if (row['__pending'] == true) const Text('此行仍有待核对来源，空白金额不代表零。'),
                 if (_exportReport == 'statements/subcontract' &&
                     _partyId != null &&
                     row['__goodsId'] != null &&
@@ -1529,390 +1532,457 @@ class _FinanceReportTablePageState
           ),
         )
         .toList();
-    final pendingNotes = data.rows
-        .where((row) => row['__pending'] == true)
-        .map((row) => (row['__basis'] ?? row['basis'] ?? '取数尚未核对完整').toString())
-        .toSet()
-        .take(3)
-        .join('；');
+    final pendingNotes = _pendingSourceNotes;
     final totalsBar = reportTotalsBar(
       data.totals,
       statisticsGeneratedAt: data.statisticsGeneratedAt,
     );
-    return MasterDataTableView<Map<String, dynamic>>(
-      expensiveRowMounts: false,
-      primary: true,
-      tableKey:
-          'finance.report.${widget.cardId}.$_exportReport.${_variant.fixedParams['direction'] ?? ''}.source-v1',
-      columns: columns,
-      serverColumnSearchKeys: data.columnSearchKeys,
-      facetPageLoaders: financeReportFacetLoaders(
-        ref,
-        report: _exportReport,
-        query: _exportQuery,
-        fields: [
-          for (final column in columns)
-            if (column.type == 'text' &&
-                data.columnSearchKeys.contains(column.key) &&
-                !_nonQueryableColumns.contains(column.key) &&
-                column.key != 'currencyCode' &&
-                !(_exportReport.startsWith('gl/') &&
-                    const {'side', 'category'}.contains(column.key)))
-              column.key,
-        ],
-      ),
-      facetSearchScope: financeReportFacetScope(
-        ref,
-        report: _exportReport,
-        query: _exportQuery,
-      ),
-      headerFilterScopeDescription: _exportReport == 'statements/subcontract'
-          ? '库存为同委外商、货品、颜色及数量单位的整组事实，在各加工币别重复显示，不累计；加工金额按本币别计价数量检索'
-          : _exportReport == 'cost/copper-fee'
-          ? '按往来方、货品、单位及币别核算；金额累计原成交金额'
-          : widget.cardId == 'gl' && _fixedFinanceRowOrder
-          ? '定位已计算行，原会计合计不重算'
-          : '检索所选条件的完整报表；合计与导出沿用同一范围',
-      items: data.rows,
-      rowColor: (row) =>
-          const {'SUBTOTAL', 'TOTAL', 'CURRENCY'}.contains(row['__rowKind'])
-          ? Theme.of(context).colorScheme.surfaceContainerHigh
-          : null,
-      toolbarActions: [
-        if (_accountingMonth)
-          SizedBox(
-            width: 220,
-            child: UtenMonthField(
-              label: _exportReport == 'gl/profit-monthly' ? '会计月份' : '截至月份',
-              value: UtenMonthField.format(_to),
-              info: _exportReport == 'gl/profit-monthly'
-                  ? '本月金额及同年1月至本月累计'
-                  : '${_to.year}年1月至${_to.month}月；后续月份不适用',
-              firstYear: 2010,
-              onChanged: (value) {
-                final month = UtenMonthField.parse(value);
-                if (month == null) return;
-                setState(() {
-                  _to = DateTime(month.year, month.month + 1, 0);
-                });
-                _persistAndReload();
-              },
-            ),
-          )
-        else
-          FinanceDateRangeFilter(
-            from: _from,
-            to: _to,
-            info:
-                _exportReport == 'gl/balance-sheet' ||
-                    _exportReport.startsWith('fa/')
-                ? '余额与明细截至所选截止日'
-                : null,
-            onChanged: (from, to) {
-              setState(() {
-                _from = from!;
-                _to = to!;
-                _statementReviewId = null;
-                _binId = null;
-                _bins = [];
-                ++_contextGeneration;
-                _loadingContexts = false;
-              });
-              return _persistAndReload();
-            },
-          ),
-        if (_exportReport.startsWith('fa/') &&
-            ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.financeAssetView))
-          UtenButton(
-            key: const Key('finance-asset-opening-group-open'),
-            onPressed: _openAssetOpeningGroup,
-            child: const Text('原表接续'),
-          ),
-        if (_partyStatement || _materialStatement)
-          UtenButton(
-            key: const Key('finance-statement-documents-open'),
-            onPressed: _openStatementDocuments,
-            child: const Text('原件及打印资料'),
-          ),
-        if (_exportReport == 'statements/subcontract' &&
-            ref.watch(currentPermissionsProvider).contains(Perm.financeViewAll))
-          UtenButton(
-            key: const Key('finance-subcontract-loss-policy-open'),
-            onPressed: _partyId == null ? null : _openSubcontractLossPolicy,
-            child: const Text('允许损耗率'),
-          ),
-        if (_exportReport == 'statements/subcontract' &&
-            ref.watch(currentPermissionsProvider).contains(Perm.financeViewAll))
-          UtenButton(
-            key: const Key('finance-subcontract-quantity-evidence-open'),
-            onPressed: _partyId == null
-                ? null
-                : _openSubcontractQuantityEvidence,
-            child: const Text('原表数量核对'),
-          ),
-        if (_partyStatement &&
-            _exportReport != 'statements/client' &&
-            ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.supplierSettlementView))
-          UtenButton(
-            key: const Key('finance-procurement-confirmation-open'),
-            onPressed: _openProcurementConfirmation,
-            child: const Text('对账确认'),
-          ),
-        if (_statementReviewId != null)
-          UtenButton(
-            onPressed: () {
-              setState(() {
-                _statementReviewId = null;
-                _page = 1;
-                _filters.clear();
-                _sortKey = null;
-              });
-              _load();
-            },
-            child: const Text('返回当前账载'),
-          ),
-        if (widget.cardId == 'gl' &&
-            ref.watch(currentPermissionsProvider).contains(Perm.financeViewAll))
-          UtenButton(
-            key: const Key('finance-accounting-import-open'),
-            onPressed: _openAccountingImport,
-            child: const Text(FinanceRequirementNames.accountingContinuation),
-          ),
-        if ((widget.cardId == 'gl' ||
-                widget.cardId == 'summary' ||
-                widget.cardId == 'recon') &&
-            ref.watch(currentPermissionsProvider).contains(Perm.financeViewAll))
-          UtenButton(
-            key: const Key('finance-auxiliary-open'),
-            onPressed: () async {
-              await showFinanceAuxiliaryPicker(
-                context,
-                canEdit: _canMaintainTemplates,
-                selection: false,
-              );
-              if (mounted) _load();
-            },
-            child: const Text('辅助核算项目'),
-          ),
-        if (_auxiliaryReport && _canMaintainTemplates)
-          UtenButton(
-            key: const Key('finance-auxiliary-import-open'),
-            onPressed: _openAuxiliaryImport,
-            child: const Text('导入原明细表'),
-          ),
-        if (_exportReport == 'ar-ap/summary' &&
-            _variant.fixedParams['direction'] == 'AR' &&
-            ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.arApLedgerView) &&
-            ref.watch(currentPermissionsProvider).contains(Perm.financeViewAll))
-          UtenButton(
-            key: const Key('finance-receivable-classification-open'),
-            onPressed: () async {
-              if (!_acceptedQueryCurrent) return;
-              final epoch = ref.read(exportContextEpochProvider),
-                  generation = _loadGeneration;
-              await showFinanceOpenItemClassificationDialog(
-                context,
-                partyId: _partyId,
-                currencyId: _currencyId,
-                receivable: true,
-              );
-              if (mounted &&
-                  epoch == ref.read(exportContextEpochProvider) &&
-                  generation == _loadGeneration) {
-                await _load();
-              }
-            },
-            child: const Text('货款/物料分类'),
-          ),
-        if (_exportReport == 'ar-ap/summary' &&
-            _variant.fixedParams['direction'] == 'AP' &&
-            ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.arApLedgerView)) ...[
-          UtenButton(
-            onPressed: () async {
-              await showFinanceOpenItemClassificationDialog(
-                context,
-                partyId: _partyId,
-                currencyId: _currencyId,
-              );
-              if (mounted) _load();
-            },
-            child: const Text('货款/模具款分类'),
-          ),
-          UtenButton(
-            onPressed: () async {
-              await showFinanceSupplierPrepaymentDialog(
-                context,
-                supplierId: _partyId,
-                currencyId: _currencyId,
-              );
-              if (mounted) _load();
-            },
-            child: const Text('供应商预付款'),
-          ),
-        ],
-        if (_canMaintainTemplates &&
-            const {
-              'gl/manufacturing-expense',
-              'gl/operating-pl',
-            }.contains(_exportReport))
-          UtenButton(
-            onPressed: () => _openExpenseInput('labor'),
-            child: const Text('人工归属'),
-          ),
-        if (_canMaintainTemplates && _exportReport == 'gl/operating-pl') ...[
-          UtenButton(
-            onPressed: () => _openExpenseInput('note'),
-            child: const Text('备注/差异原因'),
-          ),
-          UtenButton(
-            onPressed: () => _openExpenseInput('policy'),
-            child: const Text('核对成本口径'),
-          ),
-        ],
-        if (_canMaintainTemplates && _exportReport == 'gl/sales-expense') ...[
-          UtenButton(
-            onPressed: () => _openExpenseInput('group'),
-            child: const Text('人员/渠道归属'),
-          ),
-          UtenButton(
-            onPressed: () => _openExpenseInput('assignment'),
-            child: const Text('费用归属'),
-          ),
-        ],
-        if (widget.cardId == 'gl')
-          UtenButton(
-            key: const Key('finance-chart-open'),
-            onPressed: _openChart,
-            child: const Text(FinanceRequirementNames.chartCodes),
-          ),
-        if (widget.cardId == 'gl' &&
-            ref.watch(costWorkbenchCapabilityProvider).canReadPostings)
-          UtenButton(
-            key: const ValueKey('inventory-cost-open'),
-            type: UtenButtonType.secondary,
-            onPressed: _openInventoryCostPosting,
-            child: Text(AppLocalizations.of(context).inventoryCostTitle),
-          ),
-        if (_statementTemplate)
-          UtenButton(
-            key: const Key('finance-statement-template-preview'),
-            onPressed:
-                _filters.isEmpty &&
-                    _acceptedQueryCurrent &&
-                    !_loading &&
-                    !_preparingTemplate &&
-                    pendingNotes.isEmpty
-                ? _openStatementTemplate
-                : null,
-            size: UtenButtonSize.large,
-            child: const Text('模板预览'),
-          ),
-        UtenPrintPreviewButton(
-          applyTableProjection: !_replicatedReport,
-          enabled:
-              !_statementTemplate ||
-              (_acceptedQueryCurrent && !_loading && pendingNotes.isEmpty),
-          title: _variant.label,
-          subtitle: _partyStatement || _materialStatement
-              ? null
-              : '日期 ${_fmt(_queryFrom)} ~ ${_fmt(_queryTo)}（全部筛选结果）',
-          loader: _printLoader,
-          exportEndpoint: '/finance/reports/export',
-          exportPermission: Perm.financeReportExport,
-          exportReport: _exportReport,
-          exportQuery: _exportQuery,
-          exportFilename: _variant.label,
-          type: UtenButtonType.primary,
-          size: UtenButtonSize.large,
-        ),
-        UtenExportButton(
-          enabled:
-              !_statementTemplate ||
-              (_acceptedQueryCurrent &&
-                  !_loading &&
-                  (!_statementTemplate || _filters.isEmpty) &&
-                  pendingNotes.isEmpty),
-          endpoint: '/finance/reports/export',
-          requiredPermission: Perm.financeReportExport,
-          report: _exportReport,
-          queryParams: _exportQuery,
-          filename: _variant.label,
-          type: UtenButtonType.primary,
-          size: UtenButtonSize.large,
-        ),
-      ],
-      facets: data.facets,
-      nullCounts: const {},
-      filters: {for (final e in _filters.entries) e.key: e.value},
-      onFilterChanged: _onFilterChanged,
-      sortColumn: _sortKey,
-      sortAscending: _sortAsc,
-      onSortChange: _onSortChange,
-      onRowTap: _openReportRow,
-      isLoading: _loading,
-      isRefreshing: _reportPages.refreshing,
-      refreshError: _reportPages.refreshError,
-      refreshedPages: _reportPages.refreshedPages,
-      onRetainedPagesChanged: _reportPages.retainPages,
-      paginationRevision: _reportPages.paginationRevision,
-      error: _acceptedQueryCurrent ? _reportPages.error : _error,
-      onRetry: () => _load(background: _data != null),
-      emptyMessage: _isCustomerPrepaymentEvents
-          ? '所选日期和客户暂无客户预收流水'
-          : _materialStatement && _materialContextId == null
-          ? '请选择已审核的对账资料，按原表查看'
-          : _partyStatement && (_partyId == null || _currencyId == null)
-          ? '请选择实际往来对象和币别，按原表查看对账单'
-          : '暂无报表数据',
-      // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
-      // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
-      summaryBar: pendingNotes.isEmpty && data.documentMetadata.isEmpty
-          ? totalsBar
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (pendingNotes.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text(
-                      '待核对：$pendingNotes。未核对金额保留空白，可打开该行查看来源。${_statementTemplate ? '完整模板暂不可导出。' : ''}',
-                    ),
-                  ),
-                ?totalsBar,
-                if (data.documentMetadata.isNotEmpty)
-                  _documentMetadata(data, header: false),
+    return LayoutBuilder(
+      builder: (context, tableConstraints) =>
+          MasterDataTableView<Map<String, dynamic>>(
+            expensiveRowMounts: false,
+            primary: true,
+            tableKey:
+                'finance.report.${widget.cardId}.$_exportReport.${_variant.fixedParams['direction'] ?? ''}.source-v1',
+            columns: columns,
+            serverColumnSearchKeys: data.columnSearchKeys,
+            facetPageLoaders: financeReportFacetLoaders(
+              ref,
+              report: _exportReport,
+              query: _exportQuery,
+              fields: [
+                for (final column in columns)
+                  if (column.type == 'text' &&
+                      data.columnSearchKeys.contains(column.key) &&
+                      !_nonQueryableColumns.contains(column.key) &&
+                      column.key != 'currencyCode' &&
+                      !(_exportReport.startsWith('gl/') &&
+                          const {'side', 'category'}.contains(column.key)))
+                    column.key,
               ],
             ),
-      currentPage: data.page,
-      totalPages: data.totalPages,
-      paginationScope: (
-        _reportRead.snapshotRevision,
-        widget.cardId,
-        _variantIndex,
-        _from,
-        _to,
-        _keyword,
-        _clientId,
-        _partyId,
-        _currencyId,
-        _binId,
-        PagedReadQueryKey(_filters),
-        _sortKey,
-        _sortAsc,
-      ),
-      onPageChange: (p) {
-        _page = p;
-        _load(reuseMetadata: true);
-      },
+            facetSearchScope: financeReportFacetScope(
+              ref,
+              report: _exportReport,
+              query: _exportQuery,
+            ),
+            headerFilterScopeDescription:
+                _exportReport == 'statements/subcontract'
+                ? '库存为同委外商、货品、颜色及数量单位的整组事实，在各加工币别重复显示，不累计；加工金额按本币别计价数量检索'
+                : _exportReport == 'cost/copper-fee'
+                ? '按往来方、货品、单位及币别核算；金额累计原成交金额'
+                : widget.cardId == 'gl' && _fixedFinanceRowOrder
+                ? '定位已计算行，原会计合计不重算'
+                : '检索所选条件的完整报表；合计与导出沿用同一范围',
+            items: data.rows,
+            rowColor: (row) =>
+                const {
+                  'SUBTOTAL',
+                  'TOTAL',
+                  'CURRENCY',
+                }.contains(row['__rowKind'])
+                ? Theme.of(context).colorScheme.surfaceContainerHigh
+                : null,
+            toolbarActions: _fitFinancialActions(tableConstraints.maxWidth, [
+              if (_accountingMonth)
+                SizedBox(
+                  width: 220,
+                  child: UtenMonthField(
+                    label: _exportReport == 'gl/profit-monthly'
+                        ? '会计月份'
+                        : '截至月份',
+                    value: UtenMonthField.format(_to),
+                    info: _exportReport == 'gl/profit-monthly'
+                        ? '本月金额及同年1月至本月累计'
+                        : '${_to.year}年1月至${_to.month}月；后续月份不适用',
+                    firstYear: 2010,
+                    onChanged: (value) {
+                      final month = UtenMonthField.parse(value);
+                      if (month == null) return;
+                      setState(() {
+                        _to = DateTime(month.year, month.month + 1, 0);
+                      });
+                      _persistAndReload();
+                    },
+                  ),
+                )
+              else
+                FinanceDateRangeFilter(
+                  from: _from,
+                  to: _to,
+                  info:
+                      _exportReport == 'gl/balance-sheet' ||
+                          _exportReport.startsWith('fa/')
+                      ? '余额与明细截至所选截止日'
+                      : null,
+                  onChanged: (from, to) {
+                    setState(() {
+                      _from = from!;
+                      _to = to!;
+                      _statementReviewId = null;
+                      _binId = null;
+                      _bins = [];
+                      ++_contextGeneration;
+                      _loadingContexts = false;
+                    });
+                    return _persistAndReload();
+                  },
+                ),
+              if (_exportReport.startsWith('fa/') &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.financeAssetView))
+                UtenButton(
+                  key: const Key('finance-asset-opening-group-open'),
+                  onPressed: _openAssetOpeningGroup,
+                  child: const Text('原表接续'),
+                ),
+              if (_partyStatement || _materialStatement)
+                UtenButton(
+                  key: const Key('finance-statement-documents-open'),
+                  onPressed: _openStatementDocuments,
+                  child: const Text('原件及打印资料'),
+                ),
+              if (_exportReport == 'statements/subcontract' &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.financeViewAll))
+                UtenButton(
+                  key: const Key('finance-subcontract-loss-policy-open'),
+                  onPressed: _partyId == null
+                      ? null
+                      : _openSubcontractLossPolicy,
+                  child: const Text('允许损耗率'),
+                ),
+              if (_exportReport == 'statements/subcontract' &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.financeViewAll))
+                UtenButton(
+                  key: const Key('finance-subcontract-quantity-evidence-open'),
+                  onPressed: _partyId == null
+                      ? null
+                      : _openSubcontractQuantityEvidence,
+                  child: const Text('原表数量核对'),
+                ),
+              if (_partyStatement &&
+                  _exportReport != 'statements/client' &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.supplierSettlementView))
+                UtenButton(
+                  key: const Key('finance-procurement-confirmation-open'),
+                  onPressed: _openProcurementConfirmation,
+                  child: const Text('对账确认'),
+                ),
+              if (_statementReviewId != null)
+                UtenButton(
+                  onPressed: () {
+                    setState(() {
+                      _statementReviewId = null;
+                      _page = 1;
+                      _filters.clear();
+                      _sortKey = null;
+                    });
+                    _load();
+                  },
+                  child: const Text('返回当前账载'),
+                ),
+              if (widget.cardId == 'gl' &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.financeViewAll))
+                UtenButton(
+                  key: const Key('finance-accounting-import-open'),
+                  onPressed: _openAccountingImport,
+                  child: const Text(
+                    FinanceRequirementNames.accountingContinuation,
+                  ),
+                ),
+              if ((widget.cardId == 'gl' ||
+                      widget.cardId == 'summary' ||
+                      widget.cardId == 'recon') &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.financeViewAll))
+                UtenButton(
+                  key: const Key('finance-auxiliary-open'),
+                  onPressed: () async {
+                    await showFinanceAuxiliaryPicker(
+                      context,
+                      canEdit: _canMaintainTemplates,
+                      selection: false,
+                    );
+                    if (mounted) _load();
+                  },
+                  child: const Text('辅助核算项目'),
+                ),
+              if (_auxiliaryReport && _canMaintainTemplates)
+                UtenButton(
+                  key: const Key('finance-auxiliary-import-open'),
+                  onPressed: _openAuxiliaryImport,
+                  child: const Text('导入原明细表'),
+                ),
+              if (_exportReport == 'ar-ap/summary' &&
+                  _variant.fixedParams['direction'] == 'AR' &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.arApLedgerView) &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.financeViewAll))
+                UtenButton(
+                  key: const Key('finance-receivable-classification-open'),
+                  onPressed: () async {
+                    if (!_acceptedQueryCurrent) return;
+                    final epoch = ref.read(exportContextEpochProvider),
+                        generation = _loadGeneration;
+                    await showFinanceOpenItemClassificationDialog(
+                      context,
+                      partyId: _partyId,
+                      currencyId: _currencyId,
+                      receivable: true,
+                    );
+                    if (mounted &&
+                        epoch == ref.read(exportContextEpochProvider) &&
+                        generation == _loadGeneration) {
+                      await _load();
+                    }
+                  },
+                  child: const Text('货款/物料分类'),
+                ),
+              if (_exportReport == 'ar-ap/summary' &&
+                  _variant.fixedParams['direction'] == 'AP' &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.arApLedgerView)) ...[
+                UtenButton(
+                  onPressed: () async {
+                    await showFinanceOpenItemClassificationDialog(
+                      context,
+                      partyId: _partyId,
+                      currencyId: _currencyId,
+                    );
+                    if (mounted) _load();
+                  },
+                  child: const Text('货款/模具款分类'),
+                ),
+                UtenButton(
+                  onPressed: () async {
+                    await showFinanceSupplierPrepaymentDialog(
+                      context,
+                      supplierId: _partyId,
+                      currencyId: _currencyId,
+                    );
+                    if (mounted) _load();
+                  },
+                  child: const Text('供应商预付款'),
+                ),
+              ],
+              if (_canMaintainTemplates &&
+                  const {
+                    'gl/manufacturing-expense',
+                    'gl/operating-pl',
+                  }.contains(_exportReport))
+                UtenButton(
+                  onPressed: () => _openExpenseInput('labor'),
+                  child: const Text('人工归属'),
+                ),
+              if (_canMaintainTemplates &&
+                  _exportReport == 'gl/operating-pl') ...[
+                UtenButton(
+                  onPressed: () => _openExpenseInput('note'),
+                  child: const Text('备注/差异原因'),
+                ),
+                UtenButton(
+                  onPressed: () => _openExpenseInput('policy'),
+                  child: const Text('核对成本口径'),
+                ),
+              ],
+              if (_canMaintainTemplates &&
+                  _exportReport == 'gl/sales-expense') ...[
+                UtenButton(
+                  onPressed: () => _openExpenseInput('group'),
+                  child: const Text('人员/渠道归属'),
+                ),
+                UtenButton(
+                  onPressed: () => _openExpenseInput('assignment'),
+                  child: const Text('费用归属'),
+                ),
+              ],
+              if (widget.cardId == 'gl')
+                UtenButton(
+                  key: const Key('finance-chart-open'),
+                  onPressed: _openChart,
+                  child: const Text(FinanceRequirementNames.chartCodes),
+                ),
+              if (widget.cardId == 'gl' &&
+                  ref.watch(costWorkbenchCapabilityProvider).canReadPostings)
+                UtenButton(
+                  key: const ValueKey('inventory-cost-open'),
+                  type: UtenButtonType.secondary,
+                  onPressed: _openInventoryCostPosting,
+                  child: Text(AppLocalizations.of(context).inventoryCostTitle),
+                ),
+              if (_statementTemplate)
+                UtenButton(
+                  key: const Key('finance-statement-template-preview'),
+                  onPressed:
+                      _filters.isEmpty &&
+                          _acceptedQueryCurrent &&
+                          !_loading &&
+                          !_preparingTemplate &&
+                          pendingNotes.isEmpty
+                      ? _openStatementTemplate
+                      : null,
+                  height: UtenTableToolbar.controlHeight,
+                  icon: Icons.print_outlined,
+                  size: UtenButtonSize.large,
+                  child: const Text('预览打印'),
+                )
+              else
+                UtenPrintPreviewButton(
+                  applyTableProjection: !_replicatedReport,
+                  title: _variant.label,
+                  subtitle: _partyStatement || _materialStatement
+                      ? null
+                      : '日期 ${_fmt(_queryFrom)} ~ ${_fmt(_queryTo)}(最多前 2000 行)',
+                  loader: _printLoader,
+                  exportEndpoint: '/finance/reports/export',
+                  exportPermission: Perm.financeReportExport,
+                  exportReport: _exportReport,
+                  exportQuery: _exportQuery,
+                  exportFilename: _variant.label,
+                  type: UtenButtonType.primary,
+                  size: UtenButtonSize.large,
+                ),
+              UtenExportButton(
+                enabled:
+                    !_statementTemplate ||
+                    (_acceptedQueryCurrent &&
+                        !_loading &&
+                        (!_statementTemplate || _filters.isEmpty) &&
+                        pendingNotes.isEmpty),
+                endpoint: '/finance/reports/export',
+                requiredPermission: Perm.financeReportExport,
+                report: _exportReport,
+                queryParams: _exportQuery,
+                filename: _variant.label,
+                type: UtenButtonType.primary,
+                size: UtenButtonSize.large,
+              ),
+            ]),
+            facets: data.facets,
+            nullCounts: const {},
+            filters: {for (final e in _filters.entries) e.key: e.value},
+            onFilterChanged: _onFilterChanged,
+            sortColumn: _sortKey,
+            sortAscending: _sortAsc,
+            onSortChange: _onSortChange,
+            onRowTap: _openReportRow,
+            isLoading: _loading,
+            isRefreshing: _reportPages.refreshing,
+            refreshError: _reportPages.refreshError,
+            refreshedPages: _reportPages.refreshedPages,
+            onRetainedPagesChanged: _reportPages.retainPages,
+            paginationRevision: _reportPages.paginationRevision,
+            error: _acceptedQueryCurrent ? _reportPages.error : _error,
+            onRetry: () => _load(background: _data != null),
+            emptyMessage: _isCustomerPrepaymentEvents
+                ? '所选日期和客户暂无客户预收流水'
+                : _materialStatement && _materialContextId == null
+                ? '请选择已审核的对账资料，按原表查看'
+                : _partyStatement && (_partyId == null || _currencyId == null)
+                ? '请选择实际往来对象和币别，按原表查看对账单'
+                : '暂无报表数据',
+            // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
+            // 不是对当前这一页求和；后端未声明合计列时返回 null，整条不渲染。
+            summaryBar: data.documentMetadata.isEmpty
+                ? totalsBar
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ?totalsBar,
+                      if (data.documentMetadata.isNotEmpty)
+                        _documentMetadata(data, header: false),
+                    ],
+                  ),
+            currentPage: data.page,
+            totalPages: data.totalPages,
+            paginationScope: (
+              _reportRead.snapshotRevision,
+              widget.cardId,
+              _variantIndex,
+              _from,
+              _to,
+              _keyword,
+              _clientId,
+              _partyId,
+              _currencyId,
+              _binId,
+              PagedReadQueryKey(_filters),
+              _sortKey,
+              _sortAsc,
+            ),
+            onPageChange: (p) {
+              _page = p;
+              _load(reuseMetadata: true);
+            },
+          ),
     );
+  }
+
+  String get _pendingSourceNotes {
+    if (!_acceptedQueryCurrent) return '';
+    return _data?.rows
+            .where((row) => row['__pending'] == true)
+            .map(
+              (row) =>
+                  (row['__basis'] ?? row['basis'] ?? '取数尚未核对完整').toString(),
+            )
+            .toSet()
+            .take(3)
+            .join('；') ??
+        '';
+  }
+
+  /// Keep dates, printing and export immediately available. The retained Uten
+  /// controls move into the existing project action panel when maintenance
+  /// actions would squeeze column settings/fullscreen into a narrow column.
+  List<Widget> _fitFinancialActions(double width, List<Widget> actions) {
+    if (!width.isFinite || UtenCompactPresentation.of(context)) return actions;
+    bool primary(Widget child) =>
+        child is UtenPrintPreviewButton ||
+        child is UtenExportButton ||
+        child.key == const Key('finance-statement-template-preview');
+    final maintenance = actions
+        .where((child) => UtenActionOverflow.isAction(child) && !primary(child))
+        .toList();
+    if (maintenance.isEmpty) return actions;
+    final controls = actions
+        .where((child) => !UtenActionOverflow.isAction(child))
+        .toList();
+    final mainActions = actions.where(primary).toList();
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    final reserved =
+        UtenTableToolbar.controlHeight * (5 + mainActions.length * 3) * scale +
+        controls.length * 320 +
+        UtenSpacing.s8 * 5;
+    final budget = (width - reserved)
+        .clamp(UtenTableToolbar.controlHeight, double.infinity)
+        .toDouble();
+    return [
+      ...controls,
+      ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: budget),
+        child: UtenActionOverflow(
+          key: const ValueKey('finance-report-maintenance-actions'),
+          label: '财务操作',
+          children: maintenance,
+        ),
+      ),
+      ...mainActions,
+    ];
   }
 
   /// 状态类列判定：label 为「状态」或含「状态」（如 单据状态/审核状态）。

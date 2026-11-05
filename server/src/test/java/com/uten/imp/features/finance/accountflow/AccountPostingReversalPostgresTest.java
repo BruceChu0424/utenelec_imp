@@ -84,6 +84,8 @@ class AccountPostingReversalPostgresTest {
 
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private com.uten.imp.security.TxSessionVars transactionIdentity;
+    @Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativeAccounts;
     @Autowired private FinanceExpenseService expenses;
     @Autowired private FinanceOtherIncomeService incomes;
     @Autowired private FinanceBankTransferService transfers;
@@ -601,9 +603,12 @@ class AccountPostingReversalPostgresTest {
                     + "total_original,total_local,warehouse_id,status) VALUES(?,?,DATE '2026-08-01',?,?,7,100,700,?,1)",
                     receiptId, receiptNo, supplier, currency, warehouseId);
             jdbc.update("INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,goods_id,unit_id,unit_rate,qty,"
-                    + "price,amount_original,amount_local,replacement_intent,goods_snapshot_source) "
-                    + "VALUES(?,?,DATE '2026-08-01',?,?,?,1,100,1,100,700,'NORMAL','MASTER_AT_SAVE')",
+                    + "charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) "
+                    + "VALUES(?,?,DATE '2026-08-01',?,?,?,1,100,100,0,1,100,700,'NORMAL','MASTER_AT_SAVE')",
                     receiptItemId, receiptNo, receiptId, goodsId, unitId);
+            assertThat(jdbc.queryForObject("SELECT charged_base_qty FROM purchase_receipt_items WHERE id=?",BigDecimal.class,receiptItemId)).isEqualByComparingTo("100");
+            assertThat(jdbc.queryForObject("SELECT gift_base_qty FROM purchase_receipt_items WHERE id=?",BigDecimal.class,receiptItemId)).isZero();
+            assertThat(jdbc.queryForObject("SELECT quantity_adoption_version FROM purchase_receipt_items WHERE id=?",Integer.class,receiptItemId)).isEqualTo(2);
             jdbc.update("INSERT INTO procurement_receipt_consideration_parts(id,receipt_type,receipt_id,receipt_item_id,"
                     + "billing_mode,base_qty,nominal_original,nominal_local,payable_original,payable_local,created_by) "
                     + "SELECT ?,'PURCHASE',?,?,'STANDARD',100,100,700,100,700,id FROM users "
@@ -622,6 +627,7 @@ class AccountPostingReversalPostgresTest {
                     VALUES (?, 'AP', 'PURCHASE', 'PAYABLE', 'PURCHASE_RECEIPT', ?, ?, ?, DATE '2026-08-01', ?, ?,
                             7.000000, 100.0000, 700.0000, 0, 0, 0, 0, 100.0000, 0, 700.0000, false, 1, false)
                     """, ledger, receiptId, receiptNo, receiptNo, supplier, currency);
+            com.uten.imp.testsupport.NativeArApApprovalFixture.capture(jdbc,transactionIdentity,nativeAccounts,ledger);
         });
     }
 

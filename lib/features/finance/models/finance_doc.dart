@@ -352,9 +352,15 @@ class FinanceDocItem {
 // ===== 5 单据详情（超集）=====
 
 class FinanceDocDetail {
+  bool get deleted => sourceJson?['deleted'] == true;
+  bool get historyReadOnly => deleted || sourceJson?['historyReadOnly'] == true;
   const FinanceDocDetail({
     required this.id,
     this.version,
+    this.approvalVersion,
+    this.approvalSnapshot,
+    this.approvalPlatformFields = const {},
+    this.sourceJson,
     this.legacyId,
     bool legacyImported = false,
     this.billNo,
@@ -430,6 +436,10 @@ class FinanceDocDetail {
 
   final String id;
   final int? version;
+  final int? approvalVersion;
+  final String? approvalSnapshot;
+  final Map<String, dynamic> approvalPlatformFields;
+  final Map<String, dynamic>? sourceJson;
   final int? legacyId;
   final bool legacyImported;
   final String? billNo;
@@ -512,6 +522,14 @@ class FinanceDocDetail {
   ) => FinanceDocDetail(
     id: json['id'] as String,
     version: (json['version'] as num?)?.toInt(),
+    approvalVersion: json['approvalVersion'] as int?,
+    approvalSnapshot: json['approvalSnapshot'] as String?,
+    approvalPlatformFields: json['approvalPlatformFields'] is Map
+        ? Map<String, dynamic>.unmodifiable(
+            Map<String, dynamic>.from(json['approvalPlatformFields'] as Map),
+          )
+        : const {},
+    sourceJson: Map<String, dynamic>.unmodifiable(json),
     legacyId: (json['legacyId'] as num?)?.toInt(),
     legacyImported: importedBusinessDocument(json),
     billNo: json['billNo'] as String?,

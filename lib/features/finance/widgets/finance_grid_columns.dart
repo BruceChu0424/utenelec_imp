@@ -27,6 +27,7 @@ import '../models/finance_doc.dart';
 import '../models/finance_entry_terms.dart';
 import '../../../shared/pricing/line_pricing_controller.dart';
 import '../providers/finance_name_provider.dart';
+import '../shared/finance_entry_capabilities.dart';
 import 'ar_ap_picker_dialog.dart';
 import 'finance_entry_l10n.dart';
 import 'finance_style_picker.dart';
@@ -904,6 +905,14 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
 List<EditableGridColumn<FinanceGridRow>> _transferColumns(
   FinanceNameService names,
 ) {
+  final accounts = {
+    for (final account in financeEntryAccountChoices(
+      FinanceDocConfig.bankTransfer,
+      names,
+    ))
+      account.id:
+          names.accountEntries[account.id] ?? account.name ?? account.id,
+  };
   return [
     EditableGridColumn<FinanceGridRow>(
       key: 'inAccount',
@@ -922,12 +931,17 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
           label: '转入账户',
           value: value,
           items: [
-            for (final e in names.accountEntries.entries)
+            for (final e in accounts.entries)
               UtenDropdownItem(value: e.key, label: e.value),
             if (value != null &&
                 value.isNotEmpty &&
-                !names.accountEntries.containsKey(value))
-              UtenDropdownItem(value: value, label: value),
+                !accounts.containsKey(value))
+              UtenDropdownItem(
+                value: value,
+                label: names.accountEntries[value] ?? value,
+                enabled: false,
+                visible: false,
+              ),
           ],
           onChanged: (value) => row.inAccountId = value,
         ),

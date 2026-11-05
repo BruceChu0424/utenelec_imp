@@ -34,6 +34,10 @@ bool isTaskFormDraft(FormDraft draft) {
       FormDraftCatalog.fqcSheet.matchesDestination(draft) ||
       FormDraftCatalog.fqcInspection.matchesDestination(draft) ||
       FormDraftCatalog.warehouseDiscovery.matchesDestination(draft) ||
+      // These are period-task families, never standalone new editors. The
+      // router still requires the count period; recovery also proves its data.
+      FormDraftCatalog.workshopMaterialCount.matchesDestination(draft) ||
+      FormDraftCatalog.workshopMaterialCloseRetry.matchesDestination(draft) ||
       FormDraftCatalog.subcontractOutbound.matchesDestination(draft) ||
       FormDraftCatalog.subcontractOutboundBatch.matchesDestination(draft) ||
       FormDraftCatalog.warehouseSalesOutbound.matchesDestination(draft) ||
@@ -105,6 +109,43 @@ bool isTaskFormDraft(FormDraft draft) {
         hasList(selection['inspectionIds']);
   }
   return false;
+}
+
+/// The visible task's real period is the only source identity. A descriptor's
+/// bare route cannot borrow a different period from an unrelated draft.
+List<FormDraft> workshopMaterialPeriodTaskDraftsFor(
+  Iterable<FormDraft> drafts,
+  String periodId, {
+  bool closeRetryOnly = false,
+}) => taskDraftsFor(
+  drafts,
+  matches: (draft) {
+    if (periodId.isEmpty || draft.data['periodId'] != periodId) return false;
+    if (FormDraftCatalog.workshopMaterialCloseRetry.matchesDestination(draft)) {
+      return true;
+    }
+    return !closeRetryOnly &&
+        FormDraftCatalog.workshopMaterialCount.matchesDestination(draft) &&
+        Uri.tryParse(draft.route)?.queryParameters['periodId'] == periodId;
+  },
+);
+
+/// A cancelled chooser still handled the old input; it must not start another
+/// editor or mint a new settlement key.
+Future<bool> resumeWorkshopMaterialPeriodTaskDraft(
+  BuildContext context,
+  WidgetRef ref,
+  String periodId, {
+  bool closeRetryOnly = false,
+}) async {
+  final drafts = workshopMaterialPeriodTaskDraftsFor(
+    ref.read(formDraftsProvider),
+    periodId,
+    closeRetryOnly: closeRetryOnly,
+  );
+  if (drafts.isEmpty) return false;
+  await resumeTaskFormDraft(context, ref, drafts);
+  return true;
 }
 
 /// Each feature supplies an explicit source identity match. Never match a task

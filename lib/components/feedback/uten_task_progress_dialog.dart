@@ -54,7 +54,9 @@ Future<T> runUtenBlockingTask<T>({
   navigator.push(route);
   invalidation?.addListener(dismissIfInvalidated);
   try {
-    // Paint the busy state before starting work, including synchronous encoding.
+    // The first frame mounts the route; the portal's root entry paints in the
+    // next frame. Start even synchronous work only after that mask is visible.
+    await WidgetsBinding.instance.endOfFrame;
     await WidgetsBinding.instance.endOfFrame;
     if (isCurrent != null && !isCurrent()) {
       throw StateError('操作已取消，请重新操作');

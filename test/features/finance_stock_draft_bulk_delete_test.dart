@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -22,10 +21,11 @@ import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
-import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../helpers/badge_summary_fixture.dart';
 import '../support/filter_segment_tap.dart';
+import '../support/finance_command_test_support.dart';
+import '../support/finance_document_command_fixture.dart';
 
 void main() {
   Future<GoRouter> pumpList(
@@ -40,8 +40,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
+    await prepareFinanceCommandTest();
     final router = GoRouter(
       initialLocation: '/list?status=draft',
       routes: [
@@ -53,7 +52,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          sharedPreferencesProvider.overrideWithValue(preferences),
+          ...financeCommandTestOverrides(permissions: false, identity: false),
           apiClientProvider.overrideWithValue(api),
           currentPermissionsProvider.overrideWithValue(permissions),
           isSuperAdminProvider.overrideWithValue(false),
@@ -126,6 +125,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text(confirm ? '确认删除' : '取消'));
     await tester.pumpAndSettle();
+    // Each financial row is now reviewed with its displayed immutable snapshot
+    // before the same durable DELETE owner can send its command.
+    for (var reviewed = 0; confirm && reviewed < count; reviewed++) {
+      if (find.text('查看原单据').evaluate().isEmpty ||
+          find.text('确认删除').evaluate().isEmpty) {
+        break;
+      }
+      await tester.tap(find.text('确认删除'));
+      await tester.pumpAndSettle();
+    }
     expect(tester.takeException(), isNull);
   }
 
@@ -317,6 +326,36 @@ void main() {
     );
     expect(table<FinanceDocListItem>(tester).selectable, isFalse);
     expect(find.text('删除所选草稿 (0)'), findsNothing);
+  });
+
+  testWidgets('财务逐单复核取消保留原单和选择并停止后续删除', (tester) async {
+    final api = _DraftApi('/finance/receipts', {
+      'a': _row('a'),
+      'b': _row('b'),
+    });
+    await pumpList(
+      tester,
+      api,
+      const FinanceDocListPage(
+        docType: FinanceDocType.receipt,
+        initialStatus: 'draft',
+      ),
+      permissions: {Perm.financeReceiptView, Perm.financeReceiptDelete},
+    );
+    table<FinanceDocListItem>(tester).onSelectedIdsChanged!({'a', 'b'});
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除所选草稿 (2)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('销售收款单删除'), findsOneWidget);
+    expect(api.events, ['GET a']);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(api.deleted, isEmpty);
+    expect(api.events, ['GET a']);
+    expect(table<FinanceDocListItem>(tester).selectedIds, {'a', 'b'});
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('仓库没有删除权限时草稿不启用勾选', (tester) async {
@@ -666,6 +705,7 @@ Map<String, dynamic> _row(
   'billNo': 'DRAFT-$id',
   'billDate': '2026-09-26',
   'status': 0,
+  'version': 7,
   'makerId': maker,
   'canDelete': true,
   if (legacy) 'legacyId': 123,
@@ -717,7 +757,16 @@ class _DraftApi extends ApiClient {
       detailReads.add(id);
       events.add('GET $id');
       await detailGate?.future;
-      return {...rows[id]!, ...?detailChanges[id]};
+      final source = {...rows[id]!, ...?detailChanges[id]};
+      if (basePath.startsWith('/finance/')) {
+        return financeReviewedDetailFixture(
+          source,
+          FinanceDocType.values.singleWhere(
+            (type) => basePath == '/finance/${type.pathSegment}',
+          ),
+        );
+      }
+      return source;
     }
     return {};
   }
@@ -735,5 +784,39 @@ class _DraftApi extends ApiClient {
     if (deleteFailure != null) throw deleteFailure!;
     deleted.add(id);
     rows.remove(id);
+  }
+
+  @override
+  Future<Map<String, dynamic>> deleteObject(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async {
+    final command = Map<String, dynamic>.from(body! as Map);
+    expect(command.keys.toSet(), {
+      'requestId',
+      'expectedVersion',
+      'expectedSnapshot',
+    });
+    expect(command['expectedSnapshot'], List.filled(64, 'a').join());
+    expect(
+      command['expectedVersion'],
+      basePath == '/finance/receipts' || basePath == '/finance/payments'
+          ? 7
+          : null,
+    );
+    final id = path.substring(basePath.length + 1);
+    final result = {...rows[id]!, 'deleted': true};
+    await delete(path, query: query);
+    return {
+      ...financeReviewReceiptFixture(
+        path: path,
+        command: command,
+        result: result,
+        actorId: 'test-user',
+        operation: 'FINANCE_DOCUMENT_DELETE',
+      ),
+      'method': 'DELETE',
+    };
   }
 }

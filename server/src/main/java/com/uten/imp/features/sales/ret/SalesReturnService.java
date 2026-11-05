@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.common.finance.DocumentQuantitySavePlan;
+
 import com.uten.imp.common.util.EmployeeNameResolver.HistoricalWorkerRole;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
@@ -267,9 +269,24 @@ public class SalesReturnService {
         }
         applyHeader(req, r);
         applySource(r, source);
-        itemRepo.deleteByReturnId(id);
+        var quantityIntents=new java.util.ArrayList<DocumentQuantitySavePlan.Intent>();
+        int quantityPosition=1;
+        for(ReturnItemLine line:req.getItems()){
+            int position=line.getLineNo()==null?quantityPosition:line.getLineNo();
+            quantityIntents.add(DocumentQuantitySavePlan.intent(position,DocumentQuantitySavePlan.identity(line.getId(),line.getPlatformFields()==null?null:line.getPlatformFields().sourceRecordId()),
+                    "goods_id",line.getGoodsId(),
+                    "color_id",line.getColorId(),
+                    "unit_id",line.getUnitId(),
+                    "unit_rate",line.getUnitRate(),
+                    "qty",line.getQty(),
+                    "order_item_id",line.getOrderItemId(),
+                    "out_item_id",line.getOutItemId()));
+            quantityPosition++;
+        }
+        var quantityPlan=DocumentQuantitySavePlan.prepare(em,DocumentQuantitySavePlan.Family.SALES_RETURN,id,quantityIntents);
+        quantityPlan.deleteReplaced(em);
         itemRepo.flush();
-        List<ReturnItemDto> items = saveItems(r, req.getItems());
+        List<ReturnItemDto> items = saveItems(r, req.getItems(),quantityPlan);
         applyTotals(r, items);
         return toDetail(r, items, true, true);
     }
@@ -1256,6 +1273,10 @@ public class SalesReturnService {
     }
 
     private List<ReturnItemDto> saveItems(SalesReturn r, List<ReturnItemLine> lines) {
+        return saveItems(r,lines,DocumentQuantitySavePlan.empty());
+    }
+
+    private List<ReturnItemDto> saveItems(SalesReturn r, List<ReturnItemLine> lines,DocumentQuantitySavePlan.Plan quantityPlan) {
         Map<UUID, SalesGoodsSnapshot> shipmentSnapshots = SalesGoodsSnapshot.fromShipmentItems(
                 em,
                 lines.stream().map(ReturnItemLine::getOutItemId).toList(),
@@ -1279,7 +1300,9 @@ public class SalesReturnService {
         for (ReturnItemLine l : lines) {
             NonNegativeCommercialSignGuard.requireRequestLine(
                     "销售退货", l.getQty(), l.getPrice(), l.getDiscount());
-            SalesReturnItem it = new SalesReturnItem();
+            int lineNo=l.getLineNo()==null?auto:l.getLineNo();
+            var quantitySaved=quantityPlan.saved(lineNo);
+            SalesReturnItem it = quantitySaved==null?new SalesReturnItem():quantitySaved.entity(em,SalesReturnItem.class);
             it.setReturnId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());

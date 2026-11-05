@@ -92,9 +92,9 @@ class FinancePaymentStyleValidationTest {
         InOrder order = inOrder(em, queries.hierarchyLock(), queries.styleValidation());
         order.verify(em).createNativeQuery(contains("PAYMENT_STYLE_HIERARCHY"));
         order.verify(queries.hierarchyLock()).getSingleResult();
-        order.verify(em).createNativeQuery(argThat(sql -> sql.contains(
-                "fn_finance_expense_posting_style_allowed(:id,:purpose,true)")));
+        order.verify(em).createNativeQuery("SELECT fn_finance_expense_posting_style_allowed(:id,:purpose,true)");
         order.verify(queries.styleValidation()).setParameter("id", styleId);
+        order.verify(queries.styleValidation()).setParameter("purpose", "ORDINARY_EXPENSE");
         order.verify(queries.styleValidation()).getSingleResult();
         verify(itemRepo, never()).save(org.mockito.ArgumentMatchers.any());
     }
@@ -134,8 +134,10 @@ class FinancePaymentStyleValidationTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("PAYMENT_STYLE_HIERARCHY")) return hierarchyLock;
-            // 2026-11-04 财务整合（0aaffa3aa）：一般费用走函数校验，其他收入仍走原生 payment_styles 查询。
-            if (sql.contains("fn_finance_expense_posting_style_allowed")) return styleValidation;
+            if (sql.contains("fn_finance_expense_posting_style_allowed")) {
+                when(styleValidation.getSingleResult()).thenReturn(false);
+                return styleValidation;
+            }
             if (sql.contains("FROM payment_styles")) return styleValidation;
             throw new AssertionError("unexpected SQL: " + sql);
         });

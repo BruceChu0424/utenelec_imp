@@ -96,7 +96,7 @@ public class XlsxExportService {
             // their own directory and budget; no process-wide setting changes.
             return org.apache.poi.util.TempFile.withStrategy(strategy, () -> {
                 try {
-                    return new org.apache.poi.xssf.streaming.GZIPSheetDataWriter() {
+                    return new RichTextSheetDataWriter() {
                         @Override protected java.io.OutputStream decorateOutputStream(java.io.FileOutputStream output) throws IOException {
                             return new java.util.zip.GZIPOutputStream(budget.guard(output));
                         }
@@ -107,6 +107,29 @@ public class XlsxExportService {
             });
         } catch (java.io.UncheckedIOException failure) {
             throw failure.getCause();
+        }
+    }
+
+    /** Preserve inline rich runs without retaining every string in a shared
+     * strings table. Ordinary cells still use POI's bounded streaming writer. */
+    private static class RichTextSheetDataWriter extends org.apache.poi.xssf.streaming.GZIPSheetDataWriter {
+        RichTextSheetDataWriter() throws IOException { super(); }
+
+        @Override public void writeCell(int columnIndex, Cell cell) throws IOException {
+            if(cell==null||cell.getCellType()!=org.apache.poi.ss.usermodel.CellType.STRING
+                    ||!(cell.getRichStringCellValue() instanceof org.apache.poi.xssf.usermodel.XSSFRichTextString rich)
+                    ||!rich.hasFormatting()) {
+                super.writeCell(columnIndex,cell);
+                return;
+            }
+            String address=org.apache.poi.ss.util.CellReference.convertNumToColString(columnIndex)+(cell.getRowIndex()+1);
+            int style=Short.toUnsignedInt(cell.getCellStyle().getIndex());
+            _out.write("<c r=\""+address+"\" s=\""+style+"\" t=\"inlineStr\">");
+            rich.getCTRst().save(_out,new org.apache.xmlbeans.XmlOptions()
+                    .setSaveSyntheticDocumentElement(new javax.xml.namespace.QName(
+                            "http://schemas.openxmlformats.org/spreadsheetml/2006/main","is"))
+                    .setSaveNoXmlDecl());
+            _out.write("</c>");
         }
     }
 
@@ -144,9 +167,9 @@ public class XlsxExportService {
         private StreamingWorkbook(TableColumnProjection projection, String allowedScope, ExportTemporaryBudget tempBudget) {
             this.rowSelection = new ExportRowSelection(projection);
             this.tempBudget = tempBudget;
-            workbook = tempBudget == null ? new SXSSFWorkbook(ROW_ACCESS_WINDOW) : new SXSSFWorkbook(ROW_ACCESS_WINDOW) {
+            workbook = new SXSSFWorkbook(ROW_ACCESS_WINDOW) {
                 @Override protected org.apache.poi.xssf.streaming.SheetDataWriter createSheetDataWriter() throws IOException {
-                    return privateSheetWriter(tempBudget);
+                    return tempBudget==null?new RichTextSheetDataWriter():privateSheetWriter(tempBudget);
                 }
             };
             this.projection = projection;
@@ -273,10 +296,23 @@ public class XlsxExportService {
                 Row row=sheet.getRow(rowNo);if(row==null){row=sheet.createRow(rowNo);}appendSupplemental(state,row);
             }
             sheet.setRepeatingRows(new org.apache.poi.ss.util.CellRangeAddress(0,layout.headerRow(),-1,-1));
+            sheet.getPrintSetup().setPaperSize(org.apache.poi.ss.usermodel.PrintSetup.A4_PAPERSIZE);
             sheet.getPrintSetup().setLandscape(layout.landscape());sheet.setFitToPage(true);
             sheet.getPrintSetup().setFitWidth((short)1);sheet.getPrintSetup().setFitHeight((short)0);
             sheet.setHorizontallyCenter(true);
             if(!layout.sourcePrint().isEmpty())applySourcePageSetup(state);
+            else for(int rowNo=0;rowNo<=layout.headerRow();rowNo++){
+                Row row=sheet.getRow(rowNo);if(row==null)continue;
+                for(Cell cell:row){
+                    int lastColumn=cell.getColumnIndex(),rowSpan=1;boolean anchor=true;
+                    for(var merge:layout.merges())if(rowNo>=merge.firstRow()&&rowNo<=merge.lastRow()
+                        &&cell.getColumnIndex()>=merge.firstColumn()&&cell.getColumnIndex()<=merge.lastColumn()){
+                        anchor=rowNo==merge.firstRow()&&cell.getColumnIndex()==merge.firstColumn();
+                        lastColumn=merge.lastColumn();rowSpan=merge.lastRow()-merge.firstRow()+1;break;
+                    }
+                    if(anchor)protectLayoutValue(state,cell,cell.getColumnIndex(),lastColumn,rowSpan);
+                }
+            }
         }
 
         private void applySourcePageSetup(SheetState state){
@@ -301,27 +337,51 @@ public class XlsxExportService {
             if(details.isEmpty())return;var original=cell.getCellStyle();String key="source-text|"+original.getIndex()+"|"+details;
             cell.setCellStyle(layoutStyles.computeIfAbsent(key,ignored->{var style=workbook.createCellStyle();style.cloneStyleFrom(original);style.setWrapText(Boolean.TRUE.equals(details.get("wrapText")));style.setShrinkToFit(Boolean.TRUE.equals(details.get("shrinkToFit")));Object alignment=details.get("alignment");if(alignment instanceof String text&&java.util.Set.of("LEFT","CENTER","RIGHT").contains(text)){style.setAlignment(HorizontalAlignment.valueOf(text));}String fontKey="source|"+state.layout.fontName()+"|"+details.get("fontSize")+"|"+details.get("bold");var font=layoutFonts.computeIfAbsent(fontKey,unused->{var created=workbook.createFont();created.setFontName(state.layout.fontName());created.setFontHeightInPoints((short)sourceNumber(details.get("fontSize")));created.setBold(Boolean.TRUE.equals(details.get("bold")));return created;});style.setFont(font);return style;}));
         }
-        /** Source nowrap is retained in sourcePrint. Complete new body values
-         * may expand vertically; no font reduction, raw-value rewrite or clipped
-         * date/item tail is allowed. The estimate is conservative for source
-         * Songti glyphs; Excel remains responsible for its actual line wrapping. */
-        private void protectSourceValue(SheetState state,Cell cell,int firstColumn,int lastColumn,int rowSpan){
-            var source=state.layout.sourcePrint();if(source.isEmpty()||cell.getCellStyle().getShrinkToFit())return;
+        /** Complete values may expand vertically without changing source widths,
+         * fonts, input or precision. Frozen source paper uses its physical width
+         * proof; generated layouts use the widths actually assigned to the sheet. */
+        private void protectLayoutValue(SheetState state,Cell cell,int firstColumn,int lastColumn,int rowSpan){
+            var source=state.layout.sourcePrint();if(cell.getCellStyle().getShrinkToFit())return;
             String value=sourceValueFormatter.formatCellValue(cell);if(value.isEmpty())return;
-            Object raw=source.get("columnWidthsPoints");if(!(raw instanceof java.util.List<?> widths)||lastColumn>=widths.size())throw new IllegalArgumentException("Source column width proof unavailable");
-            double width=-4;for(int column=firstColumn;column<=lastColumn;column++){if(!state.layout.hiddenColumns().contains(column))width+=sourceNumber(widths.get(column));}if(width<=0)return;
+            double width=-4;
+            if(source.isEmpty()){
+                for(int column=firstColumn;column<=lastColumn;column++)if(!state.sheet.isColumnHidden(column))width+=state.sheet.getColumnWidthInPixels(column)*.75d;
+            }else{
+                Object raw=source.get("columnWidthsPoints");if(!(raw instanceof java.util.List<?> widths)||lastColumn>=widths.size())throw new IllegalArgumentException("Source column width proof unavailable");
+                for(int column=firstColumn;column<=lastColumn;column++)if(!state.layout.hiddenColumns().contains(column))width+=sourceNumber(widths.get(column));
+            }
+            if(width<=0)return;
+            double fontSize=workbook.getFontAt(cell.getCellStyle().getFontIndex()).getFontHeightInPoints();
+            // Excel cannot wrap a numeric display token; a taller row still
+            // shows ###. Generated layouts retain the original minimum width
+            // and grow only the affected column, using the formatted value
+            // (including %, sign, units and precision), never a changed value
+            // or smaller font. Frozen physical source canvases stay unchanged.
+            if(source.isEmpty()&&firstColumn==lastColumn&&cell.getCellType()==org.apache.poi.ss.usermodel.CellType.NUMERIC) {
+                double longest=0,line=0;
+                for(int offset=0;offset<value.length();){int cp=value.codePointAt(offset);offset+=Character.charCount(cp);if(cp=='\n'){longest=Math.max(longest,line);line=0;}else line+=layoutGlyphAdvance(cp,fontSize);}
+                double requiredWidth=Math.max(longest,line)+4;
+                if(requiredWidth>width+4) {
+                    int requested=(int)Math.ceil(state.sheet.getColumnWidth(firstColumn)*requiredWidth/(width+4));
+                    if(requested>255*256)throw new IllegalArgumentException("完整数字超过Excel最大列宽，不能截断或缩字");
+                    state.sheet.setColumnWidth(firstColumn,requested);
+                    width=state.sheet.getColumnWidthInPixels(firstColumn)*.75d-4;
+                }
+            }
             var original=cell.getCellStyle();String key="source-complete|"+original.getIndex();cell.setCellStyle(layoutStyles.computeIfAbsent(key,ignored->{var style=workbook.createCellStyle();style.cloneStyleFrom(original);style.setWrapText(true);return style;}));
-            double fontSize=workbook.getFontAt(cell.getCellStyle().getFontIndex()).getFontHeightInPoints(),used=0;int lines=1;
-            for(int offset=0;offset<value.length();){int cp=value.codePointAt(offset);offset+=Character.charCount(cp);if(cp=='\n'){lines++;used=0;continue;}double advance=fontSize*(cp<128?.65:1.0);if(used>0&&used+advance>width){lines++;used=0;}used+=advance;}
+            double used=0;int lines=1;
+            for(int offset=0;offset<value.length();){int cp=value.codePointAt(offset);offset+=Character.charCount(cp);if(cp=='\n'){lines++;used=0;continue;}double advance=layoutGlyphAdvance(cp,fontSize);if(used>0&&used+advance>width){lines++;used=0;}used+=advance;}
             double required=lines==1?fontSize+2:lines*fontSize*1.35+4,existing=0;int anchor=cell.getRowIndex();for(int row=anchor;row<anchor+rowSpan;row++){Row record=state.sheet.getRow(row);existing+=record==null?state.layout.rowHeight():record.getHeightInPoints();}
             if(required>existing){Row last=state.sheet.getRow(anchor+rowSpan-1);double height=last.getHeightInPoints()+required-existing;if(height>409.5)throw new IllegalArgumentException("原表完整单格超过Excel行高，不能截断或缩字");last.setHeightInPoints((float)height);}
         }
+
+        private double layoutGlyphAdvance(int codePoint,double fontSize){return fontSize*(codePoint<128?.65:1.0);}
 
         private void appendSupplemental(SheetState state,Row row){
             for(var item:state.supplemental.getOrDefault(row.getRowNum(),List.of())){
                 Cell cell=row.createCell(item.column());
                 writeCell(cell,item.type(),item.value(),number,quantity,text,units);
-                var alignment=item.header()?HorizontalAlignment.CENTER:ExportCellValues.decimal(item.value())==null?HorizontalAlignment.LEFT:HorizontalAlignment.RIGHT;
+                var alignment=item.header()?HorizontalAlignment.CENTER:HorizontalAlignment.valueOf(ExportTableLayout.columnAlignment(item.type()));
                 cell.setCellStyle(layoutStyle(cell.getCellStyle(),state.layout,item.header(),null,alignment,true));
             }
         }
@@ -341,7 +401,7 @@ public class XlsxExportService {
                     writeCell(cell, column.type(), values == null ? null : values.get(column.key()), number, quantity, text,units);
                     if(state.layout==null)applyUnit(cell, column, values, workbook, units);
                     else {
-                        var layout=state.layout;var alignment=ExportCellValues.decimal(values==null?null:values.get(column.key()))==null?HorizontalAlignment.LEFT:HorizontalAlignment.RIGHT;
+                        var layout=state.layout;var alignment=HorizontalAlignment.valueOf(ExportTableLayout.columnAlignment(column.type()));
                         boolean bold=false;String fill=null;
                         for(var band:state.bands.getOrDefault(state.dataCount,List.of()))if(i>=band.firstColumn()&&i<=band.lastColumn()){bold=band.bold();fill=band.fill();}
                         CellStyle base=cell.getCellStyle();
@@ -359,12 +419,24 @@ public class XlsxExportService {
                         cell.setCellStyle(layoutStyle(base,layout,bold,fill,alignment,true));
                         if(values!=null&&Boolean.TRUE.equals(values.get("__showCurrencyInOriginal"))&&ExportColumn.MONEY.equals(column.type())&&"currencyCode".equals(column.unitKey()))applyUnit(cell,column,values,workbook,units);
                         applySourceCellStyle(state,cell,row.getRowNum(),i,true);
-                        protectSourceValue(state,cell,i,i,1);
-                        for(var span:state.spans.getOrDefault(state.dataCount,List.of()))if(span.column()==i&&cell.getCellType()==org.apache.poi.ss.usermodel.CellType.STRING) {
-                            String value=cell.getStringCellValue();if(span.start()<0||span.end()>value.length()||span.start()>=span.end())continue;
-                            var rich=new org.apache.poi.xssf.usermodel.XSSFRichTextString(value);var font=workbook.createFont();font.setFontName(layout.fontName());font.setFontHeightInPoints(layout.fontSize());
-                            ((org.apache.poi.xssf.usermodel.XSSFFont)font).setColor(new org.apache.poi.xssf.usermodel.XSSFColor(java.util.HexFormat.of().parseHex(span.color()),new org.apache.poi.xssf.usermodel.DefaultIndexedColorMap()));
-                            rich.applyFont(span.start(),span.end(),font);cell.setCellValue(rich);
+                        protectLayoutValue(state,cell,i,i,1);
+                        if(cell.getCellType()==org.apache.poi.ss.usermodel.CellType.STRING) {
+                            String value=cell.getStringCellValue();
+                            org.apache.poi.xssf.usermodel.XSSFRichTextString rich=null;
+                            for(var span:state.spans.getOrDefault(state.dataCount,List.of()))if(span.column()==i) {
+                                if(span.end()>value.length())continue;
+                                if(rich==null)rich=new org.apache.poi.xssf.usermodel.XSSFRichTextString(value);
+                                int baseIndex=cell.getCellStyle().getFontIndex();
+                                String key="span:"+baseIndex+":"+span.color().toUpperCase(java.util.Locale.ROOT);
+                                Font font=layoutFonts.computeIfAbsent(key,ignored->{
+                                    var colored=(org.apache.poi.xssf.usermodel.XSSFFont)workbook.createFont();
+                                    colored.getCTFont().set(((org.apache.poi.xssf.usermodel.XSSFFont)workbook.getFontAt(baseIndex)).getCTFont());
+                                    colored.setColor(new org.apache.poi.xssf.usermodel.XSSFColor(java.util.HexFormat.of().parseHex(span.color()),new org.apache.poi.xssf.usermodel.DefaultIndexedColorMap()));
+                                    return colored;
+                                });
+                                rich.applyFont(span.start(),span.end(),font);
+                            }
+                            if(rich!=null)cell.setCellValue(rich);
                         }
                     }
                 }
@@ -405,7 +477,7 @@ public class XlsxExportService {
                 var original=cell.getCellStyle();String styleKey="source-footer|"+original.getDataFormatString()+"|"+layout.fontName()+"|"+source.fontSize()+"|"+source.bold()+"|"+source.alignment();
                 cell.setCellStyle(layoutStyles.computeIfAbsent(styleKey,key->{var style=workbook.createCellStyle();style.cloneStyleFrom(original);style.setAlignment(HorizontalAlignment.valueOf(source.alignment()));style.setVerticalAlignment(org.apache.poi.ss.usermodel.VerticalAlignment.CENTER);style.setWrapText(true);var font=layoutFonts.computeIfAbsent(layout.fontName()+"|"+source.fontSize()+"|"+source.bold(),ignored->{var value=workbook.createFont();value.setFontName(layout.fontName());value.setFontHeightInPoints((short)source.fontSize());value.setBold(source.bold());return value;});style.setFont(font);return style;}));
                 applySourceCellStyle(state,cell,layout.headerRow()+1+footer.minimumDataRows()+source.rowOffset(),source.column(),false);
-                protectSourceValue(state,cell,source.column(),source.lastColumn(),source.rowSpan());
+                protectLayoutValue(state,cell,source.column(),source.lastColumn(),source.rowSpan());
                 if(source.rowSpan()>1||source.lastColumn()>source.column())state.sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowNo,rowNo+source.rowSpan()-1,source.column(),source.lastColumn()));
             }
         }
@@ -424,6 +496,7 @@ public class XlsxExportService {
                     Row row=state.sheet.createRow(state.rowIndex++);row.setHeightInPoints(state.layout.rowHeight()*2);
                     Cell cell=row.createCell(0);cell.setCellValue(note);cell.setCellStyle(layoutStyle(text,state.layout,false,null,HorizontalAlignment.LEFT,false));
                     if(state.columns.size()>1)state.sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(row.getRowNum(),row.getRowNum(),0,state.columns.size()-1));
+                    protectLayoutValue(state,cell,0,state.columns.size()-1,1);
                     appendSupplemental(state,row);
                 }
                 int lastSupplemental=state.supplemental.keySet().stream().mapToInt(Integer::intValue).max().orElse(-1);

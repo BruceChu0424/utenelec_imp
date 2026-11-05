@@ -1,0 +1,73 @@
+{
+  "files": [
+    {
+      "sha256": "FE5E4C3AA4665442B1ED568D14B56086F10E6BA6C892EAA69ED4AC049C45D19F",
+      "path": "lib/core/print/source_table_paper.dart"
+    },
+    {
+      "sha256": "8B321C0D44BED1039D79C2CCCA8876039693B5283B75DF0D9EC2CFB8C446D79C",
+      "path": "test/components/print/financial_source_table_paper_test.dart"
+    },
+    {
+      "sha256": "F585D7B0BBD819DB7051C43613B96E97F1E154225506B153F28F273E561CA870",
+      "path": "contracts/finance-paper-layout/financial-v1.json"
+    },
+    {
+      "sha256": "30E799245BAAC0E0B1A237784CAA7D79A3A57E759F805562D0F3782B2646D28D",
+      "path": "lib/features/purchase/pages/purchase_doc_edit_page.dart"
+    },
+    {
+      "sha256": "583D9F622A0423DB7A0CEDC4A7AA3461B79275460F42ED87B93FDCA07954D1AC",
+      "path": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart"
+    },
+    {
+      "sha256": "0F4CCBBA51B3D0CD554FCB92C3434942494F955D8FFCDAB1D1FE512A664A6DE1",
+      "path": "lib/features/sales/pages/sales_doc_edit_page.dart"
+    },
+    {
+      "sha256": "2825F90864BEFAE55EBC7BED3EF4DBEDB64F60A3FE5BD586B1D0D91B97831177",
+      "path": "test/shared/models/procurement_source_form_test.dart"
+    },
+    {
+      "sha256": "64536F875B84DDFD0F753AABB24BBBCA83A91AE64D249B9740994C7A98BD2CA0",
+      "path": "test/features/sales/pages/sales_doc_edit_v187_test.dart"
+    },
+    {
+      "sha256": "29FCD145F23B849B373C8F25648267A947ABC291EE4C3F6478C56C46D755DAA2",
+      "path": "test/support/pump_until.dart"
+    }
+  ],
+  "date": "2026-11-05",
+  "status": "Renderer geometry and caller tests passed; actual new application paper remains Root acceptance; annual unit heading layout issue reported to server owner",
+  "paper": {
+    "allCellsExactIgnoringLayoutWhitespace": true,
+    "legacyOriginals": 14,
+    "log": "financial-paper-all-v8.log",
+    "analysis": "financial-paper-analyze-v8.log: No issues found",
+    "annual33Before32": true,
+    "knownLayout": "annual unit heading O3 too narrow and wraps vertically; server source geometry owner notified; no Dart guessed spans",
+    "format": "2 files 0 changed",
+    "readback": "financial-paper-qa-v8/financial-geometry-pdf-readback.json",
+    "annualOriginalRows": 21,
+    "packetOrigin": "Production Java FinanceTemplateLayouts/FinancialStatementPaperLayout synthetic geometry responses from root-paper-qa-v2; no real book balances claimed",
+    "newFinancial": 7,
+    "tests": 21,
+    "preserved": "Original 4 keys v1/v2 paths and JSON fixtures unchanged; no business value parsing/recalculation in financial renderer"
+  },
+  "scopeExclusions": [
+    "No push/deployment/package",
+    "Win7 excluded",
+    "No product BODY/actor/lifecycle guard relaxed",
+    "Standard native Chrome pointer path ended at browser URL policy guard; IAB non-Semantics physical CNY success is Root evidence",
+    "Original 1531 and browser storage 17 receipts remain separate snapshots; do not sum overlapping tests"
+  ],
+  "caller": {
+    "log": "locator-callers-full-v4.log",
+    "scope": "purchase receipt/return, subcontract receipt/materialReturn, sales return; original own line UUID independently of extension read; no platform CAS/default or unit algorithm changes",
+    "preexisting": 39,
+    "newLocatorCases": 12,
+    "earlierFailure": "full-v3 50 pass 1 new fixture timeout because direct await blocked fake clock UiWorkBudget timer; common pumpUntilCompletes fixed test driver without changing business assertions",
+    "analysis": "6 files no issues",
+    "tests": 51
+  }
+}

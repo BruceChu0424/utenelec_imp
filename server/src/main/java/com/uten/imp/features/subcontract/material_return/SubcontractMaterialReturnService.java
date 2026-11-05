@@ -1,4 +1,6 @@
 package com.uten.imp.features.subcontract.material_return;
+
+import com.uten.imp.common.finance.DocumentQuantitySavePlan;
 import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
@@ -222,9 +224,26 @@ public class SubcontractMaterialReturnService {
         }
         mutationGuard.verifyUnchanged();
         applyHeader(req, r);
-        itemRepo.deleteByMaterialReturnId(id);
+        var quantityIntents=new java.util.ArrayList<DocumentQuantitySavePlan.Intent>();
+        int quantityPosition=1;
+        for(MaterialReturnItemLine line:req.getItems()){
+            int position=line.getLineNo()==null?quantityPosition:line.getLineNo();
+            quantityIntents.add(DocumentQuantitySavePlan.intent(position,DocumentQuantitySavePlan.identity(line.getId(),line.getPlatformFields()==null?null:line.getPlatformFields().sourceRecordId()),
+                    "goods_id",line.getGoodsId(),
+                    "color_id",line.getColorId(),
+                    "unit_id",line.getUnitId(),
+                    "unit_rate",line.getUnitRate(),
+                    "qty",line.getQty(),
+                    "order_item_id",line.getOrderItemId(),
+                    "material_issue_item_id",line.getMaterialIssueItemId(),
+                    "parent_goods_id",line.getParentGoodsId(),
+                    "parent_color_id",line.getParentColorId()));
+            quantityPosition++;
+        }
+        var quantityPlan=DocumentQuantitySavePlan.prepare(em,DocumentQuantitySavePlan.Family.SUBCONTRACT_MATERIAL_RETURN,id,quantityIntents);
+        quantityPlan.deleteReplaced(em);
         itemRepo.flush();
-        List<MaterialReturnItemDto> items = saveItems(r, req.getItems());
+        List<MaterialReturnItemDto> items = saveItems(r, req.getItems(),quantityPlan);
         applyTotals(r, items);
         return toDetail(r, items);
     }
@@ -470,6 +489,10 @@ public class SubcontractMaterialReturnService {
     }
 
     private List<MaterialReturnItemDto> saveItems(SubcontractMaterialReturn r, List<MaterialReturnItemLine> lines) {
+        return saveItems(r,lines,DocumentQuantitySavePlan.empty());
+    }
+
+    private List<MaterialReturnItemDto> saveItems(SubcontractMaterialReturn r, List<MaterialReturnItemLine> lines,DocumentQuantitySavePlan.Plan quantityPlan) {
         List<MaterialReturnItemDto> out = new ArrayList<>(lines.size());
         Map<UUID, SubcontractGoodsSnapshot> issueChildren =
                 SubcontractGoodsSnapshot.fromMaterialIssueItems(
@@ -494,7 +517,9 @@ public class SubcontractMaterialReturnService {
                 em, masterGoodsIds, SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (MaterialReturnItemLine l : lines) {
-            SubcontractMaterialReturnItem it = new SubcontractMaterialReturnItem();
+            int lineNo=l.getLineNo()==null?autoLine:l.getLineNo();
+            var quantitySaved=quantityPlan.saved(lineNo);
+            SubcontractMaterialReturnItem it = quantitySaved==null?new SubcontractMaterialReturnItem():quantitySaved.entity(em,SubcontractMaterialReturnItem.class);
             it.setMaterialReturnId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
@@ -513,7 +538,7 @@ public class SubcontractMaterialReturnService {
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
-            com.uten.imp.common.finance.DocumentUnitConversion.project(l.getQty(),l.getUnitId(),l.getUnitRate());
+            if(quantitySaved==null)com.uten.imp.common.finance.DocumentUnitConversion.project(l.getQty(),l.getUnitId(),l.getUnitRate());
             it.setPrice(l.getPrice());
             // 金额只由服务端派生(ADR-112): 数量 × 单价; 本单据无币种, 按本位币计(汇率 1)。单价空则金额空。
             MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);

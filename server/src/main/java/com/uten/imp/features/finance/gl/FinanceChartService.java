@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.gl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
+import com.uten.imp.application.port.FinancialChartCurrencyReadPort;
 import com.uten.imp.common.storage.ImmutableDocumentStore;
 import com.uten.imp.common.web.*;
 import com.uten.imp.features.finance.FinanceCompanyReportAccess;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import java.util.*;
 import static com.uten.imp.features.finance.gl.FinanceChartContracts.*;
 
@@ -28,6 +30,7 @@ public class FinanceChartService {
     private final TxSessionVars tx;
     private final com.uten.imp.application.port.FinancialChartAccountCreationPort accountCreation;
     private final com.uten.imp.application.port.FinancialChartCurrencyReadPort chartCurrencies;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceOperationJournal operations;
 
     private void readAccess(){CurrentAuthorityGuard.requireAll("finance_report:view");FinanceCompanyReportAccess.require(access);}
     private void writeAccess(){readAccess();CurrentAuthorityGuard.requireAll("payment_style:edit");}
@@ -63,6 +66,36 @@ public class FinanceChartService {
     }
 
     @Transactional
+    public UpdateAccountResult updateAccount(String code,UpdateAccount request) {
+        writeAccess();
+        if(code==null||!code.matches("[0-9]{1,32}")||request==null||request.requestId()==null||request.expectedVersion()<0
+                ||request.name()==null||request.name().isBlank()||request.name().strip().length()>240
+                ||request.sourceReference()==null||request.sourceReference().isBlank()||request.sourceReference().length()>1000)
+            throw invalid("请填写科目名称、修改依据并保留当前版本");
+        tx.bind();lock();
+        String fingerprint=ImmutableDocumentStore.digest(("UPDATE_METADATA:"+code+":"+encode(request)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var previous=db.queryForList("SELECT actor_id,fingerprint,result::text FROM finance_chart_manual_operations WHERE request_id=?",request.requestId());
+        if(!previous.isEmpty()) {
+            var stored=previous.getFirst();
+            if(!current.requireId().equals(stored.get("actor_id"))||!fingerprint.equals(stored.get("fingerprint")))
+                throw conflict("同一修改请求已使用，请保留原参数核对结果");
+            return metadataResult(stored.get("result").toString());
+        }
+        var rows=db.queryForList("SELECT name,row_version FROM finance_chart_codes WHERE code=? FOR UPDATE",code);
+        if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"财务科目代码不存在");
+        var account=rows.getFirst();
+        if(((Number)account.get("row_version")).longValue()!=request.expectedVersion())
+            throw conflict("科目目录已变化，请刷新后核对名称和版本");
+        // The code, mapped UUIDs, original import and its evidence remain unchanged.
+        db.update("UPDATE finance_chart_codes SET name=?,row_version=row_version+1,updated_at=now(),updated_by=? WHERE code=?",
+                request.name().strip(),current.requireId(),code);
+        var result=new UpdateAccountResult(request.requestId(),code,"UPDATED",(String)account.get("name"),request.name().strip(),request.sourceReference().strip());
+        db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result) VALUES(?,?,?,?::jsonb)",
+                request.requestId(),current.requireId(),fingerprint,encode(result));
+        return result;
+    }
+
+    @Transactional
     public Preview preview(String filename,byte[] bytes) {
         writeAccess();tx.bind();lock();UUID actor=current.requireId();String hash=ImmutableDocumentStore.digest(bytes);
         var previous=db.queryForList("SELECT id FROM finance_chart_imports WHERE actor_id=? AND sha256=?",UUID.class,actor,hash);
@@ -86,6 +119,57 @@ public class FinanceChartService {
                 VALUES('DELETE_STAGING',?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING
                 """,stored.provider(),stored.key(),stored.version(),stored.provider()+"|DELETE_STAGING|"+stored.key()+"|"+Objects.toString(stored.version(),"<local>"));
         return result;
+    }
+
+    @Transactional(readOnly=true)
+    public Map<String,Object> metadataReceipt(String code,UUID requestId) {
+        readAccess();
+        if(code==null||!code.matches("[0-9]{1,32}")||requestId==null)throw invalid("请保留原科目编码和修改请求编号");
+        var rows=db.queryForList("SELECT result::text FROM finance_chart_manual_operations WHERE request_id=? AND actor_id=?",requestId,current.requireId());
+        if(rows.isEmpty())return Map.of("found",false);
+        String encoded=rows.getFirst().get("result").toString();
+        var result=metadataResult(encoded);
+        if("CANCELLED_UNWRITTEN".equals(result.status())){
+            if(!code.equals(result.code())||!requestId.equals(result.requestId()))return Map.of("found",false);
+            return metadataEnvelope(encoded);
+        }
+        if(!"UPDATED".equals(result.status())||!code.equals(result.code())||!requestId.equals(result.requestId()))return Map.of("found",false);
+        return Map.of("found",true,"actorId",current.requireId(),"requestId",requestId,"operation","CHART_METADATA_UPDATE","outcome","SUCCEEDED","result",result);
+    }
+    @Transactional(readOnly=true) public Map<String,Object> metadata(String code){
+        readAccess();if(code==null||!code.matches("[0-9]{1,32}"))throw invalid("请保留原科目编码");
+        var rows=db.queryForList("SELECT code,name,row_version AS version FROM finance_chart_codes WHERE code=?",code);
+        if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"财务科目代码不存在");return rows.getFirst();
+    }
+    @Transactional public Map<String,Object> cancelMetadata(String code,UUID requestId,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        readAccess();if(code==null||!code.matches("[0-9]{1,32}"))throw invalid("请保留原科目编码");
+        String path="/finance/chart/"+code+"/metadata",operation="CHART_METADATA_UPDATE";
+        var request=operations.cancellationBody(requestId,cancellation,operation,"PUT",path,UpdateAccount.class);
+        tx.bind();lock();
+        String fingerprint=ImmutableDocumentStore.digest(("UPDATE_METADATA:"+code+":"+encode(request)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var previous=db.queryForList("SELECT actor_id,fingerprint,result::text FROM finance_chart_manual_operations WHERE request_id=?",requestId);
+        if(!previous.isEmpty()){
+            var stored=previous.getFirst();if(!current.requireId().equals(stored.get("actor_id"))||!fingerprint.equals(stored.get("fingerprint")))
+                throw conflict("同一修改请求已使用，请保留原参数核对结果");
+            String encoded=stored.get("result").toString();var result=metadataResult(encoded);
+            if(!code.equals(result.code())||!requestId.equals(result.requestId())||!Set.of("UPDATED","CANCELLED_UNWRITTEN").contains(result.status()))throw conflict("原科目修改回执身份不一致");
+            return "CANCELLED_UNWRITTEN".equals(result.status())?metadataEnvelope(encoded):operations.cancellationOutcome(requestId,operation,"PUT",path,request,result,false);
+        }
+        var result=new UpdateAccountResult(requestId,code,"CANCELLED_UNWRITTEN",null,request.name(),request.sourceReference());
+        var marker=metadataEnvelope(encode(result));marker.put("cancelled",true);
+        var stopped=operations.cancellationOutcome(requestId,operation,"PUT",path,request,marker,true);
+        db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result) VALUES(?,?,?,?::jsonb)",requestId,current.requireId(),fingerprint,encode(stopped));
+        return stopped;
+    }
+    private UpdateAccountResult metadataResult(String encoded){
+        var value=metadataEnvelope(encoded);
+        if("CANCELLED_UNWRITTEN".equals(value.get("outcome"))){
+            var result=metadataEnvelope(encode(value.get("result")));result.remove("cancelled");return decode(encode(result),UpdateAccountResult.class);
+        }
+        return decode(encoded,UpdateAccountResult.class);
+    }
+    private Map<String,Object> metadataEnvelope(String encoded){
+        try{return com.uten.imp.common.finance.FinancialJsonResults.object(json,encoded);}catch(Exception error){throw conflict("原科目修改回执无法完整读取");}
     }
 
     @Transactional(readOnly=true)
@@ -132,7 +216,7 @@ public class FinanceChartService {
         return result;
     }
 
-    @Transactional(readOnly=true)
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public List<Account> list() {
         readAccess();Map<String,List<Target>> targets=new HashMap<>();
         Map<String,List<String>> lineKeys=new HashMap<>();
@@ -148,7 +232,12 @@ public class FinanceChartService {
                 """,rs->{targets.computeIfAbsent(rs.getString(1),k->new ArrayList<>()).add(
                         new Target(rs.getObject(2,UUID.class),rs.getString(3),rs.getString(4),rs.getString(5)));});
         Set<String> codes=new HashSet<>(db.queryForList("SELECT code FROM finance_chart_codes",String.class));
-        var currencies=chartCurrencies.read(codes);
+        // The port bounds each lookup, not the total directory size. Repeated
+        // imports and manual additions must not make the full directory unreadable.
+        var currencyCodes=new ArrayList<>(codes);
+        var currencies=new HashMap<String,FinancialChartCurrencyReadPort.Reference>();
+        for(int offset=0;offset<currencyCodes.size();offset+=FinancialChartCurrencyReadPort.MAX_ACCOUNTS_PER_READ)
+            currencies.putAll(chartCurrencies.read(new LinkedHashSet<>(currencyCodes.subList(offset,Math.min(offset+FinancialChartCurrencyReadPort.MAX_ACCOUNTS_PER_READ,currencyCodes.size())))));
         return db.query("SELECT code,name,currency_name,row_version,classification FROM finance_chart_codes ORDER BY sort_order,code",
                 (rs,n)->new Account(rs.getString(1),rs.getString(2),rs.getString(3),rs.getLong(4),List.copyOf(targets.getOrDefault(rs.getString(1),List.of())),
                         List.copyOf(lineKeys.getOrDefault(rs.getString(1),List.of())),rs.getString(5),currencies.get(rs.getString(1)).currencyId()));
@@ -169,14 +258,18 @@ public class FinanceChartService {
         if(row.get("native_style_id")!=null) {
             String category=db.queryForObject("SELECT category FROM payment_styles WHERE id=?",String.class,row.get("native_style_id"));
             if(!request.category().equals(category)||!classification.equals(row.get("classification")))throw conflict("本财务科目已有其他核算类别或财务类别，不能重复创建");
-            return list();
+            // Legacy create-target callers have no report-line fields. Creation
+            // without an explicit selection must not clear an existing mapping.
+            if((request.balanceLineKey()==null||request.balanceLineKey().isBlank())
+                    &&(request.profitLineKey()==null||request.profitLineKey().isBlank()))return list();
+            return map(code,new Mapping(request.expectedVersion(),List.of((UUID)row.get("native_style_id")),request.balanceLineKey(),request.profitLineKey(),classification,request.currencyId()));
         }
         if(((Number)row.get("row_version")).longValue()!=request.expectedVersion())throw conflict("科目目录已变化，请刷新后核对");
         if(db.queryForObject("SELECT count(*) FROM finance_chart_code_styles WHERE code=?",Integer.class,code)!=0)
             throw conflict("本财务科目已有对应，请核对现有取数，不能再创建一份");
         UUID style=accountCreation.create(code,(String)row.get("name"),request.category());
         db.update("UPDATE finance_chart_codes SET native_style_id=? WHERE code=?",style,code);
-        return map(code,new Mapping(request.expectedVersion(),List.of(style),null,null,classification,request.currencyId()));
+        return map(code,new Mapping(request.expectedVersion(),List.of(style),request.balanceLineKey(),request.profitLineKey(),classification,request.currencyId()));
     }
 
     @Transactional
@@ -268,7 +361,7 @@ public class FinanceChartService {
         return id;
     }
     private String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException("科目批次序列化失败",e);}}
-    private <T>T decode(String value,Class<T> type){try{return json.readValue(value,type);}catch(Exception e){throw new IllegalStateException("科目批次记录无效",e);}}
+    private <T>T decode(String value,Class<T> type){try{return com.uten.imp.common.finance.FinancialJsonResults.value(json,value,type);}catch(Exception e){throw new IllegalStateException("科目批次记录无效",e);}}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
 }

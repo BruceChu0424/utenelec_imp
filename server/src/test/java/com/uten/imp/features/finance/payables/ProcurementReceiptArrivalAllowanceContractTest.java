@@ -37,12 +37,13 @@ class ProcurementReceiptArrivalAllowanceContractTest {
                         + "                ProcurementArrivalControlPort." + type);
         int authority = service.indexOf("receiptAmountAuthority.apply(r, items)");
         int iqc = service.indexOf("inspectionService.receive");
-        // 2026-11-04 财务整合（0aaffa3aa）后 AP 立账经 postOrDefer 委托 ProcurementPayablePosting。
-        int ap = service.indexOf("postOrDefer(");
+        int ap = type.equals("PURCHASE")?service.indexOf("postOrDefer(new ArApLedgerService.ArApPostingRequest")
+                :service.indexOf("boolean formallyPosted=postAp(r,payable.original(),payable.local(),+1)");
         assertThat(arrival).isGreaterThanOrEqualTo(0);
         assertThat(arrival).isLessThan(authority);
         assertThat(authority).isLessThan(iqc);
         assertThat(authority).isLessThan(ap);
+        assertThat(service).contains("ProcurementPayablePosting.post(firstPayables,arApService,req)");
     }
 
     private static String source(String relative) throws Exception {

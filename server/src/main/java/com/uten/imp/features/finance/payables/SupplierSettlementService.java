@@ -329,7 +329,8 @@ public class SupplierSettlementService {
         long unknownBook=((Number)em.createNativeQuery("SELECT count(*) FROM finance_payments payment"
                 +" WHERE payment.supplier_id=:supplier AND payment.currency_id=:currency AND payment.bill_date<=:end"
                 +" AND payment.status IN(1,-1) AND NOT payment.is_deleted AND payment.legacy_id IS NULL AND "
-                +com.uten.imp.features.finance.LegacyOpeningBalanceSql.unknownCashBook(false,"payment"))
+                +"("+com.uten.imp.features.finance.LegacyOpeningBalanceSql.unknownCashBook(false,"payment")
+                +" OR "+com.uten.imp.features.finance.SupplierAdvanceReplaySql.unknown("payment")+")")
                 .setParameter("supplier",supplierId).setParameter("currency",currencyId)
                 .setParameter("end",end).getSingleResult()).longValue();
         if(unknownBook>0)throw conflict("历史付款核销的本币账面金额尚未核验，不能按零差额重建月结");
@@ -400,14 +401,8 @@ public class SupplierSettlementService {
                 WHERE payment.status=-1 AND payment.bill_date<=:end
                   AND payment.legacy_import_run_id IS NULL
                   AND payment.supplier_id=:supplierId AND payment.currency_id=:currencyId
-                  AND NOT EXISTS(SELECT 1 FROM finance_payment_lines line WHERE line.payment_id=payment.id)
-                  AND NOT EXISTS(
-                      SELECT 1 FROM ar_ap_ledger ledger
-                      WHERE ledger.source_doc_type='DIRECT_PAYMENT'
-                        AND ledger.source_doc_id=payment.id
-                        AND ledger.status=-1 AND COALESCE(ledger.is_deleted,FALSE)=TRUE
-                        AND ledger.deleted_at IS NOT NULL)
-                """).setParameter("end", end).setParameter("supplierId", supplierId)
+                  AND %s
+                """.formatted(com.uten.imp.features.finance.SupplierAdvanceReplaySql.unreplayableReversal("payment"))).setParameter("end", end).setParameter("supplierId", supplierId)
                 .setParameter("currencyId", currencyId).getSingleResult()).longValue();
         if (count != 0) {
             throw conflict("有截止日前的红冲付款缺少独立的红冲日期记录，不能事后补造月结数据；请财务专项核对");

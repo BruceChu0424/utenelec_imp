@@ -5,6 +5,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/documents/document_unapproval.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/repositories/finance_repository.dart';
+import 'package:uten_imp/features/finance/shared/finance_document_intent.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/repositories/purchase_repository.dart';
@@ -60,18 +61,6 @@ void main() {
             StockDocType.otherIn,
           ).reverse('original')).id,
         ),
-        for (final type in FinanceDocType.values)
-          (
-            family: switch (type) {
-              FinanceDocType.receipt => 'financeReceipt',
-              FinanceDocType.payment => 'financePayment',
-              FinanceDocType.expense => 'financeExpense',
-              FinanceDocType.otherIncome => 'financeOtherIncome',
-              FinanceDocType.bankTransfer => 'financeBankTransfer',
-            },
-            call: () async =>
-                (await FinanceRepository(api, type).reverse('original')).id,
-          ),
       ];
       final keys = <String>{};
       for (final scenario in scenarios) {
@@ -86,6 +75,59 @@ void main() {
         expect(body['expectedSnapshot'], 'a' * 64);
         expect(body['reason'], isNotEmpty);
         expect(keys.add(body['idempotencyKey'] as String), isTrue);
+      }
+    },
+  );
+
+  test(
+    'five finance families send their frozen review command without refreshing its facts or changing the original id',
+    () async {
+      final api = _UnapprovalApi();
+      for (final type in FinanceDocType.values) {
+        final family = switch (type) {
+          FinanceDocType.receipt => 'financeReceipt',
+          FinanceDocType.payment => 'financePayment',
+          FinanceDocType.expense => 'financeExpense',
+          FinanceDocType.otherIncome => 'financeOtherIncome',
+          FinanceDocType.bankTransfer => 'financeBankTransfer',
+        };
+        final requestId =
+            '00000000-0000-4000-8000-${(type.index + 1).toString().padLeft(12, '0')}';
+        final original = <String, dynamic>{
+          'requestId': requestId,
+          'idempotencyKey': requestId,
+          'reason': '反审后修订并重新审核',
+          'expectedSnapshot': 'a' * 64,
+        };
+        final intent = FinanceDocumentIntent(
+          type: type,
+          documentId: 'original',
+          actorId: '00000000-0000-4000-8000-000000000101',
+          operation: 'FINANCE_DOCUMENT_UNAPPROVE',
+          body: original,
+          precisionChoices: {},
+        );
+        final response = await FinanceRepository(
+          api,
+          type,
+        ).executeDocumentIntent(intent);
+        expect(api.path, '/documents/$family/original/unapprove');
+        expect(api.body, original);
+        expect((api.body! as Map).keys.toSet(), {
+          'requestId',
+          'idempotencyKey',
+          'reason',
+          'expectedSnapshot',
+        });
+        expect(requireUnapprovalEvidence('original', response).isDraft, isTrue);
+        await FinanceRepository(api, type).executeDocumentIntent(intent);
+        expect(
+          api.body,
+          original,
+          reason:
+              'Retry retains the original command rather than reading a new facts snapshot',
+        );
+        expect(api.gets, 0);
       }
     },
   );
@@ -140,18 +182,23 @@ class _UnapprovalApi extends ApiClient {
   _UnapprovalApi() : super(Dio());
   String? path;
   Object? body;
+  int gets = 0;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => {
-    'supported': true,
-    'permitted': true,
-    'eligible': true,
-    'nextAction': 'UNAPPROVE_TO_DRAFT',
-    'factsSnapshot': 'a' * 64,
-    'reasons': <Object>[],
-  };
+  }) async {
+    gets++;
+    return {
+      'supported': true,
+      'permitted': true,
+      'eligible': true,
+      'nextAction': 'UNAPPROVE_TO_DRAFT',
+      'factsSnapshot': 'a' * 64,
+      'reasons': <Object>[],
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> post(
     String path, {

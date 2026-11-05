@@ -836,6 +836,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       if (!rowOk) continue;
       final remarkText = r.remark.text.trim();
       itemsBody.add({
+        if ((widget.docType == PurchaseDocType.receipt ||
+                widget.docType == PurchaseDocType.returnDoc) &&
+            (r.documentItemId?.isNotEmpty ?? false))
+          'id': r.documentItemId,
         ...platformRowPayload(r),
         if (widget.docType == PurchaseDocType.receipt) ...{
           if (r.replacementIntent != null)

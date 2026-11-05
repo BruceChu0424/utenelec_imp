@@ -12,20 +12,20 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
+@SuppressWarnings("try")
 class PurchaseOrderGiftAllocationTest {
+    private AutoCloseable selected;
+    @org.junit.jupiter.api.BeforeEach void selectNativeSourcePrecision(){selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of("quantity.share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")));}
+    @org.junit.jupiter.api.AfterEach void clearSelection()throws Exception{selected.close();}
     private static BigDecimal n(String value){return new BigDecimal(value);}
     private static PurchaseOrderService.PhysicalShare source(String quantity){
         return new PurchaseOrderService.PhysicalShare(UUID.randomUUID(),n(quantity));
     }
-    @Test void sourceRemainderRetainsEveryPhysicalGiftAndChargedQuantityIsSeparate()throws Exception{
-        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：2/3 除不尽，
-        // 沿用旧口径四位 DOWN，余量由末位来源吸收。
-        try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(4,"DOWN")))){
-            var sources=List.of(source("1"),source("1"),source("1"));
-            var splits=PurchaseOrderService.allocateSourceShares(sources,n("2"),n("1"));
-            assertEquals(List.of(n("0.6666"),n("0.6666"),n("0.6668")),splits.stream().map(PurchaseOrderService.SourceSplit::allocQty).toList());
-            assertConserved(sources,splits,n("2"),n("1"));
-        }
+    @Test void sourceRemainderRetainsEveryPhysicalGiftAndChargedQuantityIsSeparate(){
+        var sources=List.of(source("1"),source("1"),source("1"));
+        var splits=legacyGrid(()->PurchaseOrderService.allocateSourceShares(sources,n("2"),n("1")));
+        assertEquals(List.of(n("0.6666"),n("0.6666"),n("0.6668")),splits.stream().map(PurchaseOrderService.SourceSplit::allocQty).toList());
+        assertConserved(sources,splits,n("2"),n("1"));
     }
     @Test void onlyGiftRetainsItsExplicitPrincipalSourceAndNeverCreatesPaidAllocation(){
         var sources=List.of(source("1.25"));
@@ -40,16 +40,12 @@ class PurchaseOrderGiftAllocationTest {
     @Test void manualDocumentCreatesNoFakeUpstreamGiftShare(){
         assertTrue(PurchaseOrderService.allocateSourceShares(List.of(),n("10"),n("1")).isEmpty());
     }
-    @Test void mixedFreeResidualAndPaidSourceKeepTheirOwnPhysicalOwnership()throws Exception{
-        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：10/11 除不尽，
-        // 沿用旧口径四位 DOWN（0.9090/0.0910）。
-        try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(4,"DOWN")))){
-            var sources=List.of(source("1"),source("10"));
-            var splits=PurchaseOrderService.allocateSourceShares(sources,n("10"),n("1"));
-            assertConserved(sources,splits,n("10"),n("1"));
-            assertEquals(0,splits.getFirst().allocQty().compareTo(n("0.9090")));
-            assertEquals(0,splits.getFirst().allocGiftQty().compareTo(n("0.0910")));
-        }
+    @Test void mixedFreeResidualAndPaidSourceKeepTheirOwnPhysicalOwnership(){
+        var sources=List.of(source("1"),source("10"));
+        var splits=legacyGrid(()->PurchaseOrderService.allocateSourceShares(sources,n("10"),n("1")));
+        assertConserved(sources,splits,n("10"),n("1"));
+        assertEquals(0,splits.getFirst().allocQty().compareTo(n("0.9090")));
+        assertEquals(0,splits.getFirst().allocGiftQty().compareTo(n("0.0910")));
     }
     @Test void allFreeMergedSourcesRetainEverySource(){
         var sources=List.of(source("1"),source("2"));
@@ -64,21 +60,20 @@ class PurchaseOrderGiftAllocationTest {
         var splits=PurchaseOrderService.allocateSourceShares(sources,n("0.0999"),n("0.0001"));
         assertConserved(sources,splits,n("0.0999"),n("0.0001"));
     }
-    @Test void everyPaidFreeCombinationOfTinySourcesPreservesFourPlaceCapacity()throws Exception{
-        // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：0.0001 级来源的
-        // 除不尽份额（如 3/5、17/18 个 0.0001）四位选择不可行（守卫会拒绝），
-        // 最小可行显式选择为七位 HALF_UP；精确商仍按原样保留。
-        try(var ignored=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(7,"HALF_UP")))){
-            for(int count=1;count<=25;count++){
-                var sources=java.util.stream.IntStream.range(0,count).mapToObj(index->source("0.0001")).toList();
-                BigDecimal physical=n("0.0001").multiply(BigDecimal.valueOf(count));
-                for(int paidUnits=0;paidUnits<=count;paidUnits++){
-                    BigDecimal paid=n("0.0001").multiply(BigDecimal.valueOf(paidUnits));
-                    var splits=PurchaseOrderService.allocateSourceShares(sources,paid,physical.subtract(paid));
-                    assertConserved(sources,splits,paid,physical.subtract(paid));
-                }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"7,HALF_UP","24,DOWN"})
+    void everyPaidFreeCombinationOfTinySourcesPreservesActualNativeCapacity(int scale,String rounding)throws Exception{
+        try(var grid=BusinessPrecisionContext.use(Map.of("quantity.share",new BusinessPrecisionContext.Choice(scale,rounding)))){
+        for(int count=1;count<=25;count++){
+            var sources=java.util.stream.IntStream.range(0,count).mapToObj(index->source("0.0001")).toList();
+            BigDecimal physical=n("0.0001").multiply(BigDecimal.valueOf(count));
+            for(int paidUnits=0;paidUnits<=count;paidUnits++){
+                BigDecimal paid=n("0.0001").multiply(BigDecimal.valueOf(paidUnits));
+                var splits=PurchaseOrderService.allocateSourceShares(sources,paid,physical.subtract(paid));
+                assertConserved(sources,splits,paid,physical.subtract(paid));
             }
         }
+    }
     }
     @Test void inconsistentOrZeroPhysicalSourceCannotBeSavedAsAConservedAllocation(){
         assertThrows(ApiException.class,()->PurchaseOrderService.allocateSourceShares(List.of(source("1")),n("1"),n("1")));
@@ -90,13 +85,18 @@ class PurchaseOrderGiftAllocationTest {
             var split=splits.get(index);assertEquals(sources.get(index).requestItemId(),split.requestItemId());
             assertTrue(split.allocQty().signum()>=0);assertTrue(split.allocGiftQty().signum()>=0);
             assertEquals(0,split.allocQty().add(split.allocGiftQty()).compareTo(sources.get(index).physicalQty()));
-            // 2026-11-04 显式精度选择契约（0aaffa3aa/d533807ca 范式）：精确商按原样保留，
-            // 刻度上限改为精确数值字段边界（MAX_FRACTION_DIGITS），不再钉死四位。
             assertTrue(split.allocQty().scale()<=FinancialExactAmount.MAX_FRACTION_DIGITS);
             assertTrue(split.allocGiftQty().scale()<=FinancialExactAmount.MAX_FRACTION_DIGITS);
+            assertDoesNotThrow(()->com.uten.imp.common.util.FinancialExactAmount.quantity(split.allocQty(),"paid source quantity"));
+            assertDoesNotThrow(()->com.uten.imp.common.util.FinancialExactAmount.quantity(split.allocGiftQty(),"gift source quantity"));
         }
         assertEquals(0,splits.stream().map(PurchaseOrderService.SourceSplit::allocQty).reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(paid));
         assertEquals(0,splits.stream().map(PurchaseOrderService.SourceSplit::allocGiftQty).reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(gift));
+    }
+    @SuppressWarnings("try")
+    private static <T>T legacyGrid(java.util.function.Supplier<T> action){
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of("quantity.share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"DOWN")))){return action.get();}
+        catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
     }
     @Test void oldRecordedGiftKeepsPhysicalQuantityAndNewModeAddsIt(){
         assertEquals("10",ProcurementQuantities.physicalText(ProcurementQuantities.LEGACY,n("10"),n("1")));

@@ -14,6 +14,9 @@ import java.util.UUID;
 @Setter
 public class ReturnItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
+    /** Optional original row locator; the server still proves parent and all quantity/source operands. */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private UUID id;
     private Integer lineNo;
 
     /** 关联出货明细（可选；有则审核回写 sales_shipment_items.returned_qty/amount）。 */

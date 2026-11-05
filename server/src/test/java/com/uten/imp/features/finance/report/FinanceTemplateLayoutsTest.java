@@ -16,10 +16,27 @@ class FinanceTemplateLayoutsTest {
         FinanceTemplateContract.template("balanceSheet").path("rows").properties().forEach(entry->{
             int line;try{line=Integer.parseInt(entry.getKey());}catch(NumberFormatException failure){throw new IllegalArgumentException("Balance sheet contract row key is not numeric",failure);}facts.add(new LinkedHashMap<>(Map.of("lineNo",line,"item",entry.getValue().asText(),"periodEnd",BigDecimal.valueOf(line*100L),"yearStart",BigDecimal.valueOf(line*10L),"basis","匿名独立凭证")));
         });
-        var source=new ReportTableResponse(List.of(),facts,Map.of(),1,53,53,1);
+        var source=new ReportTableResponse(List.of(),facts,Map.of(),1,53,53,1).withDocumentMetadata(Map.of("financialStatementContext",Map.of(
+                "report","gl/balance-sheet","organizationName","匿名公司","organizationVersion",7,
+                "dateFrom","2026-09-01","dateTo","2026-09-30","year",2026,"month",9)));
         var paper=FinancialStatementPresentation.apply("BALANCE","template",source);
         var columns=columns(paper);var query=Map.of("layout","template","dateTo","2026-09-30");
         var layout=FinanceTemplateLayouts.create("gl/balance-sheet",query,columns,paper.rows(),"匿名公司");
+        var print=new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(paper.documentMetadata()).path("paperLayout");
+        assertThat(print.path("templateKey").asText()).isEqualTo("balanceSheet");
+        assertThat(print.path("widths").size()).isEqualTo(8);
+        for(int column=0;column<8;column++)assertThat(print.path("widths").path(column).asDouble()).isEqualTo(layout.widths().get(column));
+        assertThat(print.path("bodyBands").size()).isEqualTo(7);
+        assertThat(print.path("columnAlignments").path(1).asText()).isEqualTo("CENTER");
+        assertThat(print.path("columnAlignments").path(2).asText()).isEqualTo("RIGHT");
+        assertThat(print.path("footer").path("cells").path(0).path("value").asText()).contains("已归还投资");
+        assertThat(print.path("headings").toString()).contains("匿名公司","2026年09月30日","会小企01表","单位：元");
+        assertThat(print.path("keepWithNextRows").toString()).contains("25");
+        String qaDirectory=System.getProperty("uten.finance.paper.qa-dir");
+        if(qaDirectory!=null&&!qaDirectory.isBlank()){
+            var directory=java.nio.file.Path.of(qaDirectory);java.nio.file.Files.createDirectories(directory);
+            java.nio.file.Files.writeString(directory.resolve("synthetic-balance-paper.json"),new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(paper),java.nio.file.StandardOpenOption.CREATE_NEW);
+        }
         byte[] bytes=new XlsxExportService().build(new ExportPayload(columns,paper.rows(),32).withLayout(layout),null,null);
         try(var book=new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
             var sheet=book.getSheetAt(0);assertThat(sheet.getSheetName()).isEqualTo("资产负债表");
@@ -42,9 +59,63 @@ class FinanceTemplateLayoutsTest {
             assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).startsWith("  ");
             assertThat(sheet.getRow(15).getCell(0).getStringCellValue()).startsWith("     ");
             assertThat(sheet.getRepeatingRows().formatAsString()).isEqualTo("1:4");
+            assertThat(sheet.getPrintSetup().getPaperSize()).isEqualTo(PrintSetup.A4_PAPERSIZE);
+            // Long original captions wrap at the original width and font. A
+            // fixed 16pt row previously cut these captions across the border.
+            for(int row:List.of(25,34,35))assertThat(sheet.getRow(row).getHeightInPoints()).isGreaterThan(layout.rowHeight());
+            assertThat(sheet.getColumnWidth(0)).isEqualTo((int)Math.round(layout.widths().getFirst()*256));
+            assertThat(book.getFontAt(sheet.getRow(25).getCell(0).getCellStyle().getFontIndex()).getFontHeightInPoints()).isEqualTo(layout.fontSize());
             assertThat(sheet.getRow(36).getCell(0).getStringCellValue()).contains("已归还投资");
             assertThat(sheet.getMergedRegions()).anySatisfy(region->assertThat(region.formatAsString()).isEqualTo("A1:H1"));
         }
+    }
+    @Test void financialPaperRejectsDifferentReportOrMissingCompanyRatherThanGuessingCurrentValues(){
+        var wrong=new ReportTableResponse(List.of(),List.of(),Map.of(),1,1,0,0).withDocumentMetadata(Map.of("financialStatementContext",Map.of("report","gl/profit-monthly","organizationName","匿名公司")));
+        assertThatThrownBy(()->FinanceTemplateLayouts.withFinancialPaper("BALANCE",wrong)).isInstanceOf(IllegalArgumentException.class);
+        var missing=new ReportTableResponse(List.of(),List.of(),Map.of(),1,1,0,0).withDocumentMetadata(Map.of("financialStatementContext",Map.of("report","gl/balance-sheet","organizationName","")));
+        assertThatThrownBy(()->FinanceTemplateLayouts.withFinancialPaper("BALANCE",missing)).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void monthlyAndAnnualPaperKeepTheirOwnOriginalRowsColumnsAndCapturedPeriod()throws Exception{
+        for(boolean annual:List.of(false,true)){
+            String key=annual?"annualProfit":"monthlyProfit",report=annual?"gl/profit-annual":"gl/profit-monthly";
+            var columns=new ArrayList<ReportColumn>();
+            columns.add(ReportColumn.text("item",FinanceTemplateContract.header(key,0)));
+            if(annual){
+                for(int month=1;month<=12;month++)columns.add(ReportColumn.money("m"+month,FinanceTemplateContract.header(key,month)));
+                columns.add(ReportColumn.money("yearTotal",FinanceTemplateContract.header(key,13)));
+                columns.add(ReportColumn.number("profitRatio",FinanceTemplateContract.header(key,14)).withUnitLabel("%"));
+            }else{
+                columns.add(new ReportColumn("lineNo",FinanceTemplateContract.header(key,1),"int",65));
+                columns.add(ReportColumn.money("yearAmount",FinanceTemplateContract.header(key,2)));
+                columns.add(ReportColumn.money("monthAmount",FinanceTemplateContract.header(key,3)));
+            }
+            var rows=new ArrayList<Map<String,Object>>();
+            for(var row:FinanceTemplateContract.template("monthlyProfit").path("rows").properties()){
+                int number=Integer.parseInt(row.getKey());
+                if(annual&&number==32)rows.add(syntheticProfitRow(33,FinanceTemplateContract.template("annualProfit").path("rows").path("33").asText(),true));
+                rows.add(syntheticProfitRow(number,row.getValue().asText(),annual));
+            }
+            var context=Map.<String,Object>of("report",report,"organizationName","匿名公司","organizationVersion",7,"dateFrom","2026-09-01","dateTo","2026-09-30","year",2026,"month",9);
+            var source=new ReportTableResponse(columns,rows,Map.of(),1,rows.size(),rows.size(),1).withDocumentMetadata(Map.of("financialStatementContext",context));
+            var presented=FinancialStatementPresentation.apply(annual?"ANNUAL":"PROFIT","template",source);
+            var paper=new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(presented.documentMetadata()).path("paperLayout");
+            assertThat(presented.rows()).hasSize(annual?21:20);
+            assertThat(presented.columns()).hasSize(annual?15:4);
+            assertThat(paper.path("templateKey").asText()).isEqualTo(key);
+            assertThat(paper.path("headings").toString()).contains("匿名公司",annual?"2026年1至9月":"2026年09月");
+            String qaDirectory=System.getProperty("uten.finance.paper.qa-dir");
+            if(qaDirectory!=null&&!qaDirectory.isBlank()){
+                var directory=java.nio.file.Path.of(qaDirectory);java.nio.file.Files.createDirectories(directory);
+                java.nio.file.Files.writeString(directory.resolve(annual?"synthetic-annual-paper.json":"synthetic-monthly-paper.json"),new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(presented),java.nio.file.StandardOpenOption.CREATE_NEW);
+            }
+        }
+    }
+    /** Geometry-only values; these rows are not a reconciled accounting book. */
+    private static Map<String,Object> syntheticProfitRow(int number,String caption,boolean annual){
+        var row=new LinkedHashMap<String,Object>();row.put("lineNo",number);row.put("item",caption);row.put("basis","匿名版式样例，不是实账勾稽");
+        if(annual){for(int month=1;month<=12;month++)row.put("m"+month,month<=9?BigDecimal.ONE:null);row.put("yearTotal",new BigDecimal("9"));if(number==32)row.put("profitRatio",new BigDecimal("19.5"));row.put("__notApplicableMonths",List.of(10,11,12));}
+        else{row.put("monthAmount",BigDecimal.ONE);row.put("yearAmount",new BigDecimal("9"));}
+        return row;
     }
     @Test void groupedOriginalHeadersIgnoreLocalRenamingAndExactAmountsAndCashBookNotesRemainVisible()throws Exception {
         var columns=new ArrayList<ExportColumn>();for(int i=0;i<19;i++)columns.add(new ExportColumn("k"+i,FinanceTemplateContract.header("subcontractStatement",i),i==18?"money":"text"));

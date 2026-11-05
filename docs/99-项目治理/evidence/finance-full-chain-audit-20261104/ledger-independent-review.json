@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-04",
+  "baseCommit": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "branch": "uimp/finance-full-chain-audit-20261104",
+  "scope": "Independent finance chart and GL backend review; no production database, deployment, publishing, or historical migration rewrites",
+  "confirmedFixes": [
+    {
+      "id": "directory-over-5000",
+      "behavior": "Partition all directory codes within the existing 5000-code read-port budget, merge every reference, preserve original output query order, and read the external list in one repeatable snapshot",
+      "newCoverage": [
+        "5001 codes: two batches including final single code",
+        "10003 codes: three batches including final three codes",
+        "real PostgreSQL independent transaction inserts code between directory queries; first snapshot excludes it and next includes it"
+      ]
+    },
+    {
+      "id": "directory-missing-code",
+      "behavior": "Only truly empty rows and recognized currency-only labels following a subtotal are skipped; ordinary missing-code data rows remain located validation errors",
+      "originalSpecialRows": [
+        32,
+        186
+      ],
+      "originalSpecialLabel": "美元",
+      "newCoverage": [
+        "missing code with ordinary currency-like label stays an error",
+        "unrecognized label after subtotal stays an error",
+        "recognized currency label after subtotal remains allowed",
+        "original 177 codes and currency/order retained"
+      ]
+    }
+  ],
+  "metadataCoverage": "Real PostgreSQL rename, immutable original import/mappings/money, stale original receipt after later edits, same-id changed-body conflict, and other-actor isolation",
+  "knownUpgradeBoundary": {
+    "status": "confirmed-unresolved",
+    "historicalMigrationsUnchanged": true,
+    "proof": "Actual V1000 and V1002 constraint replacement statements reject a preserved pre1000 PAYMENT_REVERSED event; rollback preserves all eight fixture events. Actual V1051 accepts reversal from current nine-kind schema and preserves those nine facts.",
+    "limitation": "This is PostgreSQL constraint-statement evidence, not a full historical Flyway upgrade rehearsal; no claim that the company database contains this event.",
+    "script": "build/finance-ledger-independent-review-20261104/expense-reversal-upgrade-boundary.sql",
+    "log": "build/finance-ledger-independent-review-20261104/expense-reversal-upgrade-boundary.log",
+    "container": "Task-owned one-off postgres:16-alpine stopped and automatically removed"
+  },
+  "validation": {
+    "status": "scoped-checks-passed-with-explicit-unresolved-upgrade-boundary",
+    "finalAffectedLog": "build/finance-ledger-independent-review-20261104/backend-post-parser-final.log",
+    "glGroupLog": "build/finance-ledger-independent-review-20261104/backend-final-tests-v2.log",
+    "initialGroupLog": "build/finance-ledger-independent-review-20261104/backend-tests.log",
+    "retainedFailure": "build/finance-ledger-independent-review-20261104/backend-final-tests.log: extra closing parenthesis in newly added test, corrected before v2",
+    "notCovered": [
+      "Complete original 20-requirement joint acceptance",
+      "Real browser/Windows interactive UAT",
+      "Company original account bindings",
+      "Win7/WPF migration",
+      "Historical pre1000 upgrade remediation"
+    ],
+    "initialResult": {
+      "testClasses": 9,
+      "tests": 42,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "status": "BUILD SUCCESS",
+      "boundary": "Compiled before directory batching and parser fixes; not final new-fix evidence"
+    },
+    "glGroupResult": {
+      "testClasses": 10,
+      "tests": 46,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "status": "BUILD SUCCESS",
+      "boundary": "Final batching/snapshot/metadata source verified, including 5 real PostgreSQL chart cases and 2 large-directory cases; parser predates last missing-code fix (4 old cases)"
+    },
+    "finalAffectedResult": {
+      "testClasses": 3,
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "status": "BUILD SUCCESS",
+      "compiledMainSources": 3154,
+      "compiledTestSources": 2511,
+      "classes": [
+        {
+          "name": "FinanceChartImportPostgresTest",
+          "tests": 5
+        },
+        {
+          "name": "FinanceChartLargeDirectoryTest",
+          "tests": 2
+        },
+        {
+          "name": "FinanceChartWorkbookParserTest",
+          "tests": 6
+        }
+      ],
+      "boundary": "Final owned source hashes verified unchanged; includes final missing-code parser and original 177-code import, real source-preserving metadata, and actual interleaved-transaction snapshot cases. Separate rounds overlap and must not be summed."
+    },
+    "warningsBoundary": "Development bootstrap WARN and normal migration notices remain in isolated Spring logs; scoped success is not complete CI or release acceptance.",
+    "logHashes": [
+      {
+        "path": "build/finance-ledger-independent-review-20261104/backend-tests.log",
+        "sha256": "4ebbeb159e635cdc2444d23784101ccb0a65dd72954391cb286fed7baa505556"
+      },
+      {
+        "path": "build/finance-ledger-independent-review-20261104/backend-final-tests.log",
+        "sha256": "f173c9db9b4ebfa5df5305ebf2653c61bcf7308ef5afe4a76f4d1a79f00554f5"
+      },
+      {
+        "path": "build/finance-ledger-independent-review-20261104/backend-final-tests-v2.log",
+        "sha256": "329e5d6c020cc53cbbdc4586b800c8d79305b2ea0efdf06d19d0273134b16ad2"
+      },
+      {
+        "path": "build/finance-ledger-independent-review-20261104/backend-post-parser-final.log",
+        "sha256": "f46e9bd78085a221c40c82b607acb8dd647f07aa3a6651f7008431bae31fb613"
+      },
+      {
+        "path": "build/finance-ledger-independent-review-20261104/expense-reversal-upgrade-boundary.sql",
+        "sha256": "aba0595e17febf02a6890c1a956c1b7b5d129b2ffb6eefae8a18a8a15f9793a1"
+      },
+      {
+        "path": "build/finance-ledger-independent-review-20261104/expense-reversal-upgrade-boundary.log",
+        "sha256": "429f2607df67c1444f27a67424b4f97408805d32bc4f1bf92becd0fd61bd2c15"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/FinancialChartCurrencyReadPort.java",
+      "sha256": "a8a9531ab14b998b73afecb7daffacefaac865eefe1134e652503409c601d546"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartService.java",
+      "sha256": "aca8aa6f3d585d2f01fd73996a828b3087e621b0f52619a12c21872c81a6d8a9"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinancialChartCurrencyReadAdapter.java",
+      "sha256": "426e6057ed79817ea7e2aa9152c1832ff43d21e5f874ef4f93930bdbc0c81d26"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartWorkbookParser.java",
+      "sha256": "f7f9df52d438d0e8984e51bff12b74090b1199ff603714b97657dc2d3c125fe6"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartLargeDirectoryTest.java",
+      "sha256": "ff56dc8487da97247be38872b493ff6c5a66f894076270af4adb273ed6f7c562"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartWorkbookParserTest.java",
+      "sha256": "497eee22ecfdede89cfd9a71e59b71c6e544d85fc16fc7b6abe6f443dc6d1094"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceChartImportPostgresTest.java",
+      "sha256": "f9c9ebba9cf6d8156d06da75d40cd255216dd0132a46ee03579cc16b63ab64fe"
+    }
+  ],
+  "upgradeResolution": {
+    "date": "2026-11-05",
+    "status": "resolved-by-controlled-statement-callback",
+    "evidence": "expense-payment-reversal-upgrade-20261105.json",
+    "historicalProofPreserved": "The prior negative boundary remains accurate for original execution without the reviewed compatibility callback."
+  }
+}

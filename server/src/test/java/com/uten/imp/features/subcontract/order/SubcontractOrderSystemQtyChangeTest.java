@@ -67,10 +67,17 @@ class SubcontractOrderSystemQtyChangeTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.setParameter(anyInt(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
-        // ProcurementOrderQuantityBounds.receipts：received / returned / iqc_returned / excess 基本量全 0;
-        // 第 5 列是采购允许超收比例(ADR-144), 委外行恒为 NULL。
+        // The retained receipt really contains the same 950 base units as the
+        // order counter; source-aware bounds must not invent a one-to-one basis.
+        // The fifth summary column is the purchase-only over-receipt percentage.
         when(query.getSingleResult()).thenReturn(
-                new Object[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null});
+                new Object[]{new BigDecimal("950"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null});
+        Query adoptedReceipts=mock(Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("SELECT count(*) FROM received")))
+                .thenReturn(adoptedReceipts);
+        when(adoptedReceipts.setParameter(anyString(),any())).thenReturn(adoptedReceipts);
+        when(adoptedReceipts.getSingleResult()).thenReturn(new Object[]{new BigDecimal("950"),BigDecimal.ZERO,BigDecimal.ZERO,
+                0L,1L,0L,new BigDecimal("950"),BigDecimal.ZERO});
         // ADR-114(V688): 改量下限另加本行已独立结清的损耗量(标量查询), 本用例无损耗。
         Query settledLoss = mock(Query.class);
         when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("fn_subcontract_settled_loss_qty")))
@@ -110,7 +117,8 @@ class SubcontractOrderSystemQtyChangeTest {
                 mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
                 mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
                 mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
-                mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class));
+                mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementReferencePricePolicyService.class));
     }
 
     @Test

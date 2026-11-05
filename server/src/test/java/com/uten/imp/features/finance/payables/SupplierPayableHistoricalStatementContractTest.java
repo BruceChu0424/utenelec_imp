@@ -72,10 +72,12 @@ class SupplierPayableHistoricalStatementContractTest {
                     .contains(receivable?"'预收转销'":"'应付抵销'")
                     .contains(receivable?"'预收使用'":"'贷项使用'")
                     .contains(receivable?"'预收恢复'":"'贷项恢复'");
+            if(receivable)assertThat(emitted).contains("(COALESCE(t.reversed_at,t.updated_at) AT TIME ZONE 'Asia/Shanghai')::date AS reverse_date");
+            else assertThat(emitted).doesNotContain("updated_at").contains("legacy.deleted_at","legacy.amount_original_local=-(");
         }
         // 新收付事件只认迁移后的资金事实，并保留带时区的冲销日期。
         assertThat(cashSql)
-                .contains("(COALESCE(t.reversed_at,t.updated_at) AT TIME ZONE 'Asia/Shanghai')::date AS reverse_date")
+                .contains("SupplierAdvanceReplaySql.reversalDate(\"t\")")
                 .contains("t.legacy_id IS NULL AND t.legacy_import_run_id IS NULL")
                 .contains("line.applied_amount_local")
                 .contains("END AS book_rate");

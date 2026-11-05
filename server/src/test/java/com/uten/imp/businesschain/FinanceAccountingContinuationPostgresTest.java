@@ -117,7 +117,7 @@ class FinanceAccountingContinuationPostgresTest {
         assertThat(db.queryForObject("SELECT fn_finance_style_balance_asof(?,DATE '2026-09-30')",BigDecimal.class,expenseStyle)).isNull();
         assertThat(db.queryForObject("SELECT fn_finance_style_balance_evidence_fingerprint(?,DATE '2026-09-30')",String.class,expenseStyle)).isNull();
     }
-    private static byte[] january(byte[] bytes,boolean vouchers)throws IOException {
+    static byte[] january(byte[] bytes,boolean vouchers)throws IOException {
         try(var book=new HSSFWorkbook(new ByteArrayInputStream(bytes));var out=new ByteArrayOutputStream()) {
             var sheet=book.getSheetAt(0);for(int rowNo=1;rowNo<=sheet.getLastRowNum();rowNo++){var row=sheet.getRow(rowNo);if(vouchers){row.getCell(0).setCellValue("2026-01-30");row.getCell(51).setCellValue(1);}else row.getCell(1).setCellValue("月份：2026.01-2026.01");}
             book.write(out);return out.toByteArray();
@@ -138,7 +138,7 @@ class FinanceAccountingContinuationPostgresTest {
             book.write(out);return out.toByteArray();
         }
     }
-    private static byte[] balance()throws IOException {
+    static byte[] balance()throws IOException {
         try(var book=new HSSFWorkbook();var out=new ByteArrayOutputStream()) {
             var sheet=book.createSheet("科目余额");var header=sheet.createRow(0);
             var labels=List.of("会计年度","会计期间","科目编码","科目名称","外币名称","期初借方","期初贷方","本期发生借方","本期发生贷方","期末借方","期末贷方");
@@ -149,7 +149,7 @@ class FinanceAccountingContinuationPostgresTest {
             book.write(out);return out.toByteArray();
         }
     }
-    private static byte[] journals()throws IOException {
+    static byte[] journals()throws IOException {
         try(var book=new HSSFWorkbook();var out=new ByteArrayOutputStream()) {
             var sheet=book.createSheet("凭证");var header=sheet.createRow(0);for(int col=0;col<82;col++){header.createCell(col).setCellValue("F"+(col+1)+"原字段");}header.createCell(82).setCellValue("凭证输出：V800：T01：匿名：2026");
             String[][] codes={{"1001","5001"},{"560301","1001"},{"3103","560301"}};double[] values={100,5,5};

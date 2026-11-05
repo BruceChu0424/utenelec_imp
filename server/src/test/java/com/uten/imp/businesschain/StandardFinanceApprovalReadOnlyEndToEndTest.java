@@ -44,8 +44,9 @@ import static org.assertj.core.api.Assertions.*;
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
 class StandardFinanceApprovalReadOnlyEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) { FullChainEndToEndTest.registerDataSource(registry); }
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) { FinanceScopedChainDatabase.register(registry,StandardFinanceApprovalReadOnlyEndToEndTest.class); }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired FinanceReceiptService receipts;

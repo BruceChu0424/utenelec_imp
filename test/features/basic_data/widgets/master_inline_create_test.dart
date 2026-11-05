@@ -742,7 +742,7 @@ void main() {
   );
 
   testWidgets(
-    'required empty creation cells carry the shared red frame until filled',
+    'blank default rows stay neutral until real input requires missing fields',
     (tester) async {
       final controller = _controller(create: (_, _) async {});
       addTearDown(controller.dispose);
@@ -754,7 +754,7 @@ void main() {
           matching: find.byType(UtenInlineEditCell),
         ),
       );
-      expect(preview.requiredEmpty, isTrue);
+      expect(preview.requiredEmpty, isFalse);
       await _activateCreation(tester, key, 'name');
       await _activateCreation(tester, key, 'amount');
       final error = Theme.of(
@@ -765,7 +765,13 @@ void main() {
             find.byKey(ValueKey('inline-create-cell-$key-$fieldKey')),
           )
           .decoration!;
-      // 必填空：红框（全站「空时红框」约定，宽 1.5）；选填：普通边框。
+      expect(decorationOf('name').enabledBorder, isNull);
+      await tester.enterText(
+        find.byKey(ValueKey('inline-create-cell-$key-amount')),
+        '1',
+      );
+      await tester.pumpAndSettle();
+      // A real value activates required validation only for this new row.
       expect(decorationOf('name').enabledBorder?.borderSide.color, error);
       expect(decorationOf('name').enabledBorder?.borderSide.width, 1.5);
       expect(decorationOf('amount').enabledBorder, isNull);
@@ -780,7 +786,7 @@ void main() {
   );
 
   testWidgets(
-    'required selects announce requiredness before the row is edited',
+    'required selects activate their missing-value frame only after row input',
     (tester) async {
       final controller = _controller(
         fields: [
@@ -823,9 +829,19 @@ void main() {
           .widgetList<UtenDropdownField>(find.byType(UtenDropdownField))
           .where((field) => field.items.any((item) => item.value == 'a'))
           .toList();
-      // 空白草稿行不止一行，每行的必填下拉都要带 required 红框语义。
       expect(activatedSelects, hasLength(1));
-      expect(activatedSelects.single.required, isTrue);
+      expect(activatedSelects.single.required, isFalse);
+      controller.setCreationValue(key, 'name', 'Typed');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<UtenDropdownField>(find.byType(UtenDropdownField))
+            .singleWhere(
+              (field) => field.items.any((item) => item.value == 'a'),
+            )
+            .required,
+        isTrue,
+      );
       expect(tester.takeException(), isNull);
     },
   );

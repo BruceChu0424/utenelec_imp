@@ -5,6 +5,7 @@
 // - 主仓的仓库用途只读(主仓不能是不良品仓)；
 // - 车间内料仓(ADR-147)只由「车间内料仓」开通和撤销：详情只读，没有编辑/停用/删除。
 import 'dart:async';
+import '../../../support/pump_until.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
@@ -89,7 +90,12 @@ void main() {
     await _rightClickWarehouse(tester, _hardware.name!);
     warehouses.pendingDetails['c01'] = details;
     await tester.tap(find.text('删除仓库'));
-    await tester.pump(const Duration(milliseconds: 300));
+    await pumpUntil(
+      tester,
+      () => find.text('正在读取仓库资料').evaluate().isNotEmpty,
+      reason:
+          'The shared read mask must actually paint before releasing details',
+    );
     expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
     expect(find.text('正在读取仓库资料'), findsOneWidget);
     expect(warehouses.deletedIds, isEmpty);
@@ -97,9 +103,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('确定删除「五金仓库」吗？'), findsOneWidget);
     await tester.tap(find.text('删除').last);
-    for (var frame = 0; frame < 8 && warehouses.deletedIds.isEmpty; frame++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await pumpUntil(
+      tester,
+      () => warehouses.deletedIds.isNotEmpty,
+      reason:
+          'The confirmed delete must reach the held write after its mask paints',
+    );
     expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
     expect(find.text('正在删除仓库'), findsOneWidget);
     expect(warehouses.deletedIds, ['c01']);

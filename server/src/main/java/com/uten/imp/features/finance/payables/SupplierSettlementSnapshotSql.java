@@ -18,7 +18,7 @@ final class SupplierSettlementSnapshotSql {
                       AND COALESCE(line.is_deleted,FALSE)=FALSE
                     UNION ALL
                     SELECT line.applied_ledger_id,
-                           (COALESCE(payment.reversed_at, payment.updated_at)
+                           (@paymentReversalDate@
                                AT TIME ZONE 'Asia/Shanghai')::DATE,
                            -line.amount_original,
                            -%s
@@ -45,14 +45,8 @@ final class SupplierSettlementSnapshotSql {
                            amount_original,source_amount_local
                     FROM supplier_open_item_offsets WHERE status='REVERSED'
                     UNION ALL
-                    SELECT target_ledger_id,effective_date,amount_original,target_local
-                    FROM finance_supplier_advance_applications
-                    WHERE status IN ('APPLIED','REVERSED')
-                    UNION ALL
-                    SELECT target_ledger_id,
-                           (reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE,
-                           -amount_original,-target_local
-                    FROM finance_supplier_advance_applications WHERE status='REVERSED'
+                    SELECT ledger_id,event_date,amount_original,amount_local
+                    FROM v_finance_supplier_advance_ap_events
                 ), payment_sum AS (
                     SELECT ledger_id,
                            COALESCE(SUM(amount_original) FILTER (WHERE event_date<:start),0) prior_original,
@@ -75,9 +69,6 @@ final class SupplierSettlementSnapshotSql {
                                 THEN (ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::DATE END AS reversal_date
                     FROM ar_ap_ledger ledger
                     %s
-                    LEFT JOIN finance_payments payment
-                      ON ledger.source_doc_type='DIRECT_PAYMENT'
-                     AND payment.id=ledger.source_doc_id AND payment.status IN(1,-1)
                     WHERE ledger.direction='AP'
                       AND ((ledger.status=1 AND COALESCE(ledger.is_deleted,FALSE)=FALSE)
                         OR (ledger.status=-1 AND COALESCE(ledger.is_deleted,FALSE)=TRUE
@@ -115,9 +106,10 @@ final class SupplierSettlementSnapshotSql {
                 ORDER BY source.bill_date,source.source_doc_no,source.id
                 """.formatted(
                     LegacyOpeningBalanceSql.paymentBookLocal("line"),LegacyOpeningBalanceSql.paymentBookLocal("line"),
-                    LegacyOpeningBalanceSql.originalAmount("CASE WHEN ledger.open_item_kind='PREPAYMENT' THEN -COALESCE(payment.amount_original,0) ELSE ledger.amount_original END"),
-                    LegacyOpeningBalanceSql.localAmount("CASE WHEN ledger.open_item_kind='PREPAYMENT' THEN -COALESCE(payment.amount_local,0) ELSE ledger.amount_original_local END"),
-                    LegacyOpeningBalanceSql.PROOF_JOIN);
+                    LegacyOpeningBalanceSql.originalAmount("ledger.amount_original"),
+                    LegacyOpeningBalanceSql.localAmount("ledger.amount_original_local"),
+                    LegacyOpeningBalanceSql.PROOF_JOIN)
+                .replace("@paymentReversalDate@",com.uten.imp.features.finance.SupplierAdvanceReplaySql.reversalDate("payment"));
 
     // A snapshot records aggregate balances at a verified instant, not the
     // original dates of each historical payment. A monthly window crossing

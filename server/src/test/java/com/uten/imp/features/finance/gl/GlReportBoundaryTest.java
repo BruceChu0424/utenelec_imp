@@ -20,6 +20,29 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class GlReportBoundaryTest {
+    @Test void invalidAccountingYearsCannotReachAnyYearlyReportOrItsSourceQueries() {
+        EntityManager em = mock(EntityManager.class);
+        GlReportLineSource lines = mock(GlReportLineSource.class);
+        var access=com.uten.imp.support.FinanceReportTestAccess.company();
+        GlReportService service = new GlReportService(em,lines,access);
+        for(int year:new int[]{Integer.MIN_VALUE,-1,0,10000,Integer.MAX_VALUE}) {
+            for(Runnable read:List.<Runnable>of(
+                    ()->service.profitMonthly(year,1),
+                    ()->service.profitAnnual(year,1),
+                    ()->service.manufacturingExpense(year),
+                    ()->service.adminExpense(year),
+                    ()->service.salesExpense(year),
+                    ()->service.operatingPl(year,1),
+                    ()->FinancialStatementRevenue.months(em,access,year,1),
+                    ()->FinancialPeriodCoverage.months(em,year,1),
+                    ()->FinancialLedgerReadScope.months(em,year,1))) {
+                assertThatThrownBy(read::run).isInstanceOfSatisfying(ApiException.class,
+                        error->assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+            }
+        }
+        verifyNoInteractions(em,lines);
+    }
+
     @Test void invalidMonthsCannotReachTheDatabaseOrAnUnboundedYearToDateLoop() {
         EntityManager em = mock(EntityManager.class);
         GlReportLineSource lines = mock(GlReportLineSource.class);

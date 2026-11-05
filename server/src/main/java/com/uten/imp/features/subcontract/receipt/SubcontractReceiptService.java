@@ -1,4 +1,6 @@
 package com.uten.imp.features.subcontract.receipt;
+
+import com.uten.imp.common.finance.DocumentQuantitySavePlan;
 import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
@@ -282,9 +284,24 @@ public class SubcontractReceiptService {
                 .toList();
         lockAndRequireDraftOutboundCapacity(req.getItems(), id, previousOrderItemIds);
         applyHeader(req, r);
-        itemRepo.deleteByReceiptId(id);
+        var quantityIntents=new java.util.ArrayList<DocumentQuantitySavePlan.Intent>();
+        int quantityPosition=1;
+        for(ReceiptItemLine line:req.getItems()){
+            int position=line.getLineNo()==null?quantityPosition:line.getLineNo();
+            quantityIntents.add(DocumentQuantitySavePlan.intent(position,DocumentQuantitySavePlan.identity(line.getId(),line.getPlatformFields()==null?null:line.getPlatformFields().sourceRecordId()),
+                    "goods_id",line.getGoodsId(),
+                    "color_id",line.getColorId(),
+                    "unit_id",line.getUnitId(),
+                    "unit_rate",line.getUnitRate(),
+                    "qty",line.getQty(),
+                    "order_item_id",line.getOrderItemId(),
+                    "replacement_intent",line.getReplacementIntent()));
+            quantityPosition++;
+        }
+        var quantityPlan=DocumentQuantitySavePlan.prepare(em,DocumentQuantitySavePlan.Family.SUBCONTRACT_RECEIPT,id,quantityIntents);
+        quantityPlan.deleteReplaced(em);
         itemRepo.flush();
-        List<ReceiptItemDto> items = saveItems(r, req.getItems());
+        List<ReceiptItemDto> items = saveItems(r, req.getItems(),quantityPlan);
         applyTotals(r, items);
         return toDetail(r, items);
     }
@@ -1002,6 +1019,10 @@ public class SubcontractReceiptService {
     }
 
     private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines) {
+        return saveItems(r,lines,DocumentQuantitySavePlan.empty());
+    }
+
+    private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines,DocumentQuantitySavePlan.Plan quantityPlan) {
         if (lines == null || lines.stream().anyMatch(java.util.Objects::isNull)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写完整的委外进仓明细");
         r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
                 em,"SUBCONTRACT",lines.stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
@@ -1022,7 +1043,9 @@ public class SubcontractReceiptService {
                         SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (ReceiptItemLine l : lines) {
-            SubcontractReceiptItem it = new SubcontractReceiptItem();
+            int lineNo=l.getLineNo()==null?autoLine:l.getLineNo();
+            var quantitySaved=quantityPlan.saved(lineNo);
+            SubcontractReceiptItem it = quantitySaved==null?new SubcontractReceiptItem():quantitySaved.entity(em,SubcontractReceiptItem.class);
             it.setReceiptId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
@@ -1038,7 +1061,7 @@ public class SubcontractReceiptService {
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
             it.setQty(l.getQty());
-            com.uten.imp.common.finance.DocumentUnitConversion.project(l.getQty(),l.getUnitId(),l.getUnitRate());
+            if(quantitySaved==null)com.uten.imp.common.finance.DocumentUnitConversion.project(l.getQty(),l.getUnitId(),l.getUnitRate());
             it.setReplacementIntent(l.getReplacementIntent());
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外收货单价"));
             // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。

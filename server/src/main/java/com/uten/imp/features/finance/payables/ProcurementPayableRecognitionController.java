@@ -18,7 +18,9 @@ public class ProcurementPayableRecognitionController {
     private final AuditDetailViewRecorder detailViewAudit;
     @GetMapping public Map<String,Object> list(@RequestParam(required=false)UUID supplierId,@RequestParam(required=false)UUID currencyId,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.recognitions(supplierId,currencyId,page,size);}
     @GetMapping("/policy")public Map<String,Object> policy(){return service.policy();}
-    @PutMapping("/policy")public Map<String,Object> configure(@RequestBody ProcurementPayableRecognitionService.PolicyInput input){return service.configure(input);}
+    @PutMapping("/policy")public Map<String,Object> configure(@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.WireCommand input){return service.configureWire(input);}
+    @GetMapping("/policy/operations/{request}")public Map<String,Object> policyReceipt(@PathVariable UUID request){return service.policyReceipt(request);}
+    @PostMapping("/policy/operations/{request}/cancel")public Map<String,Object> cancelPolicy(@PathVariable UUID request,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){return service.cancelPolicyCommand(request,cancellation);}
     @GetMapping("/candidates")public Map<String,Object> candidates(@RequestParam(required=false)UUID supplierId,@RequestParam(required=false)UUID currencyId,@RequestParam(required=false)String status,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.candidates(supplierId,currencyId,status,page,size);}
     @PostMapping(consumes=MediaType.MULTIPART_FORM_DATA_VALUE)public Map<String,Object> submit(@RequestPart("command")ProcurementPayableRecognitionService.Submission input,@RequestPart("file")MultipartFile file)throws IOException{
         try(var stream=file.getInputStream()){

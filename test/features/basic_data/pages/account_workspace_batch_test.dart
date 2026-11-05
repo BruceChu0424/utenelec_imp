@@ -249,6 +249,18 @@ Future<void> _select(WidgetTester tester, Set<String> ids) async {
 }
 
 Finder _button(String text) => find.widgetWithText(UtenButton, text);
+Future<void> _invokeBatch(WidgetTester tester, String label) async {
+  final table = _table(tester);
+  final row = table.items.firstWhere(
+    (row) => table.selectedIds.contains(row.id),
+  );
+  final action = table.rowMenuBuilder!(row)
+      .whereType<UtenMenuItem>()
+      .singleWhere((item) => item.label.startsWith('$label('));
+  unawaited(Future<void>.sync(action.onTap));
+  await tester.pump();
+}
+
 Future<void> _confirm(WidgetTester tester, String text) async {
   await tester.tap(
     find.descendant(of: find.byType(UtenAlertDialog), matching: _button(text)),
@@ -300,7 +312,7 @@ void main() {
   );
 
   testWidgets(
-    'checkbox selection uses one floating group with permission-gated batch actions',
+    'checkbox selection keeps batch actions only in the permission-gated context menu',
     (tester) async {
       final wire = _Wire();
       final container = await _pump(tester, wire);
@@ -308,14 +320,9 @@ void main() {
       expect(find.byType(Checkbox), findsWidgets);
       await _select(tester, {'a', 'b'});
       expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
-      expect(
-        tester.widget<UtenButton>(_button('删除选中')).type,
-        UtenButtonType.danger,
-      );
-      expect(
-        tester.widget<UtenButton>(_button('停用选中')).type,
-        UtenButtonType.danger,
-      );
+      expect(_button('删除选中'), findsNothing);
+      expect(_button('停用选中'), findsNothing);
+      expect(_button('启用选中'), findsNothing);
       final menu = _table(tester).rowMenuBuilder!(_table(tester).items.first)
           .whereType<UtenMenuItem>()
           .toList();
@@ -338,7 +345,7 @@ void main() {
       await _pump(tester, wire);
       await _select(tester, {'a', 'c'});
       for (final action in ['删除选中', '停用选中']) {
-        await tester.tap(_button(action));
+        await _invokeBatch(tester, action);
         await tester.pumpAndSettle();
         expect(wire.writes, isEmpty);
         await _confirm(tester, '取消');
@@ -356,7 +363,7 @@ void main() {
       final wire = _Wire();
       final container = await _pump(tester, wire);
       await _select(tester, {'a', 'b', 'c'});
-      await tester.tap(_button('删除选中'));
+      await _invokeBatch(tester, '删除选中');
       await tester.pumpAndSettle();
       await _confirm(tester, '删除');
       await tester.pumpAndSettle();
@@ -396,7 +403,7 @@ void main() {
       final wire = _Wire();
       await _pump(tester, wire);
       await _select(tester, {'a', 'c'});
-      await tester.tap(_button(status == '禁用' ? '停用选中' : '启用选中'));
+      await _invokeBatch(tester, status == '禁用' ? '停用选中' : '启用选中');
       await tester.pumpAndSettle();
       await _confirm(tester, '确认');
       await tester.pumpAndSettle();
@@ -419,7 +426,7 @@ void main() {
       final wire = _Wire();
       final container = await _pump(tester, wire);
       await _select(tester, {'a', 'c'});
-      await tester.tap(_button('删除选中'));
+      await _invokeBatch(tester, '删除选中');
       await tester.pumpAndSettle();
       expect(find.byType(UtenAlertDialog), findsOneWidget);
       container.read(_identity.notifier).state = const AuthenticatedScope(
@@ -445,7 +452,7 @@ void main() {
         final wire = _Wire()..beforeWrite = (_) => gate.future;
         final container = await _pump(tester, wire);
         await _select(tester, {'a', 'b', 'c'});
-        await tester.tap(_button('删除选中'));
+        await _invokeBatch(tester, '删除选中');
         await tester.pumpAndSettle();
         await _confirm(tester, '删除');
         for (var frame = 0; frame < 10 && wire.writes.isEmpty; frame++) {
@@ -482,7 +489,7 @@ void main() {
       final wire = _Wire()..errors['a'] = 403;
       await _pump(tester, wire);
       await _select(tester, {'a', 'c'});
-      await tester.tap(_button('删除选中'));
+      await _invokeBatch(tester, '删除选中');
       await tester.pumpAndSettle();
       await _confirm(tester, '删除');
       await tester.pumpAndSettle();
@@ -567,9 +574,12 @@ void main() {
       await _pump(tester, _Wire(), width: 390, scale: 1.5);
       await _select(tester, {'a', 'c'});
       expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
-      await tester.ensureVisible(_button('删除选中'));
+      expect(_button('删除选中'), findsNothing);
+      await _invokeBatch(tester, '删除选中');
       await tester.pumpAndSettle();
-      expect(_button('删除选中').hitTestable(), findsOneWidget);
+      expect(find.text('批量删除账户'), findsOneWidget);
+      await _confirm(tester, '取消');
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );

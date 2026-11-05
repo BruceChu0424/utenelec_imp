@@ -1,0 +1,51 @@
+{
+  "nativeFinal": {
+    "log": "expense-dropdown-ui-regression-native-v6.log",
+    "analyze": "expense-dropdown-analyze-v2.log: No issues found",
+    "excludedBrowserOnly": 1,
+    "failed": 0,
+    "cases": [
+      "touch",
+      "mouse-hover stable real option key",
+      "SemanticsAction.tap",
+      "auto-width while menu open"
+    ],
+    "passed": 4
+  },
+  "actualWebV1Evidence": {
+    "sha256": "1D505A354B3C410A5AB7E367CD29EDCEFE081F9F129C8C4D44B66C8283B80E46",
+    "conclusion": "Root actual pixel and private probe show viewFocused-only false closes menu before select; product common focus fix not yet accepted",
+    "path": "build/finance-closeout-20261104/actual-ui/web-dropdown-diagnostic-v1.json"
+  },
+  "failuresRetained": {
+    "earlierV2": "semantic handle teardown leak after both business selection paths completed; explicit finally disposal retained in final test",
+    "chromeV1": "0 business tests executed: DDC AMD module initialization error, uten_scroll_behavior -> missing uten_page_scrollbar_host; owned runner terminated after read-only CDP proof, raw inspection retained",
+    "nativeV4": "3 passed / 1 failed / 1 browser-only: dynamic text.last selected new hover tooltip, recorded hit-test miss; changed to existing stable option key without weakening value assertions",
+    "analyzeV1": "deprecated pipelineOwner; corrected to actual node.owner"
+  },
+  "scope": "Additional finance batch account/amount/currency/method UI regression; does not supersede original 1531 snapshot",
+  "files": [
+    {
+      "sha256": "602F60AC8C6EECF134124C411A7B1B8FED748E9EDC9DF224B54B335BD7A1E2C3",
+      "path": "test/features/finance/finance_batch_entry_test.dart"
+    },
+    {
+      "sha256": "E6EDFF14663A66B51895D0BB6FE9E8DB773EDF22095BE0DEE5FCD006774755B5",
+      "path": "test/support/finance_dropdown_dom_stub.dart"
+    },
+    {
+      "sha256": "C71BC07D4186B4564D02C5D71581667832A546DB22C1CC20C66F11A4D8B93D9F",
+      "path": "test/support/finance_dropdown_dom_web.dart"
+    }
+  ],
+  "productDartChangedByThisInvestigation": false,
+  "privateV2": "ROOT/build/finance-closeout-20261104/diagnostic-web-v2; one-event-turn close coalescing with lifecycle gate and real DOM observation only; awaiting Root actual observation",
+  "nativeFileRegression": {
+    "log": "finance-batch-file-regression-v7.log",
+    "newCases": 4,
+    "failed": 0,
+    "browserOnlyExcluded": 1,
+    "overlapWithEarlier1531": 21,
+    "passed": 25
+  }
+}

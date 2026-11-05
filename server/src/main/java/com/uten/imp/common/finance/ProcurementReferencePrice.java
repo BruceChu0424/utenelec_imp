@@ -17,7 +17,9 @@ import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.UUID;
 
-/** The agreed total remains authoritative; a reference price carries its original calculation proof. */
+/** Compatibility algorithms for Main's saved plain-policy format. Production
+ * saves and reviews use ProcurementReferencePricePolicyService and its complete
+ * owning-row verifier; these helpers do not persist or retag a saved policy. */
 public final class ProcurementReferencePrice {
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -72,6 +74,7 @@ public final class ProcurementReferencePrice {
         }
     }
 
+    @SuppressWarnings("try")
     public static BigDecimal proofPrice(BigDecimal total, BigDecimal quantity, Map<String, Object> policy) {
         BigDecimal original = MoneyPolicy.totalAmountInput(total);
         if (original == null || quantity == null || quantity.signum() <= 0) {

@@ -279,6 +279,38 @@ class SubcontractOrderSourceFifoEndToEndTest {
         });
     }
 
+    @Test void unchangedApplicationOrderRetainsReferenceChoiceAndSourceBytesWhileNewTotalNeedsItsOwnChoice(){
+        var w=fixture.seedWorld("sc-source-reference-"+UUID.randomUUID());fixture.loginAs(w.superAdminUserId());
+        fixture.ensureSubcontractDirectMaterial(w,w.goodsE());UUID source=application(w,"20",0);
+        UUID reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);
+        fixture.withSubcontractKitStaged(w,Map.of(w.goodsE(),"20"),()->{
+            var request=order(w);var line=row(w,1,"3","0",List.of(source));line.setTotalAmountInput(new BigDecimal("100"));request.setItems(List.of(line));
+            var saved=referenceChoice("DOWN",()->orders.create(request));UUID item=saved.getItems().getFirst().getId();line.setId(item);
+            String proof=db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?",String.class,item);
+            String originalSources=sourceFacts(saved.getId());
+            var same=orders.update(saved.getId(),request);
+            assertThat(same.getItems().getFirst().getId()).isEqualTo(item);
+            assertThat(same.getTotalOriginal()).isEqualByComparingTo("100");assertThat(same.getTotalLocal()).isEqualByComparingTo("700");
+            assertThat(db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?",String.class,item)).isEqualTo(proof);
+            assertThat(sourceFacts(saved.getId())).isEqualTo(originalSources);
+            line.setTotalAmountInput(new BigDecimal("101"));
+            assertThatThrownBy(()->orders.update(saved.getId(),request)).isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+            assertThat(db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?",String.class,item)).isEqualTo(proof);
+            assertThat(sourceFacts(saved.getId())).isEqualTo(originalSources);
+            var changed=referenceChoice("HALF_UP",()->orders.update(saved.getId(),request));
+            assertThat(changed.getItems().getFirst().getId()).isEqualTo(item);assertThat(changed.getTotalOriginal()).isEqualByComparingTo("101");assertThat(changed.getTotalLocal()).isEqualByComparingTo("707");
+            assertThat(db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?",String.class,item)).isNotEqualTo(proof);
+            assertThat(sourceFacts(saved.getId())).isEqualTo(originalSources);
+            finance.submit("SUBCONTRACT",saved.getId());fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",saved.getId());fixture.loginAs(w.superAdminUserId());
+            assertThat(sourceFacts(saved.getId())).isEqualTo(originalSources);counter(source,"3");orders.reverse(saved.getId());counter(source,"0");
+            assertThat(sourceFacts(saved.getId())).isEqualTo(originalSources);return null;
+        });
+    }
+    @SuppressWarnings("try") private static <T>T referenceChoice(String mode,java.util.function.Supplier<T> action){
+        try(var scope=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("money.reference-unit-price",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,mode)))){return action.get();}
+        catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
+    }
+
     private UUID application(FullChainEndToEndTest.World w, String quantity, int day) {
         var request = new ApplicationSaveRequest();
         request.setBillDate(BusinessTime.today());

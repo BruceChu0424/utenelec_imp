@@ -1,4 +1,6 @@
 package com.uten.imp.features.purchase.order;
+
+import com.uten.imp.common.finance.DocumentQuantitySavePlan;
 import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
@@ -130,6 +132,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private final com.uten.imp.application.port.ProcurementOrderSourceRevisionPort sourceRevision;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
     private final com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService masterDefaultsSync;
+    private final com.uten.imp.features.purchase.common.ProcurementReferencePricePolicyService referencePricePolicies;
 
     /** Spring injects this in production; direct-construction tests fail closed. */
     @Autowired
@@ -351,6 +354,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         // purchase_orders/purchase_order_items 取事实，Hibernate 未 flush 的头/行它看不见
         // (此前放在 save 之后、明细之前，新建单永远学不到货品供应商与单价)。
         orderRepo.flush();
+        referencePricePolicies.adoptSavedOrder("PURCHASE",o.getId());
         masterDefaultsSync.syncFromPurchaseOrder(o.getId());
         return toDetail(o, items);
     }
@@ -589,12 +593,32 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 previousItems.remove(match);
             }
         }
-        itemRepo.deleteByOrderId(id);
+        var quantityIntents=new java.util.ArrayList<DocumentQuantitySavePlan.Intent>();
+        int quantityPosition=1;
+        for(OrderItemLine line:req.getItems()){
+            int position=line.getLineNo()==null?quantityPosition:line.getLineNo();
+            quantityIntents.add(DocumentQuantitySavePlan.intent(position,line.getId(),
+                    "goods_id",line.getGoodsId(),
+                    "color_id",line.getColorId(),
+                    "unit_id",line.getUnitId(),
+                    "unit_rate",line.getUnitRate(),
+                    "qty",line.getQty(),
+                    "quantity_semantics",o.getQuantitySemantics(),
+                    "gift_qty",line.getGiftQty()==null?BigDecimal.ZERO:line.getGiftQty(),
+                    "request_item_ids",line.resolvedRequestItemIds()));
+            quantityPosition++;
+        }
+        var quantityPlan=DocumentQuantitySavePlan.prepare(em,DocumentQuantitySavePlan.Family.PURCHASE_ORDER,id,quantityIntents,input->{
+            var unit=lineUnitPolicy.normalizeAndValidate((UUID)input.operands().get("goods_id"),(UUID)input.operands().get("unit_id"),(BigDecimal)input.operands().get("unit_rate"),input.lineNo());
+            return input.units(unit.unitId(),unit.unitRate());
+        });
+        quantityPlan.deleteReplaced(em);
         itemRepo.flush();
-        List<OrderItemDto> items = saveItems(o, req.getItems(), previousColumns);
+        List<OrderItemDto> items = saveItems(o, req.getItems(), previousColumns, quantityPlan);
         applyTotals(o, items);
         // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
         orderRepo.flush();
+        referencePricePolicies.adoptSavedOrder("PURCHASE",o.getId());
         masterDefaultsSync.syncFromPurchaseOrder(o.getId());
         return toDetail(o, items);
     }
@@ -704,7 +728,6 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 order.getExchangeRate(),
                 order.getTaxRate(),
                 "采购订货");
-        com.uten.imp.common.finance.ProcurementReferencePrice.loadPolicies(em, orderType(), items);
         requireFinanceCommercialAuthority(order, items);
         // V463：送审完整性按「来源分配行」逐条校验（合并行的每个来源申请行
         // 都必须维度一致、已下达且未中止）；无 sources 的历史行退回主锚点整行。
@@ -1007,14 +1030,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             item.setTotalAmountInput(MoneyPolicy.revisedTotalAmountInput(
                     item.getTotalAmountInput(), (BigDecimal) change[1], newQty));
             item.setQty(newQty);
-            if (item.getTotalAmountInput() != null) {
-                var reference = com.uten.imp.common.finance.ProcurementReferencePrice.adopt(item.getTotalAmountInput(), newQty);
-                item.setPrice(reference.price());
-                item.setReferencePricePrecisionPolicy(reference.policy());
-            }
             BigDecimal amountOriginal = item.getPrice() == null
                     ? null : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                            com.uten.imp.common.finance.ProcurementReferencePrice.baseAmount(newQty, item.getPrice(), item.getTotalAmountInput(), item.getReferencePricePrecisionPolicy()), item.getExtraColumns());
+                            com.uten.imp.features.purchase.common.ProcurementReferencePricePolicyService.savedBaseAmount(newQty,item.getPrice(),item.getTotalAmountInput()), item.getExtraColumns());
             item.setAmountOriginal(amountOriginal);
             item.setAmountLocal(amountOriginal == null
                     ? null : money(amountOriginal.multiply(rate)));
@@ -1023,6 +1041,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         recalcOrderTotals(order, items);
         orderRepo.save(order);
         orderRepo.flush();
+        referencePricePolicies.adoptSavedOrder("PURCHASE",id);
         sourceRevision.apply(orderType(),id,changes.stream().map(change ->(UUID)change[4]).toList());
         for(Object[] change:changes) {
             PurchaseOrderItem item=(PurchaseOrderItem)change[0];
@@ -1147,8 +1166,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         }
     }
 
-    private static void requireFinanceCommercialAuthority(
+    private void requireFinanceCommercialAuthority(
             PurchaseOrder order, List<PurchaseOrderItem> items) {
+        em.flush();
+        referencePricePolicies.requireSavedOrder("PURCHASE",order.getId());
         BigDecimal rate = order.getExchangeRate();
         BigDecimal totalOriginal = BigDecimal.ZERO;
         BigDecimal totalLocal = BigDecimal.ZERO;
@@ -1167,7 +1188,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         "采购订货数量、单价和金额必须完整且不能为负");
             }
             BigDecimal expectedOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    com.uten.imp.common.finance.ProcurementReferencePrice.baseAmount(item.getQty(), item.getPrice(), item.getTotalAmountInput(), item.getReferencePricePrecisionPolicy()), item.getExtraColumns());
+                    com.uten.imp.features.purchase.common.ProcurementReferencePricePolicyService.savedBaseAmount(item.getQty(),item.getPrice(),item.getTotalAmountInput()), item.getExtraColumns());
             if(item.getQty().signum()==0 && expectedOriginal.signum()!=0)
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,"赠品明细不得产生货款");
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
@@ -1297,16 +1318,22 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
 
     private List<OrderItemDto> saveItems(PurchaseOrder o, List<OrderItemLine> lines,
             Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns) {
+        return saveItems(o,lines,previousColumns,DocumentQuantitySavePlan.empty());
+    }
+
+    private List<OrderItemDto> saveItems(PurchaseOrder o, List<OrderItemLine> lines,
+            Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns,DocumentQuantitySavePlan.Plan quantityPlan) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
         for (int index = 0; index < lines.size(); index++) {
             OrderItemLine line = lines.get(index);
             int lineNo = line.getLineNo() != null ? line.getLineNo() : index + 1;
-            ProcurementQuantities.of(o.getQuantitySemantics(), line.getQty(), line.getGiftQty(), line.getUnitRate());
+            if(quantityPlan.saved(lineNo)==null)ProcurementQuantities.of(o.getQuantitySemantics(), line.getQty(), line.getGiftQty(), line.getUnitRate());
+            else ProcurementQuantities.validateOriginal(o.getQuantitySemantics(),line.getQty(),line.getGiftQty(),line.getUnitRate());
             com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(line.getGiftQty(), "第 " + lineNo + " 行赠品数量");
         }
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额），request_item_id 落首来源（主锚点）。
-        Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines, o.getQuantitySemantics());
+        Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines, o.getQuantitySemantics(),quantityPlan);
         Map<UUID, PurchaseGoodsSnapshot> requestSnapshots =
                 PurchaseGoodsSnapshot.fromRequestItems(
                         em,
@@ -1335,7 +1362,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                             l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             List<SourceSplit> lineSplits = splits.getOrDefault(l, List.of());
             UUID primarySource = lineSplits.isEmpty() ? null : lineSplits.getFirst().requestItemId();
-            PurchaseOrderItem it = new PurchaseOrderItem();
+            var quantitySaved=quantityPlan.saved(lineNo);
+            PurchaseOrderItem it = quantitySaved==null?new PurchaseOrderItem():quantitySaved.entity(em,PurchaseOrderItem.class);
             it.setOrderId(o.getId());
             it.setBillNo(o.getBillNo());
             it.setBillDate(o.getBillDate());
@@ -1361,21 +1389,20 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     throw new ApiException(ErrorCode.VALIDATION_FAILED,"仅赠品明细的单价和总金额必须为零");
                 totalInput = null;
             }
-            var reference = totalInput == null ? null
-                    : com.uten.imp.common.finance.ProcurementReferencePrice.adopt(totalInput, l.getQty());
-            BigDecimal price = l.getQty().signum() == 0 ? BigDecimal.ZERO : reference == null
+            boolean retainedReference=quantitySaved!=null&&totalInput!=null&&quantitySaved.matches("total_amount_input",totalInput);
+            if(retainedReference&&!quantitySaved.referenceMatches(em))throw new ApiException(ErrorCode.CONFLICT,"原参考单价采用依据无法核对，请保留原输入重新核对");
+            BigDecimal price = retainedReference?quantitySaved.decimal("price"):l.getQty().signum() == 0 ? BigDecimal.ZERO : totalInput == null
                     ? (l.getPrice() == null ? null : com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(), "单价"))
-                    : reference.price();
+                    : MoneyPolicy.referenceUnitPrice(totalInput,l.getQty());
             it.setTotalAmountInput(totalInput);
             it.setPrice(price);
-            it.setReferencePricePrecisionPolicy(reference == null ? null : reference.policy());
             com.uten.imp.common.finance.PurchaseOverReceiptTolerance.requireExactTotalInputOverage(
                     totalInput, l.getQty(), l.getAllowedOverReceiptPct(), lineNo);
             it.setAllowedOverReceiptPct(l.getAllowedOverReceiptPct());
             it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "purchase_order",
                     l.getExtraColumns(), previousColumns.getOrDefault(l, List.of()), purchasePriceMasked()));
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    com.uten.imp.common.finance.ProcurementReferencePrice.baseAmount(l.getQty(), price, totalInput, it.getReferencePricePrecisionPolicy()), it.getExtraColumns());
+                    (retainedReference?com.uten.imp.features.purchase.common.ProcurementReferencePricePolicyService.savedBaseAmount(l.getQty(),price,totalInput):MoneyPolicy.orderBaseAmount(l.getQty(), price, totalInput)), it.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
             if (l.getQty().signum()==0 && (amounts.original()==null || amounts.original().signum()!=0))
@@ -1403,7 +1430,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             itemRepo.save(it);
             itemRepo.flush();
             int sourceLine = 1;
-            for (SourceSplit split : lineSplits) {
+            if(quantitySaved==null)for (SourceSplit split : lineSplits) {
                 em.createNativeQuery("""
                         INSERT INTO purchase_order_item_sources (
                             order_item_id, request_item_id, alloc_qty, allocated_gift_qty, line_no, created_by)
@@ -1472,7 +1499,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
      *「需求日期升序、id 升序」稳定顺序上先到先得，末位来源吸收超额（超采）；
      * 先确定实物份额，再拆为收费与赠品；零收费但有赠品的来源仍保留。
      */
-    private Map<OrderItemLine, List<SourceSplit>> planSourceSplits(List<OrderItemLine> lines, String semantics) {
+    private Map<OrderItemLine, List<SourceSplit>> planSourceSplits(List<OrderItemLine> lines, String semantics,DocumentQuantitySavePlan.Plan quantityPlan) {
         List<UUID> allIds = lines.stream()
                 .flatMap(line -> line.resolvedRequestItemIds().stream())
                 .distinct().toList();
@@ -1506,7 +1533,16 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             remaining.put(id, (BigDecimal) row[1]);
             stableOrder.add(id);
         }
+        int position=0;
         for (OrderItemLine line : lines) {
+            position++;int lineNo=line.getLineNo()==null?position:line.getLineNo();
+            var saved=quantityPlan.saved(lineNo);
+            if(saved!=null){
+                var original=saved.sourceSplits().stream().map(part->new SourceSplit(part.source(),part.quantity(),part.gift())).toList();
+                result.put(line,original);
+                for(var part:original)remaining.computeIfPresent(part.requestItemId(),(key,value)->value.subtract(part.allocQty().add(part.allocGiftQty())).max(BigDecimal.ZERO));
+                continue;
+            }
             if (line.resolvedRequestItemIds().isEmpty()) {
                 result.put(line, List.of());
                 continue;

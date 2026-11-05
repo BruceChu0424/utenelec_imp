@@ -109,9 +109,36 @@ class FinanceApplicationsPostgresTest {
         login(payer);UUID account=account(),style=expenseStyle();proof(id,"FINANCE_APPLICATION_PAYMENT_PROOF");var approved=applications.detail(id);var paid=applications.execute(id,execute(approved,account,style,"100"));UUID doc=(UUID)paid.get("native_doc_id");
         assertThat(db.queryForObject("SELECT finance_expense_id FROM expense_claims WHERE id=?",UUID.class,nativeClaim)).isEqualTo(doc);assertBalanced(doc);
         assertThat(db.queryForObject("SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type='PAID'",Integer.class,nativeClaim)).isEqualTo(1);
-        applications.reverse(id,reason(paid,"按真实报销原付款对称撤回"));assertThat(db.queryForObject("SELECT status FROM expense_claims WHERE id=?",String.class,nativeClaim)).isEqualTo("REJECTED");
+        String frozen=db.queryForObject("SELECT source_snapshot::text FROM finance_applications WHERE id=?",String.class,id);
+        Action reversal=reason(paid,"按真实报销原付款对称撤回");var reversed=applications.reverse(id,reversal);
+        assertThat(reversed).containsEntry("status","REVERSED").containsEntry("expenseClaimUnavailable",true)
+                .doesNotContainKeys("expenseClaim","currentDraftSource","currentDraftSourceFingerprint","currentDraftAmountOriginal");
+        assertThat(((Map<?,?>)reversed.get("actions")).get("edit")).isEqualTo(false);
+        assertThat(reversed.get("source_snapshot")).isEqualTo(applications.decode(frozen));
+        assertThat(db.queryForObject("SELECT source_snapshot::text FROM finance_applications WHERE id=?",String.class,id)).isEqualTo(frozen);
+        assertThat(expenseClaims.optionalDetail(nativeClaim)).isEmpty();
+        assertThat(expenseClaims.optionalDetail(UUID.randomUUID())).isEmpty();
+        assertThatThrownBy(()->expenseClaims.detail(nativeClaim)).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+                error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.NOT_FOUND));
+        assertThatThrownBy(()->expenseClaims.applicationBusinessSnapshot(nativeClaim)).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+                error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.NOT_FOUND));
+        assertThat(db.queryForObject("SELECT paid_by FROM expense_claims WHERE id=?",UUID.class,nativeClaim)).isNull();
+        assertThat(db.queryForObject("SELECT status FROM expense_claims WHERE id=?",String.class,nativeClaim)).isEqualTo("REJECTED");
         assertThat(db.queryForObject("SELECT balance_current FROM accounts WHERE id=?",java.math.BigDecimal.class,account)).isEqualByComparingTo("1000");
+        assertBalanced(doc);
+        assertThat(applications.reverse(id,reversal).get("status")).isEqualTo("REVERSED");
+        assertThat(db.queryForObject("SELECT count(*) FROM finance_application_events WHERE application_id=? AND event_type='PAYMENT_REVERSED'",Integer.class,id)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type='PAYMENT_REVERSED'",Integer.class,nativeClaim)).isEqualTo(1);
         assertThat(db.queryForObject("SELECT count(*) FROM expense_claim_invoices WHERE claim_id=? AND id=?",Integer.class,nativeClaim,invoiceId)).isEqualTo(1);
+        login(w.owner());legacy.requireEditableOriginal(applications.row(id,false));
+        var editable=applications.detail(id);
+        assertThat(((Map<?,?>)editable.get("actions")).get("edit")).isEqualTo(true);
+        assertThat(editable).containsKeys("currentDraftSource","currentDraftSourceFingerprint","currentDraftAmountOriginal");
+        assertThat(editable.get("expenseClaimUnavailable")).isNull();
+        assertThat(expenseClaims.detail(nativeClaim).id()).isEqualTo(nativeClaim);
+        assertThat(expenseClaims.optionalDetail(nativeClaim).orElseThrow().id()).isEqualTo(nativeClaim);
+        assertThatThrownBy(()->applications.submit(id,action(editable))).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+                error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT));
     }
     @Test void approvedSupplierPrepaymentUsesOneActualPaymentAssetAndNoFabricatedPayable(){
         Prepared original=prepared.get("prepayment");World w=original.world();Actor payer=payer();UUID id=original.input().id();approvePayment(w,id);
@@ -155,8 +182,10 @@ class FinanceApplicationsPostgresTest {
         assertThat(db.queryForObject("SELECT sum(amount*direction) FROM gl_entries WHERE style_id=? AND NOT is_deleted",java.math.BigDecimal.class,cost)).isEqualByComparingTo("100");
         assertThat(db.queryForObject("SELECT count(*) FROM finance_expenses WHERE remark LIKE ?",Integer.class,"%"+batch+"%")).isZero();
     }
-    /** Historical compatibility fixtures only: original1039 fields/nodes, followed by real1040 capture.
-     * This does not claim that the now-retired SAVE/SUBMIT API remains available. */
+    /** Original1039 fields/nodes are captured by real1040 first, then upgraded to
+     * the complete current schema before any business action. This neither opens
+     * retired SAVE/SUBMIT nor proves an older pre1000 database with reversal events
+     * can cross the intermediate V1000/V1002 constraint replacements. */
     @BeforeAll void captureActualPre1040OriginalRounds() throws Exception {
         assertThat(db.queryForObject("SELECT to_regclass('finance_application_legacy_sources') IS NULL",Boolean.class)).isTrue();
         World travelWorld=world();prepare("travel",travelWorld,travel(UUID.randomUUID()),null,null,false);
@@ -174,8 +203,38 @@ class FinanceApplicationsPostgresTest {
         World scoped=world();login(scoped.owner());UUID inaccessible=UUID.randomUUID();db.update("INSERT INTO suppliers(id,code,name,status,code_sequence) VALUES(?,?,'匿名权限范围供应商','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM suppliers))",inaccessible,"FQ-S-"+inaccessible);
         prepared.put("payableScope",new Prepared(scoped,payment(UUID.randomUUID(),"PAYMENT_APPLICATION","SUPPLIER_AP",inaccessible,UUID.randomUUID(),null,"100"),null,null,null));
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(data).locations(MIGRATIONS).target("1040").load().migrate();
+        String oldEvents=eventHistory(),oldOperations=operationHistory();
+        String oldSources=db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY application_id),'[]'::jsonb)::text FROM finance_application_legacy_sources s",String.class);
+        var currentMigrations=com.uten.imp.testsupport.TestFlyway.configure().dataSource(data).locations(MIGRATIONS).load();
+        currentMigrations.migrate();
+        String head=db.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1",String.class);
+        var highestResolved=java.util.Arrays.stream(currentMigrations.info().all())
+                .filter(info->info.getVersion()!=null&&info.getState().isResolved())
+                .map(org.flywaydb.core.api.MigrationInfo::getVersion).max(java.util.Comparator.naturalOrder()).orElseThrow();
+        assertThat(currentMigrations.info().pending()).isEmpty();
+        assertThat(head).isEqualTo(highestResolved.toString());
+        assertThat(eventHistory()).isEqualTo(oldEvents);assertThat(operationHistory()).isEqualTo(oldOperations);
+        assertThat(db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY application_id),'[]'::jsonb)::text FROM finance_application_legacy_sources s",String.class)).isEqualTo(oldSources);
+        System.out.println("FINANCE_APPLICATION_SCHEMA_HEAD="+head+";SUCCESSFUL_MIGRATIONS="+db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class));
+        assertExpenseEventTypeConstraint(prepared.get("REIMBURSEMENT"));
         for(var fixture:prepared.entrySet())if(!fixture.getKey().equals("payableScope"))assertThat(legacy.allowed(fixture.getValue().input().id())).as(fixture.getKey()).isTrue();
         logout();
+    }
+    private String eventHistory(){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY id),'[]'::jsonb)::text FROM expense_claim_events e",String.class);}
+    private String operationHistory(){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(o) ORDER BY request_id),'[]'::jsonb)::text FROM finance_application_operations o",String.class);}
+    private void assertExpenseEventTypeConstraint(Prepared source) {
+        String before=eventHistory();var owner=source.world().owner();
+        // These are rollback-only constraint-admission probes, not fabricated
+        // department approvals or abandonment of the real business fixture.
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+            for(String type:List.of("STAGE_APPROVED","ABANDONED","PAYMENT_REVERSED"))db.update("INSERT INTO expense_claim_events(id,claim_id,event_type,actor_employee_id,actor_name_snapshot,remark) VALUES(?,?,?,?,?,'anonymous constraint probe')",UUID.randomUUID(),source.claim(),type,owner.employee(),owner.name());
+            status.setRollbackOnly();
+        });
+        assertThat(eventHistory()).isEqualTo(before);
+        assertThatThrownBy(()->new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->
+                db.update("INSERT INTO expense_claim_events(id,claim_id,event_type,actor_employee_id,actor_name_snapshot,remark) VALUES(?,?,'INVALID_EVENT',?,?,'anonymous rejected constraint probe')",UUID.randomUUID(),source.claim(),owner.employee(),owner.name())))
+                .hasMessageContaining("expense_claim_events_type_chk");
+        assertThat(eventHistory()).isEqualTo(before);
     }
     private record Prepared(World world,DraftInput input,Action submit,UUID claim,UUID style) { }
     private void prepare(String key,World w,DraftInput input,UUID claim,UUID style,boolean archived){prepared.put(key,new Prepared(w,input,seedOriginal(w,input,claim,archived),claim,style));}
@@ -254,8 +313,31 @@ Actor accountant=actor("预付科目核对",Set.of("finance_report:view","financ
     private World world(){return world(false);}
     private World world(boolean salary){Actor admin=actor("设置",Set.of("expense:settings","finance_application:view")),owner=actor("申请人",salary?Set.of("finance_application:view","finance_application:apply","expense:apply","payroll:generate"):Set.of("finance_application:view","finance_application:apply","expense:apply")),department=reviewer("部门"),finance1=reviewer("财务一"),finance2=reviewer("财务二"),management=reviewer("总经办");login(admin);
         UUID dept=db.queryForObject("SELECT department_id FROM employees WHERE id=?",UUID.class,owner.employee);
-        for(var binding:Map.of("DEPARTMENT_REVIEW",department,"TRAVEL_APPROVAL",management,"FINANCE_CUSTODY",finance1,"FINANCE_REVIEW_1",finance1,"FINANCE_REVIEW_2",finance2,"MANAGEMENT_PAYMENT",management).entrySet())roles.saveRole(new RoleInput(UUID.randomUUID(),-1,binding.getKey(),binding.getKey().equals("DEPARTMENT_REVIEW")?dept:null,binding.getValue().employee,"原图岗位明确指派测试依据"));
-        var settings=roles.settings();roles.saveSettings(new SettingsInput(((Number)settings.get("version")).longValue(),true,"按财务原图启用新申请流程测试依据"));return new World(owner,department,finance1,finance2,management);
+        seedOriginal1039Configuration(admin,dept,Map.of("DEPARTMENT_REVIEW",department,"TRAVEL_APPROVAL",management,"FINANCE_CUSTODY",finance1,"FINANCE_REVIEW_1",finance1,"FINANCE_REVIEW_2",finance2,"MANAGEMENT_PAYMENT",management));
+        return new World(owner,department,finance1,finance2,management);
+    }
+    /** This class deliberately captures original 1039 state before migrating to 1040.
+     * Seed only that historical configuration with its original columns; the new
+     * settings receipt protocol requires real V1049 and is tested separately in
+     * FinanceApplicationSettingsReceiptPostgresTest. Do not advance this fixture's
+     * schema or call the new nullable-application journal to manufacture old state.
+     * All application decisions, actual payments, GL and reversals below still use
+     * their real services. */
+    private void seedOriginal1039Configuration(Actor admin,UUID department,Map<String,Actor> bindings) {
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+            tx.bind();roles.lockSettings();
+            for(var binding:bindings.entrySet()) {
+                assertThat(roles.eligible(binding.getValue().employee,true)).isNotNull();
+                db.update("INSERT INTO finance_application_role_bindings(id,role_key,department_id,employee_id,source_reference,updated_by) VALUES(?,?,?,?,?,?)",
+                        UUID.randomUUID(),binding.getKey(),binding.getKey().equals("DEPARTMENT_REVIEW")?department:null,binding.getValue().employee,"原图岗位明确指派测试依据",admin.user);
+            }
+            String reference="按财务原图启用新申请流程测试依据";
+            var old=db.queryForMap("SELECT enabled,source_reference FROM finance_application_settings WHERE id=1 FOR UPDATE");
+            if(Boolean.TRUE.equals(old.get("enabled"))&&reference.equals(old.get("source_reference")))return;
+            if(!Boolean.TRUE.equals(old.get("enabled")))
+                db.update("INSERT INTO finance_application_enable_periods(enabled_at,actor_id,source_reference) VALUES(now(),?,?)",admin.user,reference);
+            db.update("UPDATE finance_application_settings SET enabled=true,enabled_at=now(),source_reference=?,row_version=row_version+1,updated_at=now(),updated_by=? WHERE id=1",reference,admin.user);
+        });
     }
     private Actor reviewer(String name){return actor(name,Set.of("finance_application:view","finance_application:review","attachment:view","attachment:download","notice:read"));}
     private Actor actor(String label,Set<String> permissions){UUID employee=UUID.randomUUID(),user=UUID.randomUUID();String name=label+employee.toString().substring(0,8);UUID department=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);

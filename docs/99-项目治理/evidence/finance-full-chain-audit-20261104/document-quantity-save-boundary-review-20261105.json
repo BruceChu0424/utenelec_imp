@@ -1,0 +1,64 @@
+{
+  "status": "owner_lock_and_default_review_complete_actual_v5_running",
+  "verificationScope": "Read-only owning Java and SQL review; this file does not claim a separately run concurrent PG test.",
+  "sourceAllocationOwners": [
+    {
+      "owner": "PurchaseOrderService.saveItems / SubcontractOrderService.saveItems",
+      "writers": "INSERT respective *_order_item_sources",
+      "lock": "ordinary update locks mutation footprint then requireOrderForUpdate; create and replacement headers/lines are inserted and remain owned/unpublished in same transaction"
+    },
+    {
+      "owner": "ProcurementOrderSourceRevisionService.prepare/apply",
+      "writers": "UPDATE alloc_qty with old-value CAS",
+      "callers": "only PurchaseOrderService.changeQty and SubcontractOrderService.changeQty kernel",
+      "lock": "outer mutationLocks.order+requireOrderForUpdate; prepare additionally locks lines/source shares; SQL fn_prepare_procurement_source_revision locks header+line, allocation proof locks share+line"
+    },
+    {
+      "owner": "ProcurementOrderTerminationSourceService.linkReplacement",
+      "writers": "DELETE/INSERT source rows only for replacement draft",
+      "caller": "ProcurementOrderClosureService.complete after createRemainingDraft in same transaction",
+      "lock": "new replacement header/lines are still transaction-owned and have not been published; original release ledger preserves original source shares"
+    },
+    {
+      "owner": "DocumentUnapprovalService.copySources",
+      "writers": "INSERT shares for newly inserted draft lines",
+      "lock": "family reverse already locks original; new draft header+lines inserted in same transaction; copy completes before response/commit; original shares unchanged"
+    }
+  ],
+  "nullableDefaults": [
+    {
+      "field": "unitId / unitRate in five client native documents",
+      "actualClient": "raw detail values retained; null omitted on wire; no current goods unit/1 filled merely for display. Explicit pickGoods fills those values. Source-locked raw missing rate is already blocked by client validation."
+    },
+    {
+      "field": "known purchase base-unit omitted rate",
+      "actualServer": "existing UnitPolicy normalize to1 retained for known recorded basis; current Plan callback uses that original policy"
+    },
+    {
+      "field": "editable native pre1033/v1 missing original unit/rate",
+      "ownerDecision": "reject implicit inference only if original missing component was not explicitly supplied; raw basis captured by the same locked Plan before normalization; explicitly completed missing components use original normal adoption. Imported documents keep prior immutability."
+    },
+    {
+      "field": "general replacementIntent",
+      "actualOwner": "resolveIntent(null,available,owed) can NORMAL,RETURN_REPLACEMENT,or ambiguity rejection; it is not constant NORMAL, so Plan keeps null distinct"
+    },
+    {
+      "field": "giftReplacementIntent",
+      "actualOwner": "native save already has omitted-gift inherits general expression; same intent comparison follows that expression while reused entity preserves actual original stored null"
+    }
+  ],
+  "identity": {
+    "businessId": "optional original row locator, not authority/proof",
+    "metadataId": "must agree with business id when both supplied; original version/cell CAS unchanged",
+    "explicitReservations": "all explicit old IDs reserved before no-ID semantic fallback, preventing an earlier new duplicate from stealing later original identity",
+    "legacyFallback": "complete operands only, stable1to1, different adoption ambiguity rejected"
+  },
+  "logs": {
+    "cloneRed": "build/finance-closeout-20261104/quantity-clone-matching-red/workflow.log",
+    "cloneFixed7": "build/finance-closeout-20261104/quantity-clone-matching-fixed/workflow.log",
+    "v4": "build/finance-closeout-20261104/quantity-reference-save-v4/workflow.log 45/45 on old snapshot before raw-basis guard and clone reservation",
+    "v5": "build/finance-closeout-20261104/quantity-reference-save-v5/workflow.log running; no final count yet"
+  },
+  "noQuantityAlgorithmChange": true,
+  "noHistoricalMigrationRewrite": true
+}

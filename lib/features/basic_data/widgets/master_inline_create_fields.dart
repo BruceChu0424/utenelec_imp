@@ -19,6 +19,7 @@ List<MasterFieldDef> masterInlineCreateFields(
           type: MasterFieldType.custom,
           group: field.group,
           hint: field.hint,
+          useFieldNameHint: field.useFieldNameHint,
           customBuilder: (context) =>
               MasterInlineOptionsCell(field: context, load: load),
         )

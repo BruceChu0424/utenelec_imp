@@ -337,7 +337,7 @@ class ProcurementSupplierHistoryPostgresTest {
                 INSERT INTO purchase_order_items(
                     id,bill_no,bill_date,order_id,goods_id,unit_id,unit_rate,qty,price,goods_snapshot_source)
                 VALUES (?,?,DATE '2026-08-29',?,?,?,?,1,?,'MASTER_AT_SAVE')
-                """, UUID.randomUUID(), billNo, order, goods, unit, price);
+                """, UUID.randomUUID(), billNo, order, goods, unit, BigDecimal.ONE, price);
         return order;
     }
 

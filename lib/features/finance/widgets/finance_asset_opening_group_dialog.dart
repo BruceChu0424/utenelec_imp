@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -75,9 +77,8 @@ Future<bool> showFinanceAssetOpeningGroupDialog(
   String? initialSourceImportId,
   String? resumeDraftId,
 }) async =>
-    await showDialog<bool>(
+    await showFinanceWorkbenchPanel<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => UtenDialogFrame(
         child: SizedBox(
           width: 1380,
@@ -459,7 +460,7 @@ class _FinanceAssetOpeningGroupSurfaceState
     if (_busy || _loading || !formDraftIdentityIsCurrent) return;
     setState(() => _busy = true);
     try {
-      await task();
+      await UtenBusyOverlay.run(context, title: '正在核对资产期初资料', action: task);
     } on UiWorkCancelled {
       /* Retire stale source projection. */
     } catch (error) {
@@ -483,7 +484,9 @@ class _FinanceAssetOpeningGroupSurfaceState
     if (match == null) throw StateError('请先填写原表会计月份（YYYY-MM）');
     final scope = await captureFormDraftRequestScope();
     await saveFormDraftNow();
-    final file = await ref.read(financeEntryFilePickerProvider)();
+    final file = await UtenBusyOverlay.yieldWhile(
+      () => ref.read(financeEntryFilePickerProvider)(),
+    );
     if (file == null || !mounted || !scope.isCurrent) return;
     final bytes = file.bytes;
     if (!{'xls', 'xlsx'}.contains(file.extension?.toLowerCase()) ||
@@ -836,10 +839,14 @@ class _FinanceAssetOpeningGroupSurfaceState
       // CAS actions have no separate operation ID. A retry first reads the
       // original group; another actor's later state is never our receipt.
       if (wasUnknown && command['action'] != 'create') {
-        final current = await scope.run(
-          () => ref
-              .read(apiClientProvider)
-              .get('/finance/asset-opening-groups/${command['groupId']}'),
+        final current = await UtenBusyOverlay.run(
+          context,
+          title: '正在核对原接续操作',
+          action: () => scope.run(
+            () => ref
+                .read(apiClientProvider)
+                .get('/finance/asset-opening-groups/${command['groupId']}'),
+          ),
         );
         if (_proved(command, current)) {
           await completeFormDraft();
@@ -853,15 +860,19 @@ class _FinanceAssetOpeningGroupSurfaceState
         }
       }
       await runFormDraftSubmission(
-        () => scope.run(
-          () => ref
-              .read(apiClientProvider)
-              .post(
-                command['action'] == 'create'
-                    ? '/finance/asset-opening-groups'
-                    : '/finance/asset-opening-groups/${command['groupId']}/${command['action']}',
-                body: command['body'],
-              ),
+        () => UtenBusyOverlay.run(
+          context,
+          title: '正在处理资产期初接续',
+          action: () => scope.run(
+            () => ref
+                .read(apiClientProvider)
+                .post(
+                  command['action'] == 'create'
+                      ? '/finance/asset-opening-groups'
+                      : '/finance/asset-opening-groups/${command['groupId']}/${command['action']}',
+                  body: command['body'],
+                ),
+          ),
         ),
         isDefiniteRejection: (e) => !wasUnknown && _definite(e),
       );
@@ -1423,7 +1434,10 @@ class _FinanceAssetOpeningGroupSurfaceState
           UtenDialogSurface(
             child: UtenDialogHeader(
               icon: Icons.account_balance_outlined,
-              title: Text('${_templates[_template]}原表接续'),
+              title: UtenDialogTitleWithHint(
+                title: Text('${_templates[_template]}原表接续'),
+                info: _pending == null ? null : '上次操作结果待核对，原请求参数已冻结。请核对原请求结果。',
+              ),
               showCloseButton: true,
               onClose: _busy ? null : _close,
             ),
@@ -1585,7 +1599,6 @@ class _FinanceAssetOpeningGroupSurfaceState
             child: Column(
               children: [
                 if (_pending != null) ...[
-                  const Text('上次操作结果待核对，原请求参数已冻结。'),
                   formDraftSubmissionRecoveryAction!,
                   const SizedBox(height: UtenSpacing.s8),
                 ],
@@ -1596,7 +1609,9 @@ class _FinanceAssetOpeningGroupSurfaceState
                   enabled: !_busy && _pending == null,
                 ),
                 const SizedBox(height: UtenSpacing.s8),
-                UtenResponsiveActionWrap(
+                UtenDialogActions(
+                  padding: EdgeInsets.zero,
+                  showDivider: false,
                   children: [
                     if (_group == null)
                       UtenButton(

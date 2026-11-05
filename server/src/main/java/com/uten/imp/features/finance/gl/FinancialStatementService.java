@@ -183,7 +183,8 @@ final class FinancialStatementService {
         }
         return new Snapshot(amounts,configured,zero,unmapped,incompleteSources);
     }
-    private static String scope(String sheet) {
+    /** Shared resolved accounting meaning for statements and native funding-account selection. */
+    static String scope(String sheet) {
         var definitions=FinancialStatementCatalog.mappingLines(sheet).stream().filter(FinancialStatementCatalog.Line::direct).toList();
         String values=definitions.stream().map(l->"('%s','%s',%s)".formatted(l.key(),l.category(),l.sign())).collect(Collectors.joining(","));
         String defaults=definitions.stream().flatMap(l->l.roots().stream().map(r->"('%s','%s')".formatted(l.key(),r))).collect(Collectors.joining(","));

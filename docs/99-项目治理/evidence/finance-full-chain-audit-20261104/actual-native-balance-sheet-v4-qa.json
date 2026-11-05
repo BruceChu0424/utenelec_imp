@@ -1,0 +1,65 @@
+{
+  "source": "D:\\Projects\\uten_imp_worktrees\\finance-full-chain-audit-20261104\\build\\finance-closeout-20261104\\actual-ui\\native-balance-sheet-v4.pdf",
+  "sha256": "5677df92611699c57da31d10e75dba463fbdb9a99ec778d6e0048ede82cd65f4",
+  "origin": "Actual Windows application -> Microsoft Print to PDF; A4 landscape manually selected by Root",
+  "actualApplicationPdf": true,
+  "pages": [
+    {
+      "page": 1,
+      "width": 841.92004,
+      "height": 595.32001,
+      "tableWidths": [
+        8
+      ],
+      "textLayerHasColumnHeader": false,
+      "textLayerPageMarker": false,
+      "textLayerCharacterCount": 0,
+      "columnHeadersVisuallyPresent": true,
+      "pageMarkerVisuallyPresent": true,
+      "charactersOutsidePage": null
+    },
+    {
+      "page": 2,
+      "width": 841.92004,
+      "height": 595.32001,
+      "tableWidths": [
+        8
+      ],
+      "textLayerHasColumnHeader": false,
+      "textLayerPageMarker": false,
+      "textLayerCharacterCount": 0,
+      "columnHeadersVisuallyPresent": true,
+      "pageMarkerVisuallyPresent": true,
+      "charactersOutsidePage": null
+    }
+  ],
+  "textExtractionAvailable": false,
+  "automaticTableRecords": 0,
+  "checkMode": "Both Poppler page PNGs visually inspected; printer PDF has no character text layer, so extraction is not claimed as field verification",
+  "manualLineRanges": {
+    "page1": {
+      "left": "1..24",
+      "right": "31..47"
+    },
+    "page2": {
+      "left": "25..30",
+      "right": "48..53"
+    }
+  },
+  "all53OriginalLineNumbersExactlyOnceVisual": true,
+  "periodEnd595YearStart500Visual": true,
+  "retainedProfit95Visual": true,
+  "companyAndDateVisibleVisual": true,
+  "originalFootnotePresentVisual": false,
+  "visualReview": {
+    "allPagesViewed": true,
+    "amountClippingObserved": false,
+    "longLabelClippingObserved": false,
+    "orphanEquitySectionHeadingAtEndOfPage1": true,
+    "originalBodySectionFillsPreserved": false,
+    "originalLeftNarrowRightWideRatiosPreserved": false,
+    "numericRightAlignmentPreserved": false
+  },
+  "status": "CONTENT_COMPLETE_READABLE_BUT_ORIGINAL_PAPER_LAYOUT_NOT_COMPLETE",
+  "records": {}
+}

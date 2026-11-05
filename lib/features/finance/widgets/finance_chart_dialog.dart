@@ -21,6 +21,8 @@ import 'finance_entry_file_picker.dart';
 import 'gl_report_line_bindings_dialog.dart';
 import 'finance_native_posting_accounts_dialog.dart';
 import '../config/finance_requirement_names.dart';
+import '../shared/finance_workbench_panel.dart';
+import 'finance_chart_metadata_dialog.dart';
 
 List<Map<String, dynamic>> _maps(Object? value) => [
   if (value is List)
@@ -32,9 +34,8 @@ Future<bool> showFinanceChartDialog(
   BuildContext context, {
   required bool canEdit,
 }) async =>
-    await showDialog<bool>(
+    await showFinanceWorkbenchPanel<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => FinanceChartDialog(canEdit: canEdit),
     ) ??
     false;
@@ -62,6 +63,7 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
   Map<String, dynamic>? _pendingMapping;
   Map<String, dynamic>? _pendingCreation;
   Map<String, dynamic>? _pendingNewAccount;
+  bool _metadataEditorOpen = false;
   String? _pendingCode;
   bool get _current =>
       mounted &&
@@ -261,6 +263,10 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
       if (_pendingCode == account['code'] && _pendingCreation != null) {
         initial['classification'] = _pendingCreation!['classification'];
         initial['creationCategory'] = _pendingCreation!['category'];
+        initial['lineKeys'] = [
+          _pendingCreation!['balanceLineKey'],
+          _pendingCreation!['profitLineKey'],
+        ].whereType<String>().toList();
       }
       final mapping = await UtenBusyOverlay.yieldWhile(
         () => showDialog<Map<String, dynamic>>(
@@ -386,6 +392,32 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
     } finally {
       if (_current) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _editMetadata(Map<String, dynamic> account) async {
+    if (!_current || _busy || _unknown || _metadataEditorOpen) return;
+    _metadataEditorOpen = true;
+    try {
+      final changed = await showFinanceChartMetadataDialog(
+        context,
+        code: account['code'].toString(),
+        account: account,
+      );
+      if (!_current || !changed) return;
+      _changed = true;
+      await _load();
+    } finally {
+      _metadataEditorOpen = false;
+    }
+  }
+
+  void _closeDirectory() {
+    if (!mounted ||
+        _current &&
+            (_busy || _unknown || _metadataEditorOpen || _newAccountOpen)) {
+      return;
+    }
+    Navigator.pop(context, _changed);
   }
 
   List<Widget> get _tableActions => [
@@ -519,6 +551,25 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
     return value?.trim().isEmpty == true ? null : value;
   }
 
+  double _directoryActionWidth(BuildContext context) {
+    var textWidth = 0.0;
+    final style = DefaultTextStyle.of(
+      context,
+    ).style.copyWith(fontSize: 14, fontWeight: FontWeight.w600, height: 1.2);
+    for (final label in const ['修改名称', '对应科目/报表']) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      textWidth += painter.width;
+      painter.dispose();
+    }
+    // Both complete button labels, their padding, the inter-action gap and
+    // cell padding belong to the same horizontal-scrolling table column.
+    return (textWidth + 96).clamp(260, double.infinity).toDouble();
+  }
+
   Widget _directoryTable() {
     final keywordRows = _accounts
         .where(
@@ -614,14 +665,28 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
           MasterColumnDef(
             key: 'actions',
             label: '操作',
-            width: 160,
+            width: _directoryActionWidth(context),
+            minimumWidthOf: _directoryActionWidth,
             exportable: false,
             value: (_) => '',
-            cellBuilder: (_, row) => UtenButton(
-              type: UtenButtonType.secondary,
-              size: UtenButtonSize.small,
-              onPressed: _busy || _unknown ? null : () => _edit(row),
-              child: const Text('对应科目/报表'),
+            cellBuilder: (_, row) => Row(
+              children: [
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.small,
+                  onPressed: _busy || _unknown
+                      ? null
+                      : () => _editMetadata(row),
+                  child: const Text('修改名称'),
+                ),
+                const SizedBox(width: 8),
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.small,
+                  onPressed: _busy || _unknown ? null : () => _edit(row),
+                  child: const Text('对应科目/报表'),
+                ),
+              ],
             ),
           ),
       ],
@@ -746,12 +811,22 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
 
         title: const Text('访问范围已变化'),
         content: const Text('请关闭后以当前账号重新打开科目对应。原导入批次保留在所属账号。'),
+        actions: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: _closeDirectory,
+            child: const Text('关闭'),
+          ),
+        ],
       );
     }
     final sourceRows = _maps(_preview?['rows']),
         issues = _maps(_preview?['issues']);
     return PopScope(
-      canPop: !_busy && !_unknown,
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _closeDirectory();
+      },
       child: UtenAlertDialog(
         showCloseButton: true,
         onClose: _busy || _unknown
@@ -870,6 +945,13 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
             ],
           ),
         ),
+        actions: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: _busy || _unknown ? null : _closeDirectory,
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }
@@ -1170,7 +1252,17 @@ class _ChartMappingDialogState extends ConsumerState<_ChartMappingDialog> {
     }
     return UtenAlertDialog(
       maxWidth: 760,
-      title: Text('${widget.account['code']} ${widget.account['name']}'),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text('${widget.account['code']} ${widget.account['name']}'),
+          ),
+          const UtenFieldHintIcon(
+            info: '一个系统末级科目只能对应一个财务代码。报表父项与其中项分别选择，不重复归集。原有手工取数设置不会被静默删除。',
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 620,
         child: SingleChildScrollView(
@@ -1178,10 +1270,6 @@ class _ChartMappingDialogState extends ConsumerState<_ChartMappingDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                '一个系统末级科目只能对应一个财务代码。报表父项/其中项分别选择，不重复归集。原有手工取数设置不会被静默删除。',
-              ),
-              const SizedBox(height: 12),
               UtenDropdownField(
                 label: '财务类别',
                 value: _classification,
@@ -1221,9 +1309,9 @@ class _ChartMappingDialogState extends ConsumerState<_ChartMappingDialog> {
                 Text(target.label),
               if (widget.canCreate && _ids.isEmpty) ...[
                 const SizedBox(height: 12),
-                const Text('没有对应核算科目时可补建。请核对类别；补建不代表历史余额已接续。'),
                 UtenDropdownField(
                   label: '补建核算类别',
+                  info: '没有对应核算科目时可补建。补建不代表历史余额已接续，请核对实际类别。',
                   value: _createCategory,
                   items: const [
                     UtenDropdownItem(value: 'ACCOUNT', label: '资产 / 未结转成本余额'),
@@ -1264,7 +1352,8 @@ class _ChartMappingDialogState extends ConsumerState<_ChartMappingDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        UtenButton(
+          type: UtenButtonType.secondary,
           onPressed: () => Navigator.pop(context),
           child: const Text('取消'),
         ),
@@ -1275,20 +1364,23 @@ class _ChartMappingDialogState extends ConsumerState<_ChartMappingDialog> {
               'category': _createCategory,
               'classification': _classification,
               'currencyId': _currencyId,
+              'balanceLineKey': _balance,
+              'profitLineKey': _profit,
             }),
             child: const Text('补建并对应此科目'),
           ),
-        UtenButton(
-          onPressed: () => Navigator.pop(context, <String, dynamic>{
-            'expectedVersion': widget.account['version'],
-            'styleIds': _ids.toList(),
-            'balanceLineKey': _balance,
-            'profitLineKey': _profit,
-            'classification': _classification,
-            'currencyId': _currencyId,
-          }),
-          child: const Text('保存对应'),
-        ),
+        if (_ids.isNotEmpty || _createCategory == null)
+          UtenButton(
+            onPressed: () => Navigator.pop(context, <String, dynamic>{
+              'expectedVersion': widget.account['version'],
+              'styleIds': _ids.toList(),
+              'balanceLineKey': _balance,
+              'profitLineKey': _profit,
+              'classification': _classification,
+              'currencyId': _currencyId,
+            }),
+            child: const Text('保存对应'),
+          ),
       ],
     );
   }

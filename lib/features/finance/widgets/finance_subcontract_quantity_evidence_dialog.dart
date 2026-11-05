@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -73,9 +74,8 @@ Future<void> showFinanceSubcontractQuantityEvidenceDialog(
   Map<String, dynamic>? sourceRow,
   String? evidenceId,
   String? resumeDraftId,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
   builder: (_) =>
       resumeDraftId != null || evidenceId != null || sourceRow != null
       ? _EvidenceEditor(

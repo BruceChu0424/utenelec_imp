@@ -1,0 +1,113 @@
+{
+  "scope": "UI waiting adapter only, Web and existing Flutter desktop; Win7 excluded; no business or journal protocol changes",
+  "uniqueRenderer": "UtenBusyOverlay",
+  "adapter": "lib/components/feedback/uten_task_progress_dialog.dart",
+  "externalReferences": [
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 329,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 546,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 642,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 699,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "line": 991,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "line": 664,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "line": 701,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "line": 775,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/unit_page.dart",
+      "line": 441,
+      "kind": "direct existing owned DialogRoute"
+    },
+    {
+      "path": "lib/components/buttons/uten_export_button.dart",
+      "line": 276,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/components/buttons/uten_export_button.dart",
+      "line": 360,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/payment_style_page.dart",
+      "line": 648,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/payment_style_page.dart",
+      "line": 683,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/pages/color_page.dart",
+      "line": 449,
+      "kind": "direct existing owned DialogRoute"
+    },
+    {
+      "path": "lib/features/basic_data/pages/currency_page.dart",
+      "line": 485,
+      "kind": "direct existing owned DialogRoute"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/category_edit_dialog.dart",
+      "line": 462,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/category_page_shell.dart",
+      "line": 221,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_import_reference_picker.dart",
+      "line": 76,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_reference_options_loader.dart",
+      "line": 37,
+      "kind": "shared runUtenBlockingTask"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "line": 809,
+      "kind": "shared runUtenBlockingTask"
+    }
+  ],
+  "runCallCount": 17,
+  "directCallCount": 3,
+  "directChanges": "Only transparent route barrier added; ownDialog/trackRoute/wasLoadingCurrent and original request ownership retained",
+  "inventoryIsNotInteractionAcceptance": true,
+  "additionalAsyncJob": "User actions and initial restore use the same BusyOverlay; automatic sequential polling keeps status progress without blocking the UI",
+  "precision": "Unique showBusinessPrecisionDialog yields existing masks; original validity/choice/precision payload untouched"
+}

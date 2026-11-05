@@ -478,6 +478,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
       final route = DialogRoute<void>(
         context: context,
         barrierDismissible: false,
+        barrierColor: Colors.transparent,
         builder: (ctx) {
           return owner.ownDialog(
             ctx,

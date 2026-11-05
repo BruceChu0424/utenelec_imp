@@ -69,7 +69,7 @@ class AccountCurrencyHeaderPostgresTest {
     @Test void accountHeadersKeepExactOriginalCurrencyValuesAndCountBeforePagingAndExport() {
         UUID first=account("A-01","90071992547409.1234",false),second=account("A-02","90071992547409.1235",false);
         account("A-03","90071992547409.1236",true);
-        var service=new AccountService(repositories.getRepository(AccountRepository.class),mock(TxSessionVars.class),em,mock(MasterCodeService.class));
+        var service=new AccountService(repositories.getRepository(AccountRepository.class),mock(TxSessionVars.class),em,mock(MasterCodeService.class),mock(com.uten.imp.application.port.FundingAccountStylePort.class));
         var filter=new AccountQueryFilter("银行",null,null,null,null,null,null).withColumnSearch(
                 Map.of("name","银行%_账户","bankAccountNo","6222%_","balanceCurrent","90071992547409.1234..90071992547409.1235"));
         var one=service.list(filter,1,1,"balanceCurrent","desc");
@@ -104,7 +104,7 @@ class AccountCurrencyHeaderPostgresTest {
             db.update("UPDATE accounts SET currency_id=? WHERE id=?",currency,account);
             last=currency;
         }
-        var service=new AccountService(repositories.getRepository(AccountRepository.class),mock(TxSessionVars.class),em,mock(MasterCodeService.class));
+        var service=new AccountService(repositories.getRepository(AccountRepository.class),mock(TxSessionVars.class),em,mock(MasterCodeService.class),mock(com.uten.imp.application.port.FundingAccountStylePort.class));
         var facets=service.facets();
         assertThat(facets.getCurrencyId()).hasSize(51);
         UUID deletedReference=last;

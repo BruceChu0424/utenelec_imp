@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../shared/finance_workbench_panel.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -11,7 +13,7 @@ import 'finance_source_table.dart';
 /// Selects an explicitly reviewed source identity; names never resolve an ID.
 Future<Map<String, dynamic>?> showFinanceMaterialContextPicker(
   BuildContext context,
-) => showDialog<Map<String, dynamic>>(
+) => showFinanceWorkbenchPanel<Map<String, dynamic>>(
   context: context,
   builder: (_) => const _MaterialContextPicker(),
 );
@@ -117,7 +119,10 @@ class _MaterialContextPickerState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           UtenDialogHeader(
-            title: const Text('选择对账资料'),
+            title: const UtenDialogTitleWithHint(
+              title: Text('选择对账资料'),
+              info: '选择已审核资料作为原表来源，生成同一范围的全部产品分组。资料审核不代替每笔原单、重量和加工款的核对。',
+            ),
             showCloseButton: true,
             onClose: () => Navigator.pop(context),
           ),
@@ -126,10 +131,6 @@ class _MaterialContextPickerState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  '选择已审核资料作为原表来源，生成同一范围的全部产品分组。资料审核不代替每笔原单、重量和加工款的核对。',
-                ),
-                const SizedBox(height: UtenSpacing.s8),
                 UtenFilterToolbar<String>(
                   searchController: _search,
                   searchHint: '往来或产品编号、名称',
@@ -197,6 +198,8 @@ class _MaterialContextPickerState
               },
             ),
           ),
+          if (_busy)
+            const UtenBusyOverlay(title: '正在读取对账资料', showDoNotLeaveHint: false),
         ],
       ),
     );

@@ -1,9 +1,11 @@
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:collection/collection.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -31,9 +33,8 @@ Future<bool> showFinanceAuxiliaryImportDialog(
   required String dateTo,
   String? resumeDraftId,
 }) async =>
-    await showDialog<bool>(
+    await showFinanceWorkbenchPanel<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => _AuxiliaryImport(
         receivable: receivable,
         currencyId: currencyId,
@@ -901,6 +902,25 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
                     : null,
               ),
             ),
+            UtenDialogActions(
+              children: [
+                TextButton(
+                  onPressed:
+                      _busy ||
+                          _loading ||
+                          (_unknownUpload || _unknownApply) &&
+                              formDraftRecoveryId == null
+                      ? null
+                      : _close,
+                  child: const Text('关闭'),
+                ),
+              ],
+            ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在核对辅助账来源',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),

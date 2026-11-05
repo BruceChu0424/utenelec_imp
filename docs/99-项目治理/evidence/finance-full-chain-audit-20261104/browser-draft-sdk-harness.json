@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "status": "17/17 passed in Chrome using an isolated private headless test device",
+  "scope": "IndexedDB/history storage only; not actual application business Web UAT",
+  "privateSnapshot": "D:\\Projects\\uten_imp_worktrees\\finance-ui-tests-20261105-browser-v3",
+  "flutter": "3.44.2 / Dart 3.12.2 / Windows",
+  "chrome": "156.0.8078.80",
+  "publicSdkChanged": false,
+  "productDartChanged": false,
+  "assertionsChanged": false,
+  "defaultBrowserProfileChanged": false,
+  "harnessSourceSha256": {
+    "tool/finance_test_sdk_windows_adapter.cjs": "124e063a146b444f7ad5af743d93cf1c650d9430681ec0177715956c1207dd93",
+    "tool/finance_test_chrome_launcher.cjs": "21e2f672777afc977c6fc65217d023a7ee9a728f4278e6aa5467c4fa9ad2ff8a",
+    "tool/finance_test_chrome_launcher.cs": "e8bf413223e7c8694c45ff8d45fe2c6cd642cc9a2fdbef81210438bf9179d8c4"
+  },
+  "sdkReadOnlySource": {
+    "path": "D:\\Software\\Flutter\\flutter\\packages\\flutter_tools\\lib\\src\\test\\flutter_web_platform.dart",
+    "sha256": "7f986a70ec05e496051cfceae0537e4fd3963f8e609b1e8ea04caa3d362a4f41"
+  },
+  "worker": {
+    "source": "web/uten_data_codec_worker.js",
+    "privateStaticFixture": "D:\\Projects\\uten_imp_worktrees\\finance-ui-tests-20261105-browser-v3\\test\\shared\\drafts\\uten_data_codec_worker.js",
+    "sha256": "50e4bdc01c37a43ddd11c3d424616b589a002eafecd701d18b4844d4d3570041",
+    "sameOriginalBytes": true,
+    "inlineFallback": false,
+    "dartDefineUsedOnPassingRun": false
+  },
+  "failuresPreserved": [
+    {
+      "log": "final-browser-drafts-v3.log",
+      "result": "0 tests executed, 2 load errors after the SDK-broken isolated browser was closed; full original CDP errors in browser-sdk-load-failure.log"
+    },
+    {
+      "log": "final-browser-drafts-v4-adapted.log",
+      "result": "15 pass / 2 fail: large payload requires the unserved app worker"
+    },
+    {
+      "log": "final-browser-drafts-v5-adapted.log",
+      "result": "15 pass / 2 fail: SDK server also does not serve the configured assets URL"
+    }
+  ],
+  "finalLog": "final-browser-drafts-v6-adapted.log",
+  "passed": 17,
+  "failed": 0,
+  "adaptations": [
+    "serve exact same SDK local CanvasKit bytes to its expected request URLs",
+    "JSON-escape the unchanged test registry selector using its actual forward-slash registered key",
+    "start only the Flutter-owned headless temporary profile at about:blank, install HTTP adaptations, then navigate to the original untouched test host URL",
+    "stage original app codec worker under the SDK-served private test directory; retain the original default worker URL and full large-payload calculations"
+  ],
+  "processLifetime": "private Windows kill-on-close job owns Node/Chrome descendants; original Chrome arguments retained; no shell-based argument reconstruction",
+  "reproduction": "browser-draft-sdk-harness.md",
+  "originalBrowserAssertionSha256": {
+    "test/shared/drafts/form_draft_history_browser_test.dart": "27b5efb67707a63525425da9fccbbf9962e14012a9272d34448a6e3fa108bb51",
+    "test/shared/drafts/form_draft_storage_browser_test.dart": "1c17cb2e988fc57db2fcf4302048f010dc166e11dbd1bbf2e0dd24a8c402b459"
+  },
+  "assertionDrift": []
+}

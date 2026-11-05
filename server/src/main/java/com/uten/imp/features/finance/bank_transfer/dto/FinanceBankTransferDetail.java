@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 银行存取款单详情。 */
 @Getter
 @AllArgsConstructor
-public class FinanceBankTransferDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class FinanceBankTransferDetail extends com.uten.imp.features.finance.FinanceReviewMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

@@ -115,6 +115,10 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
             refreshNow(order,event,actor);
             return;
         }
+        pendingLossCosts().orders.put(order,new FinalLossCost(event,actor));
+    }
+
+    private FinalLossCosts pendingLossCosts(){
         FinalLossCosts pending=TransactionSynchronizationManager.getSynchronizations().stream()
                 .filter(FinalLossCosts.class::isInstance).map(FinalLossCosts.class::cast)
                 .findFirst().orElse(null);
@@ -122,13 +126,22 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
             pending=new FinalLossCosts();
             TransactionSynchronizationManager.registerSynchronization(pending);
         }
-        pending.orders.put(order,new FinalLossCost(event,actor));
+        return pending;
+    }
+
+    @Override public void afterWasteCostsPrepared(UUID waste,Runnable publication){
+        Objects.requireNonNull(waste);Objects.requireNonNull(publication);
+        if(!TransactionSynchronizationManager.isSynchronizationActive())
+            throw conflict("损耗成本和财务责任必须在同一事务内发布");
+        if(pendingLossCosts().publications.putIfAbsent(waste,publication)!=null)
+            throw conflict("该损耗单已准备生成财务责任单");
     }
 
     private record FinalLossCost(UUID event,UUID actor){}
 
     private final class FinalLossCosts implements TransactionSynchronization {
         private final Map<UUID,FinalLossCost> orders=new LinkedHashMap<>();
+        private final Map<UUID,Runnable> publications=new LinkedHashMap<>();
         @Override public void beforeCommit(boolean readOnly){
             // Stock-in and accepted loss occur in one transaction. Create only the
             // final cost revision, after the loss has fixed the actual output basis.
@@ -137,6 +150,13 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
                 orders.clear();
                 batch.forEach((order,fact)->refreshNow(order,fact.event(),fact.actor()));
             }
+            // Revisions may register their precision synchronization only now,
+            // after Spring captured its callback list. Verify through the same
+            // owner before publishing any financial responsibility snapshot.
+            costs.verifyPendingPrecision();
+            publications.values().forEach(Runnable::run);
+            publications.clear();
+            if(!orders.isEmpty())throw conflict("财务责任发布后损耗成本依据再次变化，本次未确认");
         }
     }
 

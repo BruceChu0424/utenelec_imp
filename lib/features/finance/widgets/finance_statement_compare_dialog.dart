@@ -1,8 +1,10 @@
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import '../shared/finance_template_source_upload.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
@@ -25,9 +27,8 @@ Future<void> showFinanceStatementCompareDialog(
   BuildContext context, {
   required Map<String, dynamic> scope,
   String? resumeDraftId,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
   builder: (_) =>
       _Comparison(scope: Map.unmodifiable(scope), resumeDraftId: resumeDraftId),
 );
@@ -163,7 +164,9 @@ class _ComparisonState extends ConsumerState<_Comparison>
     try {
       await saveFormDraftNow();
       final request = await captureFormDraftRequestScope();
-      final file = await ref.read(financeEntryFilePickerProvider)();
+      final file = await UtenBusyOverlay.yieldWhile(
+        () => ref.read(financeEntryFilePickerProvider)(),
+      );
       if (file == null || !_current || !request.isCurrent) return;
       final bytes = file.bytes;
       if (!const {'xls', 'xlsx'}.contains(file.extension?.toLowerCase()) ||
@@ -334,7 +337,11 @@ class _ComparisonState extends ConsumerState<_Comparison>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UtenDialogHeader(
-              title: const Text('原表导入比对'),
+              title: const UtenDialogTitleWithHint(
+                title: Text('原表导入比对'),
+                info:
+                    '先点原文件行，再点实际行；不按同名自动匹配。比对不写库存、银行、往来或总账。实际原件变化时，旧行对应保留供核对，重新对应前不能提交比对。',
+              ),
               showCloseButton: true,
               onClose: _busy ? null : _close,
             ),
@@ -344,7 +351,7 @@ class _ComparisonState extends ConsumerState<_Comparison>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${widget.scope['dateFrom']} 至 ${widget.scope['dateTo']}　先点原文件行，再点实际行；不按同名自动匹配。',
+                    '${widget.scope['dateFrom']} 至 ${widget.scope['dateTo']}',
                   ),
                   if (_source != null)
                     SelectableText(
@@ -352,7 +359,7 @@ class _ComparisonState extends ConsumerState<_Comparison>
                     ),
                   if (_selected != null)
                     Text('正在对应原文件第$_selected行，已对应${_mapping.length}行'),
-                  if (_stale) const Text('实际原件已变化，旧行对应保留供核对；重新对应前不能提交比对。'),
+                  if (_stale) const Text('实际原件已变化，旧对应待核对'),
                   if (_source?['issues'] case final List<Object?> issues
                       when issues.isNotEmpty)
                     Text(issues.join('；')),
@@ -489,7 +496,7 @@ class _ComparisonState extends ConsumerState<_Comparison>
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  '已比对${_mapping.length}行，差异或待核对${differences.length}格；未对应原行${(_result!['unmappedSourceRows'] as List?)?.length ?? 0}，未对应实际行${(_result!['unmappedActualRows'] as List?)?.length ?? 0}。比对不写库存、银行、往来或总账。',
+                  '已比对${_mapping.length}行，差异或待核对${differences.length}格；未对应原行${(_result!['unmappedSourceRows'] as List?)?.length ?? 0}，未对应实际行${(_result!['unmappedActualRows'] as List?)?.length ?? 0}。',
                 ),
               ),
             UtenDialogActions(
@@ -541,6 +548,11 @@ class _ComparisonState extends ConsumerState<_Comparison>
                 ),
               ],
             ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在核对财务原表',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),

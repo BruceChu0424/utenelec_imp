@@ -85,6 +85,6 @@ class AccountDetailStyleProjectionTest {
         AccountRepository repository = mock(AccountRepository.class);
         when(repository.findById(account.getId())).thenReturn(Optional.of(account));
         return new AccountService(repository, mock(TxSessionVars.class), em,
-                mock(MasterCodeService.class));
+                mock(MasterCodeService.class),mock(com.uten.imp.application.port.FundingAccountStylePort.class));
     }
 }

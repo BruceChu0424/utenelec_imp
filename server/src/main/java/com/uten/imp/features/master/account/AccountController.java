@@ -127,6 +127,12 @@ public class AccountController {
         return service.dict();
     }
 
+    @GetMapping("/posting-styles")
+    @PreAuthorize("hasAnyAuthority('account:create','account:edit')")
+    public List<com.uten.imp.application.port.FundingAccountStylePort.Choice> postingStyles() {
+        return service.postingStyles();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('account:view')")
     public AccountDetail detail(@PathVariable UUID id) {

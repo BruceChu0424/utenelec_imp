@@ -69,21 +69,22 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         var draft=receipts.detail(result);assertThat(draft.getStatus()).isZero();assertThat(draft.getItems().getFirst().getQty()).isEqualByComparingTo("10");assertThat(draft.getItems().getFirst().getGiftQty()).isEqualByComparingTo("1");
         assertThat(number("SELECT received_qty+gift_received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();
     }
-    @Test @Order(2) void freeReturnReadyButReceiptWithRealIssueHistoryStaysBlockedEvenAfterReturnUnapproval(){
+    @Test @Order(2) void compensatedFreeReturnRetainsOriginalIssueFactsAndMakesReceiptReversible(){
         F f=fixture();UUID id=receipt(f,"10","1");receipts.approve(id);passAndStock(f,id);
-        UUID returned=returned(f,receipts.detail(id).getItems().getFirst().getId(),"0","1");returns.approve(returned);
+        UUID returned=returned(f,receipts.detail(id).getItems().getFirst().getId(),"0","1");stockSlice(()->returns.approve(returned));
         assertThat(ap(returned)).isZero();blockedWithoutWrites(()->receipts.unapprovalEligibility(id),"退货");
         allowedWithoutWrites(()->returns.unapprovalEligibility(returned));unapprove("purchaseReturn",returned);
         assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo("100");assertThat(ap(id)).isEqualByComparingTo("100");
-        blockedWithoutWrites(()->receipts.unapprovalEligibility(id),"出库");var before=facts();
-        assertThatThrownBy(()->unapprove("purchaseReceipt",id)).isInstanceOf(com.uten.imp.common.web.ApiException.class);assertThat(facts()).isEqualTo(before);
+        allowedWithoutWrites(()->receipts.unapprovalEligibility(id));var original=originalMovements(id,returned);
+        unapprove("purchaseReceipt",id);assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(id)).isZero();
+        requireOriginalMovements(original);
     }
     @Test @Order(3) void previousPeriodReturnProjectionBlocksBeforeEitherInventoryOrLedgerChanges(){
         F f;UUID returned;var oldDate=BusinessTime.today().minusMonths(1);
         try(var clock=org.mockito.Mockito.mockStatic(BusinessTime.class,org.mockito.Mockito.CALLS_REAL_METHODS)){
             clock.when(BusinessTime::today).thenReturn(oldDate);
             f=fixture();UUID id=receipt(f,"10","1");receipts.approve(id);passAndStock(f,id);
-            returned=returned(f,receipts.detail(id).getItems().getFirst().getId(),"1","0");returns.approve(returned);
+            returned=returned(f,receipts.detail(id).getItems().getFirst().getId(),"1","0");UUID originalReturn=returned;stockSlice(()->returns.approve(originalReturn));
         }
         blockedWithoutWrites(()->returns.unapprovalEligibility(returned),"会计期间");String before=facts();
         assertThatThrownBy(()->unapprove("purchaseReturn",returned)).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("会计期间");assertThat(facts()).isEqualTo(before);
@@ -104,7 +105,12 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         assertThat(ap(id)).isEqualByComparingTo("-50");assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",f.w().warehouseId(),f.w().goodsE())).isEqualByComparingTo("540");
         blockedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()),"退货");allowedWithoutWrites(()->subcontractReturns.unapprovalEligibility(id));unapprove("subcontractReturn",id);
         assertThat(ap(id)).isZero();assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",f.w().warehouseId(),f.w().goodsE())).isEqualByComparingTo("600");
-        blockedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()),"出库");
+        allowedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()));var original=originalMovements(f.receipt(),id);
+        unapprove("subcontractReceipt",f.receipt());assertThat(ap(f.receipt())).isZero();
+        assertThat(number("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
+        assertThat(number("SELECT COALESCE(SUM(amount_local),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
+        assertThat(number("SELECT SUM(issue.consumed_qty) FROM subcontract_material_issue_items issue WHERE issue.order_item_id=?",f.orderItem())).isZero();
+        requireOriginalMovements(original);
     }
     @Test @Order(7) void viewOnlyAndHiddenOwnerCannotLearnOrExecuteOtherPersonsUnapproval(){
         F f=fixture();UUID id=receipt(f,"10","1");receipts.approve(id);passAndStock(f,id);
@@ -157,6 +163,25 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         String source=db.queryForObject("SELECT pg_get_functiondef('fn_check_stock_value_reverse_store()'::regprocedure)",String.class);
         assertThat(source).contains("NOT fn_stock_value_stored_cost_reversible(original.result_node_id)","fn_assert_workshop_material_value_store_reverse(NEW.id)","fn_assert_unused_stock_receipt_reversal(NEW.id)","NEW.known_value_local=0","parts=0 OR parts>100","qty<>NEW.qty_base","transfer.initial_value_local=0");
         assertThat(source).doesNotContain("EXISTS(SELECT 1 FROM stock_value_production_cost_outputs WHERE source_node_id=original.result_node_id)");
+    }
+
+    private Map<UUID,String> originalMovements(UUID receipt,UUID returned){
+        var original=new LinkedHashMap<UUID,String>();
+        db.query("SELECT id,to_jsonb(m)::text FROM stock_movements m WHERE source_doc_id IN(?,?)",
+                (row,index)->Map.entry(row.getObject(1,UUID.class),row.getString(2)),receipt,returned)
+                .forEach(row->original.put(row.getKey(),row.getValue()));
+        assertThat(original).isNotEmpty();return original;
+    }
+    private void requireOriginalMovements(Map<UUID,String> original){
+        original.forEach((id,fact)->assertThat(db.queryForObject("SELECT to_jsonb(m)::text FROM stock_movements m WHERE id=?",String.class,id)).isEqualTo(fact));
+    }
+
+    @SuppressWarnings("try")
+    private static void stockSlice(Runnable action){
+        try(var policy=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("stock.value.interval",
+                new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(30,"DOWN")))){
+            action.run();
+        }catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
     }
 
     private UUID unapprove(String family,UUID id){

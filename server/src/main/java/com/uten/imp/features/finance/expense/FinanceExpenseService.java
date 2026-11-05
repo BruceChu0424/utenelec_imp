@@ -214,6 +214,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             PaymentStyleHierarchyLock.lock(em);
         }
         FinanceExpense e = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeExpense",id,"UPDATE");
 
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
@@ -235,6 +236,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public void delete(UUID id) {
         tx.bind();
         FinanceExpense e = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeExpense",id,"DELETE");
 
         access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
@@ -255,6 +257,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         var applicationPermit=applications==null?null:applications.nativeExecutionPermit("EXPENSE",id);
         PaymentStyleHierarchyLock.lock(em);
         FinanceExpense e = lockActiveForProjection(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeExpense",id,"APPROVE");
 
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:approve");
@@ -383,6 +386,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         tx.bind();
         if(applications!=null)applications.requireNativeSettlementAction("EXPENSE",id,"REVERSE");
         FinanceExpense e = lockActiveForProjection(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeExpense",id,"UNAPPROVE");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         requireUnapprovalHeader(e);
         // 账户余额与流水由账本按原始流水一并冲回。
@@ -403,6 +407,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         tx.bind();
         if(applications!=null)applications.requireNativeSettlementAction("EXPENSE",id,"CONFIRM");
         FinanceExpense e = lockActiveForProjection(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeExpense",id,"GL_CONFIRM");
 
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:gl_confirm");
@@ -443,7 +448,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             for(UUID claim:claims)applications.requireExpenseReversalContext(claim,e.getId());
         }
         if (e.getGlStatus() != null && e.getGlStatus() == 2) {
-            throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认(gl_status=2)，须先撤销确认再红冲");
+            throw new ApiException(ErrorCode.CONFLICT, linked.longValue()>0
+                    ?"该报销付款已财务确认，请从原申请流程撤销财务确认后再对称反审"
+                    :"该普通费用单已财务确认(gl_status=2)并结束，普通费用流程不提供撤销确认或红冲入口；原费用、资金流水及总账凭证继续保留");
         }
     }
 

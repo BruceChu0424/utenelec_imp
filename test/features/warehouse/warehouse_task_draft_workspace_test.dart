@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -20,6 +21,13 @@ import 'package:uten_imp/shared/drafts/draft_workspace_table.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/task_form_drafts.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/measurement/widgets/weight_sample_recovery_page.dart';
+import 'package:uten_imp/shared/measurement/widgets/weigh_count_recovery_page.dart';
+import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
+import 'package:uten_imp/features/warehouse/materialbin/pages/workshop_material_count_page.dart';
+import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
+import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_close_retry_dialog.dart';
+
 import 'package:uten_imp/shared/drafts/form_drafts_page.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/draft_counts_provider.dart'
@@ -30,6 +38,8 @@ import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/field_hint_support.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import 'workshop_material_test_support.dart';
 
 class _Drafts extends FormDraftsNotifier {
   _Drafts(this.drafts);
@@ -109,6 +119,92 @@ const _mine = MyWarehouseScope(
   selectable: [WarehouseScopeOption(id: 'chosen', name: '已记忆的成品仓')],
 );
 
+const _periodPermissions = {
+  Perm.stockDocView,
+  Perm.stockDocCreate,
+  Perm.warehouseView,
+  Perm.workshopMaterialView,
+  Perm.workshopMaterialCount,
+};
+const _period = WmPeriod(
+  id: 'period-task',
+  periodNo: 3,
+  startDate: '2026-09-01',
+  endDate: '2026-09-28',
+  status: 'COUNTING',
+  currentCountId: 'count-task',
+);
+
+class _PeriodRepository extends FakeWorkshopMaterialRepository {
+  _PeriodRepository() : super(client: _Api());
+  final closeKeys = <String>[];
+  @override
+  Future<WmCloseStatus> closeRetry(
+    String periodId, {
+    String? idempotencyKey,
+  }) async {
+    closeKeys.add(idempotencyKey!);
+    throw NetworkException('原请求仍待核对');
+  }
+}
+
+_PeriodRepository _periodRepository() => _PeriodRepository()
+  ..settingsResult = const [
+    WmSetting(
+      workshopDepartmentId: 'workshop-task',
+      workshopName: '恢复车间',
+      status: WmBinStatus.periodic,
+      periodicEnabled: true,
+      binWarehouseId: 'bin-task',
+      pendingPeriod: _period,
+    ),
+  ]
+  ..periodById = const {'period-task': _period}
+  ..countById = const {
+    'count-task': WmCount(
+      id: 'count-task',
+      periodId: 'period-task',
+      status: 'DRAFT',
+      allowedActions: ['EDIT_COUNT', 'SUBMIT_COUNT'],
+      materials: [
+        WmCountMaterial(goodsId: 'pp', goodsName: 'PP颗粒', bulkPackageQty: 25),
+      ],
+      lines: [
+        WmCountLine(
+          id: 'bag-row',
+          clientLineKey: 'B:pp:-',
+          lineKind: WmLineKind.fullBags,
+          goodsId: 'pp',
+          bagCount: '1',
+          bagNetQty: '25',
+          qtyBase: '25',
+          rowVersion: 1,
+        ),
+      ],
+    ),
+  };
+FormDraft _periodInput(String id) {
+  final spec = FormDraftCatalog.workshopMaterialCount.spec(
+    route: RoutePath.workshopMaterialCount('period-task'),
+  );
+  return FormDraft(
+    id: id,
+    title: spec.title,
+    module: spec.module,
+    route: spec.route,
+    permission: spec.permission,
+    draftKind: spec.draftKind,
+    updatedAt: DateTime(2026, 10, 14),
+    data: const {
+      'periodId': 'period-task',
+      'countId': 'count-task',
+      'inputs': {
+        'bags:pp|': {'bags': '1.0e'},
+      },
+    },
+  );
+}
+
 void main() {
   Future<ProviderContainer> container(
     WidgetTester tester, {
@@ -122,6 +218,7 @@ void main() {
       Perm.warehouseView,
     },
     bool enterTaskCenter = true,
+    WorkshopMaterialRepository? materialRepository,
   }) async {
     tester.view.physicalSize = const Size(1500, 1000);
     tester.view.devicePixelRatio = 1;
@@ -129,7 +226,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    final api = _Api(formal: formal);
+    final api = materialRepository?.api ?? _Api(formal: formal);
     final scope = ProviderContainer(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
@@ -142,7 +239,14 @@ void main() {
         apiBaseUrlProvider.overrideWithValue('https://warehouse-tests.invalid'),
         sessionSnapshotProvider.overrideWith(_Snapshot.new),
         myWarehouseScopeProvider.overrideWith((_) async => _mine),
-        formDraftsProvider.overrideWith(() => _Drafts(drafts)),
+        if (materialRepository == null)
+          formDraftsProvider.overrideWith(() => _Drafts(drafts))
+        else ...[
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          workshopMaterialRepositoryProvider.overrideWithValue(
+            materialRepository,
+          ),
+        ],
         fixedBadgeSummaryOverride(
           badgeSummaryFixture(
             entries: {
@@ -155,6 +259,12 @@ void main() {
       ],
     );
     addTearDown(scope.dispose);
+    if (materialRepository != null) {
+      await scope.read(formDraftsProvider.notifier).ready;
+      for (final draft in drafts) {
+        await scope.read(formDraftsProvider.notifier).save(draft);
+      }
+    }
     if (narrowed) {
       scope
           .read(warehouseTaskScopePrefProvider.notifier)
@@ -191,6 +301,38 @@ void main() {
         GoRoute(
           path: RouteName.stockCountSession,
           builder: (_, _) => const Scaffold(body: Text('继续盘点')),
+        ),
+        GoRoute(
+          path: RouteName.workshopMaterialCount,
+          redirect: (_, state) =>
+              state.uri.queryParameters['periodId']?.isNotEmpty == true
+              ? null
+              : RouteName.workshopMaterialBin,
+          builder: (_, state) => WorkshopMaterialCountPage(
+            periodId: state.uri.queryParameters['periodId']!,
+          ),
+        ),
+        GoRoute(
+          path: RouteName.workshopMaterialBin,
+          builder: (_, _) => const Scaffold(body: Text('请选择真实盘点期间')),
+        ),
+        GoRoute(
+          path: '/measurement/weight-sample',
+          builder: (_, state) => WeightSampleRecoveryPage(
+            draftId: state.uri.queryParameters['draftId'],
+          ),
+        ),
+        GoRoute(
+          path: '/measurement/weigh-count-recovery',
+          builder: (_, state) => WeighCountRecoveryPage(
+            draftId: state.uri.queryParameters['draftId'],
+          ),
+        ),
+        GoRoute(
+          path: '/workshop-material/close-retry',
+          builder: (_, state) => WmCloseRetryRecoveryPage(
+            draftId: state.uri.queryParameters['draftId'],
+          ),
         ),
       ],
     );
@@ -558,6 +700,269 @@ void main() {
   );
 
   test(
+    'period task descriptors never become standalone drafts without their source',
+    () {
+      final destinations = [
+        formDraftsPageCategories['warehouse']!.scope,
+        formDraftsPageCategories['warehouse-master']!.scope,
+      ];
+      for (final descriptor in [
+        FormDraftCatalog.workshopMaterialCount,
+        FormDraftCatalog.workshopMaterialCloseRetry,
+      ]) {
+        final spec = descriptor.spec();
+        final bare = FormDraft(
+          id: spec.draftKind!,
+          title: spec.title,
+          module: spec.module,
+          route: spec.route,
+          permission: spec.permission,
+          draftKind: spec.draftKind,
+          updatedAt: DateTime(2026, 10, 14),
+          data: const {},
+        );
+        expect(isTaskFormDraft(bare), isTrue);
+        expect(destinations.any((scope) => scope.matches(bare)), isFalse);
+        expect(
+          workshopMaterialPeriodTaskDraftsFor([bare], 'period-task'),
+          isEmpty,
+        );
+      }
+    },
+  );
+
+  test(
+    'period recovery uses the exact route and captured source, not another UUID',
+    () {
+      final valid = _periodInput('count-local');
+      final wrongData = FormDraft.fromJson({
+        ...valid.toJson(),
+        'id': 'wrong-data',
+        'data': {'periodId': 'other-period'},
+      });
+      final wrongRoute = FormDraft.fromJson({
+        ...valid.toJson(),
+        'id': 'wrong-route',
+        'route': RoutePath.workshopMaterialCount('other-period'),
+      });
+      expect(
+        workshopMaterialPeriodTaskDraftsFor([
+          wrongData,
+          wrongRoute,
+          valid,
+        ], 'period-task').map((draft) => draft.id),
+        ['count-local'],
+      );
+    },
+  );
+
+  testWidgets(
+    'real period task row restores count raw input without a standalone copy',
+    (tester) async {
+      final repo = _periodRepository();
+      final scope = await container(
+        tester,
+        materialRepository: repo,
+        permissions: _periodPermissions,
+        drafts: [_periodInput('count-local')],
+      );
+      await tester.tap(find.text('车间内料仓'));
+      await tester.pumpAndSettle();
+      if (find.text('周期盘点').evaluate().isNotEmpty) {
+        await tester.tap(find.text('周期盘点'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('恢复车间'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('恢复车间'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WorkshopMaterialCountPage), findsOneWidget);
+      expect(
+        tester
+            .widget<WorkshopMaterialCountPage>(
+              find.byType(WorkshopMaterialCountPage),
+            )
+            .periodId,
+        'period-task',
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('wm-bag-count-pp-')))
+            .controller!
+            .text,
+        '1.0e',
+      );
+      expect(scope.read(formDraftsPageCountProvider('warehouse')), 0);
+      expect(scope.read(formDraftsProvider).map((draft) => draft.id), [
+        'count-local',
+      ]);
+      expect(repo.savedLines, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'period task resumes original close key only after explicit confirmation',
+    (tester) async {
+      final repo = _periodRepository();
+      final spec = FormDraftCatalog.workshopMaterialCloseRetry.spec();
+      final original = FormDraft(
+        id: 'original-close',
+        title: spec.title,
+        module: spec.module,
+        route: spec.route,
+        permission: spec.permission,
+        draftKind: spec.draftKind,
+        updatedAt: DateTime(2026, 10, 14),
+        data: const {
+          'periodId': 'period-task',
+          'key': 'original-close-key',
+          formDraftUnknownSubmissionKey: true,
+        },
+      );
+      final scope = await container(
+        tester,
+        materialRepository: repo,
+        permissions: _periodPermissions,
+        drafts: [original],
+      );
+      await tester.tap(find.text('车间内料仓'));
+      await tester.pumpAndSettle();
+      if (find.text('周期盘点').evaluate().isNotEmpty) {
+        await tester.tap(find.text('周期盘点'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('恢复车间'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('恢复车间'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WmCloseRetryRecoveryPage), findsOneWidget);
+      expect(repo.closeKeys, isEmpty);
+      await tester.tap(find.text('恢复原结算请求'));
+      await tester.pumpAndSettle();
+      expect(repo.closeKeys, isEmpty);
+      await tester.tap(find.text('核对原结算请求'));
+      await tester.pumpAndSettle();
+      expect(repo.closeKeys, ['original-close-key']);
+      expect(
+        scope.read(formDraftsProvider).single.data['key'],
+        'original-close-key',
+      );
+      expect(
+        scope.read(formDraftsProvider).single.hasUnknownSubmission,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'period chooser cancellation preserves unknown input and never starts a new request',
+    (tester) async {
+      final repo = _periodRepository();
+      final first = _periodInput('first-input');
+      final unknown = FormDraft.fromJson({
+        ...first.toJson(),
+        'title': '待核对原盘点',
+        'data': {...first.data, formDraftUnknownSubmissionKey: true},
+      });
+      final second = FormDraft.fromJson({
+        ..._periodInput('second-input').toJson(),
+        'title': '另一份盘点输入',
+      });
+      final scope = await container(
+        tester,
+        materialRepository: repo,
+        permissions: _periodPermissions,
+        drafts: [unknown, second],
+      );
+      await tester.tap(find.text('车间内料仓'));
+      await tester.pumpAndSettle();
+      if (find.text('周期盘点').evaluate().isNotEmpty) {
+        await tester.tap(find.text('周期盘点'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('恢复车间'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('恢复车间'));
+      await tester.pumpAndSettle();
+      final tile = find.ancestor(
+        of: find.text('待核对原盘点'),
+        matching: find.byType(ListTile),
+      );
+      expect(tile, findsOneWidget);
+      expect(
+        find.descendant(of: tile, matching: find.byTooltip('丢弃本机填写')),
+        findsNothing,
+      );
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WorkshopMaterialCountPage), findsNothing);
+      expect(find.byType(WmCloseRetryRecoveryPage), findsNothing);
+      expect(scope.read(formDraftsProvider).map((draft) => draft.id).toSet(), {
+        'first-input',
+        'second-input',
+      });
+      expect(repo.savedLines, isEmpty);
+      expect(repo.closeKeys, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'all seven embedded measurement descriptors retain their own recovery pages',
+    (tester) async {
+      for (final descriptor in [
+        FormDraftCatalog.weightSampleInbound,
+        FormDraftCatalog.weightSampleDocument,
+        FormDraftCatalog.weightSampleManage,
+        FormDraftCatalog.weighCountInbound,
+        FormDraftCatalog.weighCountDocument,
+        FormDraftCatalog.weighCountManage,
+        FormDraftCatalog.weighCountRead,
+      ]) {
+        final spec = descriptor.spec();
+        expect(descriptor.dialogKind, anyOf('weightSample', 'weighCount'));
+        final draft = FormDraft(
+          id: 'tool-${descriptor.permission.replaceAll(':', '-')}',
+          title: spec.title,
+          module: spec.module,
+          route: spec.route,
+          permission: spec.permission,
+          draftKind: spec.draftKind,
+          updatedAt: DateTime(2026, 10, 14),
+          data: const {},
+        );
+        final location = Uri.parse(draft.resumeLocation);
+        expect(location.queryParameters['draftId'], draft.id);
+        expect(location.queryParameters['draftForm'], descriptor.dialogKind);
+        await container(
+          tester,
+          drafts: [draft],
+          permissions: {descriptor.permission},
+          enterTaskCenter: false,
+        );
+        final router = GoRouter.of(
+          tester.element(find.byType(WarehouseHubPage)),
+        );
+        router.go(draft.resumeLocation);
+        await tester.pumpAndSettle();
+        expect(
+          find.byType(
+            descriptor.dialogKind == 'weightSample'
+                ? WeightSampleRecoveryPage
+                : WeighCountRecoveryPage,
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
+  test(
     'every registered standalone warehouse editor has exactly one module-scoped draft destination',
     () {
       final destinations = [
@@ -566,7 +971,8 @@ void main() {
       ];
       var checked = 0;
       for (final descriptor in FormDraftCatalog.all.values.where(
-        (entry) => entry.module == BadgeModule.warehouse,
+        (entry) =>
+            entry.module == BadgeModule.warehouse && entry.dialogKind == null,
       )) {
         final route = descriptor.route.replaceAllMapped(
           RegExp(r':([A-Za-z][A-Za-z0-9]*)'),

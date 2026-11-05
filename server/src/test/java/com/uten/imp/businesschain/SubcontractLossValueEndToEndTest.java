@@ -198,8 +198,31 @@ class SubcontractLossValueEndToEndTest {
         var unknown=ready("loss-unknown-unrelated-pending","3",null);
         UUID unknownCase=lossCase(loss(unknown,"1","0"));
         fixture.loginAs(free.world().superAdminUserId());
+        assertNotEquals(free.material(),free.world().goodsD(),"the pending source must be a genuinely unrelated goods identity");
         UUID document=unrelatedStockReceipt(free.world());
         var source=db.queryForMap("SELECT result_node_id,source_doc_id,source_item_id FROM stock_value_events WHERE source_doc_id=? AND operation='RECEIVE'",document);
+        UUID sourceNode=(UUID)source.get("result_node_id");
+        assertFalse(db.queryForObject("SELECT source_final FROM stock_value_nodes WHERE id=?",Boolean.class,sourceNode),"a unit-price annotation is not a confirmed acquisition total");
+        assertThrows(ApiException.class,()->new TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            inventoryLocks.lock(new InventoryKey(free.world().goodsD(),null));
+            queueCostCorrection(free.world(),source,BigDecimal.ONE);
+        }),"an additive adjustment cannot turn an unknown original cost into a confirmed cost");
+        // First adopt the actual total explicitly, including a real known-zero
+        // fact. Finish that existing propagation before creating the separate
+        // correction whose uncommitted pending state is the assertion target.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            inventoryLocks.lock(new InventoryKey(free.world().goodsD(),null));
+            beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();UUID event=UUID.randomUUID();
+            var context=new InventoryValuationPort.EventContext(event,"TEST_SUBCONTRACT_LOSS_COST",(UUID)source.get("source_doc_id"),
+                (UUID)source.get("source_item_id"),1,free.world().superAdminUserId(),free.world().employeeId(),event.toString(),OffsetDateTime.now());
+            values.confirmSourceTotal(new InventoryValuationPort.SourceTotalConfirmation(context,sourceNode,BigDecimal.ZERO));
+        });
+        drain();assertTrue(db.queryForObject("SELECT source_final FROM stock_value_nodes WHERE id=?",Boolean.class,sourceNode));
+        money(db.queryForObject("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",BigDecimal.class,sourceNode),"0");
+        fixture.loginAs(free.world().superAdminUserId());
+        var beforePending=claims.detail(freeCase);assertFalse(beforePending.summary().priceMasked());
+        assertNotNull(beforePending.summary().lossBookValueLocal(),"the exact known-free source must be visible before the unrelated correction");
+        money(new BigDecimal(beforePending.summary().lossBookValueLocal()),"0");
         // The real correction is visible to this reader but uncommitted, so a
         // background worker cannot race the pending-state assertion.
         new TransactionTemplate(transactionManager).executeWithoutResult(status->{
@@ -210,6 +233,8 @@ class SubcontractLossValueEndToEndTest {
             UUID adjustment=queueCostCorrection(free.world(),source,BigDecimal.ONE,false);
             assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,adjustment));
             var known=claims.detail(freeCase);
+            assertFalse(known.summary().priceMasked());
+            assertNotNull(known.summary().lossBookValueLocal(),"the unrelated correction must not hide the previously confirmed free source");
             money(new BigDecimal(known.summary().lossBookValueLocal()),"0");
             money(new BigDecimal(known.lines().getFirst().lossBookValueLocal()),"0");
             assertEquals("VALUED",known.lines().getFirst().valuationStatus(),"an unrelated goods cost correction cannot make an exact free source missing");
@@ -217,8 +242,11 @@ class SubcontractLossValueEndToEndTest {
             assertNull(missing.summary().lossBookValueLocal());
             assertNull(missing.lines().getFirst().lossBookValueLocal());
             assertEquals("MISSING_COST",missing.lines().getFirst().valuationStatus());
-            status.setRollbackOnly();
         });
+        drain();fixture.loginAs(free.world().superAdminUserId());
+        money(new BigDecimal(claims.detail(freeCase).summary().lossBookValueLocal()),"0");
+        assertNull(claims.detail(unknownCase).summary().lossBookValueLocal());
+        money(db.queryForObject("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",BigDecimal.class,sourceNode),"1");
     }
 
     @Test void pendingCorrectionInTheLossSourceClosureCannotPublishTheOldKnownValueAsFinal(){
@@ -243,6 +271,31 @@ class SubcontractLossValueEndToEndTest {
         var after=claims.detail(lossCase);
         money(new BigDecimal(after.lines().getFirst().lossBookValueLocal()),"2");
         assertEquals("VALUED",after.lines().getFirst().valuationStatus());
+    }
+
+    @Test void aRealMaterialCorrectionKeepsItsDifferentGoodsProductPendingUntilTheOriginalPropagationCompletes() throws Exception{
+        var c=ready("loss-cross-goods-publication","3","6");receive(c,"1");drain();fixture.loginAs(c.world().superAdminUserId());
+        var source=db.queryForMap("""
+            SELECT event.result_node_id,event.source_doc_id,event.source_item_id FROM stock_value_events event
+            JOIN stock_value_nodes node ON node.id=event.result_node_id JOIN stock_value_pools pool ON pool.id=node.pool_id
+            WHERE event.operation='RECEIVE' AND pool.goods_id=? AND node.kind='SOURCE'
+            """,c.material());
+        UUID output=db.queryForObject("""
+            SELECT output.source_node_id FROM stock_value_production_cost_outputs output
+            JOIN stock_value_nodes node ON node.id=output.source_node_id JOIN stock_value_pools pool ON pool.id=node.pool_id
+            WHERE pool.goods_id=? AND output.withdrawn_movement_id IS NULL ORDER BY output.output_sequence LIMIT 1
+            """,UUID.class,c.world().goodsE());
+        assertNotEquals(c.material(),c.world().goodsE());
+        BigDecimal before=db.queryForObject("SELECT fn_inventory_value_book_projection(?)",BigDecimal.class,output);assertNotNull(before);
+        new TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            inventoryLocks.lock(new InventoryKey(c.material(),null));UUID correction=queueCostCorrection(c.world(),source,new BigDecimal("3"));
+            assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,correction));
+            assertNull(db.queryForObject("SELECT fn_inventory_value_book_projection(?)",BigDecimal.class,output),"a genuine material ancestor must keep its different-goods product unknown");
+            money(db.queryForObject("SELECT basis_value_local FROM stock_value_nodes WHERE id=?",BigDecimal.class,output),before.toPlainString());
+        });
+        drain();fixture.loginAs(c.world().superAdminUserId());
+        BigDecimal after=db.queryForObject("SELECT fn_inventory_value_book_projection(?)",BigDecimal.class,output);assertNotNull(after);assertTrue(after.compareTo(before)>0);
+        money(db.queryForObject("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",BigDecimal.class,(UUID)source.get("result_node_id")),"9");
     }
 
     @Test void reversingClassifiedNormalLossRestoresTheSameSourceAfterPartialProduction() throws Exception{

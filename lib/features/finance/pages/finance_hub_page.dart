@@ -32,6 +32,11 @@ import '../widgets/finance_expense_analysis_dialog.dart';
 import '../widgets/finance_asset_opening_group_dialog.dart';
 import '../widgets/finance_statement_document_dialog.dart';
 import '../widgets/finance_material_statement_dialog.dart';
+import '../widgets/finance_chart_metadata_dialog.dart';
+import '../widgets/finance_durable_command_dialog.dart';
+
+import '../widgets/gl_report_line_bindings_dialog.dart';
+import '../widgets/inventory_cost_posting_dialog.dart';
 import '../widgets/finance_statement_compare_dialog.dart';
 import '../widgets/finance_subcontract_loss_policy_dialog.dart';
 import '../widgets/finance_payable_statement_adjustment_dialog.dart';
@@ -75,6 +80,8 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
       FormDraftCatalog.financeExpenseAnalysisInput,
       FormDraftCatalog.financeAssetOpeningGroup,
       FormDraftCatalog.financeMaterialStatement,
+      FormDraftCatalog.financeChartMetadata,
+      FormDraftCatalog.financeDurableCommand,
       FormDraftCatalog.financeStatementComparison,
       FormDraftCatalog.financeSubcontractLossPolicy,
       FormDraftCatalog.financeSubcontractQuantityEvidence,
@@ -90,6 +97,55 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
         descriptor: descriptor,
         onResume: (parameters) async {
           final id = parameters['draftId'];
+          if (descriptor == FormDraftCatalog.financeDurableCommand) {
+            final operation = FinanceDurableOperation.parse(
+              parameters['operation'] ?? '',
+            );
+            final target = parameters['target'] ?? '';
+            if (id == null || !operation.validTarget(target)) {
+              throw const FormatException('原财务命令缺少草稿编号或原目标');
+            }
+            switch (operation) {
+              case FinanceDurableOperation.procurementPolicy:
+                await showFinanceProcurementPolicyDialog(
+                  context,
+                  resumeDraftId: id,
+                );
+              case FinanceDurableOperation.reportBinding:
+                await showFinanceReportBindingCommand(
+                  context,
+                  lineKey: target,
+                  resumeDraftId: id,
+                );
+              case FinanceDurableOperation.reportDefaults:
+                await showFinanceReportDefaultsCommand(
+                  context,
+                  resumeDraftId: id,
+                );
+              default:
+                await showInventoryCostCommand(
+                  context,
+                  operation: operation,
+                  target: target,
+                  resumeDraftId: id,
+                );
+            }
+            return;
+          }
+          if (descriptor == FormDraftCatalog.financeChartMetadata) {
+            final code = parameters['code'];
+            if (code == null ||
+                !RegExp(r'^[0-9]{1,32}$').hasMatch(code) ||
+                id == null) {
+              throw const FormatException('科目名称草稿缺少原编码或草稿编号');
+            }
+            await showFinanceChartMetadataDialog(
+              context,
+              code: code,
+              resumeDraftId: id,
+            );
+            return;
+          }
           if (descriptor == FormDraftCatalog.financeProcurementConfirmation) {
             final supplier = parameters['supplierId'],
                 currency = parameters['currencyId'];

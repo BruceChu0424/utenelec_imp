@@ -20,13 +20,16 @@ import java.util.stream.Collectors;
 
 /** Reverse the approved generation and atomically produce an editable, independently approvable draft. */
 @Service
-public class DocumentUnapprovalService {
+public class DocumentUnapprovalService implements com.uten.imp.application.port.DocumentUnapprovalExecutionPort {
     private final Map<String, DocumentUnapprovalPort> families;
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
     private final DocNumberService numbers;
     private final TxSessionVars tx;
     private final ObjectMapper json;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<DocumentUnapprovalService> self;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.uten.imp.application.port.FinancialDocumentReviewSnapshotPort financialSnapshots;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.uten.imp.application.port.FinancialDocumentUnapprovalCommandPort financialCommands;
 
     public DocumentUnapprovalService(List<DocumentUnapprovalPort> adapters, EntityManager em,
             SecurityContextCurrentUser currentUser, DocNumberService numbers, TxSessionVars tx,
@@ -35,6 +38,23 @@ public class DocumentUnapprovalService {
                 DocumentUnapprovalPort::family, Function.identity()));
         this.em = em; this.currentUser = currentUser; this.numbers = numbers; this.tx = tx; this.json = json;
     }
+
+    /** HTTP finance commands cannot fall back to the trusted internal path. */
+    public Object unapproveHttp(String family,UUID id,UnapproveRequest request){
+        if(financialCommands!=null&&financialCommands.supports(family)){
+            if(request==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请保留原反审请求");
+            return financialCommands.execute(family,id,new com.uten.imp.application.port.FinancialDocumentUnapprovalCommandPort.Command(
+                    request.requestId(),request.idempotencyKey(),request.reason(),request.expectedSnapshot()));
+        }
+        if(family!=null&&family.startsWith("finance"))throw new ApiException(ErrorCode.CONFLICT,"财务反审核对协议尚未准备好，不能使用无快照入口");
+        return self.getObject().unapprove(family,id,request);
+    }
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW,noRollbackFor=ApiException.class)
+    public UnapprovalCapability capabilityHttp(String family,UUID id){return capability(family,id);}
+    @Override @Transactional
+    public Object unapproveTrusted(String family,UUID id,String key,String reason,String expectedSnapshot,UUID requestId){return unapprove(family,id,new UnapproveRequest(key,reason,expectedSnapshot,requestId));}
+    @Override @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    public String currentFactsSnapshot(String family,UUID id){return capability(family,id).factsSnapshot();}
 
     @Transactional
     public Object unapprove(String family, UUID originalId, UnapproveRequest request) {
@@ -74,7 +94,7 @@ public class DocumentUnapprovalService {
         em.flush();
         var draftId = UUID.randomUUID();
         var billNo = numbers.nextNumber(adapter.numberPrefix(originalId));
-        copyHeader(adapter.header(), originalId, draftId, billNo);
+        copyHeader(adapter, originalId, draftId, billNo);
         var lineIds = copyLines(adapter, originalId, draftId, billNo);
         for (var source : adapter.sources()) copySources(source, lineIds);
         copyPlatformFields(originalId,draftId,lineIds);
@@ -146,18 +166,21 @@ public class DocumentUnapprovalService {
         check = new DocumentUnapprovalPort.Eligibility(check.eligible(),check.reasons().stream()
                 .map(reason -> new DocumentUnapprovalPort.Reason(reason.code(),reason.message().replace("红冲","反审"))).toList(),
                 check.relatedDocuments(),check.factsSnapshot());
-        String snapshot = com.uten.imp.common.util.CanonicalFingerprint.sha256(
-                List.of("family=" + family, "id=" + id, "actor=" + user.getId(), "header=" + stored[2],
+        var canonical = new ArrayList<>(List.of("family=" + family, "id=" + id, "actor=" + user.getId(), "header=" + stored[2],
                         "supported=" + supported, "permitted=" + permitted, "action=" + action,
                         "successor=" + successor, "domain=" + check.factsSnapshot(), "reasons=" + check.reasons(),
                         "related=" + check.relatedDocuments()));
+        String documentSnapshot=null;
+        if(financialSnapshots!=null&&financialSnapshots.supports(family)){documentSnapshot=financialSnapshots.factsSnapshot(family,id);canonical.add("generation="+documentSnapshot);}
+        String snapshot=com.uten.imp.common.util.CanonicalFingerprint.sha256(canonical);
         return new UnapprovalCapability(supported, permitted, check.eligible(), action, check.reasons(),
-                check.relatedDocuments(), snapshot, successor);
+                check.relatedDocuments(), snapshot, successor,documentSnapshot);
     }
 
     public record UnapprovalCapability(boolean supported, boolean permitted, boolean eligible, String nextAction,
             List<DocumentUnapprovalPort.Reason> reasons, List<DocumentUnapprovalPort.RelatedDocument> relatedDocuments,
-            String factsSnapshot, UUID successorId) { }
+            String factsSnapshot, UUID successorId,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String documentSnapshot) { }
 
     @Transactional(readOnly=true, noRollbackFor=ApiException.class)
     public Map<String,Object> lineage(String family, UUID id) {
@@ -184,12 +207,14 @@ public class DocumentUnapprovalService {
         return Map.of("links",links,"attachmentPolicy","ORIGINAL_RETAINED");
     }
 
-    private void copyHeader(DocumentUnapprovalPort.TableSnapshot spec, UUID originalId, UUID draftId, String billNo) {
+    private void copyHeader(DocumentUnapprovalPort adapter, UUID originalId, UUID draftId, String billNo) {
+        var spec=adapter.header();
+        if(!spec.inputs().containsAll(adapter.generatedHeaderInputs().keySet()))throw new IllegalStateException("Draft assembly overrides must be explicit header inputs");
         var columns = new ArrayList<>(List.of("id","bill_no","status","created_at","updated_at","created_by","updated_by"));
         columns.addAll(spec.inputs());
         var values = new ArrayList<>(List.of(":draft",":number","0","CURRENT_TIMESTAMP","CURRENT_TIMESTAMP","source.created_by",":actor"));
-        values.addAll(spec.inputs().stream().map(column -> column.equals("create_request_hash")
-                ? "COALESCE(source.create_request_hash,encode(digest(CAST(:original AS text),'sha256'),'hex'))" : "source."+column).toList());
+        values.addAll(spec.inputs().stream().map(column -> adapter.generatedHeaderInputs().getOrDefault(column,column.equals("create_request_hash")
+                ? "COALESCE(source.create_request_hash,encode(digest(CAST(:original AS text),'sha256'),'hex'))" : "source."+column)).toList());
         // Fresh command identity is mandatory for modern money documents; the canonical hash remains the same.
         if (spec.inputs().contains("create_request_hash")) {
             columns.add("create_idempotency_key"); values.add("'unapprove:' || CAST(:draft AS text)");
@@ -270,7 +295,9 @@ public class DocumentUnapprovalService {
     public record UnapproveRequest(
             @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(min=8,max=128) String idempotencyKey,
             @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=500) String reason,
-            @jakarta.validation.constraints.Pattern(regexp="[a-f0-9]{64}") String expectedSnapshot) {
+            @jakarta.validation.constraints.Pattern(regexp="[a-f0-9]{64}") String expectedSnapshot,UUID requestId) {
+        public UnapproveRequest(String idempotencyKey,String reason,String expectedSnapshot){this(idempotencyKey,reason,expectedSnapshot,uuidKey(idempotencyKey));}
         public UnapproveRequest(String idempotencyKey,String reason){this(idempotencyKey,reason,null);}
+        private static UUID uuidKey(String value){try{return UUID.fromString(value);}catch(Exception ignored){return null;}}
     }
 }

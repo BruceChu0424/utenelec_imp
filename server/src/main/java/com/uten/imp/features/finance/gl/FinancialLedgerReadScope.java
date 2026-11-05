@@ -9,6 +9,10 @@ import java.util.*;
 public final class FinancialLedgerReadScope {
     private FinancialLedgerReadScope() { }
     public record Value(boolean complete,String basis) { }
+    static void requirePeriod(int year,int throughMonth) {
+        if(year<1||year>9999||throughMonth<1||throughMonth>12)
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"会计年/月不正确");
+    }
     private static LocalDate start(EntityManager em) {
         // Opening baselines arrive with the V999_3 source continuation. A schema without
         // that feature has no ledger-cutover boundary, so every date is within known scope.
@@ -31,7 +35,7 @@ public final class FinancialLedgerReadScope {
         return new Value(known,known?"所选期间本系统已记账发生额，不含未记账单据":"所选期间包含接续起点前未提供的历史发生额");
     }
     public static Map<Integer,Value> months(EntityManager em,int year,int throughMonth) {
-        if(throughMonth<1||throughMonth>12)throw new IllegalArgumentException("throughMonth");
+        requirePeriod(year,throughMonth);
         LocalDate start=start(em);Map<Integer,Value> values=new LinkedHashMap<>();
         for(int month=1;month<=throughMonth;month++) {
             boolean known=start==null||!LocalDate.of(year,month,1).isBefore(start);

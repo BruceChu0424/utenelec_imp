@@ -37,6 +37,9 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
 
     @Override
     public boolean supports(Event event, Context context) {
+        if (ExpenseEventMigrationCompatibility.supports(event, context)) {
+            return true;
+        }
         if (event != Event.BEFORE_EACH_MIGRATE && event != Event.AFTER_EACH_MIGRATE) {
             return false;
         }
@@ -61,6 +64,10 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
 
     @Override
     public void handle(Event event, Context context) {
+        if (ExpenseEventMigrationCompatibility.supports(event, context)) {
+            ExpenseEventMigrationCompatibility.handle(event, context);
+            return;
+        }
         try (Statement statement = context.getConnection().createStatement()) {
             String version = context.getMigrationInfo().getVersion().getVersion();
             if (event == Event.BEFORE_EACH_MIGRATE && "919".equals(version)) {

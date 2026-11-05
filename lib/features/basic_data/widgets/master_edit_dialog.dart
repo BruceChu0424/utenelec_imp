@@ -102,6 +102,7 @@ class MasterFieldDef {
     this.type = MasterFieldType.text,
     this.required = false,
     this.hint,
+    this.useFieldNameHint = true,
     this.info,
     this.group,
     this.options,
@@ -135,6 +136,9 @@ class MasterFieldDef {
   final bool required;
 
   final String? hint;
+
+  /// Keep an explicitly meaningful prompt, such as automatic identifiers.
+  final bool useFieldNameHint;
 
   /// Optional guidance disclosed inside the field, never as a bottom caption.
   final String? info;
@@ -729,6 +733,7 @@ class MasterEditFormState extends State<MasterEditForm> {
             ),
             // Field guidance lives in the in-box info icon (component rule).
             info: f.info,
+            useFieldNameHint: f.useFieldNameHint,
           ),
         );
       },

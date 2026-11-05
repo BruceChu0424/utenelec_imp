@@ -43,10 +43,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "uten.storage.uploads-enabled=true", "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
+@SuppressWarnings("try")
 class ProcurementFinanceReviewReadOnlyEndToEndTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
-        FullChainEndToEndTest.registerDataSource(registry);
+        FinanceScopedChainDatabase.register(registry,ProcurementFinanceReviewReadOnlyEndToEndTest.class);
     }
 
     @Autowired AutowireCapableBeanFactory beans;
@@ -54,6 +56,8 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
     @Autowired PurchaseRequestService requests;
     @Autowired PurchaseOrderService orders;
     @Autowired PurchaseOrderPrintService prints;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired com.uten.imp.security.TxSessionVars transactionIdentity;
     @Autowired ProcurementFinanceApprovalService finance;
     @Autowired TaskClaimService claims;
     @Autowired SubcontractOrderService subcontractOrders;
@@ -145,10 +149,34 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
                         assertThat(failure.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
 
         fixture.loginAs(w.superAdminUserId());
+        String frozenBeforeChange=db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId);
+        assertThatThrownBy(()->db.update("UPDATE purchase_order_items SET qty=2,amount_original=0.2,amount_local=0.2 WHERE id=?",itemId))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId)).isEqualTo(frozenBeforeChange);
+        UUID incompleteRevision=UUID.randomUUID();
+        var incompleteUpdateReached=new java.util.concurrent.atomic.AtomicBoolean();
+        assertThatThrownBy(()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            transactionIdentity.bind();
+            db.update("""
+                INSERT INTO procurement_order_source_revisions(id,order_type,order_id,order_item_id,old_qty,new_qty,unit_rate,
+                    before_item,approval_attempt_before,actor_user_id,actor_employee_id)
+                SELECT ?,'PURCHASE',i.order_id,i.id,i.qty,2,i.unit_rate,to_jsonb(i),
+                    (SELECT COALESCE(max(attempt),0) FROM procurement_order_approval_cases WHERE order_type='PURCHASE' AND order_id=i.order_id),?,?
+                FROM purchase_order_items i WHERE i.id=?
+                """,incompleteRevision,w.superAdminUserId(),w.employeeId(),itemId);
+            db.update("UPDATE purchase_order_items SET qty=2,amount_original=0.2,amount_local=0.2 WHERE id=?",itemId);
+            incompleteUpdateReached.set(true);
+        })).isInstanceOf(RuntimeException.class);
+        assertThat(incompleteUpdateReached).as("a matching source proof alone cannot commit without allocation, log and reconfirmation facts").isTrue();
+        assertThat(db.queryForObject("SELECT count(*) FROM procurement_order_source_revisions WHERE id=?",Integer.class,incompleteRevision)).isZero();
+        assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId)).isEqualTo(frozenBeforeChange);
         var changed = orders.changeQty(order.getId(), new OrderQtyChangeRequest(
                 List.of(new OrderQtyChangeItem(itemId, new BigDecimal("2")))));
         assertThat(changed.getStatus()).isEqualTo((short) 1);
         assertThat(changed.getFinanceApproval().status()).isEqualTo("PENDING");
+        assertThat(db.queryForObject("SELECT before_item::text FROM procurement_order_source_revisions WHERE order_item_id=? ORDER BY revision_sequence DESC LIMIT 1",String.class,itemId)).isEqualTo(frozenBeforeChange);
+        assertThat(db.queryForObject("SELECT charged_base_qty FROM purchase_order_items WHERE id=?",BigDecimal.class,itemId)).isEqualByComparingTo("2");
+        assertThat(db.queryForObject("SELECT gift_base_qty FROM purchase_order_items WHERE id=?",BigDecimal.class,itemId)).isZero();
         assertExportShowsPendingWithoutApprovalSignature(order.getId(), "改量待财务复核");
 
         fixture.loginAs(reviewer);
@@ -163,7 +191,9 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         assertExportShowsPendingWithoutApprovalSignature(order.getId(), "已反审");
     }
 
-    @Test void independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"10,HALF_UP,3.3744855964","24,DOWN,3.374485596366666666666666"})
+    void independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity(int creationScale,String creationRounding,String expectedPrice) throws Exception {
         var w = fixture.seedWorld("subcontract-review-readonly");
         fixture.loginAs(w.superAdminUserId());
         fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
@@ -178,7 +208,7 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         // 参考单价只是展示投影，不回乘成成交总额，下方原额断言不受该选择影响。
         try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
                 "money.reference-unit-price",
-                new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(10, "HALF_UP")))) {
+                new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(creationScale, creationRounding)))) {
             fixture.withSubcontractKitStaged(w, java.util.Map.of(w.goodsE(), "3"), () -> {
                 var request = new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
                 request.setBillDate(BusinessTime.today());
@@ -197,9 +227,10 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
                 request.setItems(List.of(line));
                 var order = subcontractOrders.create(request);
                 UUID itemId = order.getItems().getFirst().getId();
+                assertThat(order.getItems().getFirst().getPrice()).isEqualByComparingTo(expectedPrice);
                 String referencePolicy = db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?", String.class, itemId);
-                assertThat(db.queryForObject("SELECT reference_price_precision_policy#>>'{choices,money.reference-unit-price,scale}' FROM subcontract_order_items WHERE id=?", String.class, itemId))
-                        .isEqualTo("10");
+                assertThat(db.queryForObject("SELECT reference_price_precision_policy#>>'{precisionPolicy,choices,money.reference-unit-price,scale}' FROM subcontract_order_items WHERE id=?", String.class, itemId))
+                        .isEqualTo(Integer.toString(creationScale));
                 var submitted = submitUnderDifferentPrecision("SUBCONTRACT", order.getId());
                 assertThat(db.queryForObject("SELECT reference_price_precision_policy::text FROM subcontract_order_items WHERE id=?", String.class, itemId))
                         .isEqualTo(referencePolicy);
@@ -251,7 +282,7 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
             var updated = changed.getFinanceApproval();
             assertThat(updated.caseId()).isEqualTo(pending.caseId()); assertThat(updated.version()).isEqualTo(pending.version()+1);
             assertThat(changed.getTotalOriginal()).isEqualByComparingTo("1.3333");
-            assertThat(db.queryForObject("SELECT price FROM purchase_order_items WHERE id=?", BigDecimal.class, item)).isEqualByComparingTo("0.333325");
+            assertThat(db.queryForObject("SELECT price FROM purchase_order_items WHERE id=?", BigDecimal.class, item)).isEqualByComparingTo("0.3333");
             assertThat(db.queryForObject("SELECT ordered_qty FROM purchase_request_items WHERE id=?", BigDecimal.class, line.getRequestItemId())).isZero();
             assertThat(db.queryForObject("SELECT event_snapshot->>'previousSubmissionSnapshot' FROM procurement_order_approval_events WHERE case_id=? AND event_type='QUANTITY_CHANGED'", String.class, pending.caseId())).isEqualTo(original);
             fixture.loginAs(reviewer); var claim = claims.claim("PROCUREMENT_FINANCE_APPROVE", updated.caseId().toString());

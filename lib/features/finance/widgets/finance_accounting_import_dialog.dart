@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -160,9 +161,8 @@ Future<bool> showFinanceAccountingImportDialog(
   String? initialImportId,
   String? resumeDraftId,
 }) async =>
-    await showDialog<bool>(
+    await showFinanceWorkbenchPanel<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => UtenDialogFrame(
         child: SizedBox(
           width: 1380,
@@ -2153,58 +2153,55 @@ class _FinanceAccountingImportSurfaceState
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Wrap(
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s8,
-                  alignment: WrapAlignment.end,
-                  children: [
-                    if (_pending != null)
-                      UtenButton(
-                        onPressed: _busy || !_canMutate
-                            ? null
-                            : () => _act(_pending!['action'].toString()),
-                        child: const Text('使用原请求核对并重试'),
-                      )
-                    else if (_state == 'PREVIEW')
-                      UtenButton(
-                        onPressed:
-                            _busy ||
-                                !_canMutate ||
-                                _vouchers == null ||
-                                _balances == null
-                            ? null
-                            : () => _act('submit'),
-                        child: const Text('提交另一人复核'),
-                      ),
-                    if (_pending == null && _state == 'SUBMITTED' && _owner)
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        onPressed: _busy || !_canMutate
-                            ? null
-                            : () => _act('withdraw'),
-                        child: const Text('撤回本次提交'),
-                      ),
-                    if (_pending == null &&
-                        _state == 'SUBMITTED' &&
-                        !_owner) ...[
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        onPressed: _busy || !_canMutate
-                            ? null
-                            : () => _act('reject'),
-                        child: const Text('退回核对'),
-                      ),
-                      UtenButton(
-                        onPressed: _busy || !_canMutate
-                            ? null
-                            : () => _act('approve'),
-                        child: const Text('复核通过并接续'),
-                      ),
-                    ],
+              UtenDialogActions(
+                children: [
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    onPressed: _busy ? null : _close,
+                    child: const Text('关闭'),
+                  ),
+                  if (_pending != null)
+                    UtenButton(
+                      onPressed: _busy || !_canMutate
+                          ? null
+                          : () => _act(_pending!['action'].toString()),
+                      child: const Text('使用原请求核对并重试'),
+                    )
+                  else if (_state == 'PREVIEW')
+                    UtenButton(
+                      onPressed:
+                          _busy ||
+                              !_canMutate ||
+                              _vouchers == null ||
+                              _balances == null
+                          ? null
+                          : () => _act('submit'),
+                      child: const Text('提交另一人复核'),
+                    ),
+                  if (_pending == null && _state == 'SUBMITTED' && _owner)
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      onPressed: _busy || !_canMutate
+                          ? null
+                          : () => _act('withdraw'),
+                      child: const Text('撤回本次提交'),
+                    ),
+                  if (_pending == null && _state == 'SUBMITTED' && !_owner) ...[
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      onPressed: _busy || !_canMutate
+                          ? null
+                          : () => _act('reject'),
+                      child: const Text('退回核对'),
+                    ),
+                    UtenButton(
+                      onPressed: _busy || !_canMutate
+                          ? null
+                          : () => _act('approve'),
+                      child: const Text('复核通过并接续'),
+                    ),
                   ],
-                ),
+                ],
               ),
             ],
           ),

@@ -11,7 +11,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
-import '../../../components/layout/uten_collapsible_content.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -44,7 +44,6 @@ class _FinanceAssetWorkbenchPageState
     extends ConsumerState<FinanceAssetWorkbenchPage> {
   final _overviewGuard = LatestRequestGuard();
   int _tabIndex = 0;
-  bool _restrictionsExpanded = false;
   bool _ledgerFullscreen = false;
   final _creationTokens = [0, 0];
   final Set<int> _visitedTabs = <int>{0};
@@ -454,6 +453,9 @@ class _FinanceAssetWorkbenchPageState
                     icon: Icons.policy_outlined,
                     label: '政策未就绪',
                     color: theme.colorScheme.error,
+                    hintKey: const Key('finance-asset-restrictions-toggle'),
+                    info:
+                        '可先保存草稿；提交、启用、过账和关账需完成政策配置。\n待配置：${overview.missingPolicyItems.isEmpty ? '类别与会计科目政策' : overview.missingPolicyItems.map(_friendlyPolicyLabel).join('、')}。',
                   ),
                 if (postingBlocked)
                   _RestrictionLabel(
@@ -461,18 +463,12 @@ class _FinanceAssetWorkbenchPageState
                     icon: Icons.lock_outline,
                     label: '处置与提前终止暂未开放',
                     color: theme.colorScheme.onSurfaceVariant,
+                    hintKey: policyBlocked
+                        ? null
+                        : const Key('finance-asset-restrictions-toggle'),
+                    info:
+                        '初始确认和撤销已支持；处置和提前终止暂不可用。独立审批与反冲流程验收后开放，配置会计政策不能解除此安全门禁。${overview.operationalBlockers.isEmpty ? '' : '\n待完成事项：${overview.operationalBlockers.length} 项'}',
                   ),
-                UtenButton(
-                  key: const Key('finance-asset-restrictions-toggle'),
-                  type: UtenButtonType.ghost,
-                  icon: _restrictionsExpanded
-                      ? Icons.expand_less_rounded
-                      : Icons.expand_more_rounded,
-                  onPressed: () => setState(
-                    () => _restrictionsExpanded = !_restrictionsExpanded,
-                  ),
-                  child: Text(_restrictionsExpanded ? '收起说明' : '查看限制'),
-                ),
                 if (policyBlocked && capabilities.canApprove)
                   UtenButton(
                     key: const Key('finance-asset-configure-policy'),
@@ -482,35 +478,6 @@ class _FinanceAssetWorkbenchPageState
                     child: const Text('配置政策'),
                   ),
               ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              policyBlocked
-                  ? '可先保存草稿；提交、启用、过账和关账需完成政策配置。'
-                  : '可录入、审核、启用资产，并在月末处理计提折旧。',
-              style: theme.textTheme.bodySmall,
-            ),
-            if (postingBlocked)
-              Text('初始确认和撤销已支持；处置和提前终止暂不可用。', style: theme.textTheme.bodySmall),
-            UtenCollapsibleContent(
-              expanded: _restrictionsExpanded,
-              maintainState: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Divider(height: UtenSpacing.s24),
-                  if (policyBlocked)
-                    Text(
-                      '待配置：${overview.missingPolicyItems.isEmpty ? '类别与会计科目政策' : overview.missingPolicyItems.map(_friendlyPolicyLabel).join('、')}。',
-                    ),
-                  if (postingBlocked) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    const Text('落账功能需完成独立审批与反冲流程验收后开放；配置会计政策不能解除此安全门禁。'),
-                    if (overview.operationalBlockers.isNotEmpty)
-                      Text('待完成事项：${overview.operationalBlockers.length} 项'),
-                  ],
-                ],
-              ),
             ),
           ],
         ),
@@ -525,10 +492,14 @@ class _RestrictionLabel extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
+    this.info,
+    this.hintKey,
   });
   final IconData icon;
   final String label;
   final Color color;
+  final String? info;
+  final Key? hintKey;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -542,6 +513,10 @@ class _RestrictionLabel extends StatelessWidget {
           style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color),
         ),
       ),
+      if (info != null) ...[
+        const SizedBox(width: UtenSpacing.s4),
+        UtenFieldHintIcon(key: hintKey, info: info!),
+      ],
     ],
   );
 }

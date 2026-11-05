@@ -49,6 +49,12 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// True only with a persisted server idempotency key or a confirmed created ID.
   bool get formDraftCanReplaySubmission => false;
 
+  /// Original-command protocols may require an immutable server receipt even
+  /// after a rejected attempt: a different copy of that same request may still
+  /// be in flight. Only a verified outcome or proof of pre-dispatch failure can
+  /// retire that feature-owned command; ordinary editors keep the old contract.
+  bool get formDraftRequiresOriginalReceipt => false;
+
   /// A feature may provide a pure-read receipt action outside the blocked form.
   Widget? get formDraftSubmissionRecoveryAction => null;
   bool get formDraftHasConfirmedExternalRecovery => false;
@@ -101,6 +107,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   /// A partially restored snapshot is not evidence for completion or replay.
   bool get formDraftRestorationBlocked => _draftRestoreBlocked;
+  Object? get formDraftRecoveryError => _draftError;
 
   /// Returning to equal account/server values cannot revive this old page.
   bool get formDraftIdentityIsCurrent =>
@@ -219,13 +226,15 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// Unknown commands must retain their durable evidence when leaving. A
   /// replay-aware page may use its own per-command outcomes (including legacy
   /// drafts without the shared marker). This is separate from in-flight busy.
-  bool get formDraftHasUnknownSubmission => hasUnknownFormDraftSubmission(
-    captureDeferredJsonValues(captureFormDraft),
-    route: formDraftSpec.route,
-    pendingFallback:
-        _draftSubmissionPending && !_precisionTransport.definitelyUnwritten,
-    honorMarker: false,
-  );
+  bool get formDraftHasUnknownSubmission =>
+      formDraftRequiresOriginalReceipt ||
+      hasUnknownFormDraftSubmission(
+        captureDeferredJsonValues(captureFormDraft),
+        route: formDraftSpec.route,
+        pendingFallback:
+            _draftSubmissionPending && !_precisionTransport.definitelyUnwritten,
+        honorMarker: false,
+      );
   FormDraftSpec get formDraftSpec;
   Map<String, dynamic> captureFormDraft();
   Future<void> restoreFormDraft(Map<String, dynamic> data);
@@ -285,6 +294,14 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   BusinessPrecisionChoice? formDraftPrecisionChoice(String key) =>
       _precisionTransport.choices[key];
 
+  /// Frozen per-draft transport policy; business commands bind this exact map.
+  Map<String, dynamic> get formDraftPrecisionChoices => {
+    for (final entry in _precisionTransport.choices.entries)
+      entry.key: entry.value.toJson(),
+  };
+  bool get formDraftPrecisionDefinitelyUnwritten =>
+      _precisionTransport.definitelyUnwritten;
+
   Future<BusinessPrecisionChoice?> chooseFormDraftPrecision(
     BusinessPrecisionRequirement requirement, {
     bool Function()? isCurrent,
@@ -337,8 +354,15 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 
   /// Only the matching real command receipt authorizes this continuation.
-  Future<void> checkpointFormDraftAfterConfirmedMutation() async {
-    _precisionTransport.advanceConfirmedRequest();
+  /// A receipt-aware owner may acknowledge the original command after verifying
+  /// its actor, identity, endpoint and full body, including an immutable
+  /// CANCELLED_UNWRITTEN proof. Retiring those attempts keeps explicit choices.
+  Future<void> checkpointFormDraftAfterConfirmedMutation({
+    bool originalReceiptAcknowledged = false,
+  }) async {
+    _precisionTransport.advanceConfirmedRequest(
+      originalReceiptAcknowledged: originalReceiptAcknowledged,
+    );
     _draftSubmissionPending = false;
     _draftSubmissionBlocked = false;
     await saveFormDraftNow();
@@ -915,7 +939,10 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       throw StateError('上次提交结果待确认，请先核对任务中心，不能重复创建');
     }
     final wasPending = _draftSubmissionPending;
-    final wasUnknown = wasPending && formDraftHasUnknownSubmission;
+    final wasUnknown =
+        wasPending &&
+        formDraftHasUnknownSubmission &&
+        !_precisionTransport.definitelyUnwritten;
     _precisionTransport.beginRun(unknown: wasUnknown);
     _draftSubmissionPending = true;
     try {

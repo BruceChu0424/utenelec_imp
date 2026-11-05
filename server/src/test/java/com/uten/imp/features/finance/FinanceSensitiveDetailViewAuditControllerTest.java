@@ -51,6 +51,8 @@ class FinanceSensitiveDetailViewAuditControllerTest {
     private final AuditDetailViewRecorder recorder = mock(AuditDetailViewRecorder.class);
     private final AuditService audit = mock(AuditService.class);
     private final SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+    private final FinanceDocumentActions reviewed = mock(FinanceDocumentActions.class);
+    private <T>T withReviews(T controller){org.springframework.test.util.ReflectionTestUtils.setField(controller,"documentActions",reviewed);return controller;}
 
     @Test
     void moneyDocumentDetailsRecordOnlySafeDocumentIdentityAfterSuccessfulLookup() {
@@ -59,9 +61,9 @@ class FinanceSensitiveDetailViewAuditControllerTest {
         FinanceReceiptDetail receipt = mock(FinanceReceiptDetail.class);
         when(receipt.getBillNo()).thenReturn("SK-2026-001");
         when(receipt.getLegacyId()).thenReturn(101);
-        when(receiptService.detail(receiptId)).thenReturn(receipt);
-        assertSame(receipt, new FinanceReceiptController(
-                receiptService, audit, currentUser, recorder).detail(receiptId));
+        when(reviewed.<FinanceReceiptDetail>reviewedDetail("financeReceipt",receiptId,false)).thenReturn(receipt);
+        assertSame(receipt, withReviews(new FinanceReceiptController(
+                receiptService, audit, currentUser, recorder)).detail(receiptId));
         verify(recorder).record("view_finance_receipt_detail", "finance_receipts",
                 receiptId, "SK-2026-001", 101, "销售收款单");
 
@@ -70,9 +72,9 @@ class FinanceSensitiveDetailViewAuditControllerTest {
         FinancePaymentDetail payment = mock(FinancePaymentDetail.class);
         when(payment.getBillNo()).thenReturn("FK-2026-002");
         when(payment.getLegacyId()).thenReturn(null);
-        when(paymentService.detail(paymentId)).thenReturn(payment);
-        assertSame(payment, new FinancePaymentController(
-                paymentService, audit, currentUser, recorder).detail(paymentId));
+        when(reviewed.<FinancePaymentDetail>reviewedDetail("financePayment",paymentId,false)).thenReturn(payment);
+        assertSame(payment, withReviews(new FinancePaymentController(
+                paymentService, audit, currentUser, recorder)).detail(paymentId));
         verify(recorder).record("view_finance_payment_detail", "finance_payments",
                 paymentId, "FK-2026-002", null, "采购付款单");
 
@@ -81,9 +83,9 @@ class FinanceSensitiveDetailViewAuditControllerTest {
         FinanceExpenseDetail expense = mock(FinanceExpenseDetail.class);
         when(expense.getBillNo()).thenReturn("FY-2026-003");
         when(expense.getLegacyId()).thenReturn(null);
-        when(expenseService.detail(expenseId)).thenReturn(expense);
-        assertSame(expense, new FinanceExpenseController(
-                expenseService, audit, currentUser, recorder).detail(expenseId));
+        when(reviewed.<FinanceExpenseDetail>reviewedDetail("financeExpense",expenseId,false)).thenReturn(expense);
+        assertSame(expense, withReviews(new FinanceExpenseController(
+                expenseService, audit, currentUser, recorder)).detail(expenseId));
         verify(recorder).record("view_finance_expense_detail", "finance_expenses",
                 expenseId, "FY-2026-003", null, "一般费用单");
 
@@ -92,9 +94,9 @@ class FinanceSensitiveDetailViewAuditControllerTest {
         FinanceOtherIncomeDetail income = mock(FinanceOtherIncomeDetail.class);
         when(income.getBillNo()).thenReturn("QT-2026-004");
         when(income.getLegacyId()).thenReturn(null);
-        when(incomeService.detail(incomeId)).thenReturn(income);
-        assertSame(income, new FinanceOtherIncomeController(
-                incomeService, audit, currentUser, recorder).detail(incomeId));
+        when(reviewed.<FinanceOtherIncomeDetail>reviewedDetail("financeOtherIncome",incomeId,false)).thenReturn(income);
+        assertSame(income, withReviews(new FinanceOtherIncomeController(
+                incomeService, audit, currentUser, recorder)).detail(incomeId));
         verify(recorder).record("view_finance_other_income_detail", "finance_other_incomes",
                 incomeId, "QT-2026-004", null, "其它收入单");
 
@@ -103,9 +105,9 @@ class FinanceSensitiveDetailViewAuditControllerTest {
         FinanceBankTransferDetail transfer = mock(FinanceBankTransferDetail.class);
         when(transfer.getBillNo()).thenReturn("ZZ-2026-005");
         when(transfer.getLegacyId()).thenReturn(null);
-        when(transferService.detail(transferId)).thenReturn(transfer);
-        assertSame(transfer, new FinanceBankTransferController(
-                transferService, audit, currentUser, recorder).detail(transferId));
+        when(reviewed.<FinanceBankTransferDetail>reviewedDetail("financeBankTransfer",transferId,false)).thenReturn(transfer);
+        assertSame(transfer, withReviews(new FinanceBankTransferController(
+                transferService, audit, currentUser, recorder)).detail(transferId));
         verify(recorder).record("view_finance_bank_transfer_detail", "finance_bank_transfers",
                 transferId, "ZZ-2026-005", null, "银行存取款单");
     }
@@ -172,10 +174,11 @@ class FinanceSensitiveDetailViewAuditControllerTest {
     void failedOrForbiddenLookupsNeverWriteSuccessfulViewAudit() {
         UUID missingId = UUID.randomUUID();
         FinanceReceiptService receiptService = mock(FinanceReceiptService.class);
-        when(receiptService.detail(missingId))
+        when(reviewed.reviewedDetail("financeReceipt",missingId,false))
                 .thenThrow(new ApiException(ErrorCode.NOT_FOUND, "收款单不存在"));
         FinanceReceiptController receiptController = new FinanceReceiptController(
                 receiptService, audit, currentUser, recorder);
+        withReviews(receiptController);
         assertThrows(ApiException.class, () -> receiptController.detail(missingId));
 
         UUID forbiddenId = UUID.randomUUID();

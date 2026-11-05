@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "owner": "source_chain_review",
+  "freezeManifest": "source-server-freeze-manifest.json",
+  "scope": "Anonymous local PostgreSQL and owning MVC/services; no company database, deployment, push, formal package or Win7 acceptance",
+  "stages": [
+    {
+      "name": "document review commands, original JSON, precision, successor assembly and bounded platform reads",
+      "log": "build/finance-review-wire-probe/final-cached-v2.log",
+      "executed": 84,
+      "passed": 84,
+      "failed": 0,
+      "skipped": 0,
+      "schemaHead": "1058",
+      "includes": ["32 real document review cases", "6 shared read-context unit cases", "3 exact HTTP wire cases", "37 existing focused finance units", "6 original 90-row operating-report streaming cases"],
+      "limits": "This binary preceded boxed/raw configuration-command support and V1061. Do not report it as verification of those later changes."
+    },
+    {
+      "name": "new configuration raw/null wire and book-projection scope",
+      "log": "build/finance-command-shape-final/focused-postgres.log",
+      "executed": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "schemaHead": "1061",
+      "migratedCount": 995,
+      "resources": "Private copied current-business baseline through V1058 plus owning V1061; V1059/V1060 belong to the parallel procurement work and await the parent's unified current-source run.",
+      "includes": ["1 owning-MVC configuration case with fourteen missing/null variants, malformed wire, original tombstones and late requests", "15 existing configuration transaction/concurrency/owner/permission/business-chain cases", "4 actual source-cost/loss cases"],
+      "hashCompatibility": "Actual stored request hashes for AP false/revision 0, inventory false/version 0 and GL binding equal the exact old primitive-record JSON/hash bytes; old legacy Inputs and execute fingerprints remain unchanged.",
+      "configuration": "Missing/null CAS and Boolean choices never become zero/false; null/missing target lists never clear. Explicit [] clears, 0/false remain legitimate values. Raw original objects retain missing versus explicit null; cancellation seals each exact object, the other shape conflicts, and late originals cannot execute it.",
+      "bookProjection": "Actual unknown source first receives explicit total-cost confirmation zero and completes its worker propagation. A different goods' subsequent pending correction no longer hides known-free loss. Unknown cost remains null; related-parent and different-goods production ancestry remain pending; completed propagation publishes the real recorded point. No book arithmetic or monetary write guard is changed."
+    },
+    {
+      "name": "boxed/raw configuration codec",
+      "log": "build/finance-command-shape-final/units.log",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "Missing versus null, explicit zero/false/empty targets, and rejection of coercible strings/fractional versions"
+    }
+  ],
+  "compilerEvidence": [
+    {"log": "build/finance-command-shape-final/main-v2.log", "scope": "seven final owning Main sources", "warningCount": 0, "errorCount": 0},
+    {"log": "build/finance-command-shape-final/tests-final.log", "scope": "focused current fixture/wire tests", "warningCount": 0, "errorCount": 0},
+    {"log": "build/finance-review-wire-probe/read-context-main.log", "scope": "shared RR read context and all owning callers", "warningCount": 0, "errorCount": 0}
+  ],
+  "detailReadObservations": {
+    "measurement": "Actual pooled JDBC executions; Hibernate prepared-statement subset; original domain-detail invocations. Elapsed timings vary with concurrent local verification and are not an end-device SLA.",
+    "uncached": [
+      {"rows": 201, "elapsedMs": 431, "jdbcExecutions": 29, "hibernatePreparedStatements": 21, "domainDetailReloads": 4},
+      {"rows": 401, "elapsedMs": 651, "jdbcExecutions": 42, "hibernatePreparedStatements": 25, "domainDetailReloads": 5},
+      {"rows": 201, "elapsedMs": 1395, "jdbcExecutions": 33, "hibernatePreparedStatements": 21, "domainDetailReloads": 4},
+      {"rows": 401, "elapsedMs": 3444, "jdbcExecutions": 46, "hibernatePreparedStatements": 26, "domainDetailReloads": 5}
+    ],
+    "cached": [
+      {"rows": 201, "elapsedMs": 1519, "jdbcExecutions": 30, "hibernatePreparedStatements": 18, "domainDetailReloads": 3},
+      {"rows": 401, "elapsedMs": 2684, "jdbcExecutions": 41, "hibernatePreparedStatements": 20, "domainDetailReloads": 3},
+      {"rows": 201, "elapsedMs": 741, "jdbcExecutions": 30, "hibernatePreparedStatements": 18, "domainDetailReloads": 3},
+      {"rows": 401, "elapsedMs": 1685, "jdbcExecutions": 37, "hibernatePreparedStatements": 20, "domainDetailReloads": 3}
+    ],
+    "retained": ["200-row batch bounds", "existing 2000 review-capture limit", "original per-batch parent membership and field permission checks", "first native parent authorization", "separate adapter/parent/effective actor/transaction", "close/finally and commit/rollback cleanup", "uncached write/history paths", "stale document proof still rejected"]
+  },
+  "retainedRedEvidence": [
+    "Original native-statement SQL: four deleted draft-row regression failures before the exact predicate fix; four passes after it.",
+    "Exact pre-fix receipt header assembly is injected under the real current constraints; trade and changed prepayment correspondence reject with 23514 and roll back, then the unchanged original command succeeds with the shared staged-header assembly.",
+    "build/finance-review-wire-probe/loss-initial-cost-v3.log proves an already visible known-zero loss becomes null when a genuinely different goods correction is pending under V1025's global publication gate; the original assertion is preserved by V1061."
+  ],
+  "pendingParentAcceptance": ["full owning Main and test compile from a before/after verified complete source/resource manifest", "unified final selected suite including parallel V1059/V1060", "actual Web/Flutter Windows interaction on matching final server", "company original-book amount reconciliation and all-source coverage; anonymous samples are not company acceptance"]
+}

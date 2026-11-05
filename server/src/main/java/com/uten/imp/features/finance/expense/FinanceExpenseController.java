@@ -47,6 +47,14 @@ public class FinanceExpenseController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceDocumentActions documentActions;
+
+    @GetMapping("/{id}/review-operations/{requestId}")
+    @PreAuthorize("hasAuthority('finance_expense:view')")
+    public java.util.Map<String,Object> reviewReceipt(@PathVariable UUID id,@PathVariable UUID requestId){return documentActions.receipt("financeExpense",id,requestId);}
+    @PostMapping("/{id}/review-operations/{requestId}/cancel")
+    @PreAuthorize("hasAuthority('finance_expense:view')")
+    public java.util.Map<String,Object> cancelReview(@PathVariable UUID id,@PathVariable UUID requestId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation request){return documentActions.cancel("financeExpense",id,requestId,request);}
 
     @GetMapping("/gl-confirmation-count")
     @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:gl_confirm')")
@@ -96,7 +104,7 @@ public class FinanceExpenseController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_expense:view')")
     public FinanceExpenseDetail detail(@PathVariable UUID id) {
-        FinanceExpenseDetail result = service.detail(id);
+        FinanceExpenseDetail result = documentActions.reviewedDetail("financeExpense",id,false);
         detailViewAudit.record(
                 "view_finance_expense_detail",
                 "finance_expenses",
@@ -110,7 +118,7 @@ public class FinanceExpenseController {
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('finance_expense:view')")
     public FinanceExpenseDetail history(@PathVariable UUID id) {
-        FinanceExpenseDetail result = service.detailHistory(id);
+        FinanceExpenseDetail result = documentActions.reviewedDetail("financeExpense",id,true);
         detailViewAudit.recordHistory(
                 "view_finance_expense_detail",
                 "finance_expenses",
@@ -129,45 +137,33 @@ public class FinanceExpenseController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_expense:edit')")
-    public FinanceExpenseDetail update(@PathVariable UUID id, @Valid @RequestBody FinanceExpenseSaveRequest req) {
-        return service.update(id, req);
+    public java.util.Map<String,Object> update(@PathVariable UUID id, @Valid @RequestBody com.uten.imp.features.finance.FinanceDocumentActions.UpdateCommand req) {
+        return documentActions.update("financeExpense",id,req);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_expense:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
+    public java.util.Map<String,Object> delete(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.delete("financeExpense",id,command);
     }
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_expense:approve')")
-    public FinanceExpenseDetail approve(@PathVariable UUID id) {
-        FinanceExpenseDetail result = service.approve(id);
-        // 审计：显式记录"谁审核了这张费用单"（触发器只记 update，业务语义在这里补）。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_expense_approve", "finance_expense", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> approve(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.approve("financeExpense",id,command);
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('finance_expense:reverse')")
-    public FinanceExpenseDetail reverse(@PathVariable UUID id) {
-        FinanceExpenseDetail result = service.reverse(id);
-        // 审计：显式记录"谁红冲了这张费用单"。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_expense_reverse", "finance_expense", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> reverse(@PathVariable UUID id,@RequestBody com.uten.imp.application.port.FinancialDocumentUnapprovalCommandPort.Command command) {
+        return documentActions.unapprove("financeExpense",id,command);
     }
 
     /** C6 财务确认：已过账的费用单确认入账（gl_status 1→2）。 */
     @PostMapping("/{id}/gl-confirm")
     @PreAuthorize("hasAuthority('finance_expense:gl_confirm')")
-    public FinanceExpenseDetail glConfirm(@PathVariable UUID id) {
-        FinanceExpenseDetail result = service.glConfirm(id);
-        // 审计：显式记录"谁确认入账了这张费用单"（税务敏感：过账确认）。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_expense_gl_confirm", "finance_expense", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> glConfirm(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.glConfirm(id,command);
     }
 
     @GetMapping("/{id}/history/rows")

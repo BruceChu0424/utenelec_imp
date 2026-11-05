@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-04",
+  "baseCommit": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "branch": "uimp/finance-full-chain-audit-20261104",
+  "workspace": "D:/Projects/uten_imp_worktrees/finance-full-chain-audit-20261104",
+  "sourceFiles": [
+    {
+      "path": "lib/components/feedback/uten_dialog.dart",
+      "sha256": "6af994f37825bea31903794f9045558d34dae58d045871b1d132c2c6db93f52b"
+    },
+    {
+      "path": "lib/components/feedback/uten_dialog_chrome.dart",
+      "sha256": "ef61a0424db1a6318c96bfa609de9aaf0e754d68250b78ac81ed64ab2a4fc564"
+    },
+    {
+      "path": "lib/features/basic_data/models/account_node.dart",
+      "sha256": "f5dda6490deca56f144fc7b2b6daa4a4811c3963b282daf0a650fd183bb0d421"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "sha256": "5e4d30345416b38bc7839d8374c1c7bc3cd530f4ac52c2873fe135d77e2b9d2e"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "sha256": "c196f01eeadd2f6574ba2cfd10c5d5a11dcf2db47373f3baf0b5673977aa035d"
+    },
+    {
+      "path": "lib/features/basic_data/repositories/account_repository.dart",
+      "sha256": "3b3a81f6cdb7b012ec817f7e6834feabe468fc970b6ec6f87b5496a8b6cda9dc"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_edit_dialog.dart",
+      "sha256": "80988583cec303c7e28a7cbb1622fd5cbb8681ca9d0ff63a4bc490433d72b037"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_inline_create.dart",
+      "sha256": "e55366e3e296e451dc7ce59f69d5fcc9b6d22398f7f56489fe97218beb4da445"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_inline_create_fields.dart",
+      "sha256": "0840ec724cfe2f21db052a9df73c5268ffbf430552d668877f27a66971e2f044"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_inline_edit.dart",
+      "sha256": "5772d7f3e511624c3784203d68e2f972758c9fb840bcb0337be8e1da92d7b48d"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_inline_page_mixin.dart",
+      "sha256": "470963444d1f751e3aefecebf91520bd0478f7599be96382e7edb9eaa7305cea"
+    },
+    {
+      "path": "lib/features/finance/config/finance_doc_config.dart",
+      "sha256": "12b5080535676ab9f090f42aca3eda5c8854634d4aa7693190ed5beda298112d"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_application_settings_page.dart",
+      "sha256": "7e2f1baadc592203a19f385698bbb6e1348aa6e344f7ee54600296caa4b11ca7"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "sha256": "743d35364e57e1e4a5cfe1cef69a2e591c9c6362235680a7fd9442551ff70ae7"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "sha256": "554626129e99a37c66a78331ca3a1384873d17286faf090e3ef9457de2d1bd68"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_hub_page.dart",
+      "sha256": "5ef78cfc4fa18b823ff09510de187ef3088880fdf6887b2fba4ba957897cf307"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256": "571365fadfc905121ca7e6a5da381a69379ef07238a3134f4ccb0fbd9b383a0b"
+    },
+    {
+      "path": "lib/features/finance/shared/finance_template_source_upload.dart",
+      "sha256": "4e81bf32c45d3d6302d60b3a264632dd854fbf0a75e7df32bf022e35681edcbe"
+    },
+    {
+      "path": "lib/features/finance/shared/finance_workbench_panel.dart",
+      "sha256": "af1bbb49ca780ced77ca7501d36e0e28eb4462ddc6ab5dad310989ca7663f6c2"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+      "sha256": "b91eed1995d670ef999de323c0618e6a3db5571e47bb2cf974219a2cf2b6c481"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+      "sha256": "f47f9877c02f9960f2b4eef79b8fb5aca1f1f248288cbfc4186ca53ad25fdbab"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+      "sha256": "4342e704094f6e4c9957d87b7c910a4b50b0340693ea6a06b663cd0a468e719c"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart",
+      "sha256": "75c9cfca037a0d9fe66e1a5bfd9fb53d45d5b397a9a96edb6281e6a187fd4935"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_dialog.dart",
+      "sha256": "4a1bd31327a9569d091fcbb40f25963a98ce03f75b011120108d8bd50137aa32"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_metadata_dialog.dart",
+      "sha256": "29bebfdc7e6a1b2cc35044fd9080ed16e4d2e21cf9d3e6dca7ad01aaf3eb0251"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_classification_correction_dialog.dart",
+      "sha256": "b0d7e067eff1b68a206f42f501c4c76db6860a139d6e78a65448f082f6934a68"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+      "sha256": "8ccecd86037d6aa495e2f1e0725fe32c2e587bcd05a7c914db9f02dc87a9db88"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_grid_columns.dart",
+      "sha256": "91b9f41821d28d6c4f1f373eb763bcebfd99b1c510631943e44b97c90f9f6152"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_material_context_picker.dart",
+      "sha256": "5927cd1012676564365837fae129a02d8214c298110d6ba8686ff3bac90f88e0"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+      "sha256": "1a6a93b5fb4e0110fc630a05228659d7cb724b99904e5f9011f39d23b16f7d8d"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_material_statement_editor.dart",
+      "sha256": "9e3c8de8ae71ef07394b10fe072aa8daffdfc1e3ac8d53dc76a4f52ff5fc0014"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_native_debt_correspondence_dialog.dart",
+      "sha256": "0bbf6e07e5144b75036de01fe1416f06b09d1d6b5872628b5ab296a1a3ea3c05"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_native_legacy_opening_dialog.dart",
+      "sha256": "3852b27d3aade475ad8626851d19937902bb52c37f441f258852db01c2361718"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_native_posting_accounts_dialog.dart",
+      "sha256": "31e11995b4192587179949be6ddd86c11a5642158889294dd3796194c626973e"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+      "sha256": "8accddf4f2e9c4729ff24eb3b9010ca38646846e75827f48d53e84c8bf7329c0"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_payable_statement_adjustment_dialog.dart",
+      "sha256": "6a1d704354da00d049995481e8a657003f2d1a0f20ce0111a584ff18f7bf96df"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_payroll_deduction_allocations.dart",
+      "sha256": "0a71843343cd8d883f28f03f974f63484e88e4519f8b0448efa6ac78e4709c35"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+      "sha256": "19699516c9a6510f2cfd8c049e7a389827631fe1bc4ae8ac4f30bb6e0b0ccc04"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_compare_dialog.dart",
+      "sha256": "9d85abad96a5fd4244c1ab1c029bd59046b265983cc1a0fa05333ce8f9558f3e"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "sha256": "670ea72b5daae9e687a37ff46300d6a429e4dc7dbc52a4986fa5fdec057ac7da"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_subcontract_quantity_evidence_dialog.dart",
+      "sha256": "21b676ca8b4b244af02e89c22b3778dc29b731df5dad20024cdcc4d1a4ced6a4"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_supplier_prepayment_dialog.dart",
+      "sha256": "b347a5cce9b604f6252032ba52ea8830fa51954554e30fa9e62874d72a25da80"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_template_input_dialog.dart",
+      "sha256": "bde39560c9655513dd0aa467817d45be61fd7189df84539233b173abde05e073"
+    },
+    {
+      "path": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
+      "sha256": "59bd751fe8e8d7a91ad5840c640f435f7ddec00c6ca43d060a0be6c5766498e0"
+    },
+    {
+      "path": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "sha256": "8cd7b9cf185a2c8fc4fb1951ea36cef7d88409e4063f6dd94f08d710b1fb78b6"
+    },
+    {
+      "path": "lib/features/finance/widgets/quote_finance_dialogs.dart",
+      "sha256": "b020a4a2b5ddcce63fad05488a14ff15a8ad90b8aeb4f85856eec6c4a21785ce"
+    },
+    {
+      "path": "lib/shared/drafts/form_draft_catalog.dart",
+      "sha256": "2eb370bdc8a0e0a515e50caf3e62e4d0a6b29f29824a0bcca1fc88554195ab27"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/FinanceApplicationExpensePort.java",
+      "sha256": "af3ebbe5f69589809fed57686cc51bfac36864ff5007df8d93b953dafe60d6c2"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/FinancialChartCurrencyReadPort.java",
+      "sha256": "a8a9531ab14b998b73afecb7daffacefaac865eefe1134e652503409c601d546"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/FundingAccountStylePort.java",
+      "sha256": "e7cd7f528b14b1f8986e2c014f657d85c6696c25de759e22c4f373e6fd766fd6"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApplicationSourceAdapter.java",
+      "sha256": "575c6385e8faa2a9d82454aa2ac67dc5809f55e6aabbf253afabcec97918af32"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java",
+      "sha256": "f2602a01d3931effddf047b5c80a8f0d9bb1a0e5abf5861991f13d762a8e25ee"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationContracts.java",
+      "sha256": "cd6660bfd6947e39684cc5d1e04f4e6becd324379ccb785f2f4541688b758c71"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationOperationJournal.java",
+      "sha256": "e10a0219df137293645a58232d05df94561ddb54a4077f840ffff326b3fe2f64"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationRoles.java",
+      "sha256": "b333deace0e2a0bb140f0b5865c617869b51ac72cd6a267e2409b5ad6bac90e7"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationService.java",
+      "sha256": "da879ec3fe925fbc2adb70de91e18d5c8da8f3238d7b468d63dffcdf8e85a3ec"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationSettingsController.java",
+      "sha256": "56dd9a087ed7a95db042a00006fffed831af6955e602cd5677b72922798e7bb0"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostInputService.java",
+      "sha256": "2d12c1b5c7f0fae8a24ab074b6be1c152f5a3f6210f5a6fed8c9d9b883b17822"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostService.java",
+      "sha256": "3901cdb20ec52434e5e5d9f8e9c1bb8fccd640c60433950f80ef94d25eda23e8"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/cost/FinanceSalesRevenueSql.java",
+      "sha256": "bde611187dffa4401d6e069b3a2cb8d2b0ced88d6b9e6d3e65e9d381027e4889"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartContracts.java",
+      "sha256": "424e050f23f6abeafaa2a2daf59ff469d2be69580f4a44c2c687dfb077f0b2b1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartController.java",
+      "sha256": "1a2f32026cf1f13754f912d5d2756f5a3c40d14181f23e7a23a41781110cfe54"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartService.java",
+      "sha256": "aca8aa6f3d585d2f01fd73996a828b3087e621b0f52619a12c21872c81a6d8a9"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartWorkbookParser.java",
+      "sha256": "f7f9df52d438d0e8984e51bff12b74090b1199ff603714b97657dc2d3c125fe6"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinancialChartCurrencyReadAdapter.java",
+      "sha256": "426e6057ed79817ea7e2aa9152c1832ff43d21e5f874ef4f93930bdbc0c81d26"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinancialLedgerReadScope.java",
+      "sha256": "1d80e117613829b77eff68d9311bbba5a13d5beb0e608c8976b82d8ec7d81c99"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinancialPeriodCoverage.java",
+      "sha256": "bc61c5433d6818e279e7c126ec8e48cd506fcc14a6f6e41590b4f06615159c36"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinancialStatementRevenue.java",
+      "sha256": "de3a36d18c58eafc83b71e31c096997df7215f29fa00ffb17ebbaa8453724d7b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinancialStatementService.java",
+      "sha256": "01a073acae4293a12f78f398f3cf75f493efbe389001d20a42783e067424d26e"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FundingAccountStyleService.java",
+      "sha256": "12100cb32f4f7bd4bbe821730fe8ad9c55b8f5fe72b88ef21db91dd43b4448aa"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/GlReportService.java",
+      "sha256": "69c9f4750f4abd70dff1b408b52cf1301e23ef33dcfaf9575853224fe52e3432"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceNativeStatementSql.java",
+      "sha256": "cf33f4d9a391bda977b20b973b7d60ad6b27266cf49a277ff87baa3f49778cf4"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/account/AccountController.java",
+      "sha256": "d8075c1dd6615dc9e0b3c63e74a1b4c9058a01decd1a9bcd2f5a2a587b23b5fe"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/account/AccountService.java",
+      "sha256": "d053c8a9eea588b51d7e354d183744df4c3b3b4641f9e310a8c45d2bdba55e84"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1049__finance_application_settings_operation_receipts.sql",
+      "sha256": "c633168041483641c1f8b782d870a7227fce6f9f645e27585b4a672dfef765ab"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1050__financial_source_audit_policy_forward.sql",
+      "sha256": "0798ed5773323be990662417f6a26c9ea988b8999996b8ea9691a0b083ecf53e"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1051__expense_claim_payment_reversal_event_contract.sql",
+      "sha256": "f5137843ead7fff3988636eee5b75ca5ce225e00b8e28eb935397a23374b89bd"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceChartImportPostgresTest.java",
+      "sha256": "f9c9ebba9cf6d8156d06da75d40cd255216dd0132a46ee03579cc16b63ab64fe"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationSettingsReceiptPostgresTest.java",
+      "sha256": "0ba0367b22b4554c875e8270af7145dc66e142bb789749de411abe451a9cc3fb"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java",
+      "sha256": "e3a0e270d306e200d8652aa2955fb968cb305020b0ee85fef83434629bf6614c"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/asset/application/FinanceAssetReviewRevisionPostgresTest.java",
+      "sha256": "9840aeb950224df75a501db5fec9fa4419a2c5b089a0018a6152cde766a88035"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/cost/FinanceCostTemplatePostgresTest.java",
+      "sha256": "86ab63c75eb072031270becf767e79d91c8969825f16c9d920f0bdac283e4fe4"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartLargeDirectoryTest.java",
+      "sha256": "ff56dc8487da97247be38872b493ff6c5a66f894076270af4adb273ed6f7c562"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartMetadataTest.java",
+      "sha256": "824355b55248afe84d6ab426ef06862d2f01d7d46de5119f6bb78d12167db491"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartWorkbookParserTest.java",
+      "sha256": "497eee22ecfdede89cfd9a71e59b71c6e544d85fc16fc7b6abe6f443dc6d1094"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinancialStatementSqlPostgresTest.java",
+      "sha256": "515f915902d0ec2fa324fe6f3c2167a0d4d12446794317b667067072747096a9"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/GlReportBoundaryTest.java",
+      "sha256": "af0cb5598d00d63913d225914f7787948ce145f345415e1caa44a1bf5ac5e34e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/statement/FinanceNativeStatementDeletedRowsPostgresTest.java",
+      "sha256": "bb001ace9f04edea4936b56e6f81ac50884713c3c46b9680769d9d2b0d96b59c"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/account/AccountCurrencyHeaderPostgresTest.java",
+      "sha256": "8d82bcc67b3fbf96770c3f55928e73fa614a8d711d3eab53010b607b851d908e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/account/AccountDetailStyleProjectionTest.java",
+      "sha256": "31e107be68167e53a7c300de521e9cb1b08ff98c0d0236c8cb971adb6705f252"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/account/AccountFinancialHistoryGuardTest.java",
+      "sha256": "1ec7bf2b676c25ec165c2b191c4196b82c979f67b4d0384eb4e1448aa8c6fdd2"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/account/AccountFundingStyleSelectionTest.java",
+      "sha256": "9cae64535f73093725b1cf3deb7b5273095a220b19998b5dd783fd4a962c6777"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/account/AccountReadModelQueryTest.java",
+      "sha256": "1e0ab65dd2966ec55c21d8949d0f2c0b1165e86d0fceb3fcc4b9fd31c407f7c7"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/account/AccountSecurityAndRedactionTest.java",
+      "sha256": "98306400c70411a7642639915e679755e166850329bae3e1014ebff85ea51dbe"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/AuditTriggerCoverageMigrationContractTest.java",
+      "sha256": "0beebed93ff988d331e072894d1f7a76a98c49a36b9c52c908d8cb50d4a5157d"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/ExpenseClaimPaymentReversalMigrationContractTest.java",
+      "sha256": "b7b93a432986535c2bd489cdb0bea5a28a0d06f511f8b73f0bf4a2ab88d4e070"
+    },
+    {
+      "path": "test/features/basic_data/account_detail_permissions_test.dart",
+      "sha256": "a4b4d18753509b612407affda26cf7374dd308788da160f0d7fac35a2dddef5f"
+    },
+    {
+      "path": "test/features/basic_data/account_page_permissions_test.dart",
+      "sha256": "5a5c2b8feda54d1af384aec343891428aaf0b658efd1168b082dc1fdeab09862"
+    },
+    {
+      "path": "test/features/basic_data/pages/account_workspace_batch_test.dart",
+      "sha256": "68cfd64d7a08eb2ba3c5b1dd1e8daa486eae5c7a1674d697d60499e140e0691b"
+    },
+    {
+      "path": "test/features/basic_data/pages/master_inline_create_pages_test.dart",
+      "sha256": "dd82308670f945fc98c6d6a34dd1953d2f01c1c81688637dcc38664686dadacf"
+    },
+    {
+      "path": "test/features/basic_data/repositories/account_posting_styles_reader_test.dart",
+      "sha256": "c5da3bd272f4623afae2a475fd0083487a81da5e1a0d4c9005eb4563900c1f63"
+    },
+    {
+      "path": "test/features/basic_data/widgets/master_inline_create_test.dart",
+      "sha256": "23ca61b591e7c30e8a4ac3af3bb549f93697dc7d185bdce437eb1548406b8db5"
+    },
+    {
+      "path": "test/features/finance/finance_application_settings_page_test.dart",
+      "sha256": "71075bcea5bdda139bd56ab3622c7f0154c58ad6b57213b24c445866a4ff77da"
+    },
+    {
+      "path": "test/features/finance/finance_audit_center_page_test.dart",
+      "sha256": "707c636e2a8b7b7568ae01740844ff7507c36f21dc4277e65feb30989dd8ed71"
+    },
+    {
+      "path": "test/features/finance/finance_batch_entry_test.dart",
+      "sha256": "e457c95f172956db02487cb3e9d4a0b4b69b0f780a01126d21c680d468d7185c"
+    },
+    {
+      "path": "test/features/finance/finance_chart_dialog_test.dart",
+      "sha256": "b86ec6c6a6872c031775f6d08ef5b0c64b2e6b8b25b7de76deeb194c66d88a4b"
+    },
+    {
+      "path": "test/features/finance/finance_chart_launcher_test.dart",
+      "sha256": "2f3fb055b747a1ae21e92e2c112894b6445a078a6c3e48d38cd108a7dd8d242d"
+    },
+    {
+      "path": "test/features/finance/finance_chart_metadata_recovery_test.dart",
+      "sha256": "cd1a02063d05a6afe94ee15634cc8eb9aa9424e27303187e732798fcff6262cf"
+    },
+    {
+      "path": "test/features/finance/finance_document_core_headers_test.dart",
+      "sha256": "cfe49502c44a06e047a2fe8a770d0307d37cfe10587ce070a832978ea6aa44c8"
+    },
+    {
+      "path": "test/features/finance/finance_exact_text_roundtrip_test.dart",
+      "sha256": "069d8720aa4a80496a59242206a959279c29e3f4538c63f8120b644f1d49c799"
+    },
+    {
+      "path": "test/features/finance/finance_material_statement_dialog_test.dart",
+      "sha256": "fe830f8220bd89b8e5b01d24a2dffdbc6fe39241e0480ab7bbf2b5ec0a1c66ff"
+    },
+    {
+      "path": "test/features/finance/finance_payment_integration_test.dart",
+      "sha256": "5a37f493ed6f50d1839db83103e7b5de0f76d9f70ace19b1372a1f12f99025e2"
+    },
+    {
+      "path": "test/features/finance/finance_receipt_grid_columns_test.dart",
+      "sha256": "e06e8e836a979fa87df5600d3e665b62dffb57f6f7c22984ff32bb16cb7fa4b4"
+    },
+    {
+      "path": "test/features/finance/finance_receipt_integration_test.dart",
+      "sha256": "64bb9762793c772f78922f1a6e182e3f1edf2bc3f9d5e71938dc7926d0fc4e1a"
+    },
+    {
+      "path": "test/features/finance/finance_receipt_totals_test.dart",
+      "sha256": "5614686a15d06f3efbc8817e6e76a44f1e275f535071af0ba57bca7f39ba8b3d"
+    },
+    {
+      "path": "test/features/finance/finance_selection_immediate_test.dart",
+      "sha256": "4f5959c2ff35e94188bbcde1d847b0ec4499efda71fe7386bd13b4d09002de25"
+    },
+    {
+      "path": "test/features/finance/finance_statement_compare_dialog_test.dart",
+      "sha256": "c616b7aa54e149c93c6eba4073a5ffe861b84d11c5a03a1a63a68561c9c6f550"
+    },
+    {
+      "path": "test/features/finance/finance_workbench_panel_test.dart",
+      "sha256": "a40e26d8aa40134b5d3f112c88449268a78e1b2a4620db8b29a3a4526ea9c6d6"
+    },
+    {
+      "path": "test/features/finance/gl_report_line_bindings_dialog_test.dart",
+      "sha256": "985cbb0daa79a3c7197b5cd11cd9f91dd5ec814716b9247d19d796089610d3d2"
+    },
+    {
+      "path": "test/features/finance/inventory_cost_posting_dialog_test.dart",
+      "sha256": "4687e093ea3a51178c52a14a748862a1018179199c5a5e03a64aab36ee777463"
+    },
+    {
+      "path": "tool/audit_finance_source_contract.py",
+      "sha256": "6f5814d77f860d588c8e85f0c1019ad3d097bceb8ce1132a6eaac402fb3cfc84"
+    }
+  ],
+  "scope": "Task candidate only; preserves concurrent main/worktree changes. Source inventory is not whole-ERP acceptance.",
+  "authority": "Server owns business calculations and writes. Original workbooks are unchanged read-only evidence.",
+  "notCompleted": [
+    "Durable original-request and immutable receipt recovery for first-payable policy settings",
+    "Upgrade from pre1000 with existing PAYMENT_REVERSED events through original V1000/V1002",
+    "Whole 20-item joint acceptance against company books and full actual Web/Windows stress interaction",
+    "Win7/WPF finance migration and target-PC acceptance"
+  ],
+  "releaseState": "Unmerged, unpushed, undeployed; no formal packages or company database writes"
+}

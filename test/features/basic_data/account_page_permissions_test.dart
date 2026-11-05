@@ -27,6 +27,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/widgets/master_inline_page_mixin.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_field_suffix_icons.dart';
+import 'package:uten_imp/components/inputs/uten_inline_edit_cell.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -58,6 +59,75 @@ ApiClient _testApi() => ApiClient(
 );
 
 void main() {
+  testWidgets('new account code keeps the explicit automatic-number prompt', (
+    tester,
+  ) async {
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
+    await _pumpPage(tester, _AccountRepositoryFake(), {
+      Perm.accountView,
+      Perm.accountCreate,
+    });
+    await tester.tap(find.text('添加账户'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.hintText == '留空自动生成',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('资金记账科目'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'default account rows stay neutral and all required fields remain in the editing grid',
+    (tester) async {
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
+      await _pumpPage(tester, _AccountRepositoryFake(), {
+        Perm.accountView,
+        Perm.accountCreate,
+        Perm.accountEdit,
+      });
+      await tester.tap(find.text('编辑模式'));
+      await tester.pumpAndSettle();
+      final state =
+          tester.state(find.byType(AccountPage))
+              as MasterInlinePageMixin<AccountPage, AccountListItem>;
+      final keys = state.inlineEdit.creationDraftKeys;
+      expect(keys, hasLength(3));
+      expect(state.inlineEdit.dirty, isFalse);
+      UtenInlineEditCell nameCell(String key) =>
+          tester.widget<UtenInlineEditCell>(
+            find.ancestor(
+              of: find.byKey(ValueKey('inline-create-activate-$key-name')),
+              matching: find.byType(UtenInlineEditCell),
+            ),
+          );
+      expect(keys.every((key) => !nameCell(key).requiredEmpty), isTrue);
+      expect(find.text('补充必填字段'), findsNothing);
+      final table = tester.widget<MasterDataTableView<AccountListItem>>(
+        find.byType(MasterDataTableView<AccountListItem>),
+      );
+      expect(
+        table.temporaryLeadingColumnKeys,
+        containsAll(['name', 'accountType', 'currencyId', 'styleId']),
+      );
+      expect(
+        find
+            .byKey(ValueKey('inline-create-activate-${keys.first}-styleId'))
+            .hitTestable(),
+        findsOneWidget,
+      );
+      state.inlineEdit.setCreationValue(keys.first, 'bankAccountNo', '6222');
+      await tester.pumpAndSettle();
+      expect(nameCell(keys.first).requiredEmpty, isTrue);
+      expect(nameCell(keys[1]).requiredEmpty, isFalse);
+      expect(find.text('补充必填字段'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final saveBalance in [false, true]) {
     testWidgets(
       'account name draft survives ${saveBalance ? 'balance save refresh and ' : ''}desktop mobile desktop resize',
@@ -704,6 +774,19 @@ Future<void> _pumpPage(
         paymentStyleRepositoryProvider.overrideWithValue(
           paymentStyleRepository ?? _PaymentStyleRepositoryFake(),
         ),
+        accountPostingStylesReaderProvider.overrideWithValue(
+          () async => [
+            for (final style in activeAccountStyleLeaves(
+              await (paymentStyleRepository ?? _PaymentStyleRepositoryFake())
+                  .tree(category: 'ACCOUNT'),
+            ))
+              AccountPostingStyle(
+                id: style.id,
+                code: style.code,
+                name: style.name,
+              ),
+          ],
+        ),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
       child: const MaterialApp(
@@ -750,6 +833,18 @@ Future<GoRouter> _pumpRoutedPage(
         currencyRepositoryProvider.overrideWithValue(_CurrencyRepositoryFake()),
         paymentStyleRepositoryProvider.overrideWithValue(
           _PaymentStyleRepositoryFake(),
+        ),
+        accountPostingStylesReaderProvider.overrideWithValue(
+          () async => [
+            for (final style in activeAccountStyleLeaves(
+              await _PaymentStyleRepositoryFake().tree(category: 'ACCOUNT'),
+            ))
+              AccountPostingStyle(
+                id: style.id,
+                code: style.code,
+                name: style.name,
+              ),
+          ],
         ),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],

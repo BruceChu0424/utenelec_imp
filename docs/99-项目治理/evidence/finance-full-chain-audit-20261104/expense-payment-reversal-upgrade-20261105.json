@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-05",
+  "scope": "Immutable V1000/V1002 expense payment reversal upgrade compatibility",
+  "status": "scoped_upgrade_complete",
+  "implementation": "Existing shared AppliedMigrationCompatibilityCallback dispatches the exact V1000/V1002 lifecycle to ExpenseEventMigrationCompatibility. The public Flyway statement control signal follows validated replacement CHECK execution on the same connection/transaction; SQL resources/resolver/checksum/history remain unchanged.",
+  "whitelist": [
+    "version",
+    "exact script and SQL type",
+    "packaged original SHA-256",
+    "actual resolved resource SHA-256",
+    "Flyway CRC verified with owning 12.4.0 calculator",
+    "exact single original CHECK statement",
+    "public schema and transactional connection",
+    "single transaction-local pending/applied state",
+    "validated exact final event vocabulary"
+  ],
+  "migrationVersionAdded": false,
+  "registration": [
+    "Spring existing @Component callback",
+    "UtenImpMigrator explicit callback",
+    "TestFlyway.configure explicit callback",
+    "MigratedSchemaBaseline uses TestFlyway.configure"
+  ],
+  "auditOwner": "ADR-105 NONE/ledger: expense_claim_events is the native actor/time/parent trail, not a second general-audit copy; native retention/archive guards and parent expense_claims FULL audit remain intact",
+  "auditSources": [
+    "server/src/test/java/com/uten/imp/migration/AuditTriggerCoverageMigrationContractTest.java:1027",
+    "server/src/main/resources/db/migration/V670__audit_three_list_policy_change_only_rows.sql",
+    "server/src/main/resources/db/migration/V775__permanent_business_record_history.sql"
+  ],
+  "validation": {
+    "fullCompilationLog": "build/finance-expense-upgrade-compat-20261104/backend-final.log",
+    "compiledMainSources": 3156,
+    "compiledTestSources": 2514,
+    "fullCompilationWarnings": 0,
+    "publicCallbackAndRegistrationTests": 16,
+    "freshInstall": {
+      "status": "passed",
+      "class": "ExpensePaymentReversalUpgradePostgresTest",
+      "method": "emptyDatabaseInstallsToCurrentHeadWithOriginalSqlHistoryAndValidatedEvents",
+      "log": "build/finance-expense-upgrade-compat-20261104/backend-audit-aligned-final.log",
+      "currentHead": "1053",
+      "newEmptyInstall": true
+    },
+    "finalSevenLog": "build/finance-expense-upgrade-compat-20261104/backend-unique-actors-final.log",
+    "fixtureCompilation": "build/finance-expense-upgrade-compat-20261104/compile-unique-actors-fixture.log",
+    "fixtureCompilationWarnings": 0,
+    "sourceFingerprint": "build/finance-expense-upgrade-compat-20261104/unique-actors-test-source.sha256",
+    "binaryBoundary": "Final fixture compiled separately against unchanged product classes from this agent own full final-backend compilation; product class bytes match, no other agent compilation directory reused",
+    "doNotSumOverlappingRounds": true,
+    "finalNonemptyResult": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "result": "BUILD SUCCESS",
+      "scenarios": [
+        "preserved PAYMENT_REVERSED at genuine 999.13: original failure then current upgrade",
+        "already-applied original V1000 history preserved",
+        "already-applied original V1002 history preserved",
+        "V1000 post-DDL failure rolls back original history/events/audit/constraint/schema, then retry succeeds",
+        "V1002 post-DDL failure rolls back original history/events/audit/constraint/schema, then retry succeeds",
+        "changed pending SQL CRC rejected before DDL",
+        "same CRC with CRLF-only SHA drift rejected before DDL"
+      ],
+      "baselineArchiveUsed": false
+    },
+    "distinctUpgradeScenarios": 8,
+    "roundsBoundary": "Seven corrected nonempty/rollback/identity cases plus one unchanged empty-install case passed in separate rounds on byte-identical frozen product classes. Do not describe this as one eight-test run.",
+    "finalLogs": [
+      {
+        "path": "build/finance-expense-upgrade-compat-20261104/backend-final.log",
+        "sha256": "21bb2638bbf3effc0d81c816607650e9f98227af8ed1a8f2b74c09bb18f82203"
+      },
+      {
+        "path": "build/finance-expense-upgrade-compat-20261104/backend-audit-aligned-final.log",
+        "sha256": "c425618850560fe7db11fa6b157b8211681bba118b66fb83452ee81ac23a7278"
+      },
+      {
+        "path": "build/finance-expense-upgrade-compat-20261104/backend-unique-actors-final.log",
+        "sha256": "609092f78236dc454b32eedb9963eb9cd2127a716705319c33e6d8a03b80a4e0"
+      },
+      {
+        "path": "build/finance-expense-upgrade-compat-20261104/compile-unique-actors-fixture.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "retainedIterations": [
+    "Initial compiler deprecation warning corrected with Location.fromPath, not suppressed",
+    "Original pre1000 fixture corrected from 999.12 to last pre1000 999.13",
+    "Audit assertion corrected from duplicate fn_audit expectation to owning NONE/ledger plus parent FULL contract",
+    "Two distinct fixture people now have unique names and UUIDs; no duplicate-person identity guard bypassed"
+  ],
+  "officialSources": [
+    "https://documentation.red-gate.com/flyway/reference/usage/api-java/api-hooks",
+    "https://raw.githubusercontent.com/flyway/flyway/flyway-12.4.0/flyway-core/src/main/java/org/flywaydb/core/internal/sqlscript/DefaultSqlScriptExecutor.java",
+    "https://raw.githubusercontent.com/flyway/flyway/flyway-12.4.0/flyway-core/src/main/java/org/flywaydb/core/internal/callback/DefaultCallbackExecutor.java"
+  ],
+  "sources": [
+    {
+      "path": "server/src/main/java/com/uten/imp/migration/AppliedMigrationCompatibilityCallback.java",
+      "sha256": "e435f5b6bd681b846fe4a2e8ebbcf90859563cf96e3732173b1c078fb29fa082"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/migration/ExpenseEventMigrationCompatibility.java",
+      "sha256": "45c142f48edac26b9a2a40e2cec28dfcea4ebef30ce03b941ef4df1945e6970d"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/ExpenseEventMigrationCompatibilityTest.java",
+      "sha256": "1062287ede8e1b166e1f26b528cc71be910a5cd407381b8a8398db69f8ceb482"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/ExpensePaymentReversalUpgradePostgresTest.java",
+      "sha256": "f71a394e2e0d3e638ca310ad74b0b3fdaec56ce2d46db63904439b3d90dc032b"
+    }
+  ],
+  "immutableSql": [
+    {
+      "path": "server/src/main/resources/db/migration/V1000__expense_department_finance_executive_workflow.sql",
+      "sha256": "1826c869dbf9e306c25458ec689d8c8cf09b5bb4316e97c3946b6f89b15b786e"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1002__department_approval_substitution_policy.sql",
+      "sha256": "b8c390e8969153bb65ab05c956cc61cc36886bdd3baf80f47d2ee1fa13758f26"
+    }
+  ]
+}

@@ -3,6 +3,35 @@ import 'package:uten_imp/core/network/business_precision.dart';
 
 void main() {
   test(
+    'a verified original outcome retires unknown attempts while preserving explicit policies for the next user save',
+    () async {
+      final transport = BusinessPrecisionTransport();
+      transport.choices['allocation'] = const BusinessPrecisionChoice(
+        24,
+        'DOWN',
+      );
+      final originalHeader = transport.encodedHeader;
+      transport.beginRun(unknown: false);
+      await transport.dispatch(
+        'original',
+        mutating: true,
+        semanticFingerprint: 'original',
+      );
+      expect(transport.advanceConfirmedRequest, throwsStateError);
+      transport.advanceConfirmedRequest(originalReceiptAcknowledged: true);
+      expect(transport.encodedHeader, originalHeader);
+      expect((transport.snapshot()['attempts'] as Map), isEmpty);
+      transport.beginRun(unknown: false);
+      await transport.dispatch(
+        'explicit-new-user-save',
+        mutating: true,
+        semanticFingerprint: 'new-body',
+      );
+      expect(transport.choices['allocation']?.scale, 24);
+      expect(transport.choices['allocation']?.rounding, 'DOWN');
+    },
+  );
+  test(
     'known no-write preview preserves current choices for a changed request body',
     () async {
       final transport = BusinessPrecisionTransport();

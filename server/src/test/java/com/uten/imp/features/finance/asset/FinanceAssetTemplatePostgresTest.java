@@ -28,15 +28,7 @@ class FinanceAssetTemplatePostgresTest {
     @BeforeAll static void setup() {
         PG.start();var ds=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(ds);named=new NamedParameterJdbcTemplate(ds);
-        MigratedProjectionSchema.createCurrentTables(db,"fixed_assets","deferred_expenses","finance_asset_books",
-                "finance_asset_categories","finance_deferral_schedule_versions","finance_deferral_schedule_lines",
-                "finance_asset_posting_runs","finance_asset_posting_lines","fa_depreciation_log","da_amortization_log",
-                "gl_vouchers","gl_entries","finance_asset_template_metadata","finance_asset_opening_groups",
-                "finance_asset_opening_members","finance_asset_opening_entry_claims","finance_asset_template_history","finance_template_sources",
-                "payment_styles","finance_gl_opening_baselines","finance_accounting_import_batches","finance_gl_period_versions","finance_accounting_period_coverage","finance_gl_voucher_evidence");
-        db.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto");
-        MigratedProjectionSchema.createCurrentFunctions(db,"fn_finance_gl_voucher_is_booked","fn_finance_balance_asof_complete","fn_finance_style_balance_asof","fn_finance_style_balance_evidence_fingerprint","fn_finance_asset_opening_group_valid");
-        MigratedProjectionSchema.createCurrentViews(db,"v_finance_asset_posting_facts","v_finance_asset_report_facts");
+        com.uten.imp.support.FinanceReportProjectionSchema.assetReports(db);
         EntityManager em=mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(c->query(c.getArgument(0)));
         var access=mock(FinanceDocumentAccessPolicy.class);

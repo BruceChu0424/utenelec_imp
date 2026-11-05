@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase.ret;
 
+import com.uten.imp.common.finance.DocumentQuantitySavePlan;
+
 import com.uten.imp.common.web.HeaderColumnFilter;
 
 import com.uten.imp.application.port.WarehouseUse;
@@ -246,9 +248,29 @@ public class PurchaseReturnService {
         mutationGuard.verifyUnchanged();
         if(req.isConfirmGiftSemantics())r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, r, returnHeader(req));
-        itemRepo.deleteByReturnId(id);
+        var quantityIntents=new java.util.ArrayList<DocumentQuantitySavePlan.Intent>();
+        int quantityPosition=1;
+        for(ReturnItemLine line:req.getItems()){
+            int position=line.getLineNo()==null?quantityPosition:line.getLineNo();
+            quantityIntents.add(DocumentQuantitySavePlan.intent(position,DocumentQuantitySavePlan.identity(line.getId(),line.getPlatformFields()==null?null:line.getPlatformFields().sourceRecordId()),
+                    "goods_id",line.getGoodsId(),
+                    "color_id",line.getColorId(),
+                    "unit_id",line.getUnitId(),
+                    "unit_rate",line.getUnitRate(),
+                    "qty",line.getQty(),
+                    "quantity_semantics",r.getQuantitySemantics(),
+                    "gift_qty",line.getGiftQty()==null?BigDecimal.ZERO:line.getGiftQty(),
+                    "order_item_id",line.getOrderItemId(),
+                    "receipt_item_id",line.getReceiptItemId()));
+            quantityPosition++;
+        }
+        var quantityPlan=DocumentQuantitySavePlan.prepare(em,DocumentQuantitySavePlan.Family.PURCHASE_RETURN,id,quantityIntents,input->{
+            var unit=lineUnitPolicy.normalizeAndValidate((UUID)input.operands().get("goods_id"),(UUID)input.operands().get("unit_id"),(BigDecimal)input.operands().get("unit_rate"),input.lineNo());
+            return input.units(unit.unitId(),unit.unitRate());
+        });
+        quantityPlan.deleteReplaced(em);
         itemRepo.flush();
-        List<ReturnItemDto> items = saveItems(r, req.getItems());
+        List<ReturnItemDto> items = saveItems(r, req.getItems(),quantityPlan);
         applyTotals(r, items);
         return toDetail(r, items);
     }
@@ -579,6 +601,10 @@ public class PurchaseReturnService {
     }
 
     private List<ReturnItemDto> saveItems(PurchaseReturn r, List<ReturnItemLine> lines) {
+        return saveItems(r,lines,DocumentQuantitySavePlan.empty());
+    }
+
+    private List<ReturnItemDto> saveItems(PurchaseReturn r, List<ReturnItemLine> lines,DocumentQuantitySavePlan.Plan quantityPlan) {
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         Map<UUID, PurchaseGoodsSnapshot> receiptSnapshots =
                 PurchaseGoodsSnapshot.fromReceiptItems(
@@ -602,7 +628,8 @@ public class PurchaseReturnService {
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
                             l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
-            PurchaseReturnItem it = new PurchaseReturnItem();
+            var quantitySaved=quantityPlan.saved(lineNo);
+            PurchaseReturnItem it = quantitySaved==null?new PurchaseReturnItem():quantitySaved.entity(em,PurchaseReturnItem.class);
             it.setReturnId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
@@ -621,7 +648,7 @@ public class PurchaseReturnService {
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
-            var q=com.uten.imp.common.finance.ProcurementQuantities.of(r.getQuantitySemantics(),l.getQty(),l.getGiftQty(),resolvedUnit.unitRate());
+            var q=quantitySaved==null?com.uten.imp.common.finance.ProcurementQuantities.of(r.getQuantitySemantics(),l.getQty(),l.getGiftQty(),resolvedUnit.unitRate()):quantitySaved.procurement(r.getQuantitySemantics(),l.getQty(),l.getGiftQty(),resolvedUnit.unitRate());
             it.setQuantitySemantics(r.getQuantitySemantics());it.setQty(q.charged());
             it.setGiftQty(com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(l.getGiftQty(),"采购退货赠品数量"));
             it.setChargedBaseQty(q.chargedBase());it.setGiftBaseQty(q.giftBase());

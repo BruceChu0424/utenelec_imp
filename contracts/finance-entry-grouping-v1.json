@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "maxDocuments": 500,
   "cases": [
     {
       "name": "same_supplier_keeps_two_lines_and_exact_amounts",

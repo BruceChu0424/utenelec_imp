@@ -39,6 +39,8 @@ class CostDocumentExportTest {
             assertThat(sheet.getRow(1).getCell(1).getNumericCellValue()).isEqualTo(.00007);
             // 2026-11-04 起按 0aaffa3aa 导出契约：数量按存储值小数位显式定格式（0.00007 -> "0.00000"），不再是 General。
             assertThat(sheet.getRow(1).getCell(1).getCellStyle().getDataFormatString()).isEqualTo("0.00000");
+            assertThat(new org.apache.poi.ss.usermodel.DataFormatter(java.util.Locale.ROOT)
+                    .formatCellValue(sheet.getRow(1).getCell(1))).isEqualTo("0.00007");
             assertThat(sheet.getRow(1).getCell(2).getCellType()).isEqualTo(CellType.STRING);
             assertThat(sheet.getRow(1).getCell(2).getStringCellValue()).isEqualTo("1234567890123456.00000000007");
             assertThat(sheet.getRow(1).getCell(3).getCellType()).isEqualTo(CellType.STRING);

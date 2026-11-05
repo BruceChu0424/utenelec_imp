@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../shared/finance_workbench_panel.dart';
 import '../../../components/inputs/uten_input.dart';
-import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -32,9 +33,8 @@ Future<Map<String, dynamic>?> showFinanceAuxiliaryPicker(
   String? role,
   bool canEdit = false,
   bool selection = true,
-}) => showDialog<Map<String, dynamic>>(
+}) => showFinanceWorkbenchPanel<Map<String, dynamic>>(
   context: context,
-  barrierDismissible: false,
   builder: (_) => _AuxiliaryDirectory(
     accountCode: accountCode,
     role: role,
@@ -187,13 +187,9 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           UtenDialogHeader(
-            title: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('辅助核算项目'),
-                SizedBox(width: 6),
-                UtenFieldHintIcon(info: '按来源账套和原编号对应业务对象。未对应项目可保存草稿，不能过账。'),
-              ],
+            title: const UtenDialogTitleWithHint(
+              title: Text('辅助核算项目'),
+              info: '按来源账套和原编号对应业务对象。未对应项目可保存草稿，不能过账。',
             ),
             showCloseButton: true,
             onClose: _busy ? null : () => Navigator.pop(context),
@@ -246,6 +242,19 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
               },
             ),
           ),
+          UtenDialogActions(
+            children: [
+              TextButton(
+                onPressed: _busy ? null : () => Navigator.pop(context),
+                child: const Text('关闭'),
+              ),
+            ],
+          ),
+          if (_busy)
+            const UtenBusyOverlay(
+              title: '正在读取辅助核算项目',
+              showDoNotLeaveHint: false,
+            ),
         ],
       ),
     );
@@ -597,8 +606,6 @@ class _AuxiliaryEditorState extends ConsumerState<_AuxiliaryEditor> {
               ),
             ),
             UtenDialogActions(
-              alignment: MainAxisAlignment.end,
-              overflowAlignment: OverflowBarAlignment.end,
               children: [
                 TextButton(
                   onPressed: editable ? _close : null,
@@ -617,6 +624,11 @@ class _AuxiliaryEditorState extends ConsumerState<_AuxiliaryEditor> {
                 ),
               ],
             ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在保存辅助项目对应',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),

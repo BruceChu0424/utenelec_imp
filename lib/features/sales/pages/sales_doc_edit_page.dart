@@ -2126,7 +2126,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       }
 
       final body = <String, dynamic>{
-        if ((_hasClientPricing || widget.docType.isShipment) &&
+        if ((_hasClientPricing ||
+                widget.docType.isShipment ||
+                widget.docType == SalesDocType.returnDoc) &&
             (r.documentItemId?.isNotEmpty ?? false))
           'id': r.documentItemId,
         'goodsId': r.goods!.id,

@@ -38,6 +38,7 @@ class FinancialStatementSqlPostgresTest {
     private static JdbcTemplate db;
     private static NamedParameterJdbcTemplate named;
     private FinancialStatementService statements;
+    private FundingAccountStyleService funding;
 
     @BeforeAll static void start() {
         PG.start();
@@ -54,12 +55,13 @@ class FinancialStatementSqlPostgresTest {
     @AfterAll static void stop() { PG.stop(); }
 
     @BeforeEach void journals() {
-        db.execute("TRUNCATE payment_styles,gl_entries,gl_vouchers,finance_report_line_bindings,finance_report_line_confirmations,fixed_assets,deferred_expenses,system_posting_style_roles,finance_gl_period_versions,finance_accounting_period_coverage,finance_gl_voucher_evidence,finance_gl_opening_baselines,finance_accounting_import_batches");
+        db.execute("TRUNCATE payment_styles,gl_entries,gl_vouchers,finance_report_line_bindings,finance_report_line_confirmations,fixed_assets,deferred_expenses,system_posting_style_roles,legacy_migration_runs,legacy_migration_run_files,finance_gl_period_versions,finance_accounting_period_coverage,finance_gl_voucher_evidence,finance_gl_opening_baselines,finance_accounting_import_batches");
         db.execute("INSERT INTO finance_gl_period_versions(period) SELECT '2026-'||lpad(n::text,2,'0') FROM generate_series(1,12) n");
         db.execute("INSERT INTO finance_accounting_period_coverage(period,entries_revision,source_kind,source_sha256,verified_by) SELECT period,revision,'ANONYMIZED_COMPLETE_JOURNAL',repeat('0',64),gen_random_uuid() FROM finance_gl_period_versions");
         var em = mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call -> query(call.getArgument(0)));
         statements = new FinancialStatementService(em);
+        funding = new FundingAccountStyleService(em);
         UUID cash=style("ACCOUNT","BS_1"), receivable=style("ACCOUNT","BS_4"), fixed=style("ACCOUNT","BS_18"),
                 accumulated=style("ACCOUNT","BS_19"), capital=style("EQUITY","BS_48"),
                 revenue=style("INCOME","PL_1"), costs=style("EXPENSE","PL_2"), admin=style("EXPENSE","PL_14");
@@ -106,7 +108,7 @@ class FinancialStatementSqlPostgresTest {
         assertThat(incomplete.stream().filter(row->row.get("lineNo").equals(32)).findFirst().orElseThrow().get("m2")).isNull();
     }
 
-    @Test void annualAdjustmentIsExplicitAndNeverChangesTheMonthlyStatement() {
+    @Test void annualAdjustmentIsExplicitAndNeverChangesTheMonthlyStatement() throws Exception {
         UUID cash=db.queryForObject("SELECT style_id FROM finance_report_line_bindings WHERE line_key='BS_1'",UUID.class);
         UUID adjustment=style("EQUITY","PL_PRIOR_ADJUSTMENT");
         db.update("DELETE FROM finance_report_line_confirmations WHERE line_key='PL_PRIOR_ADJUSTMENT'");
@@ -115,7 +117,13 @@ class FinancialStatementSqlPostgresTest {
         assertThat(monthly).hasSize(20);
         var annual=statements.profitAnnual(2026);
         assertThat(annual).hasSize(21);amount(annual,33,"m1","25");amount(annual,32,"m1","175");
-        FinancialStatementAnnual.totals(annual);amount(annual,32,"yearTotal","275");
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(()->FinancialStatementAnnual.totals(annual)))
+                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        try(var precision=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("report.percentage",
+                new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(8,"HALF_UP")))) {
+            FinancialStatementAnnual.totals(annual);
+        }
+        amount(annual,32,"yearTotal","275");
         db.update("DELETE FROM finance_report_line_bindings WHERE line_key='PL_PRIOR_ADJUSTMENT'");
         var pending=statements.profitAnnual(2026);
         assertThat(pending.stream().filter(r->Integer.valueOf(32).equals(r.get("lineNo"))).findFirst().orElseThrow().get("m1")).isNull();
@@ -158,6 +166,56 @@ class FinancialStatementSqlPostgresTest {
         amount(rows,1,"m1","500");
         amount(rows,1,"m2","100");
         FinancialStatementAnnual.totals(rows,2);amount(rows,32,"yearTotal","300");
+    }
+
+    @Test void fundingChoicesUseProvedBankAncestryOrExplicitMonetaryFundsInsteadOfAllAccountSubjects() {
+        UUID cash=db.queryForObject("SELECT style_id FROM finance_report_line_bindings WHERE line_key='BS_1'",UUID.class);
+        UUID bank=verifiedBankRoot(),bankLeaf=style("ACCOUNT",null),unproved=style("ACCOUNT",null);
+        db.update("UPDATE payment_styles SET parent_id=? WHERE id=?",bank,bankLeaf);
+        db.update("UPDATE payment_styles SET code='102',name='现金银行',legacy_source_code='102' WHERE id=?",unproved);
+        assertThat(funding.choices()).extracting(com.uten.imp.application.port.FundingAccountStylePort.Choice::id)
+                .containsExactlyInAnyOrder(cash,bankLeaf);
+        funding.requireSelectable(bankLeaf);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->funding.requireSelectable(unproved))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("资金记账对应");
+        db.update("UPDATE payment_styles SET status='禁用' WHERE id=?",cash);
+        assertThat(funding.choices()).extracting(com.uten.imp.application.port.FundingAccountStylePort.Choice::id)
+                .containsExactly(bankLeaf);
+    }
+
+    @Test void fundingSelectionSharesStatementOverridePriorityAndRejectsConflictingExplicitMeaning() {
+        UUID bank=verifiedBankRoot(),leaf=style("ACCOUNT",null);
+        db.update("UPDATE payment_styles SET parent_id=? WHERE id=?",bank,leaf);
+        funding.requireSelectable(leaf);
+        db.update("INSERT INTO finance_report_line_bindings(line_key,binding_kind,style_id) VALUES('BS_18','STYLE',?)",leaf);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->funding.requireSelectable(leaf))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("资金记账对应");
+        assertThat(funding.choices()).extracting(com.uten.imp.application.port.FundingAccountStylePort.Choice::id).doesNotContain(leaf);
+        db.update("UPDATE finance_report_line_bindings SET line_key='BS_1' WHERE style_id=?",leaf);
+        funding.requireSelectable(leaf);
+        db.update("INSERT INTO finance_report_line_bindings(line_key,binding_kind,style_id) VALUES('BS_18','STYLE',?)",leaf);
+        org.assertj.core.api.Assertions.assertThatThrownBy(funding::choices)
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("资金记账对应存在冲突");
+    }
+
+    private static UUID verifiedBankRoot() {
+        UUID root=style("ACCOUNT",null),run=UUID.randomUUID();
+        db.update("UPDATE payment_styles SET legacy_id=900991,legacy_source_code='102',legacy_source_item_id=0,legacy_source_import_run_id=? WHERE id=?",run,root);
+        db.update("""
+                WITH source AS (SELECT jsonb_build_object('legacy_id',900991,'code','102','item_id',0,
+                    'parent_legacy',0,'style_class_id',1) AS typed)
+                INSERT INTO legacy_migration_runs(run_id,target,status,migration_mode,mapping_version,
+                    reconciliation_status,export_manifest_sha256,migration_repository_commit,reconciliation_summary)
+                SELECT ?,'--bootstrap-all','SUCCESS','BOOTSTRAP','bootstrap-v18','PASSED',repeat('b',64),repeat('a',40),
+                    jsonb_build_object('financeMasterSources',jsonb_build_object('format','finance-master-sources-v1',
+                        'run_id',?::text,'manifest_sha256',repeat('b',64),'frozen_commit',repeat('a',40),
+                        'style_file_sha256',repeat('f',64),'styles',jsonb_build_object('900991',
+                            jsonb_build_object('target_id',?::text,'typed_source',typed,
+                                'source_row_sha256',encode(digest(typed::text,'sha256'),'hex'))))) FROM source
+                """,run,run,root);
+        db.update("INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES(?,'m_style.csv',repeat('f',64),1)",run);
+        assertThat(db.queryForObject("SELECT fn_legacy_payment_style_source_root_matches(?,'ACCOUNT','102')",Boolean.class,root)).isTrue();
+        return root;
     }
 
     private static UUID style(String category,String line) {

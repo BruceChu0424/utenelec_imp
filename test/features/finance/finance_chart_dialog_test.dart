@@ -18,6 +18,14 @@ import 'package:uten_imp/features/finance/widgets/finance_chart_dialog.dart';
 import 'package:uten_imp/features/finance/widgets/finance_entry_file_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -81,6 +89,83 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'creating an accounting target preserves both report choices when retrying a lost reply',
+    (tester) async {
+      final api = _ChartApi()
+        ..actualImports = 1
+        ..accountCode = '310410'
+        ..accountName = '未分配利润'
+        ..loseFirstTarget = true;
+      await _pump(tester, api);
+      await tester.tap(find.text('对应科目/报表'));
+      await tester.pumpAndSettle();
+      Future<void> choose(String label, String value) async {
+        final field = find.byWidgetPredicate(
+          (w) => w is UtenDropdownField && w.label == label,
+        );
+        await tester.ensureVisible(field);
+        await tester.tap(field);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(value).last);
+        await tester.pumpAndSettle();
+      }
+
+      await choose('补建核算类别', '权益');
+      await choose('资产负债表项目', '未分配利润');
+      await choose('利润表项目', '以前年度损益调整');
+      expect(find.text('保存对应'), findsNothing);
+      await tester.tap(find.text('补建并对应此科目'));
+      await tester.pumpAndSettle();
+      expect(api.targetRequests.single['balanceLineKey'], 'BS_51');
+      expect(api.targetRequests.single['profitLineKey'], 'PL_PRIOR_ADJUSTMENT');
+      await tester.tap(find.text('核对并重试原对应'));
+      await tester.pumpAndSettle();
+      expect(api.targetRequests, hasLength(2));
+      expect(api.targetRequests.first, api.targetRequests.last);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'rename preserves its original request after a lost reply and refreshes the directory',
+    (tester) async {
+      final api = _ChartApi()
+        ..actualImports = 1
+        ..loseFirstMetadata = true;
+      await _pump(tester, api);
+      await tester.tap(find.text('修改名称'));
+      await tester.pumpAndSettle();
+      Finder field(String label) => find.descendant(
+        of: find.byWidgetPredicate((w) => w is UtenInput && w.label == label),
+        matching: find.byType(TextFormField),
+      );
+      await tester.enterText(field('科目名称'), '库存现金（人民币）');
+      await tester.enterText(field('修改依据'), '财务核对名称，沿用原科目编码');
+      await tester.tap(find.text('保存名称'));
+      await tester.pumpAndSettle();
+      expect(api.metadataRequests, hasLength(1));
+      expect(
+        tester
+            .widget<UtenInput>(
+              find.byWidgetPredicate(
+                (w) => w is UtenInput && w.label == '科目名称',
+              ),
+            )
+            .enabled,
+        isFalse,
+      );
+      await tester.tap(find.text('重试原修改请求'));
+      await tester.pumpAndSettle();
+      expect(api.metadataRequests, hasLength(2));
+      expect(api.metadataRequests[0], api.metadataRequests[1]);
+      expect(api.metadataWrites, 1);
+      expect(find.text('库存现金（人民币）'), findsOneWidget);
+      expect(find.text('1001'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'source reason preserves base currency and loss category can be selected by mouse',
     (tester) async {
@@ -195,12 +280,15 @@ Future<void> _pump(
   double scale = 1,
   TableColumnProjectionController? projections,
 }) async {
+  SharedPreferences.setMockInitialValues({});
   await tester.binding.setSurfaceSize(Size(width, height));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
+        sessionProvider.overrideWith(_Session.new),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(
             userId: 'chart-test-user',
@@ -211,6 +299,8 @@ Future<void> _pump(
           Perm.paymentStyleEdit,
           Perm.paymentStyleCreate,
           Perm.financeReportExport,
+          Perm.financeReportView,
+          Perm.financeViewAll,
         }),
         financeEntryFilePickerProvider.overrideWithValue(
           () async => PlatformFile(
@@ -242,6 +332,13 @@ Future<void> _pump(
 class _ChartApi extends ApiClient {
   _ChartApi() : super(Dio());
   bool loseFirstApply = false, rejectApply = false;
+  bool loseFirstMetadata = false;
+  int metadataWrites = 0;
+  String accountName = '库存现金';
+  String accountCode = '1001';
+  bool loseFirstTarget = false;
+  final targetRequests = <Map<String, dynamic>>[];
+  final metadataRequests = <Map<String, dynamic>>[];
   int uploads = 0, actualImports = 0;
   final applies = <String>[];
   final preview = <String, dynamic>{
@@ -258,6 +355,26 @@ class _ChartApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.startsWith('/finance/chart/1001/metadata/operations/')) {
+      if (metadataRequests.isEmpty || metadataWrites == 0) {
+        return {'found': false};
+      }
+      return {
+        'found': true,
+        'requestId': metadataRequests.first['requestId'],
+        'actorId': 'chart-test-user',
+        'operation': 'CHART_METADATA_UPDATE',
+        'outcome': 'SUCCEEDED',
+        'result': {
+          'status': 'UPDATED',
+          'code': '1001',
+          ...metadataRequests.first,
+        },
+      };
+    }
+    if (path == '/finance/chart/1001/metadata') {
+      return {'code': '1001', 'name': accountName, 'version': metadataWrites};
+    }
     if (path == '/finance/chart/imports') return {'items': <Object>[]};
     if (path == '/finance/chart/options') {
       return {
@@ -279,14 +396,62 @@ class _ChartApi extends ApiClient {
         'items': [
           if (actualImports > 0)
             {
-              'code': '1001',
-              'name': '库存现金',
+              'code': accountCode,
+              'name': accountName,
+              'classification': accountCode == '310410' ? 'EQUITY' : 'ASSET',
               'version': 0,
               'targets': <Object>[],
               'lineKeys': <Object>[],
             },
         ],
       };
+    }
+    return {};
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == '/finance/reports/gl/line-bindings') {
+      return [
+        {
+          'lineKey': 'BS_51',
+          'label': '未分配利润',
+          'bindingKind': 'STYLE',
+          'sheet': 'BALANCE',
+          'category': 'EQUITY',
+        },
+        {
+          'lineKey': 'PL_PRIOR_ADJUSTMENT',
+          'label': '以前年度损益调整',
+          'bindingKind': 'STYLE',
+          'sheet': 'PROFIT',
+          'category': 'EQUITY',
+        },
+      ];
+    }
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+  }) async {
+    if (path == '/finance/chart/1001/metadata') {
+      final request = Map<String, dynamic>.from(body! as Map);
+      metadataRequests.add(request);
+      if (metadataWrites == 0) {
+        metadataWrites++;
+        accountName = request['name'].toString();
+      }
+      if (loseFirstMetadata && metadataRequests.length == 1) {
+        throw NetworkTimeoutException();
+      }
+      return {'status': 'UPDATED', 'code': '1001', ...request};
     }
     return {};
   }
@@ -312,6 +477,31 @@ class _ChartApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    if (path.startsWith('/finance/chart/1001/metadata/operations/') &&
+        path.endsWith('/cancel')) {
+      return {
+        'found': true,
+        'requestId': metadataRequests.first['requestId'],
+        'actorId': 'chart-test-user',
+        'operation': 'CHART_METADATA_UPDATE',
+        'method': 'PUT',
+        'path': '/finance/chart/1001/metadata',
+        'requestBody': metadataRequests.first,
+        'outcome': 'SUCCEEDED',
+        'result': {
+          'status': 'UPDATED',
+          'code': '1001',
+          ...metadataRequests.first,
+        },
+      };
+    }
+    if (path == '/finance/chart/310410/create-target') {
+      targetRequests.add(Map<String, dynamic>.from(body! as Map));
+      if (loseFirstTarget && targetRequests.length == 1) {
+        throw NetworkTimeoutException();
+      }
+      return get('/finance/chart');
+    }
     if (path == '/finance/chart/import-apply') {
       applies.add((body as Map)['importId'].toString());
       if (rejectApply) {

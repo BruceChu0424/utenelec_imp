@@ -56,7 +56,7 @@ class AccountFinancialHistoryGuardTest {
                 repository,
                 mock(TxSessionVars.class),
                 em,
-                mock(MasterCodeService.class));
+                mock(MasterCodeService.class),mock(com.uten.imp.application.port.FundingAccountStylePort.class));
 
         account = new Account();
         account.setId(UUID.randomUUID());

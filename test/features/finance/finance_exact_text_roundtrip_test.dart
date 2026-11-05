@@ -51,7 +51,7 @@ void main() {
     },
   );
   test(
-    'financial units preserve 24 digits while legacy quantity defaults stay four',
+    'financial units preserve 24 digits and finite products never round to a legacy quantum',
     () {
       const value = '0.123456789012345678901234';
       expect(financeAmountFromUnits(financeAmountUnits(value)!), value);

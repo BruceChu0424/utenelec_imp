@@ -16,16 +16,19 @@ public final class ObservedSqlDataSource extends DriverManagerDataSource {
     public final AtomicInteger statements = new AtomicInteger();
     public volatile Consumer<String> beforePrepare = ignored -> {};
 
+    /** Observation-only instance may wrap a fixture's existing pooled connection. */
+    public ObservedSqlDataSource() { }
+
     public ObservedSqlDataSource(String url, String user, String password) {
         super(url, user, password);
     }
 
-    @Override public Connection getConnection() throws SQLException { return observe(super.getConnection()); }
+    @Override public Connection getConnection() throws SQLException { return observeConnection(super.getConnection()); }
     @Override public Connection getConnection(String user, String password) throws SQLException {
-        return observe(super.getConnection(user,password));
+        return observeConnection(super.getConnection(user,password));
     }
 
-    private Connection observe(Connection connection) {
+    public Connection observeConnection(Connection connection) {
         return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[]{Connection.class},
                 (proxy, method, arguments) -> {
                     if (method.getName().equals("prepareStatement") && arguments[0] instanceof String sql) {

@@ -1,3 +1,9 @@
+import '../../support/finance_document_command_fixture.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // V632 销售收款单可用性：本批汇率报价按币种预填(本位币锁 1)、收款方式字典为空不拦保存、
 // 「引用应收」空列表一键切到登记订单预收。
 import 'package:dio/dio.dart';
@@ -17,6 +23,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'referencing a USD receivable prefills the master reference rate',
     (tester) async {
@@ -147,11 +154,16 @@ Future<_DraftReceiptApi> _pumpDraft(
     ProviderScope(
       overrides: [
         financeWriteAllDocumentScope(),
+        sharedPreferencesProvider.overrideWithValue(
+          await SharedPreferences.getInstance(),
+        ),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.financeViewAll,
           Perm.financeReceiptCreate,
+          Perm.financeReceiptView,
           Perm.financeReceiptEdit,
           Perm.customerPrepaymentView,
         }),
@@ -171,7 +183,10 @@ Future<_DraftReceiptApi> _pumpDraft(
 
 class _TestSessionNotifier extends SessionNotifier {
   @override
-  SessionState build() => const SessionState();
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'native-detail-reader', code: 'F', name: '测试财务'),
+  );
 }
 
 class _DraftReceiptApi extends ApiClient {
@@ -237,7 +252,7 @@ class _DraftReceiptApi extends ApiClient {
         'totalPages': 0,
       };
     }
-    return _draftDetail;
+    return financeReviewedDetailFixture(_draftDetail, FinanceDocType.receipt);
   }
 
   @override
@@ -294,8 +309,13 @@ class _DraftReceiptApi extends ApiClient {
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
   }) async {
-    lastPutBody = Map<String, dynamic>.from(body! as Map);
-    return _draftDetail;
+    final command = Map<String, dynamic>.from(body! as Map);
+    lastPutBody = Map<String, dynamic>.from(command['document'] as Map);
+    return financeReviewReceiptFixture(
+      path: path,
+      command: command,
+      result: _draftDetail,
+    );
   }
 }
 

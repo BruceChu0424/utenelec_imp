@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -78,12 +79,14 @@ class StandardFinanceApprovalReadOnlyTest {
         Object request = document.requestType().getConstructor().newInstance();
         Object controller = secured(document.controller());
         Object service = secured(document.service());
+        var original=new FinanceDocumentActions.UpdateCommand(UUID.randomUUID(),null,"a".repeat(64),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
 
-        assertThatThrownBy(() -> controller.getClass().getMethod("update", UUID.class, document.requestType())
-                        .invoke(controller, id, request)).hasCauseInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.getClass().getMethod("update", UUID.class, FinanceDocumentActions.UpdateCommand.class)
+                        .invoke(controller, id, original)).hasCauseInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> service.getClass().getMethod("update", UUID.class, document.requestType())
                         .invoke(service, id, request)).hasCauseInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(document.service());
+        verifyNoInteractions(document.actions());
     }
 
     @ParameterizedTest
@@ -92,9 +95,16 @@ class StandardFinanceApprovalReadOnlyTest {
         loginAsReviewer(document.permission());
         UUID id = UUID.randomUUID();
         Object controller = secured(document.controller());
+        Object service=secured(document.service());
+        var original=new FinanceDocumentActions.ApprovalCommand(UUID.randomUUID(),null,"a".repeat(64));
+        when(document.actions().approve(document.family(),id,original)).thenReturn(Map.of("outcome","SUCCEEDED","result",Map.of("id",id,"status",1)));
 
-        controller.getClass().getMethod("approve", UUID.class).invoke(controller, id);
+        controller.getClass().getMethod("approve", UUID.class,FinanceDocumentActions.ApprovalCommand.class).invoke(controller, id,original);
+        verify(document.actions()).approve(document.family(),id,original);
+        // Trusted internal approval keeps its existing, separately secured entry.
+        service.getClass().getMethod("approve",UUID.class).invoke(service,id);
         document.service().getClass().getMethod("approve", UUID.class).invoke(verify(document.service()), id);
+        MockMvcBuilders.standaloneSetup(document.controller()).build().perform(post(document.path()+"/{id}/approve",id)).andExpect(status().isBadRequest());
     }
 
     private static Object secured(Object target) {
@@ -121,19 +131,22 @@ class StandardFinanceApprovalReadOnlyTest {
         var current = mock(SecurityContextCurrentUser.class);
         when(current.get()).thenReturn(Optional.empty());
         return Stream.of(
-                new Document(new FinanceReceiptController(receipt, audit, current, detailAudit), receipt,
-                        com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest.class, "finance_receipt", "/api/finance/receipts"),
-                new Document(new FinancePaymentController(payment, audit, current, detailAudit), payment,
-                        com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest.class, "finance_payment", "/api/finance/payments"),
-                new Document(new FinanceExpenseController(expense, audit, current, detailAudit), expense,
-                        com.uten.imp.features.finance.expense.dto.FinanceExpenseSaveRequest.class, "finance_expense", "/api/finance/expenses"),
-                new Document(new FinanceOtherIncomeController(income, audit, current, detailAudit), income,
-                        com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeSaveRequest.class, "finance_other_income", "/api/finance/incomes"),
-                new Document(new FinanceBankTransferController(transfer, audit, current, detailAudit), transfer,
-                        com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferSaveRequest.class, "finance_bank_transfer", "/api/finance/bank-transfers"));
+                document(new FinanceReceiptController(receipt, audit, current, detailAudit), receipt,
+                        com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest.class, "finance_receipt", "/api/finance/receipts","financeReceipt"),
+                document(new FinancePaymentController(payment, audit, current, detailAudit), payment,
+                        com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest.class, "finance_payment", "/api/finance/payments","financePayment"),
+                document(new FinanceExpenseController(expense, audit, current, detailAudit), expense,
+                        com.uten.imp.features.finance.expense.dto.FinanceExpenseSaveRequest.class, "finance_expense", "/api/finance/expenses","financeExpense"),
+                document(new FinanceOtherIncomeController(income, audit, current, detailAudit), income,
+                        com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeSaveRequest.class, "finance_other_income", "/api/finance/incomes","financeOtherIncome"),
+                document(new FinanceBankTransferController(transfer, audit, current, detailAudit), transfer,
+                        com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferSaveRequest.class, "finance_bank_transfer", "/api/finance/bank-transfers","financeBankTransfer"));
     }
-
-    private record Document(Object controller, Object service, Class<?> requestType, String permission, String path) {
+    private static Document document(Object controller,Object service,Class<?> request,String permission,String path,String family){
+        var actions=mock(FinanceDocumentActions.class);org.springframework.test.util.ReflectionTestUtils.setField(controller,"documentActions",actions);
+        return new Document(controller,service,request,permission,path,family,actions);
+    }
+    private record Document(Object controller, Object service, Class<?> requestType, String permission, String path,String family,FinanceDocumentActions actions) {
         @Override public String toString() {
             return permission;
         }

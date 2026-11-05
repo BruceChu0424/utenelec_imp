@@ -66,7 +66,7 @@ class FinanceReportPartyStatementTest {
         verify(data).setParameter("from",LocalDate.of(2026,2,1));
         verify(data).setParameter("__limit",50);
         assertThat(sql).anySatisfy(value->assertThat(value).contains("ROWS UNBOUNDED PRECEDING",
-                "FROM windowed WHERE CAST(:from AS date) IS NULL OR event_date>=:from",
+                "FROM windowed event", "WHERE CAST(:from AS date) IS NULL OR event.event_date>=:from",
                 "LIMIT :__limit OFFSET :__offset"));
     }
 
@@ -234,12 +234,11 @@ class FinanceReportPartyStatementTest {
         String sql = String.join("\n", sqlStatements).replaceAll("\\s+", " ");
         assertThat(sql)
                 .contains("COALESCE(c.credit_floor,0) AS \"creditFloor\"")
-                // 2026-11-04 财务整合（0aaffa3aa）后超出铺底额保留负差且按 unknown_total 失败关闭，
-                // 抵销行资格改为「非客户预收或历史导入」。
-                .contains("COALESCE(p.total_posted,0)-COALESCE(co.total_applied,0)-COALESCE(c.credit_floor,0) END AS \"overFloor\"")
-                .contains("open_item_kind<>'CUSTOMER_PREPAYMENT' OR legacy_import_run_id IS NOT NULL")
+                .contains("CASE WHEN p.unknown_total OR co.unknown_total THEN NULL ELSE")
+                .contains("-COALESCE(c.credit_floor,0) END AS \"overFloor\"")
+                .contains("AND (open_item_kind<>'CUSTOMER_PREPAYMENT' OR legacy_import_run_id IS NOT NULL)")
                 .contains("FROM customer_open_item_offsets allocation")
-                .doesNotContain("open_item_kind='CUSTOMER_PREPAYMENT'")
+                .contains("source.open_item_kind<>'CUSTOMER_PREPAYMENT' OR source.legacy_import_run_id IS NOT NULL")
                 .doesNotContain("GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) - COALESCE(c.credit_floor,0), 0)");
     }
 

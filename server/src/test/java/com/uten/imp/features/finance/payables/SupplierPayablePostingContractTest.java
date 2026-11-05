@@ -29,13 +29,19 @@ class SupplierPayablePostingContractTest {
                 .contains("r.getSettlementStyleLegacy(), List.of(), r.getSettlementMethodId()");
         assertThat(subcontractReceipt)
                 .contains("var payable=consideration.freezeReceipt(\"SUBCONTRACT\",id)")
-                // 2026-11-04 财务整合（0aaffa3aa）后以 postAp 返回值记录正式立账与否，替代原 chargeable 布尔。
                 .contains("boolean formallyPosted=postAp(r,payable.original(),payable.local(),+1)")
                 .contains("r.setApPosted(formallyPosted)")
                 .contains("signedOriginal", "dueDate", "settlementStyleLegacy");
         assertThat(subcontractReturn)
                 .contains("postAp(r, r.getTotalOriginal(), totalLocalOf(items), -1)")
                 .contains("signedOriginal", "dueDate", "settlementStyleLegacy");
+        for(String receipt: new String[]{purchaseReceipt,subcontractReceipt})
+            assertThat(receipt).contains("ProcurementPayablePosting.post(firstPayables,arApService,req)");
+        assertThat(source("finance/arap/ProcurementPayablePosting.java"))
+                .contains("req.amountOriginal().signum()!=0||req.amountOriginalLocal().signum()!=0")
+                .contains("ledgers.postArAp(req);return true;")
+                .contains("first.defer(new ProcurementPayableRecognitionPort.Candidate(")
+                .contains("req.amountOriginal(),req.amountOriginalLocal(),req.settlementMethodId(),req.settlementStyleLegacy())))return false");
     }
 
     private static String source(String relative) throws IOException {

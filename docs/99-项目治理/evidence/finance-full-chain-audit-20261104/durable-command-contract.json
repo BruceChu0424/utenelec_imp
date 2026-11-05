@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "platforms": {"web": "shared Flutter contract", "windows_flutter": "shared Flutter contract", "windows_wpf_legacy": "excluded from this task; not migrated or accepted"},
+  "persistenceOwner": {
+    "mechanism": "server/src/main/java/com/uten/imp/features/finance/FinanceOperationJournal.java",
+    "table": "finance_application_operations",
+    "migration": "V1053__shared_finance_command_receipts.sql",
+    "preserved": ["existing application request fingerprints and lock namespace", "actor ownership", "immutable row trigger", "same business transaction for result and receipt", "COLUMN_SCOPED audit excludes private result/body", "domain-owned permissions and source locks"],
+    "legacyAdapters": ["FinanceApplicationOperationJournal delegates the shared mechanism and preserves its old envelope", "chart manual and finance cost input receipts retain their existing domain-specific tables/fingerprints; no old receipt is rewritten"]
+  },
+  "response": {
+    "successAndReceiptHaveSameEnvelope": true,
+    "fields": ["found", "requestId", "actorId", "operation", "method", "path", "requestBody", "outcome", "result"],
+    "outcomes": ["SUCCEEDED", "CANCELLED_UNWRITTEN"],
+    "method": "uppercase PUT or POST",
+    "path": "client API path beginning /finance/, without /api prefix",
+    "requestBody": "new configuration HTTP commands retain the exact supplied object, including omitted versus explicit null fields; normal callers supply all required fields and requestId. Trusted typed calls retain their established body. Client compares JSON deeply without relying on key order",
+    "notFound": {"found": false},
+    "notFoundMeaning": "No committed actor-owned receipt is visible. This does not prove no write; keep the original frozen command and retry only that request.",
+    "replay": "Same actor/id/method/path/body returns the immutable original outcome even after others change current state. Different actor, operation, path or body cannot reuse that ID."
+  },
+  "commands": [
+    {"operation": "PROCUREMENT_AP_POLICY_SAVE", "method": "PUT", "path": "/finance/procurement-payable-recognitions/policy", "body": ["requestId", "expectedRevision", "enabled", "effectiveFrom", "sourceReference"], "receipt": "/finance/procurement-payable-recognitions/policy/operations/{requestId}", "result": "original policy snapshot"},
+    {"operation": "GL_REPORT_BINDING_REPLACE", "method": "PUT", "path": "/finance/reports/gl/line-bindings/{lineKey}", "body": ["requestId", "targetIds", "confirmedZero", "expectedFingerprint"], "receipt": "/finance/reports/gl/line-bindings/operations/{requestId}", "result": "original LineBinding including stateFingerprint"},
+    {"operation": "GL_REPORT_BINDINGS_SEED", "method": "POST", "path": "/finance/reports/gl/line-bindings/defaults", "body": ["requestId"], "receipt": "/finance/reports/gl/line-bindings/operations/{requestId}", "result": "original complete binding snapshot"},
+    {"operation": "INVENTORY_COST_POLICY_SAVE", "method": "PUT", "path": "/finance/gl/inventory-cost/policy", "body": ["requestId", "enabled", "effectiveFrom", "reconciliationReference", "expectedVersion"], "receipt": "/finance/gl/inventory-cost/operations/{requestId}", "result": "original inventory policy snapshot"},
+    {"operation": "INVENTORY_COST_PERIOD_CHOICE", "method": "POST", "path": "/finance/gl/inventory-cost/postings/{postingId}/period", "body": ["requestId", "targetPeriod", "reason"], "receipt": "/finance/gl/inventory-cost/operations/{requestId}", "result": "original actual posting snapshot; amountLocal remains exact decimal text"},
+    {"operation": "INVENTORY_COST_POST", "method": "POST", "path": "/finance/gl/inventory-cost/periods/{period}/post", "body": ["requestId"], "receipt": "/finance/gl/inventory-cost/operations/{requestId}", "result": "original period and newVoucherCount; retry does not consume later new sources"},
+    {"operation": "INVENTORY_COST_CLOSE", "method": "POST", "path": "/finance/gl/inventory-cost/periods/{period}/close", "body": ["requestId", "expectedVersion", "reason"], "receipt": "/finance/gl/inventory-cost/operations/{requestId}", "result": "original period, CLOSED status and committed version"}
+  ],
+  "authorization": {
+    "apReceipt": ["finance_report:view", "ar_ap_ledger:view", "company finance scope (finance:view:all or explicit super administrator)"],
+    "apWriteAdditional": ["supplier_settlement:confirm", "finance_post:execute", "payment_style:edit"],
+    "glReceipt": ["finance_report:view"],
+    "glWriteAdditional": ["payment_style:edit"],
+    "inventoryReceipt": ["finance_report:view", "goods:cost:view"],
+    "inventoryWrite": ["finance_post:execute"],
+    "lossOfWrite": "An actor retaining the receipt read authority can read their original result or seal their exact unwritten original request, but cannot retransmit its business mutation without current write authority.",
+    "lossOfRead": "Do not display a private result; preserve unresolved local command state for authorized recovery."
+  },
+  "unwrittenCancellation": {
+    "method": "POST",
+    "path": "Append /cancel to that domain's original receipt URL",
+    "body": ["requestId", "actorId", "operation", "method", "path", "requestBody"],
+    "identity": "All fields are frozen from the original command. The route ID, actor and nested requestId must agree; domain method/path whitelist is checked. Legacy and document adapters keep their established typed checks; new configuration adapters can seal the exact original incomplete/null object without replacing it with defaults.",
+    "transaction": "Use the same original request lock and fingerprint. A committed original wins and returns SUCCEEDED. Otherwise append an immutable CANCELLED_UNWRITTEN receipt with result.cancelled=true in the same existing row/table.",
+    "lateWrite": "A later original mutation returns its CANCELLED_UNWRITTEN receipt and never executes business work. Different body/actor cannot reuse the original ID.",
+    "lostReply": "GET the same receipt or retry the same cancellation; never manufacture another original request ID.",
+    "rollback": "A rolled-back cancellation has no receipt and cannot claim to prevent a later write.",
+    "clientAfterCancellation": "Retain all original business input. Do not auto-generate/replay a new command. The user explicitly reviews current version/stateFingerprint, adopts only the new CAS state and clicks save before a fresh ID is created.",
+    "legacySuccess": "Older successful candidate envelopes are decorated as SUCCEEDED in responses without rewriting their stored bytes."
+  },
+  "configurationInputShape": {
+    "wire": "HTTP JSON paths and normal body fields are unchanged. A shared exact WireCommand decoder retains the supplied object; no second journal or lifecycle is introduced.",
+    "casAndFlags": "New expectedRevision/expectedVersion and Boolean choices are boxed. Missing/null required fields reject inside the original command transaction and create no successful receipt. Explicit zero and false remain valid values.",
+    "targets": "New GL targetIds missing/null cannot clear; an explicit [] is required. Existing legacy internal replacement semantics remain unchanged.",
+    "malformed": "Strings cannot be coerced into Boolean/CAS values, nor fractional numbers into integral versions; malformed types return 400 before writes. Semantically missing required input returns the existing 422 validation response.",
+    "compatibility": "Valid old typed JSON/hash bytes remain unchanged; responses retain exact new raw bodies. An original receipt with a different raw shape cannot be reinterpreted as the caller's outcome.",
+    "termination": "The owner retaining the original read authority can seal the precise original null/missing object. Its late matching request returns the tombstone without business work; a different object cannot reuse the ID."
+  },
+  "bindingCas": "Each listed LineBinding exposes stateFingerprint over line key, confirmedZero and sorted persistent target UUIDs. New replacements freeze and check expectedFingerprint under the existing hierarchy/binding locks. Names and current amounts are not binding identities.",
+  "validationOwner": "server/src/test/java/com/uten/imp/businesschain/FinanceConfigurationCommandsPostgresTest.java and FinanceConfigurationWirePostgresTest.java; distinct final outcomes are in source-server-verification.json"
+}

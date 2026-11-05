@@ -6,6 +6,7 @@ import '../../components/feedback/uten_dialog.dart';
 import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../../components/inputs/uten_input.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/network/business_precision.dart';
 import '../../core/network/business_precision_coordinator.dart';
 import '../../core/router/app_router.dart' show appNavigatorKey;
@@ -96,7 +97,23 @@ class _BusinessPrecisionDialogState extends State<BusinessPrecisionDialog> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const UtenDialogHeader(title: Text('本次计算精度')),
+        UtenDialogHeader(
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Flexible(child: Text('本次计算精度')),
+              const SizedBox(width: 4),
+              UtenFieldHintIcon(
+                info: [
+                  widget.requirement.reason == 'NON_TERMINATING'
+                      ? '这项计算除不尽，请明确选择本次保留几位小数及处理方式。'
+                      : '这项计算需要明确精度，请选择本次保留几位小数及处理方式。',
+                  '仅用于本次同类计算，原始值按来源保留，不设为全局默认。',
+                ].join('\n\n'),
+              ),
+            ],
+          ),
+        ),
         Flexible(
           child: SingleChildScrollView(
             child: Padding(
@@ -112,12 +129,6 @@ class _BusinessPrecisionDialogState extends State<BusinessPrecisionDialog> {
                       const SizedBox(height: 12),
                       const Text('上次选择未能满足原数量或金额的守恒，请明确重新选择；系统不会自动提高位数或改动原值。'),
                     ],
-                    const SizedBox(height: 12),
-                    Text(
-                      widget.requirement.reason == 'NON_TERMINATING'
-                          ? '这项计算除不尽，请明确选择本次保留几位小数及处理方式。'
-                          : '这项计算需要明确精度，请选择本次保留几位小数及处理方式。',
-                    ),
                     const SizedBox(height: 12),
                     UtenInput(
                       label: '保留小数位数',
@@ -145,8 +156,6 @@ class _BusinessPrecisionDialogState extends State<BusinessPrecisionDialog> {
                       ],
                       onChanged: (value) => setState(() => _rounding = value),
                     ),
-                    const SizedBox(height: 12),
-                    const Text('仅用于本次同类计算，原始值按来源保留，不设为全局默认。'),
                   ],
                 ],
               ),

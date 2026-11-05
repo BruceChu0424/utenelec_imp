@@ -1,0 +1,222 @@
+{
+  "status": "inventory_complete_implementation_not_yet_verified",
+  "activeAdapters": 21,
+  "applicableQuantityFamilies": 6,
+  "sharedSourceMechanismAlsoIncludes": [
+    "subcontractOrder reference-price source, same immutable origin/lineage owner"
+  ],
+  "notGeneric": [
+    "sales_shipment_items V1035 is owned warehouse dispatch/withdrawal; no active generic SalesShipmentUnapprovalAdapter"
+  ],
+  "rows": [
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferUnapprovalAdapter.java",
+      "family": "financeBankTransfer",
+      "lineTable": "finance_bank_transfer_lines",
+      "parentColumn": "transfer_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseUnapprovalAdapter.java",
+      "family": "financeExpense",
+      "lineTable": "finance_expense_items",
+      "parentColumn": "expense_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeUnapprovalAdapter.java",
+      "family": "financeOtherIncome",
+      "lineTable": "finance_other_income_items",
+      "parentColumn": "income_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentUnapprovalAdapter.java",
+      "family": "financePayment",
+      "lineTable": "finance_payment_lines",
+      "parentColumn": "payment_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptUnapprovalAdapter.java",
+      "family": "financeReceipt",
+      "lineTable": "finance_receipt_lines",
+      "parentColumn": "receipt_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportUnapprovalAdapter.java",
+      "family": "productionDailyReport",
+      "lineTable": "production_daily_report_items",
+      "parentColumn": "report_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/production/plan/ProductionPlanUnapprovalAdapter.java",
+      "family": "productionPlan",
+      "lineTable": "production_plan_items",
+      "parentColumn": "plan_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderUnapprovalAdapter.java",
+      "family": "purchaseOrder",
+      "lineTable": "purchase_order_items",
+      "parentColumn": "order_id",
+      "quantityAdoption": [
+        "V1033",
+        "quantity_adoption_version,quantity_precision_policy,charged_base_qty,gift_base_qty"
+      ],
+      "v1062Changed": true,
+      "note": "Same stored fields copied; public edit may replace rows and then normal new-input adoption applies"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptUnapprovalAdapter.java",
+      "family": "purchaseReceipt",
+      "lineTable": "purchase_receipt_items",
+      "parentColumn": "receipt_id",
+      "quantityAdoption": [
+        "V1033;V1057",
+        "quantity_adoption_version,quantity_precision_policy,charged_base_qty,gift_base_qty"
+      ],
+      "v1062Changed": false,
+      "note": "Receipt already had source proof, now joins shared initial-copy guard"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnUnapprovalAdapter.java",
+      "family": "purchaseReturn",
+      "lineTable": "purchase_return_items",
+      "parentColumn": "return_id",
+      "quantityAdoption": [
+        "V1033",
+        "quantity_adoption_version,quantity_precision_policy,quantity_source_proof,charged_base_qty,gift_base_qty"
+      ],
+      "v1062Changed": true,
+      "note": "Same stored fields copied; public edit may replace rows and then normal new-input adoption applies"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderUnapprovalAdapter.java",
+      "family": "salesOrder",
+      "lineTable": "sales_order_items",
+      "parentColumn": "order_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/sales/other_shipment/SalesOtherShipmentUnapprovalAdapter.java",
+      "family": "salesOtherShipment",
+      "lineTable": "sales_other_shipment_items",
+      "parentColumn": "shipment_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/sales/ret/SalesReturnUnapprovalAdapter.java",
+      "family": "salesReturn",
+      "lineTable": "sales_return_items",
+      "parentColumn": "return_id",
+      "quantityAdoption": [
+        "V1038",
+        "receipt_quantity_version,receipt_base_qty,receipt_quantity_proof"
+      ],
+      "v1062Changed": true,
+      "note": "Same stored fields copied; public edit may replace rows and then normal new-input adoption applies"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/stock/StockDocumentUnapprovalAdapter.java",
+      "family": "stockDocument",
+      "lineTable": "stock_document_items",
+      "parentColumn": "doc_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/subcontract/inquiry/SubcontractInquiryUnapprovalAdapter.java",
+      "family": "subcontractInquiry",
+      "lineTable": "subcontract_inquiry_items",
+      "parentColumn": "inquiry_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/subcontract/material_issue/SubcontractMaterialIssueUnapprovalAdapter.java",
+      "family": "subcontractMaterialIssue",
+      "lineTable": "subcontract_material_issue_items",
+      "parentColumn": "issue_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnUnapprovalAdapter.java",
+      "family": "subcontractMaterialReturn",
+      "lineTable": "subcontract_material_return_items",
+      "parentColumn": "material_return_id",
+      "quantityAdoption": [
+        "V1033",
+        "quantity_adoption_version,quantity_precision_policy,adopted_base_qty"
+      ],
+      "v1062Changed": true,
+      "note": "Same stored fields copied; public edit may replace rows and then normal new-input adoption applies"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderUnapprovalAdapter.java",
+      "family": "subcontractOrder",
+      "lineTable": "subcontract_order_items",
+      "parentColumn": "order_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptUnapprovalAdapter.java",
+      "family": "subcontractReceipt",
+      "lineTable": "subcontract_receipt_items",
+      "parentColumn": "receipt_id",
+      "quantityAdoption": [
+        "V1033",
+        "quantity_adoption_version,quantity_precision_policy,adopted_base_qty"
+      ],
+      "v1062Changed": true,
+      "note": "Same stored fields copied; public edit may replace rows and then normal new-input adoption applies"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/subcontract/ret/SubcontractReturnUnapprovalAdapter.java",
+      "family": "subcontractReturn",
+      "lineTable": "subcontract_return_items",
+      "parentColumn": "return_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    },
+    {
+      "adapter": "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteUnapprovalAdapter.java",
+      "family": "subcontractWaste",
+      "lineTable": "subcontract_waste_items",
+      "parentColumn": "waste_id",
+      "quantityAdoption": null,
+      "v1062Changed": false,
+      "note": "No V1033/V1038 row adoption fields; existing qty/unit/source/cost inputs retained. Quantity algorithms unchanged"
+    }
+  ],
+  "sameTransactionRule": "actual successor_copy_txid set only on initial inherited INSERT; before-update+deferred current-row validation prevents changed input/delete/move; later normal edits do not rerun original equality",
+  "publicEditLifecycle": "Purchase order/receipt/return, subcontract receipt/material return and sales return update replaces detail rows through current public service; permanent original map/history does not become a live-row foreign key"
+}

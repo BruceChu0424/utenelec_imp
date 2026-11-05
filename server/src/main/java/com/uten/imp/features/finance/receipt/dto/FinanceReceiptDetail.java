@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /** 销售收款单详情（主表全字段 + 明细列表）。 */
 @Getter
-public class FinanceReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class FinanceReceiptDetail extends com.uten.imp.features.finance.FinanceReviewMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

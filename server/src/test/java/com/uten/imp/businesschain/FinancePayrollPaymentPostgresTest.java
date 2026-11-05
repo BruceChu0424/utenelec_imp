@@ -32,8 +32,9 @@ import static org.mockito.Mockito.*;
  "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
  "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
  "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
 class FinancePayrollPaymentPostgresTest {
- @DynamicPropertySource static void database(DynamicPropertyRegistry r){FullChainEndToEndTest.registerDataSource(r);}
+ @DynamicPropertySource static void database(DynamicPropertyRegistry r){FinanceScopedChainDatabase.register(r,FinancePayrollPaymentPostgresTest.class);}
  @Autowired AutowireCapableBeanFactory beans;@Autowired JdbcTemplate db;@Autowired TransactionTemplate transactions;
  @Autowired com.uten.imp.common.docnumber.DocNumberService numbers;
  @Autowired FinancePayrollPaymentPort payroll;@Autowired FinanceControlledJournalService journals;

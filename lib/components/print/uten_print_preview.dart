@@ -1017,7 +1017,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   }
 
   void _cancelSourceRead() {
-    if (!_loading && !_preparingSourcePdf) return;
+    if ((!_loading && !_preparingSourcePdf) || _printing) return;
     _contextVersion++;
     _invalidated = true;
     _pdfGenerator.dispose();
@@ -1160,7 +1160,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                 ? '正在读取打印结果'
                 : '正在准备打印',
             showDoNotLeaveHint: false,
-            onCancel: _loading || _preparingSourcePdf
+            onCancel: !_printing && (_loading || _preparingSourcePdf)
                 ? _cancelSourceRead
                 : null,
             cancelLabel: '取消读取',

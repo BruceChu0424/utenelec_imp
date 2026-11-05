@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-05",
+  "status": "scoped_batch_and_shared_reader_complete",
+  "scope": "Five finance batch creation families: immutable original command receipt, recovery and unwritten cancellation",
+  "ownership": "Batch Service/Controller, V1054 and tests; FinancialJsonResults shared reader. Other document approval wrappers and shared operation journal are owned by separate agents.",
+  "preserved": [
+    "FINANCE-BATCH:{actor}:{key} advisory transaction lock with seed991",
+    "SHA256 UTF8 of type + colon + recursive key-sorted documents, original arrays/scalars and pre-grouping order",
+    "old successful result/hash/actor/key/time bytes, original grouping and child accounting authority",
+    "one transaction for every child document and successful receipt",
+    "no Win7/WPF implementation, deployment or publishing"
+  ],
+  "protocol": {
+    "families": [
+      "receipts",
+      "payments",
+      "expenses",
+      "incomes",
+      "bank-transfers"
+    ],
+    "receipt": "GET /finance/{family}/batch/operations/{key}",
+    "cancel": "POST /finance/{family}/batch/operations/{key}/cancel",
+    "cancelInput": "{actorId,requestBody: original full batch command}",
+    "operation": "FINANCE_BATCH_CREATE",
+    "outcomes": [
+      "SUCCEEDED",
+      "CANCELLED_UNWRITTEN"
+    ],
+    "absence": "found:false is unknown, never unwritten proof",
+    "legacy": "GET identifies requestBodyAvailable:false; cancel/resolve verifies original body against the unchanged old hash and returns original success without backfilling stored body",
+    "lateCreate": "409 with found/key/actor/outcome details, never an empty successful batch; clients still corroborate the original receipt",
+    "permissions": "Own actor and family view required; lost create but retained read may resolve/cancel. Lost read denied. Visitor, must-change-password, locked and impersonated identities cannot cancel.",
+    "rejectedInput": "Current create admission limits are not rerun when sealing the original body; 501-row rejected attempts remain recoverable without truncation",
+    "publishedMaxDocuments": 500
+  },
+  "precision": {
+    "reader": "common/finance/FinancialJsonResults",
+    "scope": "Immutable ObjectReader keeps configured modules and integer policy; both decimal float features enabled and trailing-zero stripping disabled",
+    "notChanged": [
+      "writer",
+      "fingerprint",
+      "stored original JSON"
+    ],
+    "coreTests": {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "log": "build/finance-json-results-20261105/core-tests.log"
+    }
+  },
+  "validation": {
+    "beforeSharedReader": {
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "log": "build/finance-batch-recovery-20261105/backend-final.log",
+      "boundary": "Before final shared reader/maxDocuments adoption, do not substitute for final reader-caller verification"
+    },
+    "finalLog": "build/finance-batch-recovery-20261105/backend-shared-reader-final.log",
+    "compiledMainSources": 3163,
+    "compiledTestSources": 2521,
+    "doNotSumOverlappingRounds": true,
+    "finalResult": {
+      "result": "BUILD SUCCESS",
+      "classes": 6,
+      "tests": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "compilerAndMavenWarnings": 0,
+      "classesDetail": [
+        "FinancialJsonResultsTest:5",
+        "FinanceBatchRecoveryHttpContractTest:3",
+        "FinanceBatchRecoveryPostgresTest:9",
+        "FinanceBatchRecoveryValidationTest:3",
+        "FinanceEntryGroupingTest:2",
+        "AuditTriggerCoverageMigrationContractTest:14"
+      ],
+      "boundary": "Actual PostgreSQL protocol/transaction/immutability and grouping passthrough verified. Child domain services are controlled work oracles; this is not a substitute for real ERP accounting/application UAT."
+    },
+    "sourceHashesVerifiedUnchanged": true,
+    "logs": [
+      {
+        "path": "build/finance-batch-recovery-20261105/backend-first.log",
+        "sha256": "b49640672c0cedaa4efc21f17abe4d89a4106ede6fee7af6921ef0d96e19bd71"
+      },
+      {
+        "path": "build/finance-batch-recovery-20261105/backend-final.log",
+        "sha256": "8e25d17089306c58d6e4dadffae8d34f17f88635c08267a00f59e8c4c9117baa"
+      },
+      {
+        "path": "build/finance-batch-recovery-20261105/backend-shared-reader-final.log",
+        "sha256": "8739845d199823f167d68e02837e2d977420709ea06fd09d357514297e88350f"
+      },
+      {
+        "path": "build/finance-json-results-20261105/core-tests.log",
+        "sha256": "495d19e31737a1a7f0c4964b3165bc45c8586d398138db095c6f210f2d40f65c"
+      }
+    ]
+  },
+  "retainedFailures": [
+    "Initial PG found default JSON readTree round-trip through double changed finite 40+24/Instant values. Success replay, receipt and cancellation now use the single exact financial result reader. Original failure log retained."
+  ],
+  "sources": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceBatchEntryService.java",
+      "sha256": "eef59dff554625fe8edb266b9c7f686958c40d1538b1f7345fd6ccc84c5bf19f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceBatchEntryController.java",
+      "sha256": "9602a1ad3be4228c6ed9adf4a9a3b35853c8d081f32e900e7eea1b323f652ffe"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1054__finance_batch_unwritten_command_receipts.sql",
+      "sha256": "4dac3eb486c2d59e52271e064d20b1fbb782c8c6b4533546e134274656dbec51"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/FinancialJsonResults.java",
+      "sha256": "ae75f805ff0ab6ad9b0644f103f64239988b7080b9e50b0fc6db9db106924401"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/FinancialJsonResultsTest.java",
+      "sha256": "15380a569b02c0ce36697557c5558766722b4d52c24ff983d6b652800e5f4c73"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/FinanceBatchRecoveryPostgresTest.java",
+      "sha256": "7812768fd440c9e1d22764de1984388526f8c1165e2463ed14a53d91ab37b6f8"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/FinanceBatchRecoveryHttpContractTest.java",
+      "sha256": "f6755068705cce821f09627047027fb9ab5de35c83518ce251af17b9cb2d1ca6"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/FinanceBatchRecoveryValidationTest.java",
+      "sha256": "1d5cef71f7d911647f155a701df84faf51245622d363bbe851170e644c06da8e"
+    }
+  ]
+}

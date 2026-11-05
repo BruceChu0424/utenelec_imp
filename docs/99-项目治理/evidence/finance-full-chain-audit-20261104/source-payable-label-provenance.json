@@ -1,0 +1,22 @@
+{
+  "source": "C:/Users/bruce/Desktop/新建文件夹/2026年9月份应付账款明细表.xls",
+  "sha256": "4af91296ff2e9ba3a08e2127aa23d4de959837a5d8dc1c449b353d2a8abef9b9",
+  "scope": "Read-only labels/formula text only; no macros, links, recalculation or business values emitted",
+  "sheet": "2026年9月份应付账款明细表",
+  "headers": {
+    "I3": "本期借方金额",
+    "E3": "期初借方余额",
+    "N3": "期末余额金额",
+    "F3": "期初贷款余额",
+    "J3": "本期贷方金额",
+    "H3": "期初余额金额",
+    "K3": "期末借方余额",
+    "A1": "2026年9月份应付汇总明细表",
+    "L3": "期末贷方余额"
+  },
+  "savedFormulaExamples": {
+    "F4": "H4",
+    "L4": "N4"
+  },
+  "note": "This workbook has AP book opening/debit/credit/closing columns, no party flow/annual cash template. Requirement workbook 附件3 G2/L2 are 付款金额; no row formula establishes book movement as cash."
+}

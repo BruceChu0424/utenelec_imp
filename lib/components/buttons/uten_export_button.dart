@@ -635,14 +635,15 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
 
   Future<void> _pickDirectory() async {
     if (_choosingDirectory) return;
-    final initial = _dir.text.trim().isNotEmpty ? _dir.text.trim() : null;
     setState(() => _choosingDirectory = true);
+    final initial = _dir.text.trim().isNotEmpty ? _dir.text.trim() : null;
     try {
       final picked = await UtenBusyOverlay.run(
         context,
         title: '正在选择保存位置',
-        action: () =>
-            FilePicker.platform.getDirectoryPath(initialDirectory: initial),
+        action: () => UtenBusyOverlay.yieldWhile(
+          () => FilePicker.platform.getDirectoryPath(initialDirectory: initial),
+        ),
       );
       if (picked != null && mounted) {
         setState(() {
@@ -731,12 +732,14 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
       showCloseButton: true,
       title: UtenDialogHeading(
         icon: Icons.file_download_outlined,
-        title: Text(
-          widget.format == 'pdf'
-              ? l10n.exportPdfDialogTitle
-              : l10n.exportDialogTitle,
+        title: UtenDialogTitleWithHint(
+          info: l10n.exportDialogSubtitle(widget.format.toUpperCase()),
+          title: Text(
+            widget.format == 'pdf'
+                ? l10n.exportPdfDialogTitle
+                : l10n.exportDialogTitle,
+          ),
         ),
-        subtitle: Text(l10n.exportDialogSubtitle(widget.format.toUpperCase())),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -821,7 +824,9 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                OutlinedButton(
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  isLoading: _choosingDirectory,
                   onPressed: _choosingDirectory ? null : _pickDirectory,
                   child: Text(l10n.exportBrowse),
                 ),
@@ -841,12 +846,14 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
               }
               _error = null;
             }),
-            title: Text(
-              _passwordExpanded
-                  ? l10n.exportRemovePassword
-                  : l10n.exportSetPassword,
+            title: UtenDialogTitleWithHint(
+              info: l10n.exportPasswordProtectionDescription,
+              title: Text(
+                _passwordExpanded
+                    ? l10n.exportRemovePassword
+                    : l10n.exportSetPassword,
+              ),
             ),
-            subtitle: Text(l10n.exportPasswordProtectionDescription),
             trailing: Icon(
               _passwordExpanded
                   ? Icons.expand_less_rounded

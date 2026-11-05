@@ -1,0 +1,46 @@
+{
+  "localOnly": true,
+  "syntheticData": true,
+  "scope": "Deferred subcontract loss-cost finalization and financial responsibility publication in one transaction",
+  "files": {
+    "server/src/main/java/com/uten/imp/application/port/InventoryProductionCostPort.java": "03dcf64308825b4cfa7a1f217044ae77ba13ffce18dd52ebf09f262dc91a74c9",
+    "server/src/main/java/com/uten/imp/application/port/SubcontractMaterialValuePort.java": "116bb7d3ce121b590a9b0fffe840cab994d37b316f8c22f8b361a7076819e4c0",
+    "server/src/main/java/com/uten/imp/features/stock/valuation/InventoryProductionCostService.java": "d7832b844e61f0a521a10454540b68f6e25e30261a8309b24486ee2c194b744e",
+    "server/src/main/java/com/uten/imp/features/stock/valuation/SubcontractLossValueService.java": "9b4095b30c76464add62d6e95513512a42100febfae07777c57e94506c63851c",
+    "server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimService.java": "e424282664186bb6e7bff4049602e27d70adae9a70cf78cf11ee29424117021c",
+    "server/src/test/java/com/uten/imp/businesschain/SubcontractToleranceAutoSettleEndToEndTest.java": "ac31b4f30cb7ffa310585c2e05550bf9a657c100dda2a979fd6bfaa5177d6eb8"
+  },
+  "mainDriftSince29TestRound": [],
+  "unchangedV525Sha256": "cd9bc9b1e485c9331bf8ddc06f6cfa1700b567fd96a524320672e36c76c7a65a",
+  "rounds": [
+    {
+      "path": "build/finance-closeout-20261104/root-loss-publication-v1/workflow.log",
+      "classes": 8,
+      "found": 29,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "mainCompileDiagnosticBytes": 0,
+      "testCompileDiagnosticBytes": 0
+    },
+    {
+      "path": "build/finance-closeout-20261104/root-loss-publication-v2/workflow.log",
+      "classes": 1,
+      "found": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "addedAssertions": [
+        "actual responsibility inserted before injected beforeCommit failure",
+        "stock/AP/source and claim rollback atomically",
+        "same original confirmation key succeeds once after rollback",
+        "durable cost worker completes and original key replay remains single"
+      ]
+    }
+  ],
+  "notEstablished": [
+    "final unified HEAD full regression",
+    "company ledger approval",
+    "release or deployment"
+  ]
+}

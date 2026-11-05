@@ -55,6 +55,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -455,6 +456,17 @@ public class ExpenseClaimService {
     @Transactional(readOnly = true)
     public ExpenseClaimDto detail(UUID id) { return readDetail(id, false); }
 
+    /** Expected absence is a value, so an optional read cannot poison its caller's write transaction. */
+    @Transactional(readOnly = true)
+    public Optional<ExpenseClaimDto> optionalDetail(UUID id) {
+        AuthUser user = requireStaff();
+        var found = claimRepository.findById(id).filter(claim -> !claim.isDeleted());
+        if (found.isEmpty()) return Optional.empty();
+        ExpenseClaim claim = found.get();
+        if (!readAccess.mayRead(user, claim, observerScope(user))) return Optional.empty();
+        return Optional.of(readAuthorizedDetail(claim, false));
+    }
+
     @Transactional(readOnly = true)
     public ExpenseClaimDto detailHistory(UUID id) { return readDetail(id, true); }
 
@@ -467,6 +479,12 @@ public class ExpenseClaimService {
     private ExpenseClaimDto readDetail(UUID id, boolean historyRead) {
         ExpenseClaim claim = requireClaim(id, historyRead);
         assertCanRead(claim);
+        return readAuthorizedDetail(claim, historyRead);
+    }
+
+    /** Both strict and optional entry points apply the same native row policy before assembling private fields. */
+    private ExpenseClaimDto readAuthorizedDetail(ExpenseClaim claim, boolean historyRead) {
+        UUID id = claim.getId();
         AuthUser user = requireStaff();
         List<AttachmentDto> attachments = has(user, "attachment:view")
                 ? attachmentService.list("EXPENSE_CLAIM", id, historyRead, false)

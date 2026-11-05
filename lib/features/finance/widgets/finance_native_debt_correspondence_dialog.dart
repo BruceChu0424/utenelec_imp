@@ -1,8 +1,10 @@
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/network/api_client.dart';
@@ -18,9 +20,10 @@ const _path = '/finance/native-posting-accounts';
 Future<void> showFinanceNativeDebtCorrespondenceDialog(
   BuildContext context, {
   required String ledgerId,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
+  minimumWidth: 720,
+  widthFraction: .60,
   builder: (_) => _Correspondence(ledgerId: ledgerId),
 );
 
@@ -258,7 +261,11 @@ class _CorrespondenceState extends ConsumerState<_Correspondence> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UtenDialogHeader(
-              title: const Text('核对原科目与辅助'),
+              title: const UtenDialogTitleWithHint(
+                title: Text('核对原科目与辅助'),
+                info:
+                    '只选原分录的真实科目 UUID 与原单实际往来对象，不按当前会计用途、名称或金额相似程度关联。需要另一名财务审核人审核，不再生成债务或资金。已审核的原真实分录及金额保留，不能在这里改写。',
+              ),
               showCloseButton: true,
               onClose: _editable ? _close : null,
             ),
@@ -283,7 +290,6 @@ class _CorrespondenceState extends ConsumerState<_Correspondence> {
                     Text(
                       '原币金额：${_source['amountOriginalText'] ?? '待核'}；账面本币：${_source['amountLocalText'] ?? '待核'}',
                     ),
-                    if (approved) const Text('原科目及辅助已独立审核。原真实分录及金额保留，不能在这里改写。'),
                     if (!approved) ...[
                       UtenDropdownField(
                         label: '原已记账分录',
@@ -334,9 +340,6 @@ class _CorrespondenceState extends ConsumerState<_Correspondence> {
                         enabled: _editable,
                         maxLines: 3,
                         onChanged: (_) => _dirty = true,
-                      ),
-                      const Text(
-                        '只选原分录的真实科目 UUID 与原单实际往来对象，不按当前会计用途、名称或金额相似程度关联。需要另一名财务审核人审核，不再生成债务或资金。',
                       ),
                     ],
                     if (_reviews.isNotEmpty)
@@ -394,6 +397,11 @@ class _CorrespondenceState extends ConsumerState<_Correspondence> {
                   ),
               ],
             ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在核对科目与辅助',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),

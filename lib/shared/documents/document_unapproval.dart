@@ -78,6 +78,7 @@ class DocumentUnapprovalCapability {
     required this.nextAction,
     required this.factsSnapshot,
     required this.reasons,
+    this.documentSnapshot,
   });
 
   factory DocumentUnapprovalCapability.fromJson(Map<String, dynamic> value) {
@@ -103,6 +104,7 @@ class DocumentUnapprovalCapability {
       throw ApiException('UNAPPROVAL_UNCONFIRMED', '反审条件尚未核实，请重新核对。');
     }
     return DocumentUnapprovalCapability(
+      documentSnapshot: value['documentSnapshot'] as String?,
       eligible: eligible,
       nextAction: action,
       factsSnapshot: snapshot,
@@ -112,6 +114,7 @@ class DocumentUnapprovalCapability {
     );
   }
 
+  final String? documentSnapshot;
   final bool eligible;
   final String nextAction;
   final String factsSnapshot;

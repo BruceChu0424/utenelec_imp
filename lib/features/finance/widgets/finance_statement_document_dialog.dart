@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:collection/collection.dart';
@@ -9,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/print/uten_print_preview.dart';
@@ -92,9 +94,8 @@ Future<bool> showFinanceStatementDocumentDialog(
   String? draftProfileKind,
   Future<void> Function(String reviewId)? onOpenOriginal,
 }) async =>
-    await showDialog<bool>(
+    await showFinanceWorkbenchPanel<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => FinanceStatementDocumentDialog(
         scope: {
           'templateKey': templateKey,
@@ -281,15 +282,14 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
         '${_title(widget.scope['templateKey']?.toString())} · 原件与打印资料',
       ),
       width: 1180,
+      busy: _busy,
+      hint:
+          '${widget.scope['dateFrom']} 至 ${widget.scope['dateTo']}。原件按实际对象、币别和期间分别保留。',
       content: SizedBox(
         height: 620,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '${widget.scope['dateFrom']} 至 ${widget.scope['dateTo']}　原件按实际对象、币别和期间分别保留。',
-            ),
-            const SizedBox(height: 12),
             UtenDropdownField(
               label: '资料分类',
               value: _kind,
@@ -542,6 +542,7 @@ class _OriginalState extends ConsumerState<_Original> {
       onClose: _busy ? null : () => Navigator.pop(context),
       title: const Text('对账原件'),
       width: 1240,
+      busy: _busy,
       content: SizedBox(
         height: 650,
         child: Column(
@@ -1400,6 +1401,14 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
                     '审核原资料',
         ),
         width: 1050,
+        busy: _saving,
+        hint:
+            _kind == 'CONTEXT' &&
+                (_saveProfile || widget.mode == 'PROFILE_VIEW')
+            ? '余额仅合并明确选择的同一对象、同一金额口径来源；质保属于现有余额组成。点击已选草稿行可移除。'
+            : widget.mode == 'PREVIEW' || widget.mode == 'SUBMIT'
+            ? '此处展示前100行；冻结与下载保留完整原件的全部行。'
+            : null,
         content: SizedBox(
           height: 600,
           child: _loading
@@ -1430,9 +1439,6 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
                           ),
                       if ((_saveProfile || widget.mode == 'PROFILE_VIEW') &&
                           _kind == 'CONTEXT') ...[
-                        const Text(
-                          '余额仅合并明确选择的同一对象、同一金额口径来源；质保属于现有余额组成。点击已选草稿行可移除。',
-                        ),
                         SizedBox(
                           height: 220,
                           child: financeSourceTable(
@@ -1589,7 +1595,7 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
                           metadata: _map(_source?['documentMetadata']),
                         ),
                         Text(
-                          '完整原件共${(_source?['rows'] as List<Object?>?)?.length ?? 0}行；此处展示前100行，冻结与下载保留全部行。',
+                          '完整原件共${(_source?['rows'] as List<Object?>?)?.length ?? 0}行',
                         ),
                       ],
                       if (widget.mode == 'COUNTERPART') ...[
@@ -1710,12 +1716,16 @@ class _Frame extends StatelessWidget {
     required this.actions,
     this.onClose,
     this.showCloseButton = false,
+    this.busy = false,
+    this.hint,
   });
   final Widget title, content;
   final double width;
   final List<Widget> actions;
   final FutureOr<void> Function()? onClose;
   final bool showCloseButton;
+  final bool busy;
+  final String? hint;
   @override
   Widget build(BuildContext context) => UtenDialogFrame(
     maxWidth: width,
@@ -1724,25 +1734,27 @@ class _Frame extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         UtenDialogHeader(
-          title: title,
+          title: UtenDialogTitleWithHint(title: title, info: hint),
           showCloseButton: showCloseButton,
-          onClose: onClose,
+          onClose: busy ? null : onClose,
         ),
         Flexible(
+          fit:
+              context
+                      .dependOnInheritedWidgetOfExactType<
+                        UtenEmbeddedDialogScope
+                      >() ==
+                  null
+              ? FlexFit.loose
+              : FlexFit.tight,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: content,
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            runSpacing: 8,
-            children: actions,
-          ),
-        ),
+        UtenDialogActions(children: actions),
+        if (busy)
+          const UtenBusyOverlay(title: '正在处理对账原件', showDoNotLeaveHint: false),
       ],
     ),
   );

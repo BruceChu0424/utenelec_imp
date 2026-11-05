@@ -1,5 +1,5 @@
+import '../shared/finance_document_intent.dart';
 import '../../../shared/documents/imported_document_policy.dart';
-import '../../../shared/documents/document_unapproval.dart';
 // 钱流仓库（5 单据统一 + 应收应付台账 + 账户流水 + 报表）。
 //
 // 5 单据按 docType 切端点：/api/finance/{receipts|payments|expenses|incomes|bank-transfers}
@@ -12,8 +12,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/finance_doc.dart';
+import '../shared/finance_original_command.dart';
 
 /// 钱流端点（基址 /api，由 ApiClient 注入）。
 abstract final class FinanceEndpoints {
@@ -186,6 +188,20 @@ class FinanceRepository {
     return FinanceDocDetail.fromJson(json);
   }
 
+  /// An unknown delete can already have moved the original into history. A
+  /// permission denial never falls back to a different read endpoint.
+  Future<FinanceDocDetail> detailForRecovery(String id) async {
+    try {
+      return await detail(id);
+    } on ApiException catch (error) {
+      if (error.httpStatus != 404) rethrow;
+      final json = await api.get(
+        '${FinanceEndpoints.docOne(_seg, id)}/history',
+      );
+      return FinanceDocDetail.fromJson(json);
+    }
+  }
+
   Future<FinanceDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(FinanceEndpoints.docBase(_seg), body: body);
     return FinanceDocDetail.fromJson(json);
@@ -198,41 +214,81 @@ class FinanceRepository {
       '${FinanceEndpoints.docBase(_seg)}/batch',
       body: command,
     );
-    return [
+    return parseBatchResult(json);
+  }
+
+  List<FinanceDocDetail> parseBatchResult(Map<String, dynamic> json) {
+    if (json['items'] is! List) throw StateError('原批次未返回完整创建结果');
+    final result = [
       for (final item in (json['items'] as List))
         FinanceDocDetail.fromJson(Map<String, dynamic>.from(item as Map)),
     ];
+    if (result.isEmpty ||
+        result.any((item) => item.id.isEmpty) ||
+        result.map((item) => item.id).toSet().length != result.length) {
+      throw StateError('原批次创建回执缺少唯一单据身份');
+    }
+    return result;
   }
 
-  Future<FinanceDocDetail> update(String id, Map<String, dynamic> body) async {
-    final json = await api.put(FinanceEndpoints.docOne(_seg, id), body: body);
-    return FinanceDocDetail.fromJson(json);
-  }
+  FinanceOriginalCommand batchOriginalCommand(
+    Map<String, dynamic> command,
+    String actorId,
+  ) => FinanceOriginalCommand(
+    actorId: actorId,
+    operation: 'FINANCE_BATCH_CREATE',
+    method: 'POST',
+    path: '${FinanceEndpoints.docBase(_seg)}/batch',
+    body: command,
+    identityField: 'idempotencyKey',
+    opaqueIdentity: true,
+    detachedBody: true,
+    cancellationPayload: () => {'actorId': actorId, 'requestBody': command},
+  );
+  String _batchReceiptPath(String key) =>
+      '${FinanceEndpoints.docBase(_seg)}/batch/operations/${Uri.encodeComponent(key)}';
+  Future<Map<String, dynamic>> batchReceipt(
+    Map<String, dynamic> command,
+    String actorId, {
+    bool Function()? isCurrent,
+  }) => batchOriginalCommand(command, actorId).readReceiptResponsive(
+    api,
+    _batchReceiptPath(command['idempotencyKey'].toString()),
+    isCurrent: isCurrent,
+  );
+  Future<Map<String, dynamic>> cancelBatchUnwritten(
+    Map<String, dynamic> command,
+    String actorId, {
+    bool Function()? isCurrent,
+  }) => batchOriginalCommand(command, actorId).cancelUnwrittenResponsive(
+    api,
+    _batchReceiptPath(command['idempotencyKey'].toString()),
+    isCurrent: isCurrent,
+  );
 
-  Future<void> delete(String id) async {
-    await api.delete(FinanceEndpoints.docOne(_seg, id));
-  }
-
-  Future<FinanceDocDetail> approve(String id) async {
-    final json = await api.post(FinanceEndpoints.docApprove(_seg, id));
-    return FinanceDocDetail.fromJson(json);
-  }
-
-  Future<FinanceDocDetail> reverse(String id) async {
-    final json = await unapproveDocument(api, switch (type) {
-      FinanceDocType.receipt => 'financeReceipt',
-      FinanceDocType.payment => 'financePayment',
-      FinanceDocType.expense => 'financeExpense',
-      FinanceDocType.otherIncome => 'financeOtherIncome',
-      FinanceDocType.bankTransfer => 'financeBankTransfer',
-    }, id);
-    return FinanceDocDetail.fromJson(Map<String, dynamic>.from(json as Map));
-  }
-
-  /// C6 财务确认（仅费用单）：已过账的费用单确认入账（gl_status 1→2）。
-  Future<FinanceDocDetail> glConfirm(String id) async {
-    final json = await api.post('/finance/$_seg/$id/gl-confirm'); // ENDPOINT
-    return FinanceDocDetail.fromJson(json);
+  /// Only a frozen, reviewed document command can enter these write endpoints.
+  /// The receipt-aware owner verifies the full result and negotiated precision.
+  Future<Map<String, dynamic>> executeDocumentIntent(
+    FinanceDocumentIntent intent,
+  ) {
+    if (intent.type != type ||
+        !const {
+          'FINANCE_DOCUMENT_APPROVE',
+          'FINANCE_DOCUMENT_UPDATE',
+          'FINANCE_DOCUMENT_UNAPPROVE',
+          'FINANCE_DOCUMENT_GL_CONFIRM',
+          'FINANCE_DOCUMENT_DELETE',
+        }.contains(intent.operation) ||
+        intent.operation == 'FINANCE_DOCUMENT_GL_CONFIRM' &&
+            type != FinanceDocType.expense) {
+      throw StateError('原财务操作与单据种类不一致');
+    }
+    if (intent.method == 'DELETE') {
+      return api.deleteObject(intent.path, body: intent.body);
+    }
+    return intent.method == 'PUT'
+        ? api.put(intent.path, body: intent.body)
+        : api.post(intent.path, body: intent.body);
   }
 }
 

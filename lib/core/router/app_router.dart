@@ -100,6 +100,7 @@ import '../../features/finance/widgets/finance_asset_form.dart';
 import '../../features/finance/models/finance_asset_models.dart';
 import '../../features/finance/pages/finance_doc_detail_page.dart';
 import '../../features/finance/pages/finance_doc_edit_page.dart';
+import '../../features/finance/widgets/finance_batch_recovery_panel.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_audit_center_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
@@ -2410,6 +2411,15 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             builder: (_, s) => FinanceDocEditPage(
               key: editorResourceKey(s.uri),
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/:seg/batch-recovery',
+            name: 'finance-batch-recovery',
+            redirect: _rejectUnknownFinanceDoc,
+            builder: (_, s) => FinanceBatchRecoveryPage(
+              docType: FinanceDocType.byPath(s.pathParameters['seg']!),
+              draftId: s.uri.queryParameters['draftId'] ?? '',
             ),
           ),
           DraftAwareGoRoute(

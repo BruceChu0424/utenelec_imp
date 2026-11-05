@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "status": "UI owner scope complete; actual standard Web/Windows business acceptance is maintained by root",
+  "productSourceFreeze": "build/finance-final-audit/ui-product-freeze-20261105-v3.json",
+  "privateSnapshot": "D:\\Projects\\uten_imp_worktrees\\finance-ui-tests-20261105-final-v3",
+  "privateInputDigest": "1ff4f5e3335c7361f0492c217cc60659677aa733824db4f79f36317148c7c5fd",
+  "vmRegression": {
+    "passed": 1531,
+    "failed": 0,
+    "log": "build/finance-final-audit/final-flutter-regression-v4-private.log",
+    "concurrency": 4
+  },
+  "browserStorageRegression": {
+    "passed": 17,
+    "failed": 0,
+    "log": "build/finance-final-audit/browser-v3/final-browser-drafts-v6-adapted.log",
+    "harnessEvidence": "browser-draft-sdk-harness.json",
+    "notApplicationBusinessUat": true
+  },
+  "analysis": {
+    "scope": "all finance + drafts + applicable original proof/precision/JSON/Dialog/unapproval model + all finance tests",
+    "issues": 0,
+    "log": "build/finance-final-audit/final-analyze-v6.log"
+  },
+  "format": {
+    "files": 311,
+    "changed": 0,
+    "log": "build/finance-final-audit/final-format-v3.log"
+  },
+  "inputAudit": {
+    "checkedAt": "2026-11-05T11:54:54.639012+00:00",
+    "initialDigest": "1ff4f5e3335c7361f0492c217cc60659677aa733824db4f79f36317148c7c5fd",
+    "existingInputs": 5741,
+    "privateDrift": [],
+    "owningSourceDrift": [
+      "server/src/main/resources/db/migration/V1057__purchase_receipt_successor_quantity_proof.sql",
+      "server/src/main/resources/db/migration/V1060__frozen_procurement_reference_price_adoption.sql"
+    ],
+    "addedStaticJavaInputs": 11,
+    "javaFixtureDrift": [],
+    "note": "The 11 added static Java fixtures are recorded separately; product Dart and assertions remain the original private snapshot."
+  },
+  "parallelBackendSqlDrift": {
+    "server/src/main/resources/db/migration/V1057__purchase_receipt_successor_quantity_proof.sql": {
+      "privateSha": "be90b9a6e1986a0c9ec9291303a8247e52e3010120e667a727fcdac9f8b3f98f",
+      "currentSha": "b2cf6ec6a11cc1568f52f8580eac591f1f16866a32aeb013eacce0cc82fd60f4",
+      "owner": "root/ledger backend work; not executed by the Flutter VM suite"
+    },
+    "server/src/main/resources/db/migration/V1060__frozen_procurement_reference_price_adoption.sql": {
+      "privateSha": "fbd78203947f514ba308bacea48a988b2fb7fb40f9ba3ac7bbf2f3c1d27cc0c0",
+      "currentSha": "d4017574831f2df3cefad849362effb056f0340aa804a0cbbe4a40d71a159aec",
+      "owner": "root/ledger backend work; not executed by the Flutter VM suite"
+    }
+  },
+  "migrationEvidence": "finance-entry-currency-capability-migration.json",
+  "screenshots": {
+    "build/ui-audit/finance-document-review-pending-1280-header.png": {
+      "sha256": "c4d23a142b4686857a4b73bb49a6cdcaa80e21b40dd965b4b9404c540cfae8d8",
+      "viewedWithViewImage": true,
+      "scope": "anonymous real component, header/actions separate scroll positions; 390 uses1.5 app zoom and280px simulated keyboard"
+    },
+    "build/ui-audit/finance-document-review-pending-1280-actions.png": {
+      "sha256": "c4d23a142b4686857a4b73bb49a6cdcaa80e21b40dd965b4b9404c540cfae8d8",
+      "viewedWithViewImage": true,
+      "scope": "anonymous real component, header/actions separate scroll positions; 390 uses1.5 app zoom and280px simulated keyboard"
+    },
+    "build/ui-audit/finance-document-review-pending-390-header.png": {
+      "sha256": "a22f9453e66d4c201de9635d7fd9fc484752e090fd7cc8247e5367e0f7a28215",
+      "viewedWithViewImage": true,
+      "scope": "anonymous real component, header/actions separate scroll positions; 390 uses1.5 app zoom and280px simulated keyboard"
+    },
+    "build/ui-audit/finance-document-review-pending-390-actions.png": {
+      "sha256": "0a890b51b5b2ef1232c79551fb86b10c2312a0aa35447a1f345fb9df879a166f",
+      "viewedWithViewImage": true,
+      "scope": "anonymous real component, header/actions separate scroll positions; 390 uses1.5 app zoom and280px simulated keyboard"
+    }
+  },
+  "logsSha256": {
+    "final-flutter-regression-v4-private.log": "3d6d96fd6e6d6b39b47190d3715fca4002997561a1c838daf1205af7c33daeb7",
+    "private-java-contract-fixture-v1.log": "027834e3d99b529c1346f5daedca6ff05b637ad4c16b8675eaf1d7518c3ae429",
+    "final-analyze-v6.log": "239d8a6aaae0ab4f18cf1e49722c87052a57bb78136f668dcbdc95c9bea7f633",
+    "final-format-v3.log": "38b0d36abc61692d79812bd297d0e263fa33a5c4b2cb9d4da9050de54913d271",
+    "ap-default-policy-v2.log": "29fad8a98fee88b85aa3018aeda4ff8199c7492402782fea45b581b6176d2fdc",
+    "document-review-layout-v4.log": "a3ec517d5e7cb5e5dd85a11359c5b077171ae908add11a3c9710a9159da2ac52"
+  },
+  "preservedFailedRuns": [
+    {
+      "log": "final-flutter-regression-v1.log",
+      "passed": 1496,
+      "failed": 14,
+      "scope": "pre-freeze task source and old fixtures/mixed compiler state; not final acceptance"
+    },
+    {
+      "log": "final-flutter-regression-v2.log",
+      "scope": "task source mixed around the last AP date gate; not final acceptance"
+    },
+    {
+      "log": "final-flutter-regression-v3-private.log",
+      "passed": 1525,
+      "failed": 6,
+      "scope": "omitted read-only Java fixtures; complete failing file subsequently14/14, then complete private full v4 repeated with fixtures present"
+    },
+    {
+      "log": "final-command-callers-v1.log",
+      "passed": 82,
+      "failed": 2,
+      "scope": "test menu helper settled an intentionally pending operation and one old button-callback selector; corrected53/53 in defaults-and-menu-callers-v1.log"
+    }
+  ],
+  "boundaries": [
+    "No product Dart/test assertion drift in final private snapshot; 11 copied read-only Java contract inputs verified against source separately",
+    "Two source SQL migration files changed in parallel backend work and are explicitly reported rather than called a zero whole-tree drift",
+    "Only isolated test browser loader/asset wiring adapted; public SDK/product/assertions/default browser profile unchanged",
+    "No commit, push, deploy, formal package or upload by this UI owner",
+    "Win7/WPF excluded, not migrated or accepted",
+    "Do not turn AST inventory or widget captures into full actual-application financial acceptance"
+  ]
+}

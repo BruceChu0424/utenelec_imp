@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 其它收入单详情。 */
 @Getter
 @AllArgsConstructor
-public class FinanceOtherIncomeDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class FinanceOtherIncomeDetail extends com.uten.imp.features.finance.FinanceReviewMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

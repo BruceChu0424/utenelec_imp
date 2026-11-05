@@ -25,7 +25,17 @@ class UtenBusyOverlay extends StatefulWidget {
     this.showDoNotLeaveHint = true,
     this.onCancel,
     this.cancelLabel = '取消',
-  });
+  }) : _runOwner = null;
+
+  const UtenBusyOverlay._run({required this.title, required Object owner})
+    : _runOwner = owner,
+      description = null,
+      semanticsKey = null,
+      showDoNotLeaveHint = false,
+      onCancel = null,
+      cancelLabel = '取消';
+
+  final Object? _runOwner;
 
   /// 进度卡片的语义 key（宿主测试锁定用，如物料分析的
   /// material-analysis-plan-submission-progress）。
@@ -50,22 +60,36 @@ class UtenBusyOverlay extends StatefulWidget {
     required String title,
     required Future<T> Function() action,
   }) async {
+    // Register before insertion: action may yield to an interactive dialog in
+    // this same event turn, before the overlay's State has ever mounted.
+    final owner = Object();
+    _active.add(owner);
     final entry = OverlayEntry(
-      builder: (_) => UtenBusyOverlay(title: title, showDoNotLeaveHint: false),
+      builder: (_) => UtenBusyOverlay._run(title: title, owner: owner),
     );
-    Overlay.of(context, rootOverlay: true).insert(entry);
+    var inserted = false;
     try {
+      Overlay.of(context, rootOverlay: true).insert(entry);
+      inserted = true;
       return await action();
     } finally {
-      entry.remove();
+      if (inserted) entry.remove();
       entry.dispose();
+      _retire(owner);
     }
   }
 
   /// 活跃「让位」作用域计数，仅暂停进入作用域前已经存在的忙碌遮罩。
   static final ValueNotifier<int> _yielding = ValueNotifier<int>(0);
-  static final _active = <_UtenBusyOverlayState>{};
-  static final _yieldOwners = <Set<_UtenBusyOverlayState>>{};
+  static final _active = <Object>{};
+  static final _yieldOwners = <Set<Object>>{};
+
+  static void _retire(Object owner) {
+    _active.remove(owner);
+    for (final owners in _yieldOwners) {
+      owners.remove(owner);
+    }
+  }
 
   /// 在 [body] 运行期间让既有忙碌遮罩让位，结束(含异常)后恢复。
   /// 弹窗内新开始的任务仍显示自身遮罩，避免验证等按钮只禁用而没有等待反馈。
@@ -75,12 +99,14 @@ class UtenBusyOverlay extends StatefulWidget {
   /// 盖住后弹出的对话框——请求在等密码、遮罩在等请求，整页卡死。让位期间对话框自带的
   /// 模态屏障照样挡住底下页面。
   static Future<T> yieldWhile<T>(Future<T> Function() body) async {
-    // Previously inserted owners may not have mounted until this frame ends.
-    // The modal body starts afterwards, so its own new waiting layer stays visible.
+    // Embedded hosts requested by setState need this frame to register their
+    // State owner. run() already registers a pending token before insertion.
+    // Both kinds share one snapshot before the modal body starts; work created
+    // by that body owns a new token and is never hidden by this yield scope.
     await WidgetsBinding.instance.endOfFrame;
     // Yield the operations which were already waiting. A newly started task
     // inside the modal (for example password verification) owns its own mask.
-    final owners = Set<_UtenBusyOverlayState>.of(_active);
+    final owners = Set<Object>.of(_active);
     _yieldOwners.add(owners);
     _yielding.value++;
     try {
@@ -105,6 +131,7 @@ class UtenBusyOverlay extends StatefulWidget {
 
 class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   OverlayEntry? _entry;
+  late final Object _owner = widget._runOwner ?? this;
   late final _lifecycle = UtenOverlayLifecycle(
     transient: false,
     onAvailable: _ensureEntry,
@@ -114,7 +141,7 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   @override
   void initState() {
     super.initState();
-    UtenBusyOverlay._active.add(this);
+    UtenBusyOverlay._active.add(_owner);
   }
 
   @override
@@ -166,10 +193,7 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
 
   @override
   void dispose() {
-    UtenBusyOverlay._active.remove(this);
-    for (final owners in UtenBusyOverlay._yieldOwners) {
-      owners.remove(this);
-    }
+    UtenBusyOverlay._retire(_owner);
     _lifecycle.dispose();
     _removeEntry();
     super.dispose();
@@ -184,7 +208,7 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
       builder: (context, yielding, _) =>
           yielding > 0 &&
               UtenBusyOverlay._yieldOwners.any(
-                (owners) => owners.contains(this),
+                (owners) => owners.contains(_owner),
               )
           ? const SizedBox.shrink()
           : _buildMask(context),

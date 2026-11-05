@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -37,15 +38,69 @@ public class GlReportLineBindingService {
     private final EntityManager em;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceOperationJournal operations;
 
     /** 报表行绑定一览。 */
     public record LineBinding(String lineKey, String label, String bindingKind, List<Target> targets,
                               String category, String sheet, boolean confirmedZero, String defaultBasis,
-                              List<String> allowedCategories,String requiredFinanceCodePrefix) {
+                              List<String> allowedCategories,String requiredFinanceCodePrefix,String stateFingerprint) {
     }
 
     /** 绑定目标(科目或部门)。 */
     public record Target(UUID id, String code, String name) {
+    }
+    public record ReplaceCommand(UUID requestId,List<UUID> targetIds,Boolean confirmedZero,String expectedFingerprint) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand {
+        public ReplaceCommand(UUID id,List<UUID> targets,boolean zero,String fingerprint){this(id,targets,Boolean.valueOf(zero),fingerprint);}
+    }
+    public record DefaultsCommand(UUID requestId) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand { }
+
+    @Transactional @PreAuthorize("hasAuthority('payment_style:edit')")
+    public Map<String,Object> replaceCommand(String lineKey,ReplaceCommand request){
+        return replaceCommand(lineKey,request,null);
+    }
+    @Transactional @PreAuthorize("hasAuthority('payment_style:edit')")
+    public Map<String,Object> replaceWireCommand(String lineKey,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){return replaceCommand(lineKey,operations.decodeOriginal(original,ReplaceCommand.class),original);}
+    private Map<String,Object> replaceCommand(String lineKey,ReplaceCommand request,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("finance_report:view","payment_style:edit");tx.bind();
+        if(request==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请保留原绑定请求");
+        return operations.commandOriginal(request.requestId(),"GL_REPORT_BINDING_REPLACE","PUT","/finance/reports/gl/line-bindings/"+lineKey,request,original,()->{
+            if(request.targetIds()==null||request.targetIds().stream().anyMatch(Objects::isNull)||request.confirmedZero()==null)
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"请明确保留目标清单及无业务选择，只有明确空清单才可清空，本次未写入");
+            // Match the existing hierarchy -> bindings order before checking the original state.
+            PaymentStyleHierarchyLock.lock(em);lockBindings();
+            var before=list().stream().filter(row->row.lineKey().equals(lineKey)).findFirst().orElseThrow(()->new ApiException(ErrorCode.VALIDATION_FAILED,"报表行不存在或不可配置"));
+            if(request.expectedFingerprint()==null||!request.expectedFingerprint().equals(before.stateFingerprint()))
+                throw new ApiException(ErrorCode.CONFLICT,"报表行绑定已变化，请读取后核对原状态");
+            return replace(lineKey,request.targetIds(),request.confirmedZero());
+        });
+    }
+    @Transactional @PreAuthorize("hasAuthority('payment_style:edit')")
+    public Map<String,Object> seedDefaultsCommand(DefaultsCommand request){
+        return seedDefaultsCommand(request,null);
+    }
+    @Transactional @PreAuthorize("hasAuthority('payment_style:edit')")
+    public Map<String,Object> seedDefaultsWireCommand(com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){return seedDefaultsCommand(operations.decodeOriginal(original,DefaultsCommand.class),original);}
+    private Map<String,Object> seedDefaultsCommand(DefaultsCommand request,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("finance_report:view","payment_style:edit");tx.bind();
+        if(request==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请保留原默认补齐请求");
+        return operations.commandOriginal(request.requestId(),"GL_REPORT_BINDINGS_SEED","POST","/finance/reports/gl/line-bindings/defaults",request,original,this::seedDefaults);
+    }
+    @Transactional(readOnly=true) @PreAuthorize("hasAuthority('finance_report:view')")
+    public Map<String,Object> operationReceipt(UUID request){
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("finance_report:view");
+        return operations.commandReceipt(request,Set.of("GL_REPORT_BINDING_REPLACE","GL_REPORT_BINDINGS_SEED"));
+    }
+    @Transactional @PreAuthorize("hasAuthority('finance_report:view')")
+    public Map<String,Object> cancelCommand(UUID request,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("finance_report:view");tx.bind();
+        if(cancellation==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请保留原绑定核对请求");
+        if("GL_REPORT_BINDINGS_SEED".equals(cancellation.operation()))
+            return operations.cancelCommand(request,cancellation,"GL_REPORT_BINDINGS_SEED","POST","/finance/reports/gl/line-bindings/defaults",DefaultsCommand.class);
+        String prefix="/finance/reports/gl/line-bindings/",path=cancellation.path();
+        if(!"GL_REPORT_BINDING_REPLACE".equals(cancellation.operation())||path==null||!path.startsWith(prefix)
+                ||GlReportLine.configurable(path.substring(prefix.length()))==null)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"原绑定动作或报表行不正确");
+        return operations.cancelCommand(request,cancellation,"GL_REPORT_BINDING_REPLACE","PUT",path,ReplaceCommand.class);
     }
 
     @Transactional(readOnly = true)
@@ -74,9 +129,14 @@ public class GlReportLineBindingService {
                         statement==null?"EXPENSE":statement.category(),statement==null?GlReportLine.sheetFor(line.key()):statement.sheet(),zero.contains(line.key()),
                         statement!=null&&!statement.roots().isEmpty()?"未单独绑定时沿用已证明的总账来源，实际状态见报表取数口径":null,
                         statement!=null?List.of(statement.category()):GlReportLine.costExpenseLine(line.key())?List.of("EXPENSE","ACCOUNT"):List.of("EXPENSE"),
-                        statement==null&&GlReportLine.costExpenseLine(line.key())?line.key().equals("MFG_LABOR_CONTROL")?"410106":"4101":null);
+                        statement==null&&GlReportLine.costExpenseLine(line.key())?line.key().equals("MFG_LABOR_CONTROL")?"410106":"4101":null,
+                        fingerprint(line.key(),targets.getOrDefault(line.key(),List.of()),zero.contains(line.key())));
                 })
                 .toList();
+    }
+    private static String fingerprint(String key,List<Target> targets,boolean zero){
+        String value=key+"|"+zero+"|"+targets.stream().map(t->t.id().toString()).sorted().collect(java.util.stream.Collectors.joining(","));
+        return com.uten.imp.common.storage.ImmutableDocumentStore.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /** 整行替换绑定: 传空列表即清空(报表该行显示未配置)。 */

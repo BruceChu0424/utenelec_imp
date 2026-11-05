@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/app_notification.dart';
 import '../badges/badge_registry.dart';
@@ -134,14 +135,22 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
       String? uncertaintyReason;
       var interrupted = false;
       for (final id in ids) {
-        if (!stillCurrent()) {
+        if (!mounted || !stillCurrent()) {
           interrupted = true;
           break;
         }
         try {
-          await delete(id);
+          await UtenBusyOverlay.run(
+            context,
+            title: '正在删除草稿',
+            action: () => delete(id),
+          );
           deleted.add(id);
         } on ApiException catch (error) {
+          if (error.code == 'DRAFT_DELETE_STOPPED') {
+            failures.add(error.message);
+            break;
+          }
           if (error is NetworkException ||
               error is NetworkTimeoutException ||
               (error.httpStatus ?? 0) >= 500) {
@@ -162,7 +171,7 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
       setState(() => _draftIds.removeAll(deleted));
       var refreshed = true;
       try {
-        await reload();
+        await UtenBusyOverlay.run(context, title: '正在刷新草稿列表', action: reload);
       } catch (_) {
         refreshed = false;
       }
@@ -170,7 +179,11 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
         return;
       }
       // 与业务写拦截器共用单飞刷新，草稿分段、任务卡、工作台使用同一份快照。
-      await container.read(badgeSummaryProvider.notifier).refresh();
+      await UtenBusyOverlay.run(
+        context,
+        title: '正在更新草稿数量',
+        action: () => container.read(badgeSummaryProvider.notifier).refresh(),
+      );
       if (!mounted || container.read(authenticatedScopeProvider) != scope) {
         return;
       }

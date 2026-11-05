@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:async';
 import 'dart:io';
+import '../support/pump_until.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -402,7 +403,12 @@ void main() {
       }
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => api.results.length == 1,
+        reason:
+            'The original export must actually dispatch before the identity change',
+      );
       expect(api.results, hasLength(1));
       container.read(server.notifier).state = 'https://b.invalid';
       await tester.pumpAndSettle();
@@ -416,7 +422,12 @@ void main() {
       }
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => api.results.length == 2,
+        reason:
+            'The replacement export must dispatch before the old result is released',
+      );
       expect(api.results, hasLength(2));
       api.results.first.completeError(StateError('old request failed'));
       await tester.pump();
@@ -533,7 +544,11 @@ void main() {
       }
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => api.downloads == 1,
+        reason: 'The held download must start before its reader is withdrawn',
+      );
       expect(api.downloads, 1);
       current = false;
       api.result.complete(Uint8List.fromList([1, 2, 3]));

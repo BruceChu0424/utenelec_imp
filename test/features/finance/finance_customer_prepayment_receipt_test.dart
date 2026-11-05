@@ -1,3 +1,8 @@
+import '../../support/finance_document_command_fixture.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +30,7 @@ import '../../support/native_detail_reader_overrides.dart';
 import '../../support/uten_test_actions.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final scenario in [
     (width: 1200.0, height: 44.0, caption: '桌面预收订单选择按钮位于后缀槽，与金额汇率输入框同为44高'),
     (width: 800.0, height: 44.0, caption: '800紧凑预收订单选择按钮位于后缀槽，与金额汇率输入框同为44高'),
@@ -155,11 +161,16 @@ void main() {
         overrides: [
           ...nativeDetailReaderOverrides(includeSession: false),
           financeWriteAllDocumentScope(),
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
           apiClientProvider.overrideWithValue(api),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.financeViewAll,
             Perm.financeReceiptCreate,
+            Perm.financeReceiptView,
             Perm.financeReceiptEdit,
             Perm.customerPrepaymentView,
           }),
@@ -269,11 +280,16 @@ void main() {
         overrides: [
           ...nativeDetailReaderOverrides(includeSession: false),
           financeWriteAllDocumentScope(),
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
           apiClientProvider.overrideWithValue(api),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.financeViewAll,
             Perm.financeReceiptCreate,
+            Perm.financeReceiptView,
             Perm.financeReceiptEdit,
             Perm.customerPrepaymentView,
           }),
@@ -423,7 +439,7 @@ class _PrepaymentReceiptApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path.endsWith('/summary')) return _moneySummary;
-    return noFees
+    final result = noFees
         ? {
             ..._prepaymentDetail,
             'feeSettlementMode': 'NONE',
@@ -435,6 +451,7 @@ class _PrepaymentReceiptApi extends ApiClient {
             'otherFee': 0,
           }
         : _prepaymentDetail;
+    return financeReviewedDetailFixture(result, FinanceDocType.receipt);
   }
 
   @override
@@ -506,19 +523,13 @@ class _PrepaymentReceiptApi extends ApiClient {
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
   }) async {
-    lastPutBody = Map<String, dynamic>.from(body! as Map);
-    return noFees
-        ? {
-            ..._prepaymentDetail,
-            'feeSettlementMode': 'NONE',
-            'bankFeeAccountAmount': 0,
-            'otherFeeAccountAmount': 0,
-            'otherFeeStyleId': null,
-            'accountAmount': 627.7432,
-            'bankFee': 0,
-            'otherFee': 0,
-          }
-        : _prepaymentDetail;
+    final command = Map<String, dynamic>.from(body as Map);
+    lastPutBody = Map<String, dynamic>.from(command['document'] as Map);
+    return financeReviewReceiptFixture(
+      path: path,
+      command: command,
+      result: await get(path),
+    );
   }
 }
 

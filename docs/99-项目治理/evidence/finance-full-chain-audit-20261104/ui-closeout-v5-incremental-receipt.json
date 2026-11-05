@@ -1,0 +1,68 @@
+{
+  "scope": "Task UI candidate, not deployed, not company-book acceptance; Win7 excluded",
+  "sourceSha256": {
+    "lib/components/feedback/uten_busy_overlay.dart": "494366eabcbfc3a0f113155951ac64e553323991146f45d7de3d48ce0743450c",
+    "lib/shared/documents/document_unapproval_action.dart": "13542885b967eabc409fa547ea3c0a777b6a4aea3e816aecd30bc80e1573c8c5",
+    "lib/core/print/source_table_paper.dart": "fe5e4c3aa4665442b1ed568d14b56086f10e6ba6c892eaa69ed4ac049c45d19f",
+    "test/components/feedback/uten_busy_overlay_pending_yield_test.dart": "96c29d7fe42fe0f2747eb4dd2f37bab499d10135eb24141a6f2112c0b2de1776",
+    "test/shared/documents/document_unapproval_action_test.dart": "5a9fbd2359066109975ddd1b7ddf821f0a13e3274d3ae085f8c01f2c54180b3a",
+    "test/features/finance/finance_gl_confirm_delete_command_recovery_test.dart": "305a6357d3182a9fa1afac4c254a37681c69e4eb81de258b5796f984a1f19606",
+    "test/components/print/financial_source_table_paper_test.dart": "18d060d461ee35e8ed52952ebd95110aade1bc259cd7f987d019ad7c48c194cd",
+    "contracts/finance-paper-layout/financial-v1.json": "327ac93f892c7ca2f249bc8e1033185a0506e5916dd616a75c029a342d698c4f",
+    "lib/features/finance/widgets/finance_document_review_command.dart": "f3bf8707a83dde5537d2378865c432af444e196a876cd49a87193628b3ede903"
+  },
+  "pendingBusy": {
+    "old": "3/3 genuine widget cases fail on old shared busy source",
+    "candidate": "56/56 eight-file applicable group passed; includes 34 command/unapproval cases, counts overlap",
+    "analyze": "5 items No issues found"
+  },
+  "financeCommands": {
+    "candidate": "34/34 includes 18 new GL_CONFIRM/DELETE ApiClient transport cases and 16 unapproval action cases",
+    "firstRound": "25 pass/9 fail preserved; held progress used pumpAndSettle, dynamic busy label, and permission-filtered provider test drivers corrected; business assertions retained",
+    "finalWaitingDelta": "37/37 after one busy mask covers durable save, request scope, local CAS hook and network; includes 34 prior command/unapproval cases + 3 public pending owner cases; overlap, not additive",
+    "finalAnalyze": "6 items No issues found"
+  },
+  "financialPaper": {
+    "producer": "Actual Java v3 synthetic geometry responses, not actual January accounting book",
+    "candidate": "21/21 three-file financial + original physical/source renderer tests passed, with strict original N3:O3/11pt/CENTER assertion",
+    "visibleQa": "6/6 pages rendered and viewed: unit horizontal on annual; body strings/footnote/gray bands/alignment/page breaks complete",
+    "readback": "build/finance-final-audit/financial-paper-qa-v9/financial-geometry-pdf-readback.json",
+    "rows": {
+      "balanceSheet": 32,
+      "monthlyProfit": 20,
+      "annualProfit": 21
+    },
+    "annual33Before32": true,
+    "intermediateMatcherFailure": "20 pass/1 fail in newly strengthened Map membership assertion; actual geometry identical, fixed test Map deep equals only; old log retained",
+    "confirmedPublishedLabelDifferences": {
+      "explanation": "Published monthly-profit rows22/24 follow later user-relayed finance confirmation; original annotations remain separately preserved, not renderer changes",
+      "sourceRules": "server/src/main/resources/finance/template-contract-v1.json:5-11 confirmedBusinessRules",
+      "publishedFields": [
+        "$.templates.monthlyProfit.rows.22",
+        "$.templates.monthlyProfit.rows.24"
+      ],
+      "originalFields": [
+        "$.templates.monthlyProfit.sourceRows.22",
+        "$.templates.monthlyProfit.sourceRows.24"
+      ],
+      "publishedLines": [
+        4065,
+        4067
+      ],
+      "originalLines": [
+        4088,
+        4090
+      ],
+      "document": "docs/99-项目治理/2026-11-03-财务全需求逐项验收复核.md:13",
+      "earlierRuleRecord": "docs/99-项目治理/2026-11-02-财务复刻-费用损益实施记录.md:52"
+    }
+  },
+  "focusFixture": {
+    "url": "http://127.0.0.1:18098/",
+    "httpMainSha256": "D93C38A767FFFF5DC31522F3C063B4035C8FEDDF6D7FB75264C4D524530A6A13",
+    "listenerPid": 24612,
+    "noBackend": true,
+    "productionFocusUnchanged": true,
+    "port18096": "Unknown preexisting different service; no changes or termination; old ready claim withdrawn"
+  }
+}

@@ -156,6 +156,13 @@ void main() {
       ),
       findsNothing,
     );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('uten-date-range-clear')),
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

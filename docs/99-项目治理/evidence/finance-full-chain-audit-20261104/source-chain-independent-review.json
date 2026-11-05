@@ -1,0 +1,58 @@
+{
+  "date": "2026-11-04",
+  "scope": "Independent source, formula and native statement query review; no company business database access",
+  "sourceReview": {
+    "runtime": "Bundled Python, saved XLSX XML and read-only openpyxl with external links disabled",
+    "workbookCount": 4,
+    "requirementWorkbook": {
+      "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+      "contractSha256": "d3ec103e1fc3f33f678091d097b0f40d8c78fa396b67c7a1077dce999ffa9862",
+      "sheetCount": 21,
+      "requirements": 20,
+      "headerParts": 255,
+      "balanceSheetNumberedRows": 53,
+      "profitNumberedRows": 20,
+      "differences": 0
+    },
+    "assetWorkbook": {
+      "sourceSha256": "7b68d284343175c7e89b9d1d1f4d085cee899a1e6f657a4687ce7a3eb7020778",
+      "templates": {
+        "depreciation": {"headerColumns": 55, "differences": 0},
+        "amortization": {"headerColumns": 42, "differences": 0},
+        "depreciationCompleted": {"headerColumns": 39, "differences": 0}
+      },
+      "dateHeaders": "Read as native Excel dates; retained original calendar dates"
+    },
+    "formulaReview": {
+      "requirements": ["FIN10", "FIN12", "FIN14", "FIN15", "FIN16", "FIN17", "FIN20"],
+      "checked": ["annual totals and profit denominator", "operating subtotals and expense/profit rollups", "sales cost allocation rates and signed formulas", "confirmed plastic consumption denominator", "unknown propagation", "future-month applicability", "unique same-sheet style bindings", "direct/indirect department overlap guard", "sales expense allocation coverage"],
+      "preservedSourceConflicts": ["Original manufacturing SUM includes the production-output base; current expense rollup excludes that base under reviewed policy", "Original annual profit formula subtracts the interest detail again; the current shared profit rollup avoids double subtraction", "Original plastic formulas differ between rows; later confirmed rule and original formula provenance remain separate"],
+      "newDefectDelegatedToRoot": "FIN17 active-only AR filtering loses earlier-period revenue after reversal while actual COGS preserves dated events"
+    },
+    "notVerified": ["Amounts in the other desktop XLS files", "Company voucher-by-voucher reconciliation", "Real browser/Windows interaction", "Full end-to-end acceptance of all 20 requirements"]
+  },
+  "nativeStatementDeletedRows": {
+    "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceNativeStatementSql.java",
+    "sourceSha256": "cf33f4d9a391bda977b20b973b7d60ad6b27266cf49a277ff87baa3f49778cf4",
+    "test": "server/src/test/java/com/uten/imp/features/finance/statement/FinanceNativeStatementDeletedRowsPostgresTest.java",
+    "testSha256": "bb001ace9f04edea4936b56e6f81ac50884713c3c46b9680769d9d2b0d96b59c",
+    "defect": "Reversed header status admitted draft-deleted item rows into original and reverse periods",
+    "fix": "Apply the item deletion predicate to both approved and reversed header branches; retain historical reversed-header semantics",
+    "lifecycleReview": "SalesShipmentService.delete is draft-only and changes only the header; reverse preserves item deletion flags; draft line removal soft-deletes the removed row",
+    "oracle": "Actual owning SQL against PostgreSQL 16 with current migrated column shapes; executed with a private javac runner and AssertJ assertions",
+    "families": ["SALES_SHIPMENT", "SALES_RETURN", "PURCHASE_RECEIPT", "PURCHASE_RETURN"],
+    "coverage": ["approved original date", "reversed original date", "actual reversal date", "whole-range zero sum", "24-place amount preservation", "draft-deleted line exclusion", "historically deleted reversed header retains legitimate facts"],
+    "before": {"failures": 4, "log": "build/finance-source-review/deleted-lines-before-v2.log"},
+    "after": {"passed": 4, "failures": 0, "exitCode": 0, "migrations": 989, "version": "1051", "log": "build/finance-source-review/deleted-lines-after.log"},
+    "fixtureFailurePreserved": "build/finance-source-review/deleted-lines-before.log initially used event_date instead of the outer bill_date alias; not counted as a product red case",
+    "diffCheck": "passed"
+  },
+  "openFirstPayablePolicyRecovery": {
+    "status": "Confirmed implementation gap; needs a unified durable command/receipt solution",
+    "backend": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayableRecognitionService.java:48,131-149",
+    "frontend": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart:957,1006-1021,1035,1100",
+    "trigger": ["Actor A saves policy revision n; server commits n+1 but response is lost", "Actor B changes policy to n+2", "Actor A retries its original expectedRevision n and receives a conflict", "wasUnknown remains true, so close/cancel stays disabled without an original-operation receipt", "Hard-closing the app loses the memory-only request; the policy editor does not restore a durable original command"],
+    "requiredBehavior": "Preserve actor/body/version/requestId and retrieve the original actor-owned receipt; current configuration equality cannot establish the earlier outcome",
+    "notChangedHere": true
+  }
+}

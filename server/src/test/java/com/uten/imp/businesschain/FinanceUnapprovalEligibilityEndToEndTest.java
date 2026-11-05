@@ -265,7 +265,7 @@ class FinanceUnapprovalEligibilityEndToEndTest {
                 'gl',(SELECT jsonb_agg(to_jsonb(v) ORDER BY v.id) FROM gl_vouchers v))::text
             """,String.class,f.bank(),f.otherBank(),f.bank(),f.otherBank());
     }
-    private Fixture fixture(String tag) {
+    Fixture fixture(String tag) {
         var world=harness.seedWorld("unapproval-check-"+tag+"-"+UUID.randomUUID()); harness.loginAs(world.superAdminUserId()); harness.seedChartOfAccounts();
         UUID bankStyle=style("ACCOUNT",tag+"-bank"),expenseStyle=style("EXPENSE",tag+"-expense"),incomeStyle=style("INCOME",tag+"-income");
         UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND status='使用' AND NOT is_deleted",UUID.class);
@@ -286,16 +286,27 @@ class FinanceUnapprovalEligibilityEndToEndTest {
     private UUID bank(UUID currency,UUID style,String tag) {
         UUID id=UUID.randomUUID(); db.update("INSERT INTO accounts(id,code,name,account_type,currency_id,status,style_id,init_balance,balance_current) VALUES (?,?,?,'BANK',?,'使用',?,500,500)",id,"RV-"+tag,"审核测试账户"+tag,currency,style); return id;
     }
-    private FinanceReceiptSaveRequest receipt(Fixture f,String amount) {
+    FinanceReceiptSaveRequest receipt(Fixture f,String amount) {
         FinanceReceiptSaveRequest req=ReflectionTestUtils.invokeMethod(harness,"receiptRequest",f.world(),null,f.bank(),f.expenseStyle(),amount,amount,"0","0",BigDecimal.ONE,BusinessTime.today());
         req.setReceiptKind("CUSTOMER_PREPAYMENT"); req.setCurrencyId(f.currency()); req.setExchangeRate(BigDecimal.ONE);
+        var original=f.world();
+        var sourceWorld=new FullChainEndToEndTest.World(original.departmentId(),original.employeeId(),original.superAdminUserId(),
+                original.goodsA(),original.goodsB(),original.goodsC(),original.goodsD(),original.goodsE(),original.clientId(),original.supplierId(),
+                original.warehouseId(),original.unitId(),f.currency(),original.colorId(),original.unitLegacy());
+        var previousOrderActor=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        try {
+            harness.loginAs(sourceWorld.superAdminUserId());
+            req.setSalesOrderId(harness.createApprovedOrder(sourceWorld,sourceWorld.goodsD(),"2","100"));
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(previousOrderActor);
+        }
         req.setAmountOriginal(new BigDecimal(amount));req.setOtherFeeStyleId(null);req.setItems(List.of());return req;
     }
-    private FinancePaymentSaveRequest payment(Fixture f,String amount) {
+    FinancePaymentSaveRequest payment(Fixture f,String amount) {
         var req=new FinancePaymentSaveRequest();req.setBillDate(BusinessTime.today());req.setCreateIdempotencyKey("review-payment-"+UUID.randomUUID());
         req.setSupplierId(f.world().supplierId());req.setAccountId(f.bank());req.setCurrencyId(f.currency());req.setExchangeRate(BigDecimal.ONE);
         req.setAmountOriginal(new BigDecimal(amount));req.setAccountCurrencyId(f.currency());req.setAccountAmount(new BigDecimal(amount));
-        req.setBankFeeAccountAmount(BigDecimal.ZERO);req.setBankReference("REVIEW-"+UUID.randomUUID());req.setBankBookedAt(BusinessTime.today().atTime(10,0).atOffset(java.time.ZoneOffset.UTC));
+        req.setBankFeeAccountAmount(BigDecimal.ZERO);req.setBankReference("REVIEW-"+UUID.randomUUID());req.setBankBookedAt(java.time.OffsetDateTime.now().minusSeconds(1));
         var line=new com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput();
         line.setAppliedLedgerId(payable(f));line.setSupplierId(f.world().supplierId());line.setAmountOriginal(new BigDecimal(amount));
         req.setItems(List.of(line));return req;
@@ -330,18 +341,18 @@ class FinanceUnapprovalEligibilityEndToEndTest {
         harness.loginAs(f.world().superAdminUserId());
         return db.queryForObject("SELECT id FROM ar_ap_ledger WHERE source_doc_type='PURCHASE_RECEIPT' AND source_doc_id=? AND status=1",UUID.class,receipt.getId());
     }
-    private FinanceExpenseSaveRequest expense(Fixture f,String amount) {
+    FinanceExpenseSaveRequest expense(Fixture f,String amount) {
         var req=new FinanceExpenseSaveRequest();req.setBillDate(BusinessTime.today());req.setAccountId(f.bank());req.setCurrencyId(f.currency());req.setExchangeRate(BigDecimal.ONE);
         var line=new FinanceExpenseItemInput();line.setExpenseStyleId(f.expenseStyle());line.setAmountOriginal(new BigDecimal(amount));req.setItems(List.of(line));return req;
     }
-    private FinanceOtherIncomeSaveRequest income(Fixture f,String amount) {
+    FinanceOtherIncomeSaveRequest income(Fixture f,String amount) {
         var req=new FinanceOtherIncomeSaveRequest();req.setBillDate(BusinessTime.today());req.setAccountId(f.bank());req.setCurrencyId(f.currency());req.setExchangeRate(BigDecimal.ONE);
         var line=new FinanceOtherIncomeItemInput();line.setIncomeStyleId(f.incomeStyle());line.setAmountOriginal(new BigDecimal(amount));req.setItems(List.of(line));return req;
     }
-    private FinanceBankTransferSaveRequest transfer(Fixture f,String amount) {
+    FinanceBankTransferSaveRequest transfer(Fixture f,String amount) {
         var req=new FinanceBankTransferSaveRequest();req.setBillDate(BusinessTime.today());req.setOutAccountId(f.bank());req.setCurrencyId(f.currency());req.setExchangeRate(BigDecimal.ONE);
         var line=new FinanceBankTransferLineInput();line.setInAccountId(f.otherBank());line.setOccurDate(BusinessTime.today());line.setAmountOriginal(new BigDecimal(amount));req.setItems(List.of(line));return req;
     }
     private void assertBalance(UUID account,String value) { assertThat(db.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,account)).isEqualByComparingTo(value); }
-    private record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID bank,UUID otherBank,UUID expenseStyle,UUID incomeStyle,UUID currency) { }
+    record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID bank,UUID otherBank,UUID expenseStyle,UUID incomeStyle,UUID currency) { }
 }

@@ -71,8 +71,9 @@ class GlPostingLegacyCashScopePostgresTest {
                 assertThat(row.get("styleCode")).isEqualTo("GL-NATIVE-COST");
                 assertThat((BigDecimal)row.get("debit")).isEqualByComparingTo("7");
             });
-            BigDecimal debit=report.rows().stream().map(row->(BigDecimal)row.get("debit")).reduce(BigDecimal.ZERO,BigDecimal::add);
-            BigDecimal credit=report.rows().stream().map(row->(BigDecimal)row.get("credit")).reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal debit=report.rows().stream().filter(row->"DETAIL".equals(row.get("__rowKind"))).map(row->(BigDecimal)row.get("debit")).reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal credit=report.rows().stream().filter(row->"DETAIL".equals(row.get("__rowKind"))).map(row->(BigDecimal)row.get("credit")).reduce(BigDecimal.ZERO,BigDecimal::add);
+            assertThat(debit).isEqualByComparingTo("7");
             assertThat(debit).isEqualByComparingTo(credit);
         }
         assertThatThrownBy(()->jdbc.update("INSERT INTO gl_vouchers(voucher_no,period,voucher_date,source,source_type) VALUES('unproved-new','2025-01',?,'AUTO','EXPENSE')",DATE))

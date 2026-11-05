@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -97,9 +99,8 @@ Future<bool> showFinanceMaterialStatementDialog(
   String? dateTo,
   String? resumeDraftId,
 }) async =>
-    await showDialog<bool>(
+    await showFinanceWorkbenchPanel<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => UtenDialogFrame(
         child: SizedBox(
           width: 1380,
@@ -653,7 +654,6 @@ class _MaterialDirectory
           ],
         ),
       ),
-      const Text('参考名称／有效期间报价独立保存；不建虚假主表组，不生成物量或GL，未明确引用真实组的N/P/Q不填0。'),
       Expanded(
         child: _showSideActual
             ? financeSourceTable(
@@ -825,8 +825,12 @@ class _MaterialDirectory
         children: [
           UtenDialogSurface(
             child: UtenDialogHeader(
-              title: const Text(
-                '${FinanceRequirementNames.otherReceivableStatement}资料',
+              title: const UtenDialogTitleWithHint(
+                title: Text(
+                  '${FinanceRequirementNames.otherReceivableStatement}资料',
+                ),
+                info:
+                    '财务辅助与会计币别按原UUID对应，不以同名关联；资料仅作来源核对，不再记账。参考名称／有效期间报价独立保存，不建虚假主表组；未明确引用真实组的N/P/Q不填0。',
               ),
               showCloseButton: true,
               onClose: () => Navigator.of(context).pop(_changed),
@@ -936,10 +940,7 @@ class _MaterialDirectory
                         ),
                     ],
                   ),
-                  if (_context != null)
-                    Text(
-                      '当前分组：${_context!['id']}；财务辅助与会计币别按原UUID对应，不以同名关联；资料仅作来源核对，不再记账。',
-                    ),
+                  if (_context != null) Text('当前分组：${_context!['id']}'),
                 ],
               ),
             ),
@@ -983,6 +984,11 @@ class _MaterialDirectory
                 ? _sidebarTable()
                 : _recordTable(),
           ),
+          if (_busy)
+            const UtenBusyOverlay(
+              title: '正在读取材料往来资料',
+              showDoNotLeaveHint: false,
+            ),
         ],
       ),
     );

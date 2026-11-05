@@ -46,6 +46,12 @@ public interface InventoryProductionCostPort {
     MovementValue withdrawOutput(Withdrawal command);
     Scope scope(UUID sourceId);
     Revised revise(Revision command);
+    /** Verify revisions created during deferred business finalization in the
+     * same transaction. A synchronization first registered inside beforeCommit
+     * is not part of Spring's already captured beforeCommit callback list. */
+    default void verifyPendingPrecision() {
+        throw new IllegalStateException("Deferred production-cost precision verification is unavailable");
+    }
     /** Reuses the current approved plan, only refreshing its actual-cost sources. */
     Revised recalculate(EventContext context, UUID executionSegmentId, long expectedVersion);
     List<Work> pendingWork(int limit);

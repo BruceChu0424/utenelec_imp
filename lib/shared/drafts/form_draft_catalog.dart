@@ -317,6 +317,20 @@ abstract final class FormDraftCatalog {
     permission: Perm.financeReportView,
     dialogKind: 'financeMaterialStatement',
   );
+  static const financeChartMetadata = FormDraftDescriptor(
+    title: '修改科目名称',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeChartMetadata',
+  );
+  static const financeDurableCommand = FormDraftDescriptor(
+    title: '财务设置与成本操作',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeDurableCommand',
+  );
   static const financeSubcontractLossPolicy = FormDraftDescriptor(
     title: '允许损耗率',
     module: BadgeModule.finance,
@@ -414,6 +428,13 @@ abstract final class FormDraftCatalog {
     route: '/finance',
     permission: Perm.financeReceiptApprove,
     dialogKind: 'financeStatementClientReview',
+  );
+  static const financeApplicationSettings = FormDraftDescriptor(
+    title: '申请流程设置',
+    module: BadgeModule.finance,
+    route: '/finance/applications/settings',
+    permission: Perm.expenseSettings,
+    dialogKind: 'financeApplicationSettings',
   );
   static const financeApplication = FormDraftDescriptor(
     title: FinanceRequirementNames.financeApplications,
@@ -944,6 +965,8 @@ abstract final class FormDraftCatalog {
     'financeAssetTemplateInput': financeAssetTemplateInput,
     'financeAssetOpeningGroup': financeAssetOpeningGroup,
     'financeMaterialStatement': financeMaterialStatement,
+    'financeChartMetadata': financeChartMetadata,
+    'financeDurableCommand': financeDurableCommand,
     'financeSubcontractLossPolicy': financeSubcontractLossPolicy,
     'financeSubcontractQuantityEvidence': financeSubcontractQuantityEvidence,
     'financeProcurementConfirmation': financeProcurementConfirmation,
@@ -959,6 +982,7 @@ abstract final class FormDraftCatalog {
     'financeStatementReview': financeStatementReview,
     'financeStatementClientReview': financeStatementClientReview,
     'financeApplication': financeApplication,
+    'financeApplicationSettings': financeApplicationSettings,
     'financeApplicationExpense': financeApplicationExpense,
     'financeApplicationPayroll': financeApplicationPayroll,
     'financeApplicationReview': financeApplicationReview,

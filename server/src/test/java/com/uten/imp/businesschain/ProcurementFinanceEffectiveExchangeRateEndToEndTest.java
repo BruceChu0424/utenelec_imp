@@ -43,8 +43,9 @@ import static org.assertj.core.api.Assertions.*;
         "uten.crypto.pgp-master-key=fx-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic test-only cryptographic fixture.
         "uten.crypto.hmac-key=fx-regression-isolated-hmac-key-0123456789-abcdef",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
 class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){ FullChainEndToEndTest.registerDataSource(registry); }
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){ FinanceScopedChainDatabase.register(registry,ProcurementFinanceEffectiveExchangeRateEndToEndTest.class); }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired PurchaseRequestService requests;
@@ -54,6 +55,7 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
     @Autowired SubcontractReceiptService subcontractReceipts;
     @Autowired ProcurementFinanceApprovalService finance;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
     @Autowired TaskClaimService claims;
     @Autowired WarehouseArrivalRegistrationService arrivals;
     @Autowired DocumentUnapprovalService unapproval;
@@ -172,15 +174,30 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         Fixture f=fixture("PURCHASE","3.125",false); approve(f,RATE);
         UUID first=receipt(f,"1.125"); approveReceipt(f,first);
         BigDecimal posted=decimal("SELECT total_local FROM purchase_receipts WHERE id=?",first);
+        String frozenReceiptFacts=postedReceiptFacts(first);
         purchaseOrders.changeQty(f.order(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(f.item(),new BigDecimal("4.125")))));
+        assertThat(postedReceiptFacts(first)).isEqualTo(frozenReceiptFacts);
         harness.loginAs(f.reviewer()); BatchDecisionItem decision=pending(f);
         assertThatThrownBy(()->finance.approveBatch(List.of(decision),null,new BigDecimal("8.123457"))).isInstanceOf(ApiException.class);
         assertThat(decimal("SELECT total_local FROM purchase_receipts WHERE id=?",first)).isEqualByComparingTo(posted);
         finance.approveBatch(List.of(decision),null,RATE); harness.loginAs(f.world().superAdminUserId());
+        assertThat(postedReceiptFacts(first)).isEqualTo(frozenReceiptFacts);
         UUID second=receipt(f,"3"); approveReceipt(f,second);
         assertThat(decimal("SELECT SUM(r.total_local) FROM purchase_receipts r JOIN purchase_receipt_items i ON i.receipt_id=r.id WHERE i.order_item_id=? AND r.status=1",f.item()))
                 .isEqualByComparingTo(new BigDecimal("4.125").multiply(new BigDecimal("13.123457")).multiply(RATE));
         assertThat(decimal("SELECT total_local FROM purchase_receipts WHERE id=?",first)).isEqualByComparingTo(posted);
+    }
+
+    private String postedReceiptFacts(UUID receipt) {
+        return db.queryForObject("""
+            SELECT jsonb_build_object(
+                'header',(SELECT to_jsonb(r) FROM purchase_receipts r WHERE id=?),
+                'lines',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM purchase_receipt_items i WHERE receipt_id=?),
+                'ledger',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM ar_ap_ledger a WHERE source_doc_id=?),
+                'vouchers',(SELECT jsonb_agg(to_jsonb(v) ORDER BY id) FROM gl_vouchers v WHERE source_doc_id=?),
+                'entries',(SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM gl_entries e JOIN gl_vouchers v ON v.id=e.voucher_id WHERE v.source_doc_id=?),
+                'stock',(SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM stock_movements m))::text
+            """,String.class,receipt,receipt,receipt,receipt,receipt);
     }
 
     @Test void legacyNullFinancialDecisionRetainsContractRateAndStoredLocalRatherThanReestimating(){
@@ -208,17 +225,42 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
     @Test void receiptUnapprovalRepinsTheDecisionAndReapprovalPostsOnceWithoutChangingOriginal(){
         Fixture f=fixture("PURCHASE","3.125",false); UUID caseId=approve(f,RATE);
         UUID original=receipt(f,"3.125"); approveReceipt(f,original);
-        resolveInspection(f,original);
+        ReflectionTestUtils.invokeMethod(harness,"passAndStockPurchaseReceipt",f.world(),original,new BigDecimal("3.125"));
+        assertThat(decimal("SELECT sum(qty) FROM stock_balances WHERE goods_id=?",f.world().goodsD())).isEqualByComparingTo("3.125");
+        String frozenQuantity=receiptQuantityFacts(original);
+        String originalStock=db.queryForObject("SELECT jsonb_agg(to_jsonb(m) ORDER BY id)::text FROM stock_movements m WHERE goods_id=?",String.class,f.world().goodsD());
+        assertThat(originalStock).isNotNull().isNotEqualTo("[]");
+        String originalEntries=db.queryForObject("SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY e.id),'[]')::text FROM gl_entries e JOIN gl_vouchers v ON v.id=e.voucher_id WHERE v.source_doc_id=?",String.class,original);
         var command=new DocumentUnapprovalService.UnapproveRequest("fx-receipt-unapprove-"+original,"数量与本币对称验算");
         var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",original,command);
         var repeated=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",original,command);
         assertThat(repeated.getId()).isEqualTo(draft.getId());
+        assertThat(receiptQuantityFacts(draft.getId())).isEqualTo(frozenQuantity);
+        assertThat(receiptQuantityFacts(original)).isEqualTo(frozenQuantity);
+        assertThat(db.queryForObject("SELECT quantity_successor_source_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId()))
+                .isEqualTo(db.queryForObject("SELECT id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,original));
+        assertThat(decimal("SELECT coalesce(sum(qty),0) FROM stock_balances WHERE goods_id=?",f.world().goodsD())).isZero();
         assertThat(db.queryForObject("SELECT finance_approval_case_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId())).isNull();
         approveReceipt(f,draft.getId());
+        ReflectionTestUtils.invokeMethod(harness,"passAndStockPurchaseReceipt",f.world(),draft.getId(),new BigDecimal("3.125"));
         assertThat(decimal("SELECT total_local FROM purchase_receipts WHERE id=?",original)).isEqualByComparingTo(LOCAL);
         assertThat(decimal("SELECT amount_original_local FROM ar_ap_ledger WHERE source_doc_id=? AND status=1",draft.getId())).isEqualByComparingTo(LOCAL);
         assertThat(db.queryForObject("SELECT finance_approval_case_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId())).isEqualTo(caseId);
         assertThat(decimal("SELECT received_qty FROM purchase_order_items WHERE id=?",f.item())).isEqualByComparingTo("3.125");
+        assertThat(decimal("SELECT sum(qty) FROM stock_balances WHERE goods_id=?",f.world().goodsD())).isEqualByComparingTo("3.125");
+        assertThat(receiptQuantityFacts(original)).isEqualTo(frozenQuantity);
+        assertThat(receiptQuantityFacts(draft.getId())).isEqualTo(frozenQuantity);
+        assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(m) ORDER BY id)::text FROM stock_movements m WHERE id IN(SELECT (value->>'id')::uuid FROM jsonb_array_elements(?::jsonb))",String.class,originalStock)).isEqualTo(originalStock);
+        assertThat(db.queryForObject("SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY id),'[]')::text FROM gl_entries e WHERE id IN(SELECT (value->>'id')::uuid FROM jsonb_array_elements(?::jsonb))",String.class,originalEntries)).isEqualTo(originalEntries);
+    }
+
+    private String receiptQuantityFacts(UUID receipt) {
+        return db.queryForObject("""
+            SELECT to_jsonb(q)::text FROM (SELECT goods_id,order_item_id,unit_id,unit_rate,qty,
+                quantity_semantics,gift_qty,charged_base_qty,gift_base_qty,replacement_intent,gift_replacement_intent,
+                quantity_adoption_version,quantity_precision_policy,price,amount_original,amount_local
+                FROM purchase_receipt_items WHERE receipt_id=?)q
+            """,String.class,receipt);
     }
 
     @Test void purchaseReturnUsesPostedReceiptFinancialAmountsAndReverseRestoresExactStockAndCredit(){
@@ -306,10 +348,156 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         assertThatThrownBy(()->purchaseReceipts.create(receipt)).isInstanceOf(ApiException.class);
     }
 
+    @ParameterizedTest @org.junit.jupiter.params.provider.MethodSource("unitPriceDomainCases")
+    void financialUnitPriceBoundarySavesThroughRealOrderReviewAndReceipt(String kind,String rawPrice) {
+        BigDecimal price=new BigDecimal(rawPrice);
+        Fixture f=fixture(kind,"1",true,price);
+        assertThat(decimal("SELECT price FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo(price);
+        assertThat(decimal("SELECT total_original FROM "+f.prefix()+"_orders WHERE id=?",f.order())).isEqualByComparingTo(price);
+        UUID decision=approve(f,BigDecimal.ONE);
+        String orderBefore=db.queryForObject("SELECT to_jsonb(i)::text FROM "+f.prefix()+"_order_items i WHERE id=?",String.class,f.item());
+        UUID receipt=receipt(f,"1");approveReceipt(f,receipt);
+        assertThat(decimal("SELECT price FROM "+f.prefix()+"_receipt_items WHERE receipt_id=?",receipt)).isEqualByComparingTo(price);
+        assertThat(decimal("SELECT total_original FROM "+f.prefix()+"_receipts WHERE id=?",receipt)).isEqualByComparingTo(price);
+        assertThat(decimal("SELECT total_local FROM "+f.prefix()+"_receipts WHERE id=?",receipt)).isEqualByComparingTo(price);
+        assertThat(decimal("SELECT amount_original_local FROM ar_ap_ledger WHERE source_doc_id=? AND status=1",receipt)).isEqualByComparingTo(price);
+        assertThat(db.queryForObject("SELECT finance_approval_case_id FROM "+f.prefix()+"_receipt_items WHERE receipt_id=?",UUID.class,receipt)).isEqualTo(decision);
+        // Receipt counters may advance; the submitted/approved price and all
+        // noncumulative commercial source facts keep their original values.
+        assertThat(db.queryForObject("SELECT (to_jsonb(i)-ARRAY['received_qty','issued_qty','updated_at','updated_by'])::text FROM "+f.prefix()+"_order_items i WHERE id=?",String.class,f.item()))
+            .isEqualTo(db.queryForObject("SELECT (?::jsonb-ARRAY['received_qty','issued_qty','updated_at','updated_by'])::text",String.class,orderBefore));
+    }
+    static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> unitPriceDomainCases() {
+        return java.util.stream.Stream.of("PURCHASE","SUBCONTRACT").flatMap(kind->java.util.stream.Stream.of(
+            "9999999999999999999999999999999999999999.123456789012345678901234","0.000000000000000000000001")
+            .map(price->org.junit.jupiter.params.provider.Arguments.of(kind,price)));
+    }
+
+    @ParameterizedTest @ValueSource(strings={"PURCHASE","SUBCONTRACT"})
+    void savedReferenceChoiceSurvivesReviewSameInputSaveAndReceiptTailWithoutAnotherReferenceChoice(String kind) {
+        BigDecimal total=new BigDecimal("10.1234567891");
+        Fixture original=precision("money.reference-unit-price",24,"DOWN",()->fixture(kind,"3",true,null,total));
+        String proof=referencePolicy(original);
+        var parsed=referenceTree(proof);
+        assertThat(parsed.path("mode").asText()).isEqualTo("SELECTED");
+        assertThat(parsed.path("precisionPolicy").path("choices").path("money.reference-unit-price").path("scale").asInt()).isEqualTo(24);
+        assertThat(parsed.path("referencePrice").asText()).isEqualTo("3.374485596366666666666666");
+        Fixture f=saveSameTotalInput(original,"3",total); // The original saved choice is authoritative.
+        String savedProof=referencePolicy(f);
+        if(f.item().equals(original.item()))assertThat(savedProof).isEqualTo(proof);
+        else{
+            assertThat(db.queryForObject("SELECT count(*) FROM "+f.prefix()+"_order_items WHERE id=?",Integer.class,original.item())).isZero();
+            assertThat(db.queryForObject("SELECT (payload->'reference_price_precision_policy')::text FROM business_record_history WHERE source_table=? AND source_id=? AND parent_id=? AND operation='DELETE' ORDER BY id DESC LIMIT 1",String.class,f.prefix()+"_order_items",original.item().toString(),f.order().toString())).isEqualTo(proof);
+            var newAdoption=referenceTree(savedProof);
+            for(String field:List.of("mode","totalInput","quantity","referencePrice","unitId","unitRate","precisionPolicy"))
+                assertThat(newAdoption.get(field)).isEqualTo(parsed.get(field));
+        }
+        UUID reviewed=approve(f,BigDecimal.ONE); // No current reference choice.
+        assertThat(referencePolicy(f)).isEqualTo(savedProof);
+        assertThatThrownBy(()->db.update("UPDATE "+f.prefix()+"_order_items SET reference_price_precision_policy=jsonb_set(reference_price_precision_policy,'{mode}','\"EXACT\"') WHERE id=?",f.item()))
+            .hasMessageContaining("policy is frozen");
+        assertThat(referencePolicy(f)).isEqualTo(savedProof);
+        UUID first=precision("money.cumulative-share",24,"DOWN",()->receipt(f,"1"));precision("money.cumulative-share",24,"DOWN",()->{approveReceipt(f,first);return null;});
+        UUID tail=receipt(f,"2");approveReceipt(f,tail);
+        assertThat(decimal("SELECT sum(amount_original_local) FROM ar_ap_ledger WHERE source_doc_id IN(?,?) AND status=1",first,tail)).isEqualByComparingTo(total);
+        assertThat(decimal("SELECT total_original FROM "+f.prefix()+"_orders WHERE id=?",f.order())).isEqualByComparingTo(total);
+        assertThat(decimal("SELECT price FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo("3.374485596366666666666666");
+        assertThat(referencePolicy(f)).isEqualTo(savedProof);
+        assertThat(db.queryForObject("SELECT count(*) FROM "+f.prefix()+"_receipt_items WHERE receipt_id IN(?,?) AND finance_approval_case_id=?",Integer.class,first,tail,reviewed)).isEqualTo(2);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"PURCHASE","SUBCONTRACT"})
+    void quantityRevisionsKeepTheOriginalDownReferenceAndFreezeOnlyTheNewTotalRatio(String kind) {
+        Fixture f=precision("money.reference-unit-price",2,"DOWN",()->fixture(kind,"6",true,null,BigDecimal.ONE));
+        String original=referencePolicy(f);approve(f,BigDecimal.ONE);
+        precision("money.reference-unit-price",2,"HALF_UP",()->{changeQuantity(f,"12");return null;});
+        assertThat(decimal("SELECT price FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo("0.16");
+        assertThat(decimal("SELECT total_amount_input FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo("2");
+        var first=referenceTree(referencePolicy(f));
+        assertThat(first.path("revisionMode").asText()).isEqualTo("EXACT");
+        assertThat(first.path("basis").path("reference_price_precision_policy")).isEqualTo(referenceTree(original));
+        approveReconfirmation(f);
+        precision("money.revised-total",24,"DOWN",()->{changeQuantity(f,"5");return null;});
+        var second=referenceTree(referencePolicy(f));
+        assertThat(second.path("revisionMode").asText()).isEqualTo("SELECTED");
+        assertThat(second.path("revisionPolicy").path("choices").path("money.revised-total").path("scale").asInt()).isEqualTo(24);
+        assertThat(second.path("basis")).isEqualTo(first.path("basis"));
+        assertThat(decimal("SELECT total_amount_input FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo("0.833333333333333333333333");
+        assertThat(decimal("SELECT price FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo("0.16");
+        approveReconfirmation(f);
+        assertThat(db.queryForObject("SELECT fn_procurement_reference_price_matches(to_jsonb(i)) FROM "+f.prefix()+"_order_items i WHERE id=?",Boolean.class,f.item())).isTrue();
+        assertThat(db.queryForObject("SELECT count(*) FROM procurement_order_source_revisions WHERE order_id=?",Integer.class,f.order())).isEqualTo(2);
+        String revisedProof=referencePolicy(f);
+        UUID firstReceipt=precision("money.cumulative-share",24,"DOWN",()->receipt(f,"1"));precision("money.cumulative-share",24,"DOWN",()->{approveReceipt(f,firstReceipt);return null;});
+        UUID remainingReceipt=receipt(f,"4");approveReceipt(f,remainingReceipt);
+        assertThat(decimal("SELECT sum(amount_original_local) FROM ar_ap_ledger WHERE source_doc_id IN(?,?) AND status=1",firstReceipt,remainingReceipt))
+            .isEqualByComparingTo("0.833333333333333333333333");
+        assertThat(referencePolicy(f)).isEqualTo(revisedProof);
+        assertThat(decimal("SELECT price FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo("0.16");
+    }
+
+    @ParameterizedTest @org.junit.jupiter.params.provider.MethodSource("referenceSuccessorCases")
+    void orderSuccessorsInheritTheSavedReferencePolicyAndReviewWithoutChoosingItAgain(String kind,boolean revised) {
+        Fixture f=precision("money.reference-unit-price",2,"DOWN",()->fixture(kind,"6",true,null,BigDecimal.ONE));
+        approve(f,BigDecimal.ONE);
+        if(revised){precision("money.reference-unit-price",2,"HALF_UP",()->{changeQuantity(f,"12");return null;});approveReconfirmation(f);}
+        String original=referencePolicy(f);
+        String family=kind.equals("PURCHASE")?"purchaseOrder":"subcontractOrder";
+        var command=new DocumentUnapprovalService.UnapproveRequest("reference-successor-"+f.order(),"原金额与参考价采用事实保全");
+        unapproval.unapprove(family,f.order(),command);
+        UUID draft=db.queryForObject("SELECT draft_id FROM document_unapprovals WHERE family=? AND original_id=?",UUID.class,family,f.order());
+        UUID item=db.queryForObject("SELECT id FROM "+f.prefix()+"_order_items WHERE order_id=?",UUID.class,draft);
+        Fixture inherited=new Fixture(f.world(),f.reviewer(),f.currency(),f.kind(),draft,item,f.purchaseSource());
+        assertThat(referencePolicy(inherited)).isEqualTo(original);
+        assertThat(db.queryForObject("SELECT reference_price_successor_source_id FROM "+f.prefix()+"_order_items WHERE id=?",UUID.class,item)).isEqualTo(f.item());
+        unapproval.unapprove(family,f.order(),command);
+        assertThat(db.queryForObject("SELECT count(*) FROM document_unapprovals WHERE family=? AND original_id=?",Integer.class,family,f.order())).isEqualTo(1);
+        approve(inherited,BigDecimal.ONE);
+        assertThat(referencePolicy(inherited)).isEqualTo(original);
+        assertThat(referencePolicy(f)).isEqualTo(original);
+        assertThat(decimal("SELECT price FROM "+f.prefix()+"_order_items WHERE id=?",f.item())).isEqualByComparingTo("0.16");
+    }
+    static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> referenceSuccessorCases(){
+        return java.util.stream.Stream.of("PURCHASE","SUBCONTRACT").flatMap(kind->java.util.stream.Stream.of(false,true)
+            .map(revised->org.junit.jupiter.params.provider.Arguments.of(kind,revised)));
+    }
+
+    private String referencePolicy(Fixture f){return db.queryForObject("SELECT reference_price_precision_policy::text FROM "+f.prefix()+"_order_items WHERE id=?",String.class,f.item());}
+    private com.fasterxml.jackson.databind.JsonNode referenceTree(String stored){
+        try{return com.uten.imp.common.finance.FinancialJsonResults.tree(json,stored);}catch(com.fasterxml.jackson.core.JsonProcessingException invalid){throw new AssertionError(invalid);}
+    }
+    private void changeQuantity(Fixture f,String qty){
+        var request=new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(f.item(),new BigDecimal(qty))));
+        if(f.kind().equals("PURCHASE"))purchaseOrders.changeQty(f.order(),request);else subcontractOrders.changeQty(f.order(),request);
+    }
+    private void approveReconfirmation(Fixture f){harness.loginAs(f.reviewer());finance.approveBatch(List.of(pending(f)),null,BigDecimal.ONE);harness.loginAs(f.world().superAdminUserId());}
+    @SuppressWarnings("try")
+    private <T>T precision(String purpose,int scale,String rounding,java.util.function.Supplier<T> action){
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(purpose,new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(scale,rounding)))){return action.get();}
+        catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
+    }
+    private Fixture saveSameTotalInput(Fixture f,String qty,BigDecimal total){
+        UUID item;
+        if(f.kind().equals("PURCHASE")){
+            var request=new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.world().supplierId());request.setWarehouseId(f.world().warehouseId());request.setCurrencyId(f.currency());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);request.setSettlementMethodId(settlement());
+            var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setId(f.item());line.setLineNo(1);line.setGoodsId(f.world().goodsD());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setTotalAmountInput(total);line.setRequestItemId(f.purchaseSource());request.setItems(List.of(line));item=purchaseOrders.update(f.order(),request).getItems().getFirst().getId();
+        }else{
+            var request=new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.world().supplierId());request.setWarehouseId(f.world().warehouseId());request.setCurrencyId(f.currency());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);request.setSettlementMethodId(settlement());
+            var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();line.setId(f.item());line.setLineNo(1);line.setGoodsId(f.world().goodsE());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setTotalAmountInput(total);request.setItems(List.of(line));item=subcontractOrders.update(f.order(),request).getItems().getFirst().getId();
+        }
+        return new Fixture(f.world(),f.reviewer(),f.currency(),f.kind(),f.order(),item,f.purchaseSource());
+    }
+
     private record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID currency,String kind,UUID order,UUID item,UUID purchaseSource){
         String prefix(){return kind.equals("PURCHASE")?"purchase":"subcontract";}
     }
     private Fixture fixture(String kind,String qty,boolean base){
+        return fixture(kind,qty,base,new BigDecimal("13.123457"));
+    }
+    private Fixture fixture(String kind,String qty,boolean base,BigDecimal price){
+        return fixture(kind,qty,base,price,null);
+    }
+    private Fixture fixture(String kind,String qty,boolean base,BigDecimal price,BigDecimal totalInput){
         var w=harness.seedWorld("fx-"+UUID.randomUUID()); harness.loginAs(w.superAdminUserId());
         UUID currency=base?db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class):w.currencyId();
         if(!base)db.update("UPDATE currencies SET name='美金',code=? WHERE id=?","USD-FX-"+currency,currency);
@@ -319,11 +507,11 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         var line=new com.uten.imp.features.purchase.request.dto.RequestItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("20"));request.setItems(List.of(line));
         var source=requests.create(request);requests.approve(source.getId());UUID purchaseSource=source.getItems().getFirst().getId();
         UUID order;
-        if(kind.equals("PURCHASE")) order=purchaseOrder(w,purchaseSource,currency,qty);
+        if(kind.equals("PURCHASE")) order=purchaseOrder(w,purchaseSource,currency,qty,false,price,totalInput);
         else{
             UUID material=harness.addSubcontractDirectMaterial(w,w.goodsE(),"1");harness.receiveSubcontractMaterial(w,material,"100");
             var r=new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();r.setBillDate(BusinessTime.today());r.setSupplierId(w.supplierId());r.setWarehouseId(w.warehouseId());r.setCurrencyId(currency);r.setExchangeRate(BigDecimal.ONE);r.setTaxRate(BigDecimal.ZERO);r.setSettlementMethodId(settlement());
-            var item=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();item.setGoodsId(w.goodsE());item.setUnitId(w.unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(qty));item.setPrice(new BigDecimal("13.123457"));r.setItems(List.of(item));order=subcontractOrders.create(r).getId();
+            var item=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();item.setGoodsId(w.goodsE());item.setUnitId(w.unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(qty));item.setPrice(price);item.setTotalAmountInput(totalInput);r.setItems(List.of(item));order=subcontractOrders.create(r).getId();
         }
         UUID item=db.queryForObject("SELECT id FROM "+(kind.equals("PURCHASE")?"purchase":"subcontract")+"_order_items WHERE order_id=?",UUID.class,order);
         return new Fixture(w,reviewer,currency,kind,order,item,purchaseSource);
@@ -332,10 +520,16 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         return purchaseOrder(w,source,currency,qty,false);
     }
     private UUID purchaseOrder(FullChainEndToEndTest.World w,UUID source,UUID currency,String qty,boolean twoLines){
+        return purchaseOrder(w,source,currency,qty,twoLines,new BigDecimal("13.123457"));
+    }
+    private UUID purchaseOrder(FullChainEndToEndTest.World w,UUID source,UUID currency,String qty,boolean twoLines,BigDecimal price){
+        return purchaseOrder(w,source,currency,qty,twoLines,price,null);
+    }
+    private UUID purchaseOrder(FullChainEndToEndTest.World w,UUID source,UUID currency,String qty,boolean twoLines,BigDecimal price,BigDecimal totalInput){
         var r=new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();r.setBillDate(BusinessTime.today());r.setSupplierId(w.supplierId());r.setWarehouseId(w.warehouseId());r.setCurrencyId(currency);r.setExchangeRate(BigDecimal.ONE);r.setTaxRate(BigDecimal.ZERO);r.setSettlementMethodId(settlement());
         var lines=new java.util.ArrayList<com.uten.imp.features.purchase.order.dto.OrderItemLine>();
         for(int i=0;i<(twoLines?2:1);i++) {
-            var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("13.123457"));line.setRequestItemId(source);lines.add(line);
+            var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(price);line.setTotalAmountInput(totalInput);line.setRequestItemId(source);lines.add(line);
         }
         r.setItems(lines);return purchaseOrders.create(r).getId();
     }
@@ -348,13 +542,13 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
     private UUID approve(Fixture f,BigDecimal rate){var decision=submit(f);finance.approveBatch(List.of(decision),null,rate);harness.loginAs(f.world().superAdminUserId());return decision.caseId();}
     private com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest purchaseReceipt(Fixture f,String qty){
         var r=new com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest();r.setBillDate(BusinessTime.today());r.setSupplierId(f.world().supplierId());r.setWarehouseId(f.world().warehouseId());r.setExchangeRate(BigDecimal.ONE);
-        var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();line.setGoodsId(f.world().goodsD());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("13.123457"));line.setOrderItemId(f.item());r.setItems(List.of(line));return r;
+        var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();line.setGoodsId(f.world().goodsD());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(decimal("SELECT price FROM purchase_order_items WHERE id=?",f.item()));line.setOrderItemId(f.item());r.setItems(List.of(line));return r;
     }
     private UUID receipt(Fixture f,String qty){
         if(f.kind().equals("PURCHASE"))return purchaseReceipts.create(purchaseReceipt(f,qty)).getId();
         harness.drawAndIssueSubcontract(f.item(),new BigDecimal(qty),"fx-issued-"+UUID.randomUUID());
         var r=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();r.setBillDate(BusinessTime.today());r.setSupplierId(f.world().supplierId());r.setWarehouseId(f.world().warehouseId());r.setExchangeRate(BigDecimal.ONE);
-        var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();line.setGoodsId(f.world().goodsE());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("13.123457"));line.setOrderItemId(f.item());r.setItems(List.of(line));return subcontractReceipts.create(r).getId();
+        var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();line.setGoodsId(f.world().goodsE());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(decimal("SELECT price FROM subcontract_order_items WHERE id=?",f.item()));line.setOrderItemId(f.item());r.setItems(List.of(line));return subcontractReceipts.create(r).getId();
     }
     private void approveReceipt(Fixture f,UUID id){if(f.kind().equals("PURCHASE"))purchaseReceipts.approve(id);else subcontractReceipts.approve(id);}
     private void reverseReceipt(Fixture f,UUID id){if(f.kind().equals("PURCHASE"))purchaseReceipts.reverse(id);else subcontractReceipts.reverse(id);}

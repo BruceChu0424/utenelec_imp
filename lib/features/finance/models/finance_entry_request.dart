@@ -242,3 +242,6 @@ Map<String, dynamic> financeEntryRequest(
   });
   return body;
 }
+
+/// Published request boundary; grouping and exact amounts are unchanged.
+const financeBatchMaxDocuments = 500;

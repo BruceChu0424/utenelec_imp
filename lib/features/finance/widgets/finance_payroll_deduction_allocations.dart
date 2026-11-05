@@ -214,6 +214,7 @@ class FinancePayrollDeductionSection extends StatelessWidget {
             MasterColumnDef<Map<String, dynamic>>(
               key: 'allocationAction',
               label: '对应扣款',
+              info: netAlready ? null : '双击原扣款行核对用途及拆分份额',
               width: 140,
               value: (_) => netAlready ? '只读' : '查看/对应份额',
               columnSearchEnabled: false,
@@ -228,7 +229,6 @@ class FinancePayrollDeductionSection extends StatelessWidget {
           idOf: (r) => r['id'].toString(),
           onOpen: netAlready ? null : (r) => _open(context, r),
           showColumnChooser: false,
-          actions: [if (!netAlready) const Text('双击原扣款行核对用途及拆分份额')],
         ),
       ),
     ],

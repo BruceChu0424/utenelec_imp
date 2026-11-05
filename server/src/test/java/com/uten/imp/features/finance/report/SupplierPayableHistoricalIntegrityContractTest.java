@@ -42,19 +42,41 @@ class SupplierPayableHistoricalIntegrityContractTest {
     }
 
     @Test
-    void reversedDirectSupplierAdvanceRetainsItsDatedLedgerEvent() throws IOException {
+    void nativeAdvanceReversalDelegatesToTheActualAssetBankAndGlFacts() throws IOException {
+        String payment = source("features/finance/payment/FinancePaymentService.java");
+        String advance = source("features/finance/payables/SupplierPrepaymentService.java");
+        String replay = Files.readString(Path.of("src/main/resources/db/migration/V1077__supplier_advance_statement_replay.sql"));
+        assertThat(payment).doesNotContain("ledgerRepo.delete(ledger)")
+                .contains("glPostingService.reverseActualBankPayment(p.getId(),reversedAt)")
+                .contains("p.setStatus(STATUS_REVERSED);p.setReversedAt(reversedAt)")
+                .contains("prepayments().reverse(p.getId(),p.getReversedAt())")
+                .contains("reverseReconciliation(p.getId(),p.getReversedAt())");
+        assertThat(advance).contains("v.source_type='PAYMENT_REV'")
+                .contains("UPDATE finance_supplier_advances SET status='REVERSED',reversed_at=?");
+        assertThat(replay).contains("PERFORM fn_assert_payment_v2_terminal(p_payment)")
+                .contains("a.reversed_at IS DISTINCT FROM p.reversed_at")
+                .contains("reversal_of_voucher_id=o.id")
+                .contains("backward.account_id,backward.account_currency_id")
+                .contains("EXCEPT ALL");
+    }
+
+    @Test
+    void retainedLegacyDirectPaymentReplayStillRequiresItsDatedNegativeApProof() throws IOException {
         String payment = source("features/finance/payment/FinancePaymentService.java");
         String settlement = source("features/finance/payables/SupplierSettlementService.java");
-
-        // 2026-11-04 财务整合（0aaffa3aa）后直接付款不再由付款服务自管 ar_ap_ledger 行，
-        // 红冲按原红冲日期委托 SupplierPrepaymentPort.reverse 保留带日期的预付资产事件。
-        assertThat(payment)
-                .doesNotContain("ledgerRepo.delete(ledger)")
-                .contains("prepayments().reverse(p.getId(),p.getReversedAt())");
-        assertThat(settlement)
-                .contains("ledger.source_doc_type='DIRECT_PAYMENT'")
-                .contains("ledger.status=-1")
-                .contains("ledger.deleted_at IS NOT NULL");
+        String proof=source("features/finance/SupplierAdvanceReplaySql.java");
+        assertThat(payment).contains("prepayments().reverse(p.getId(),p.getReversedAt())");
+        assertThat(payment).doesNotContain("ledgerRepo.delete(ledger)")
+                .contains("if(p.getAmountAuthorityVersion()!=BANK_AUTHORITY_VERSION)throw new ApiException");
+        assertThat(settlement).contains("SupplierAdvanceReplaySql.unreplayableReversal(\"payment\")");
+        assertThat(proof).contains("legacy.source_doc_type='DIRECT_PAYMENT'")
+                .contains("legacy.status=-1").contains("legacy.deleted_at IS NOT NULL")
+                .contains("legacy.supplier_id=").contains("legacy.currency_id=")
+                .contains("legacy.amount_original=-(").contains("legacy.amount_original_local=-(")
+                .contains("NOT fn_finance_supplier_advance_replayable(")
+                .contains("SELECT min(legacy.deleted_at)");
+        assertThat(source("features/finance/report/FinanceCashEventSql.java"))
+                .contains("SupplierAdvanceReplaySql.reversalDate(\"t\")");
     }
 
     private static String between(String source, String start, String end) {

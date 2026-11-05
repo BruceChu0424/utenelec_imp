@@ -868,7 +868,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
     @Test
     void cancellationPersistsReplaysAndRejectsAnOutstandingPlanUntilItIsRemoved() throws Exception {
         var scenario = factory.sharedTree("cancel-" + suffix(), 1);
-        AnalysisView first = analysis.preview(request(scenario, null, "cancel-preview-" + suffix()));
+        PreviewRequest firstPreview = request(scenario, null, "cancel-preview-" + suffix());
+        AnalysisView first = analysis.preview(firstPreview);
         CancelRequest cancel = new CancelRequest(first.version(), first.fingerprint(),
                 "cancel-command-" + suffix(), "需求已取消");
 
@@ -884,8 +885,23 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 first.analysisId(), new CancelRequest(first.version(), first.fingerprint(),
                         cancel.idempotencyKey(), "不同请求不能使用原幂等键")));
 
-        AnalysisView next = confirmAllRoutes(analysis.preview(
-                request(scenario, null, "cancel-plan-preview-" + suffix())), false);
+        AnalysisView replayedPreview = analysis.preview(firstPreview);
+        assertEquals(first.analysisId(), replayedPreview.analysisId(),
+                "Retrying the original creation must keep its identity after cancellation");
+        assertEquals("CANCELLED", replayedPreview.status());
+        assertEquals(cancelled.version(), replayedPreview.version(),
+                "Replaying creation must not reopen or mutate the cancelled analysis");
+        assertEquals(List.of("VIEW", "VIEW_FUTURE_TRANSFERS"), replayedPreview.allowedActions(),
+                "A cancelled creation replay remains read-only; a fresh intent must use a new key");
+
+        AnalysisView recreated = analysis.preview(
+                request(scenario, null, "cancel-plan-preview-" + suffix()));
+        assertNotEquals(first.analysisId(), recreated.analysisId(),
+                "The same sources with a fresh creation key must start a new analysis");
+        assertEquals("ACTIVE", recreated.status());
+        assertTrue(recreated.allowedActions().contains("GENERATE_PLAN"));
+        assertTrue(recreated.allowedActions().contains("CANCEL_ANALYSIS"));
+        AnalysisView next = confirmAllRoutes(recreated, false);
         var product = next.products().getFirst();
         var generated = commands.issueWorkshopPlans(next.analysisId(), new IssueWorkshopPlansRequest(
                 next.version(), next.fingerprint(), "cancel-plan-" + suffix(), scenario.world().warehouseId(),

@@ -35,6 +35,7 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
@@ -62,6 +63,7 @@ import 'package:uten_imp/shared/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
+import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
@@ -71,6 +73,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/list_refresh_provider.dart';
 import 'package:uten_imp/features/production/providers/production_execution_refresh.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _TestSession extends SessionNotifier {
   @override
@@ -85,7 +88,197 @@ class _TestSnapshot extends SessionSnapshotNotifier {
   Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
+void registerMaterialAnalysisCancelReentryTests() {
+  testWidgets(
+    'analysis creation timeout retry retains its intent and saved refresh stays snapshot scoped',
+    (tester) async {
+      final keys = <String>[];
+      await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        seeded: false,
+        expandTree: false,
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        allowedActions: const ['REFRESH'],
+        errorOverride: (request) {
+          if (!request.path.endsWith('/preview')) return null;
+          keys.add((request.data as Map)['idempotencyKey'] as String);
+          if (keys.length != 1) return null;
+          return DioException(
+            requestOptions: request,
+            type: DioExceptionType.receiveTimeout,
+          );
+        },
+        responseOverride: (request) =>
+            request.path.endsWith('/sales-candidates')
+            ? _salesCandidatesJson()
+            : null,
+      );
+      final checkboxes = find.descendant(
+        of: find.byKey(const Key('material-analysis-candidate-table')),
+        matching: find.byType(Checkbox),
+      );
+      await tester.tap(checkboxes.at(1).hitTestable());
+      await tester.pump();
+      final start = find.byKey(const Key('material-analysis-start'));
+      await tester.tap(start.hitTestable());
+      await tester.pumpAndSettle();
+      expect(
+        keys,
+        hasLength(1),
+        reason: 'A timeout must not automatically resubmit',
+      );
+      expect(start.hitTestable(), findsOneWidget);
+      await tester.tap(start);
+      await tester.pumpAndSettle();
+      expect(keys, hasLength(2));
+      expect(
+        keys[1],
+        keys[0],
+        reason: 'Retry the same unknown creation outcome',
+      );
+
+      for (var refresh = 0; refresh < 2; refresh++) {
+        final button = find.byTooltip('按最新库存刷新分析').hitTestable();
+        expect(button, findsOneWidget);
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      expect(keys, hasLength(4));
+      expect(keys[2], isNot(keys[0]));
+      expect(
+        keys[3],
+        keys[2],
+        reason: 'Saved analysis refresh uses its snapshot identity',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'cancelled analysis cannot be replayed when the same pending demand is analyzed again',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final byKey = <String, String>{};
+      final analyses = <String, Map<String, dynamic>>{};
+      final previewKeys = <String>[];
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisCancel,
+        },
+        allowedActions: const ['CANCEL_ANALYSIS'],
+        seeded: false,
+        expandTree: false,
+        withBoardRoute: true,
+        extraOverrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        responseOverride: (request) {
+          if (request.path == '/production/schedule/pending/facets') {
+            return {'status': <Object>[]};
+          }
+          if (request.path == '/production/schedule/pending') {
+            return {
+              'items': [
+                {
+                  'orderItemId': 'sales-line-1',
+                  'orderId': 'order-1',
+                  'orderBillNo': 'SO-1',
+                  'goodsId': 'goods-1',
+                  'goodsCode': 'P-1',
+                  'goodsName': '测试产品',
+                  'qty': 10,
+                  'plannedQty': 0,
+                  'needQty': 10,
+                  'deliverDate': '2026-11-10',
+                },
+              ],
+              'page': 1,
+              'size': 20,
+              'total': 1,
+              'totalPages': 1,
+            };
+          }
+          if (request.path == '/production/material-analyses/preview') {
+            final key = (request.data as Map)['idempotencyKey'] as String;
+            previewKeys.add(key);
+            // Match the server's replay contract: one creation key owns one
+            // analysis identity, even after that analysis has been cancelled.
+            final id = byKey.putIfAbsent(key, () {
+              final id = 'analysis-${analyses.length + 1}';
+              analyses[id] = _analysisJson(const ['CANCEL_ANALYSIS'])
+                ..['analysisId'] = id;
+              return id;
+            });
+            return analyses[id]!;
+          }
+          final analysisMatch = RegExp(
+            r'^/production/material-analyses/(analysis-\d+)(/cancel)?$',
+          ).firstMatch(request.path);
+          if (analysisMatch != null) {
+            final view = analyses[analysisMatch[1]]!;
+            if (analysisMatch[2] != null) {
+              view['status'] = 'CANCELLED';
+              view['allowedActions'] = ['VIEW'];
+            }
+            return view;
+          }
+          return null;
+        },
+      );
+
+      for (var cycle = 0; cycle < 3; cycle++) {
+        expect(find.byType(ProductionBoardPage), findsOneWidget);
+        final checkbox = find.byType(Checkbox).last;
+        expect(checkbox.hitTestable(), findsOneWidget);
+        await tester.tap(checkbox);
+        await tester.pump();
+        final start = find.byKey(
+          const Key('pending-enter-analysis-to-generate'),
+        );
+        expect(start.hitTestable(), findsOneWidget);
+        await tester.tap(start);
+        await tester.pumpAndSettle();
+        expect(find.byType(ProductionMaterialAnalysisPage), findsOneWidget);
+        expect(previewKeys, hasLength(cycle + 1));
+        expect(
+          previewKeys.toSet(),
+          hasLength(cycle + 1),
+          reason:
+              'A fresh visit must create a new analysis, not replay the cancelled one',
+        );
+        final cancel = find.byKey(const Key('material-analysis-cancel'));
+        expect(cancel.hitTestable(), findsOneWidget);
+        await tester.tap(cancel);
+        await tester.pumpAndSettle();
+        expect(find.text('取消物料分析'), findsOneWidget);
+        await tester.tap(find.text('确认取消分析').hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.byType(ProductionBoardPage), findsOneWidget);
+        expect(find.byType(ProductionMaterialAnalysisPage), findsNothing);
+        expect(
+          find.byKey(const Key('material-analysis-action-busy')),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      }
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/cancel')),
+        hasLength(3),
+      );
+    },
+  );
+}
+
 void main() {
+  registerMaterialAnalysisCancelReentryTests();
   testWidgets('501 paths keep master roles read-only in the aggregate view', (
     tester,
   ) async {
@@ -9400,6 +9593,7 @@ Future<_Harness> _pumpPage(
   double textScale = 1,
   ValueNotifier<bool>? visibility,
   bool withPlanRoute = false,
+  bool withBoardRoute = false,
   List<Map<String, dynamic>> warehouseEntries = const [
     {'id': 'warehouse-1', 'name': '主仓'},
   ],
@@ -9459,13 +9653,23 @@ Future<_Harness> _pumpPage(
                       TickerMode(enabled: visible, child: scaled),
                 );
         };
-  final GoRouter? router = withPlanRoute
+  final GoRouter? router = withPlanRoute || withBoardRoute
       ? GoRouter(
           routes: [
-            GoRoute(path: '/', builder: (_, _) => page),
+            GoRoute(
+              path: '/',
+              builder: (_, _) => withBoardRoute
+                  ? const ProductionBoardPage(initialTab: 0)
+                  : page,
+            ),
             GoRoute(
               path: RouteName.productionMaterialAnalysis,
               builder: (context, state) {
+                if (withBoardRoute) {
+                  return ProductionMaterialAnalysisPage(
+                    seed: state.extra! as ProductionMaterialAnalysisSeed,
+                  );
+                }
                 final sources =
                     (state.extra! as ProductionMaterialAnalysisSeed).sources;
                 return Scaffold(

@@ -413,7 +413,9 @@ abstract class _MaterialAnalysisCandidatesState
     final key = businessIdempotencyKey(
       'material-analysis-preview',
       [
-        _analysis?.analysisId ?? widget.seed.analysisId ?? 'NEW',
+        _analysis?.analysisId ??
+            widget.seed.analysisId ??
+            'NEW:$_newAnalysisIntentId',
         _analysis?.version ?? widget.seed.analysisVersion ?? 0,
         warehouseId,
         warehouseIds.join(','),

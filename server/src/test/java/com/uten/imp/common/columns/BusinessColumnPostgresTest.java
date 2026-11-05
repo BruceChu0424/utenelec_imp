@@ -127,16 +127,21 @@ class BusinessColumnPostgresTest {
         String extra = JSON.writeValueAsString(List.of(column("ADD", "5")));
         exec(db, "SET session_replication_role=replica");
         try {
+            UUID unit=UUID.randomUUID();
+            if(!sales)try(PreparedStatement insert=db.prepareStatement("INSERT INTO units(id,code,name,status) VALUES(?,?,'件','使用')")) {
+                insert.setObject(1,unit);insert.setString(2,"COL-U-"+unit);insert.executeUpdate();
+            }
             exec(db, "INSERT INTO " + prefix + "s(id,bill_no,bill_date" + (prefix.equals("sales_order") ? ",client_id" : "")
                     + ") VALUES('" + header + "','" + bill + "',CURRENT_DATE" + (prefix.equals("sales_order") ? ",'" + UUID.randomUUID() + "'" : "") + ")");
             if (!sales) exec(db, "UPDATE " + prefix + "s SET currency_id=(SELECT id FROM currencies WHERE status='使用' AND NOT is_deleted LIMIT 1),"
                     + "settlement_method_id=(SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted LIMIT 1),"
                     + "exchange_rate=1,tax_rate=0,total_original=35,total_local=35 WHERE id='" + header + "'");
             try (PreparedStatement insert = db.prepareStatement("INSERT INTO " + prefix + "_items(id,bill_no,bill_date," + parent
-                    + ",goods_id,line_no,qty,price,amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,extra_columns) "
-                    + "VALUES(?,?,CURRENT_DATE,?,?,1,3,10,35,35,'COL','测试货品','MASTER_AT_SAVE',?::jsonb)")) {
+                    + ",goods_id"+(sales?"":",unit_id,unit_rate")+",line_no,qty,price,amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,extra_columns) "
+                    + "VALUES(?,?,CURRENT_DATE,?,?"+(sales?"":",?,1")+",1,3,10,35,35,'COL','测试货品','MASTER_AT_SAVE',?::jsonb)")) {
                 insert.setObject(1,item); insert.setString(2,bill); insert.setObject(3,header); insert.setObject(4,UUID.randomUUID());
-                insert.setString(5,extra); insert.executeUpdate();
+                if(!sales)insert.setObject(5,unit);
+                insert.setString(sales?5:6,extra); insert.executeUpdate();
             }
         } finally { exec(db,"SET session_replication_role=origin"); }
         return new Fixture(header,item);

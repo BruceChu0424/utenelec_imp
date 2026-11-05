@@ -26,6 +26,14 @@ import static org.mockito.Mockito.when;
 /** Independent balanced journals exercise statement SQL, account allocation and final formulas together. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinancialStatementSqlPostgresTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "report.percentage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(2, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static NamedParameterJdbcTemplate named;

@@ -52,7 +52,19 @@ class FinanceLegacyOpeningSummaryPostgresTest {
                 "finance_payment_lines",
                 "customer_open_item_offsets",
                 "customer_open_item_offset_batches",
-                "supplier_open_item_offsets");
+                "supplier_open_item_offsets",
+                "finance_open_item_classification_batches",
+                "finance_open_item_classification_parts",
+                "finance_receipt_classification_batches",
+                "finance_receipt_classification_parts",
+                "finance_customer_offset_classification_batches",
+                "finance_customer_offset_classification_parts");
+        // The receivable material projection joins the real current revision
+        // views. Empty replacement tables would hide its classification logic.
+        MigratedProjectionSchema.createCurrentViews(jdbc,
+                "v_finance_open_item_classification_current",
+                "v_finance_receipt_classification_current",
+                "v_finance_customer_offset_classification_current");
         // The summary SQL embeds FinanceCashEventSql book-rate CASE, which resolves
         // fn_business_exact_divide at prepare time; projection fixtures carry the
         // migrated function family explicitly instead of silently widening the table set.
@@ -65,7 +77,10 @@ class FinanceLegacyOpeningSummaryPostgresTest {
     }
     @AfterAll static void stop(){if(sessions!=null){ sessions.close(); }PG.stop();}
     @BeforeEach void clear() {
-        jdbc.execute("TRUNCATE clients,suppliers,ar_ap_ledger,legacy_finance_import_sources,finance_receipts,finance_receipt_lines,finance_payments,finance_payment_lines");
+        jdbc.execute("TRUNCATE clients,suppliers,ar_ap_ledger,legacy_finance_import_sources,finance_receipts,finance_receipt_lines,finance_payments,finance_payment_lines,"
+                + "finance_open_item_classification_batches,finance_open_item_classification_parts,"
+                + "finance_receipt_classification_batches,finance_receipt_classification_parts,"
+                + "finance_customer_offset_classification_batches,finance_customer_offset_classification_parts");
         party=UUID.randomUUID();ledger=UUID.randomUUID();run=UUID.randomUUID();currency=UUID.randomUUID();
         jdbc.update("INSERT INTO clients(id,code,name) VALUES (?,'SYN-PARTY','known party')",party);
         jdbc.update("INSERT INTO suppliers(id,code,name) VALUES (?,'SYN-PARTY','known party')",party);
@@ -88,6 +103,19 @@ class FinanceLegacyOpeningSummaryPostgresTest {
         cash(direction,"2025-02-10",3,false);
         assertAmounts(summary(direction,"2025-02-01",null),"17","3","14",direction);
         assertAmounts(summary(direction,"2025-03-01",null),"14","0","14",direction);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"MATERIAL","GOODS"})
+    void nativeMaterialSummaryUsesTheLatestRealClassificationWithoutChangingTheFullDebt(String category) {
+        nativeLedger("AR","25");
+        classify("MATERIAL".equals(category)?"GOODS":"MATERIAL",0);
+        UUID current=classify(category,1);
+        assertThat(jdbc.queryForObject("SELECT id FROM v_finance_open_item_classification_current WHERE ledger_id=?",UUID.class,ledger))
+                .isEqualTo(current);
+        ReportTableResponse result=summary("AR","2025-02-01",null);
+        assertAmounts(result,"25","0","25","AR");
+        assertThat((BigDecimal)result.rows().getFirst().get("materialAmount"))
+                .isEqualByComparingTo("MATERIAL".equals(category)?"25":"0");
     }
 
     @ParameterizedTest @ValueSource(strings={"AR","AP"})
@@ -211,6 +239,16 @@ class FinanceLegacyOpeningSummaryPostgresTest {
                 VALUES (?,?,?,?,?,1,'2025-01-02',?,?,CAST(? AS numeric),CAST(? AS numeric),14)
                 """,ledger,party,party,currency,direction,"AR".equals(direction)?"SALES_SHIPMENT":"PURCHASE_RECEIPT",
                 "AR".equals(direction)?"RECEIVABLE":"PAYABLE",amount,amount);
+    }
+    private UUID classify(String category,long revision) {
+        UUID id=UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO finance_open_item_classification_batches(id,request_id,ledger_id,revision,direction,
+                  party_id,currency_id,effective_from,amount_original,amount_local,source_reference,fingerprint,created_by)
+                VALUES (?,?,?,?,'AR',?,?,DATE '2025-01-02',25,25,'synthetic classification',?,?)
+                """,id,UUID.randomUUID(),ledger,revision,party,currency,"a".repeat(64),UUID.randomUUID());
+        jdbc.update("INSERT INTO finance_open_item_classification_parts(batch_id,category,amount_original,amount_local) VALUES (?,?,25,25)",id,category);
+        return id;
     }
     private void cash(String direction,String date,int amount,boolean historical) {
         UUID id=UUID.randomUUID();

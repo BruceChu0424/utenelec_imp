@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 import flutter_test_shards as runner
+import backend_test_shards
 
 SOURCE = {"sha": "a" * 40, "fingerprint": "b" * 64}
 CI = {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
@@ -45,6 +46,7 @@ class FlutterEvidenceTests(unittest.TestCase):
         (self.root / "test/nested").mkdir(parents=True)
         (self.root / "test/a_test.dart").write_text("void main() {}", encoding="utf-8")
         (self.root / "test/nested/b_test.dart").write_text("void main() {}", encoding="utf-8")
+        (self.root / ".gitignore").write_text("/test/.uten-ci-codec-worker.js\n", encoding="utf-8")
         self.events_file = self.root / "machine.jsonl"
         self.reports = self.root / "reports"
         self.addCleanup(patch.stopall)
@@ -126,6 +128,40 @@ class FlutterEvidenceTests(unittest.TestCase):
         with self.assertRaises(ValueError): runner.validate_plan(plan, self.root)
         with patch.object(runner, "ci_identity", return_value={**CI, "GITHUB_RUN_ATTEMPT": "3"}), self.assertRaises(ValueError):
             runner.validate_plan(plan, self.root)
+
+    def test_verified_browser_worker_copy_preserves_the_real_planned_git_identity(self):
+        runner.BROWSER_FILES = ("test/browser_test.dart",)
+        (self.root / "test/browser_test.dart").write_text("@TestOn('browser')\nlibrary;\nvoid main() {}", encoding="utf-8")
+        (self.root / "web").mkdir()
+        source = self.root / runner.WORKER_SOURCE
+        source.write_text("reviewed worker bytes", encoding="utf-8")
+        def git(*arguments):
+            return subprocess.run(["git", "-C", str(self.root), *arguments], check=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        git("init", "-q")
+        git("config", "user.name", "CI fixture")
+        git("config", "user.email", "ci-fixture@example.invalid")
+        git("config", "core.autocrlf", "false")
+        git("add", ".")
+        git("commit", "-qm", "source fixture")
+        before = backend_test_shards.source_identity(self.root)
+        with patch.object(runner, "source_identity", backend_test_shards.source_identity), patch.dict(os.environ, {"GITHUB_SHA": before["sha"]}):
+            plan = runner.make_plan(runner.inventory(self.root), 1, {}, before)
+            worker = self.root / runner.WORKER_PATH
+            worker.write_bytes(source.read_bytes())
+            self.assertEqual(before, backend_test_shards.source_identity(self.root))
+            runner.validate_plan(plan, self.root)
+            self.assertEqual(runner.sha256(source), runner.verify_worker(self.root)["sha256"])
+            worker.write_text("changed worker bytes", encoding="utf-8")
+            with self.assertRaises(ValueError): runner.verify_worker(self.root)
+            worker.unlink()
+            worker.symlink_to(source)
+            with self.assertRaises(ValueError): runner.verify_worker(self.root)
+            worker.unlink()
+            worker.write_bytes(source.read_bytes())
+            (self.root / "test/other_generated_worker.js").write_text("other source bytes", encoding="utf-8")
+            self.assertNotEqual(before, backend_test_shards.source_identity(self.root))
+            with self.assertRaises(ValueError): runner.validate_plan(plan, self.root)
 
     def test_source_owned_browser_selector_is_separate_from_completed_vm_files(self):
         browser = self.root / "test/browser_test.dart"

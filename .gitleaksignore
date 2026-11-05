@@ -521,3 +521,6 @@ f02312a36235bf6917645a4ef9aa2a2563be1ecb:clients/windows_legacy/progress/evidenc
 287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:331
 287343dc626d1db07d73d56826da44ac7b12dd1a:clients/windows_legacy/progress/evidence/internal-feedback-20261104.json:generic-api-key:332
 afe9fcd8af0121a8287d798024f553fa90247f79:docs/99-项目治理/2026-11-05-订单散件交付主线验证.json:generic-api-key:2251
+# Reviewed source checksum; exact evidence and blob verification are recorded in ci-source-fingerprint-review-20261105.json.
+d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c:clients/windows_legacy/progress/evidence/table-output-selection-20261105.json:generic-api-key:357
+3cbafbf44310842f4f77e092f8d2d09ee9d3f815:docs/99-项目治理/evidence/finance-full-chain-audit-20261104/ledger-reference-price-closeout-20261105.json:generic-api-key:101

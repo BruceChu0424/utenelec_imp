@@ -38,15 +38,14 @@ class SecurityDefaultsTest {
                         // ADR-133: AI 识别上传的文件名与类型。
                         "X-Uten-File-Name",
                         "X-Uten-File-Type",
+                        // Explicit precision selections must pass the same cross-origin preflight.
+                        "X-Uten-Precision-Choices",
                         // ADR-110: 敏感操作的一次性再认证凭证随请求头发送。
                         "X-Uten-Step-Up",
                         // ADR-110: 用户已有一段时间没操作时发出的请求 (轮询/定时刷新) 不续期会话。
                         "X-Uten-Automatic",
                         "X-Uten-Operation-Id",
-                        "X-Uten-Audit-Context",
-                        // 2026-11-04 对账: 0aaffa3aa 显式精度选择契约跨源也要能过预检
-                        // (BusinessPrecisionContext.HEADER, 每个计算用途一次明确选择)。
-                        "X-Uten-Precision-Choices"),
+                        "X-Uten-Audit-Context"),
                 configuration.getAllowedHeaders());
         assertEquals(
                 java.util.List.of(

@@ -141,6 +141,11 @@ class ProcurementOrderSourceRevisionEndToEndTest {
     @Test void nakedQuantityCommercialOrSourceEditsFailAndUnfinishedRevisionRollsBack(){
         Fixture f=fixture("revision-guard");UUID item=item(f.orderId());
         assertThatThrownBy(()->jdbc.update("UPDATE purchase_order_items SET qty=18,amount_original=900,amount_local=900 WHERE id=?",item));
+        var adoption=jdbc.queryForMap("SELECT charged_base_qty,gift_base_qty FROM purchase_order_items WHERE id=?",item);
+        // Legitimate revisions may adopt new bases; independent edits still cannot change frozen facts.
+        assertThatThrownBy(()->jdbc.update("UPDATE purchase_order_items SET charged_base_qty=charged_base_qty+1 WHERE id=?",item));
+        assertThatThrownBy(()->jdbc.update("UPDATE purchase_order_items SET gift_base_qty=gift_base_qty+1 WHERE id=?",item));
+        assertThat(jdbc.queryForMap("SELECT charged_base_qty,gift_base_qty FROM purchase_order_items WHERE id=?",item)).isEqualTo(adoption);
         jdbc.update("UPDATE purchase_order_items SET goods_code_snapshot=goods_code_snapshot WHERE id=?",item);
         assertThatThrownBy(()->jdbc.update("UPDATE purchase_order_items SET goods_name_snapshot='changed history' WHERE id=?",item));
         assertThatThrownBy(()->jdbc.update("UPDATE purchase_order_item_sources SET alloc_qty=18 WHERE order_item_id=?",item));

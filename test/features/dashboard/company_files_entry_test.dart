@@ -134,13 +134,13 @@ void main() {
                 RouteName.payrollSlipList,
                 RouteName.basicinfo,
                 RouteName.companyFiles,
-                RouteName.expense,
+                RouteName.myApplications,
                 RouteName.suggestion,
               ]
             : [
                 RouteName.basicinfo,
                 RouteName.companyFiles,
-                RouteName.expense,
+                RouteName.myApplications,
                 RouteName.payrollSlipList,
                 RouteName.suggestion,
               ];

@@ -29,9 +29,13 @@ import 'package:uten_imp/features/production/pages/production_material_analysis_
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
+
+import '../../../shared/drafts/memory_form_draft_storage.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -48,6 +52,10 @@ void main() {
       (tester) async {
         final old = Completer<Object?>();
         final fresh = Completer<Object?>();
+        addTearDown(() {
+          if (!old.isCompleted) old.complete(<Object>[]);
+          if (!fresh.isCompleted) fresh.complete(<Object>[]);
+        });
         final server = _Server()
           ..futureResponses.addAll([old.future, fresh.future]);
         final session = _ProfileSession();
@@ -61,16 +69,19 @@ void main() {
           ),
           session: session,
         );
-        await tester.pumpAndSettle();
+        await _pumpUntil(tester, () => server.count('/future-transfers') == 1);
         final container = ProviderScope.containerOf(
           tester.element(find.byType(ProductionMaterialAnalysisPage)),
         );
         container.read(dataWriteRevisionProvider.notifier).state++;
         session.refreshName();
-        await tester.pumpAndSettle();
+        await _pumpUntil(tester, () => server.count('/future-transfers') == 2);
         expect(server.count('/future-transfers'), 2);
         fresh.complete(<Object>[]);
-        await tester.pumpAndSettle();
+        await _pumpUntil(
+          tester,
+          () => debugFutureTransferReadPublications - before == 1,
+        );
         expect(debugFutureTransferReadPublications - before, 1);
         if (lateError) {
           old.completeError(
@@ -134,7 +145,7 @@ void main() {
         session: session,
         scopeControls: true,
       );
-      await tester.pumpAndSettle();
+      await _pumpUntil(tester, () => server.count('/future-transfers') == 1);
       expect(server.count('/future-transfers'), 1);
       switch (invalidation) {
         case 'write revision':
@@ -147,7 +158,10 @@ void main() {
           await tester.tap(find.byTooltip('按最新库存刷新分析').hitTestable().first);
         case 'account ABA':
           session.refreshName(id: 'other-account');
-          await tester.pumpAndSettle();
+          await _pumpUntil(
+            tester,
+            () => server.count('/future-transfers') == 2,
+          );
           expect(server.count('/future-transfers'), 2);
           session.refreshName();
         case 'permissions':
@@ -163,8 +177,11 @@ void main() {
           container.read(_readEndpoint.notifier).change();
           session.refreshName();
       }
-      await tester.pumpAndSettle();
       final expected = invalidation == 'account ABA' ? 3 : 2;
+      await _pumpUntil(
+        tester,
+        () => server.count('/future-transfers') == expected,
+      );
       expect(server.count('/future-transfers'), expected);
       gate.complete();
       await tester.pumpAndSettle();
@@ -262,10 +279,11 @@ void main() {
         ),
         session: session,
       );
-      await tester.pumpAndSettle();
+      await _pumpUntil(tester, () => server.count('/future-transfers') == 1);
       expect(server.count('/future-transfers'), 1);
       session.refreshName();
-      await tester.pumpAndSettle();
+      // A deliberately held read need not settle its loading animation.
+      await tester.pump(const Duration(milliseconds: 100));
       expect(server.count('/future-transfers'), 1);
       gate.complete();
       await tester.pumpAndSettle();
@@ -537,6 +555,18 @@ List<String> _notices(WidgetTester tester) => ProviderScope.containerOf(
   tester.element(find.byType(ProductionMaterialAnalysisPage)),
 ).read(appNotificationProvider).map((notice) => notice.message).toList();
 
+Future<void> _pumpUntil(WidgetTester tester, bool Function() ready) async {
+  for (var frame = 0; frame < 100 && !ready(); frame++) {
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  expect(
+    ready(),
+    isTrue,
+    reason: 'the controlled request must actually arrive',
+  );
+  await tester.pump();
+}
+
 class _Server {
   Map<String, dynamic> data = _analysis();
   int autoConfirmedOnPreview = 0;
@@ -647,6 +677,11 @@ class _ProfileSession extends SessionNotifier {
   }
 }
 
+class _Snapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
+
 class _ReadEndpoint extends Notifier<String> {
   @override
   String build() => 'https://a.invalid/api';
@@ -698,6 +733,7 @@ Future<void> _pumpPage(
           ProductionPlanRepository(api),
         ),
         apiClientProvider.overrideWithValue(api),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(_Prefs.new),
         if (scopeControls)
@@ -706,9 +742,14 @@ Future<void> _pumpPage(
           )
         else
           currentPermissionsProvider.overrideWithValue(_permissions),
-        if (scopeControls)
-          apiBaseUrlProvider.overrideWith((ref) => ref.watch(_readEndpoint)),
+        apiBaseUrlProvider.overrideWith(
+          (ref) => scopeControls
+              ? ref.watch(_readEndpoint)
+              : 'http://localhost:8080/api',
+        ),
         if (session != null) sessionProvider.overrideWith(() => session),
+        if (session != null)
+          sessionSnapshotProvider.overrideWith(_Snapshot.new),
       ],
       child: MaterialApp(
         locale: const Locale('zh'),

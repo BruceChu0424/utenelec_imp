@@ -164,7 +164,7 @@ void main() {
     );
 
     expect(redCounts(tester, '业务审核中心'), [4]);
-    expect(redCounts(tester, '报销审批'), [6]);
+    expect(redCounts(tester, '申请审批中心'), [6]);
     expect(find.text('待办 19'), findsOneWidget);
     expect(
       find.byWidgetPredicate(

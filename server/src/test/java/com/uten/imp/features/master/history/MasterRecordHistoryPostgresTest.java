@@ -18,6 +18,7 @@ import com.uten.imp.features.master.lifecycle.MasterReferenceGuard;
 import com.uten.imp.features.master.warehouse.WarehouseMasterRules;
 import com.uten.imp.security.*;
 import com.uten.imp.support.MigratedSchemaBaseline;
+import com.uten.imp.support.SyntheticEmployeeIdentity;
 import jakarta.persistence.*;
 import java.util.*;
 import java.util.function.Supplier;
@@ -76,10 +77,11 @@ class MasterRecordHistoryPostgresTest {
           em.createNativeQuery(
                   "INSERT INTO"
                       + " employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)"
-                      + " SELECT :id,:code,'历史恢复操作人','其他',id,current_date,'active','regular' FROM"
+                      + " SELECT :id,:code,:name,'其他',id,current_date,'active','regular' FROM"
                       + " departments WHERE code='DEPT_FIN'")
               .setParameter("id", identity)
               .setParameter("code", "EMP-" + identity)
+              .setParameter("name", SyntheticEmployeeIdentity.name("历史恢复操作人", identity))
               .executeUpdate();
           em.createNativeQuery(
                   "INSERT INTO"

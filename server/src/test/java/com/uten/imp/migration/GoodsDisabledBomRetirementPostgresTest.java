@@ -519,13 +519,16 @@ class GoodsDisabledBomRetirementPostgresTest {
             UUID raceUnit = unit(writer), parent = goods(writer, raceUnit, "parent"), child = goods(writer, raceUnit, "child");
             // 退役重算按 V1034 采用守卫需要事务操作人；并发两端共享同一真实账号，先提交使其对竞争连接可见。
             UUID raceEmployee = UUID.randomUUID(), raceActor = UUID.randomUUID();
+            writer.setAutoCommit(false);
             execute(writer, "INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)"
-                    + " SELECT ?,?,'停用BOM并发测试操作人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",
-                    raceEmployee, "EMP-" + raceEmployee);
+                    + " SELECT ?,?,?,'其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",
+                    raceEmployee, "EMP-" + raceEmployee,
+                    com.uten.imp.support.SyntheticEmployeeIdentity.name("停用BOM并发测试操作人", raceEmployee));
             execute(writer, "INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)"
                     + " VALUES(?,?,?,?,false,'active',false)", raceActor, raceEmployee, "DISABLED-BOM-RACE-" + raceActor, "test-only");
             writer.commit();
             writer.setAutoCommit(false);
+            execute(writer, "SELECT set_config('app.actor_id',?,true)", raceActor.toString());
             execute(writer, "INSERT INTO goods_bom_items(goods_id,component_goods_id,qty) VALUES(?,?,1)", parent, child);
             var started = new CountDownLatch(1);
             Future<String> attempt = executor.submit(() -> {

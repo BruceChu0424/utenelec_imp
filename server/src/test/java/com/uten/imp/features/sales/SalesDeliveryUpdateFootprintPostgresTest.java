@@ -39,7 +39,7 @@ class SalesDeliveryUpdateFootprintPostgresTest {
         POSTGRES.start();dataSource=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());db=new JdbcTemplate(dataSource);
         db.execute("CREATE TABLE sales_orders(id uuid PRIMARY KEY)");
         db.execute("CREATE TABLE sales_order_items(id uuid PRIMARY KEY,order_id uuid,goods_id uuid,color_id uuid,is_deleted boolean DEFAULT FALSE,delivery_plan jsonb DEFAULT '{\"mode\":\"ASSEMBLED\",\"processes\":[]}',delivery_bom_snapshot jsonb)");
-        db.execute("CREATE TABLE goods(id uuid PRIMARY KEY,color_id uuid,unit_id uuid,is_deleted boolean DEFAULT FALSE,auto_created boolean DEFAULT FALSE,status text DEFAULT '使用')");
+        db.execute("CREATE TABLE goods(id uuid PRIMARY KEY,color_id uuid,unit_id uuid,is_deleted boolean DEFAULT FALSE,auto_created boolean DEFAULT FALSE,status text DEFAULT '使用',issue_method text DEFAULT 'PER_ORDER')");
         db.execute("CREATE TABLE goods_bom_items(id uuid PRIMARY KEY,goods_id uuid,component_goods_id uuid,color_id uuid,qty numeric DEFAULT 1,consumption_basis text DEFAULT 'PER_UNIT',basis_output_qty numeric DEFAULT 1,allow_partial_package boolean DEFAULT TRUE,is_deleted boolean DEFAULT FALSE)");
         db.execute("CREATE TABLE goods_bom_delivery_rules(bom_edge_id uuid PRIMARY KEY,mandatory_assembly boolean DEFAULT FALSE,material_role text DEFAULT 'PART',required_operations jsonb DEFAULT '[]')");
         var bean=new LocalContainerEntityManagerFactoryBean();bean.setDataSource(dataSource);bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
@@ -89,6 +89,27 @@ class SalesDeliveryUpdateFootprintPostgresTest {
             sales.lockOrder(w.order(),List.of());
         });
         assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null));
+    }
+    @Test void periodicBranchAndItsRequiredWorkNeverExpandProposedPhysicalLocksButFrozenFactsRemainLocked() {
+        var w=world();UUID periodic=UUID.randomUUID(),descendant=UUID.randomUUID();
+        UUID periodicEdge=UUID.randomUUID(),nestedEdge=UUID.randomUUID();
+        db.update("INSERT INTO goods(id,issue_method) VALUES(?,'PERIODIC'),(?,'PER_ORDER')",periodic,descendant);
+        db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id) VALUES(?,?,?),(?,?,?)",
+                periodicEdge,w.root(),periodic,nestedEdge,periodic,descendant);
+        db.update("INSERT INTO goods_bom_delivery_rules(bom_edge_id,required_operations) VALUES(?,'[\"LASER\"]'),(?,'[\"LASER\"]')",
+                periodicEdge,nestedEdge);
+        var taken=new AtomicReference<Set<InventoryDimension>>();var sales=service(taken,null);
+        transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,false))));
+        assertThat(taken.get()).containsExactly(new InventoryDimension(w.root(),null));
+        transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,true))));
+        assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null));
+        // A previous source snapshot is historical physical evidence. A later
+        // issue-method change must not erase its reverse/review lock dimensions.
+        db.update("UPDATE sales_order_items SET delivery_plan='{\"mode\":\"BOM\"}',delivery_bom_snapshot=CAST(? AS jsonb) WHERE id=?",
+                snapshot(w.root(),periodic),w.item());
+        transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,true))));
+        assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null),new InventoryDimension(periodic,null));
+        assertThat(taken.get()).doesNotContain(new InventoryDimension(descendant,null));
     }
     @Test void changedAuthoritativeEdgeColorFailsTheOriginalPrewriteFingerprintAndCanRetryFresh() {
         var w=world();UUID changedColor=UUID.randomUUID();var taken=new AtomicReference<Set<InventoryDimension>>();var once=new AtomicBoolean();

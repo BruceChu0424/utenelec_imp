@@ -29,7 +29,12 @@ class PurchaseQuantityPolicyGuardPostgresTest {
         jdbc = new JdbcTemplate(source);
     }
 
-    @AfterAll static void close() { if (source != null) source.destroy(); DATABASE.stop(); }
+    @AfterAll static void close() {
+        if (source != null) {
+            source.destroy();
+        }
+        DATABASE.stop();
+    }
 
     @BeforeEach void originalAdoption() throws Exception {
         jdbc.execute("DROP SCHEMA IF EXISTS adoption CASCADE; CREATE SCHEMA adoption; SET search_path TO adoption");

@@ -86,6 +86,16 @@ public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEn
     @jakarta.persistence.Transient
     private java.util.Map<String, Object> referencePricePrecisionPolicy;
 
+    @Override
+    public BigDecimal getTotalAmountInput() {
+        return totalAmountInput;
+    }
+
+    @Override
+    public void setReferencePricePrecisionPolicy(java.util.Map<String, Object> policy) {
+        referencePricePrecisionPolicy = policy;
+    }
+
     @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;
 

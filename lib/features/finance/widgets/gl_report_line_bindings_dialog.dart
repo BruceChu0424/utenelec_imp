@@ -183,7 +183,7 @@ class _GlReportLineBindingsDialogState
   }
 
   Future<void> _seedDefaults() async {
-    if (!_current) return;
+    if (_busy || !_current) return;
     setState(() => _busy = true);
     try {
       // 带空 body: Web 端无 body 的 POST 受 15 秒连接上限影响。
@@ -207,7 +207,7 @@ class _GlReportLineBindingsDialogState
   }
 
   Future<void> _edit(GlReportLineBinding line) async {
-    if (!_current) return;
+    if (_busy || !_current) return;
     setState(() => _busy = true);
     List<GlReportLineCandidate> candidates;
     try {
@@ -273,14 +273,11 @@ class _GlReportLineBindingsDialogState
   @override
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != _ownerEpoch) {
-      return AlertDialog(
+      return UtenAlertDialog(
         title: const Text('访问范围已变化'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('关闭'),
-          ),
-        ],
+        showCloseButton: true,
+        closeButtonKey: const ValueKey('gl-line-retired-close'),
+        onClose: () => Navigator.pop(context, false),
       );
     }
     final theme = Theme.of(context);
@@ -567,17 +564,13 @@ class _TargetPickerDialogState extends ConsumerState<_TargetPickerDialog> {
   @override
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != _ownerEpoch) {
-      return AlertDialog(
+      return UtenAlertDialog(
         title: const Text('访问范围已变化'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
+        showCloseButton: true,
+        closeButtonKey: const ValueKey('gl-line-picker-retired-close'),
+        onClose: () => Navigator.pop(context),
       );
     }
-    final theme = Theme.of(context);
     final keyword = _keyword.trim().toLowerCase();
     final visible = keyword.isEmpty
         ? List<GlReportLineCandidate>.of(widget.candidates)
@@ -605,25 +598,33 @@ class _TargetPickerDialogState extends ConsumerState<_TargetPickerDialog> {
       });
     }
     return UtenAlertDialog(
-      title: Text(widget.title),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text(widget.title)),
+          const SizedBox(width: UtenSpacing.s8),
+          UtenFieldHintIcon(info: widget.hint),
+        ],
+      ),
+      showCloseButton: true,
+      closeButtonKey: const ValueKey('gl-line-target-close'),
+      onClose: () => Navigator.pop(context),
       content: SizedBox(
         width: 560,
         height: MediaQuery.sizeOf(context).height * 0.6,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              widget.hint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
             if (widget.canConfirmZero)
               CheckboxListTile(
                 key: const ValueKey('gl-line-confirm-zero'),
-                title: const Text('财务确认本行单独取数为零'),
-                subtitle: const Text('其中明细和未结转损益仍按实际计算；已有金额会提示冲突'),
+                title: const Row(
+                  children: [
+                    Expanded(child: Text('财务确认本行单独取数为零')),
+                    SizedBox(width: UtenSpacing.s8),
+                    UtenFieldHintIcon(info: '其中明细和未结转损益仍按实际计算；已有金额会提示冲突'),
+                  ],
+                ),
                 value: _zero,
                 onChanged: (value) => setState(() {
                   _zero = value ?? false;

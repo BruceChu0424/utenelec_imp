@@ -171,7 +171,7 @@ void main() {
         type: type,
       );
       if (type == FinanceDocType.payment) {
-        expect(create.map((column) => column.label), ['应付单号', '本次付款金额']);
+        expect(create.map((column) => column.label), ['应付单号', '本次付款(原币)']);
         expect(detail['bill'], create.first.label);
         expect(detail['amountOriginal'], create.last.label);
         expect(table.columns.map((column) => column.key), [

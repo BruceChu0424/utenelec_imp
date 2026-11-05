@@ -17,6 +17,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/widgets/uten_supplier_picker.dart';
 import 'package:uten_imp/features/basic_data/models/supplier_node.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
+import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
@@ -76,7 +77,7 @@ void main() {
   );
 
   testWidgets(
-    'payment without AP fails closed until supplier prepayment chain exists',
+    'ordinary payment without AP directs prepayment to its own approval chain',
     (tester) async {
       final api = await _pumpEditor(tester, detail: _directPaymentDetail());
 
@@ -93,7 +94,7 @@ void main() {
         find.byKey(const ValueKey('finance-payment-amount-original')),
         findsNothing,
       );
-      expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsOneWidget);
+      expect(find.byTooltip(financePaymentSourceGuidance), findsOneWidget);
       expect(find.text('折算金额（人民币）: '), findsOneWidget);
       expect(find.text('720.00'), findsOneWidget);
 
@@ -111,7 +112,9 @@ void main() {
       final notifications = ProviderScope.containerOf(
         tester.element(find.byType(FinanceDocEditPage)),
       ).read(appNotificationProvider);
-      expect(notifications.single.message, contains('暂不支持给供应商预付'));
+      expect(notifications.single.message, contains('供应商预付请从各部门申请流程建立预付申请'));
+      expect(notifications.single.message, contains('本页草稿已保留'));
+      expect(notifications.single.message, contains('普通应付付款请引用已入账的应付'));
     },
   );
 
@@ -156,8 +159,9 @@ void main() {
     final notifications = ProviderScope.containerOf(
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
-    expect(notifications.single.message, contains('暂不支持给供应商预付'));
-    expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsOneWidget);
+    expect(notifications.single.message, contains('供应商预付请从各部门申请流程建立预付申请'));
+    expect(notifications.single.message, contains('普通应付付款请引用已入账的应付'));
+    expect(find.byTooltip(financePaymentSourceGuidance), findsOneWidget);
   });
 
   testWidgets(
@@ -177,8 +181,22 @@ void main() {
         find.byKey(const ValueKey('finance-payment-amount-original')),
         findsNothing,
       );
-      expect(find.textContaining('暂不支持给供应商预付'), findsOneWidget);
+      expect(find.byTooltip(financePaymentSourceGuidance), findsOneWidget);
       expect(find.text('保存').hitTestable(), findsOneWidget);
+      final hint = find.byTooltip(financePaymentSourceGuidance);
+      await tester.ensureVisible(hint);
+      expect(
+        (tester.getCenter(hint).dy -
+                tester.getCenter(find.text('引用应付').first).dy)
+            .abs(),
+        lessThan(12),
+        reason: 'The source hint stays beside its action on the narrow layout.',
+      );
+      expect(find.text(financePaymentSourceGuidance), findsNothing);
+      await tester.tap(hint);
+      await tester.pumpAndSettle();
+      expect(find.text(financePaymentSourceGuidance), findsOneWidget);
+      Tooltip.dismissAllToolTips();
       expect(tester.takeException(), isNull);
     },
   );
@@ -192,7 +210,7 @@ void main() {
       find.byKey(const ValueKey('finance-payment-amount-original')),
       findsNothing,
     );
-    expect(find.text('由服务端按应付核销明细汇总'), findsOneWidget);
+    expect(find.byTooltip(financePaymentSourceGuidance), findsOneWidget);
 
     final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
       _financeGrid(),
@@ -397,7 +415,7 @@ void main() {
     );
     final columns = {for (final column in table.columns) column.key: column};
     final item = table.items.single;
-    expect(columns['amountOriginal']?.label, '本次付款金额');
+    expect(columns['amountOriginal']?.label, '本次付款(原币)');
     expect(columns['amountOriginal']?.value(item), '50.00');
     expect(columns['amountLocal']?.label, '付款本币');
     expect(columns['amountLocal']?.value(item), '360.00');

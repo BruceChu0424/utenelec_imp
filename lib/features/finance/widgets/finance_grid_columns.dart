@@ -687,7 +687,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本次付款(原币)',
+      label: financePaymentOriginalAmountLabel,
       width: 180,
       numeric: true,
       frozenTextOf: (row) => row.amount.text,
@@ -700,7 +700,10 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, labelText: '本次付款(原币)'),
+            InputDecoration(
+              isDense: true,
+              labelText: financePaymentOriginalAmountLabel,
+            ),
           ),
         ),
       ),

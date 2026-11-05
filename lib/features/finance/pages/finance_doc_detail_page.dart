@@ -1269,7 +1269,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: '本次付款金额',
+          label: financePaymentOriginalAmountLabel,
           width: 110,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),

@@ -22,7 +22,7 @@ void main() {
         find.byWidgetPredicate((widget) => widget is UtenEditableGrid),
       );
       expect(grid.headerFilterScopeDescription, '筛选已加载台账；查找全部台账请使用上方搜索');
-      const allocationHelp = '多订单应收：审核后按不可变来源顺序分配并留痕';
+      const allocationHelp = '订单号仅辅助归属；本次收款只核销明确勾选的出货应收，不跨批次自动分摊。';
       expect(
         grid.columns
             .singleWhere((column) => column.key == 'salesOrders')

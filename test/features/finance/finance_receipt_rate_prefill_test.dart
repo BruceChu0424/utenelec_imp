@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
+import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
@@ -26,6 +28,9 @@ void main() {
 
       expect(tester.widget<TextField>(rate).controller!.text, '7.3');
       expect(tester.widget<TextField>(rate).readOnly, isFalse);
+      expect(_receiptRow(tester).currencyId, 'currency-usd');
+      expect(_receiptRow(tester).exchangeRate.text, '7.3');
+      expect(api.sourceQueries.single['clientId'], 'client-1');
       expect(api.lastPutBody, isNull);
     },
   );
@@ -33,7 +38,7 @@ void main() {
   testWidgets('referencing a base-currency receivable locks the rate to one', (
     tester,
   ) async {
-    await _pumpDraft(tester, ledgerCurrency: 'currency-cny');
+    final api = await _pumpDraft(tester, ledgerCurrency: 'currency-cny');
     final rate = find.byKey(const ValueKey('finance-receipt-exchange-rate'));
     final before = tester.widget<TextField>(rate);
     before.controller!.text = '7.3';
@@ -43,6 +48,9 @@ void main() {
     final after = tester.widget<TextField>(rate);
     expect(after.controller!.text, '1');
     expect(after.readOnly, isTrue);
+    expect(_receiptRow(tester).currencyId, 'currency-cny');
+    expect(_receiptRow(tester).exchangeRate.text, '1');
+    expect(api.lastPutBody, isNull);
   });
 
   testWidgets('empty payment-method dictionary does not block saving', (
@@ -98,11 +106,22 @@ void main() {
 Future<void> _importFirstLedger(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('receipt-import-ar')));
   await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('ar-ap-select-ledger-1')), findsOneWidget);
   await tester.tap(find.text('全选'));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
   await tester.pumpAndSettle();
+  expect(_receiptRow(tester).appliedLedgerId, 'ledger-1');
+  expect(tester.takeException(), isNull);
 }
+
+FinanceGridRow _receiptRow(WidgetTester tester) => tester
+    .widget<UtenEditableGrid<FinanceGridRow>>(
+      find.byType(UtenEditableGrid<FinanceGridRow>),
+    )
+    .controller
+    .rows
+    .single;
 
 Future<_DraftReceiptApi> _pumpDraft(
   WidgetTester tester, {
@@ -163,13 +182,15 @@ class _DraftReceiptApi extends ApiClient {
   final String? ledgerCurrency;
   final List<Map<String, dynamic>> financeMethods;
   Map<String, dynamic>? lastPutBody;
+  final sourceQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/finance/ar-ap') {
+    if (path == '/finance/receipts/shipment-sources') {
+      sourceQueries.add(Map<String, dynamic>.from(query ?? {}));
       final currency = ledgerCurrency;
       return {
         'items': [
@@ -201,6 +222,11 @@ class _DraftReceiptApi extends ApiClient {
         'total': currency == null ? 0 : 1,
         'totalPages': 1,
       };
+    }
+    if (path == '/finance/ar-ap') {
+      throw StateError(
+        'Receipt sources must use their scoped shipment endpoint.',
+      );
     }
     if (path == '/sales/orders') {
       return const {

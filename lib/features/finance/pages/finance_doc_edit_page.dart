@@ -46,6 +46,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_field_placeholder.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_multi_value_cell.dart';
@@ -2767,27 +2768,29 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                           child: const Text('用定金抵款'),
                                         ),
                                     ],
-                                    if (_cfg.type == FinanceDocType.payment)
-                                      ListenableBuilder(
-                                        listenable: _grid,
-                                        builder: (context, _) => Text(
-                                          _grid.isEmpty
-                                              ? '请先引用已入账的应付；暂不支持给供应商预付'
-                                              : '由服务端按应付核销明细汇总',
-                                          style: theme.textTheme.bodySmall,
-                                        ),
-                                      ),
                                     if (_cfg.hasArApLink && !isReceipt)
-                                      UtenImportButton(
-                                        label:
-                                            _cfg.type == FinanceDocType.payment
-                                            ? '引用应付'
-                                            : '从应收应付引入',
-                                        compactLabel: '引用应付',
-                                        onPressed:
-                                            _saving || _createdDocId != null
-                                            ? null
-                                            : _importFromArAp,
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          UtenImportButton(
+                                            label:
+                                                _cfg.type ==
+                                                    FinanceDocType.payment
+                                                ? '引用应付'
+                                                : '从应收应付引入',
+                                            compactLabel: '引用应付',
+                                            onPressed:
+                                                _saving || _createdDocId != null
+                                                ? null
+                                                : _importFromArAp,
+                                          ),
+                                          if (_cfg.type ==
+                                              FinanceDocType.payment)
+                                            const UtenFieldHintIcon(
+                                              info:
+                                                  financePaymentSourceGuidance,
+                                            ),
+                                        ],
                                       ),
                                   ],
                                 ),

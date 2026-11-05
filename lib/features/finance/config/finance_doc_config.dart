@@ -17,6 +17,13 @@ enum PartyMode { none, client, supplier }
 /// 5 单据的明细模式。
 enum ItemMode { settle, allocate, transfer }
 
+/// FinancePaymentLine.amount_original (legacy NowPaid), distinct from the
+/// converted payment, AP carrying amount and exchange difference.
+const financePaymentOriginalAmountLabel = '本次付款(原币)';
+
+const financePaymentSourceGuidance =
+    '普通应付付款请引用已入账的应付，金额由服务端按核销明细汇总。供应商预付请从各部门申请流程建立预付申请，批准后登记实际付款。';
+
 class FinanceDocConfig {
   const FinanceDocConfig({
     required this.type,

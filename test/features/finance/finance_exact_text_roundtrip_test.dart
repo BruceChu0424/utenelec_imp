@@ -63,7 +63,18 @@ void main() {
       );
       expect(financeAmountUnits('0.0000000000000000000000001'), isNull);
       expect(financeExactDecimalUnits('0.00001'), isNull);
-      expect(financeExactProductUnits('0.0001', '0.5'), BigInt.one);
+      final product = financeExactProductUnits('0.0001', '0.5')!;
+      expect(product, BigInt.from(5) * BigInt.from(10).pow(43));
+      expect(
+        financeExactDecimalFromUnits(product, scale: 48),
+        '0.000050000000000000000000000000000000000000000000',
+      );
+      expect(
+        financeExactProductUnits('0.0001', '0.5', outputScale: 4),
+        isNull,
+        reason:
+            'An explicit short output scale cannot silently round a product.',
+      );
     },
   );
   test(

@@ -392,7 +392,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         quality = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
         name = "      - name: Verify issuer isolation and compiled company relay trust\n"
         self.assertEqual(1, quality.count(name))
-        cohort = quality.split(name, 1)[1].split("      - run:", 1)[0]
+        cohort = quality.split(name, 1)[1].split("\n  frontend-shards:", 1)[0]
         for path in ("test/session_backend_owner_race_test.dart",
                      "test/pending_refresh_revocation_backend_owner_test.dart",
                      "test/auth_interceptor_backend_issuer_race_test.dart"):
@@ -401,7 +401,10 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn("--dart-define=CLOUD_API_BASE_URL=https://cloud.uten.test/api", cohort)
         self.assertIn("flutter test --no-pub", cohort)
         self.assertNotIn("continue-on-error", cohort)
-        self.assertIn("      - run: flutter test --no-pub\n", quality)
+        self.assertIn("flutter_test_shards.py plan --output build/flutter-ci-plan --shards 8", quality)
+        self.assertIn("flutter_test_shards.py run --plan build/flutter-ci-plan/plan.json", quality)
+        self.assertIn("flutter_test_shards.py verify --plan build/flutter-ci-plan/plan.json", quality)
+        self.assertIn("name: Flutter / Web\n", quality)
 
     def test_current_release_verifies_migrations_before_signed_inventory(self):
         workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")

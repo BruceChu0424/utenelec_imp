@@ -21,16 +21,26 @@ DESTINATIONS = {
     "backend-test-plan": "target-ci-plan",
     "backend-test-results-*": "target-ci-reports",
     "backend-unfiltered-reference": "target-ci-reference",
+    "flutter-test-plan": "flutter-ci-plan",
+    "flutter-test-results-*": "flutter-ci-reports",
 }
+FLUTTER_ARTIFACTS = frozenset({"flutter-test-plan", "flutter-test-results-*"})
 MAX_ARCHIVE_BYTES = 3 * 1024**3
 MAX_MEMBER_BYTES = 2 * 1024**3
 MAX_TOTAL_BYTES = 8 * 1024**3
 MAX_MEMBERS = 100_000
-# The current reviewed workflow schedules eight partitions. Keep raw names and
+# The current reviewed backend workflow schedules sixteen partitions. Keep raw names and
 # ZIP ownership in the same finite pool; the workflow-boundary test pins it.
-SHARD_IDS = tuple(str(number) for number in range(8))
+SHARD_IDS = tuple(str(number) for number in range(16))
 SHARD_DIRECTORIES = frozenset("shard-" + number for number in SHARD_IDS)
 SHARD_NAME = re.compile(r"backend-test-results-(" + "|".join(SHARD_IDS) + r")\Z")
+FLUTTER_SHARD_IDS = tuple(str(number) for number in range(8))
+FLUTTER_SHARD_DIRECTORIES = frozenset("shard-" + number for number in FLUTTER_SHARD_IDS)
+FLUTTER_SHARD_NAME = re.compile(r"flutter-test-results-(" + "|".join(FLUTTER_SHARD_IDS) + r")\Z")
+REPORT_POOLS = {
+    "backend-test-results-*": (SHARD_NAME, SHARD_DIRECTORIES),
+    "flutter-test-results-*": (FLUTTER_SHARD_NAME, FLUTTER_SHARD_DIRECTORIES),
+}
 RESERVED = re.compile(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z", re.I)
 
 
@@ -74,7 +84,7 @@ def raw_archives(raw, artifact):
     children = sorted(raw.iterdir())
     if not children:
         raise ValueError("no authenticated raw artifact archives")
-    if artifact != "backend-test-results-*":
+    if artifact not in REPORT_POOLS:
         if len(children) != 1:
             raise ValueError("named artifact must contain one raw archive")
         plain_node(children[0])
@@ -87,7 +97,7 @@ def raw_archives(raw, artifact):
     result = []
     for child in children:
         plain_node(child, directory=True)
-        match = SHARD_NAME.fullmatch(child.name)
+        match = REPORT_POOLS[artifact][0].fullmatch(child.name)
         if not match:
             raise ValueError("unexpected raw report artifact name")
         entries = list(child.iterdir())
@@ -108,9 +118,11 @@ def extract_artifacts(raw, artifact, *, workspace=ROOT, runner_temp=None):
         raise ValueError("RUNNER_TEMP is required")
     raw = contained_directory(Path(raw), Path(runner_temp))
     workspace = Path(workspace).resolve(strict=True)
-    server = workspace / "server"
-    plain_node(server, directory=True)
-    destination = server / DESTINATIONS[artifact]
+    parent = workspace / ("build" if artifact in FLUTTER_ARTIFACTS else "server")
+    if artifact in FLUTTER_ARTIFACTS and not parent.exists() and not parent.is_symlink():
+        parent.mkdir(mode=0o700)
+    plain_node(parent, directory=True)
+    destination = parent / DESTINATIONS[artifact]
     if destination.exists() or destination.is_symlink():
         plain_node(destination, directory=True)
         if any(destination.iterdir()):
@@ -151,14 +163,21 @@ def extract_artifacts(raw, artifact, *, workspace=ROOT, runner_temp=None):
                 if key in known:
                     raise ValueError("duplicate artifact member or merged overwrite")
                 known[key] = directory
-                if artifact == "backend-test-results-*":
-                    if parts[0] not in SHARD_DIRECTORIES or (
+                if artifact in REPORT_POOLS:
+                    if parts[0] not in REPORT_POOLS[artifact][1] or (
                         len(parts) == 1 and not directory
                     ):
                         raise ValueError("unexpected report member ownership")
                     archive_shards.add(parts[0].removeprefix("shard-"))
+                if artifact == "flutter-test-plan" and (parts != ("plan.json",) or directory):
+                    raise ValueError("unexpected Flutter plan member")
+                if artifact == "flutter-test-results-*" and not (
+                    len(parts) == 1 and directory
+                    or len(parts) == 2 and not directory and parts[1] in {"report.json", "machine.jsonl", "stderr.log"}
+                ):
+                    raise ValueError("unexpected Flutter report member")
                 members.append((archive_path, info, parts, directory))
-        if artifact == "backend-test-results-*":
+        if artifact in REPORT_POOLS:
             if len(archive_shards) != 1 or (
                 expected_shard is not None and archive_shards != {expected_shard}
             ) or report_shards & archive_shards:
@@ -168,12 +187,13 @@ def extract_artifacts(raw, artifact, *, workspace=ROOT, runner_temp=None):
         pieces = key.split("/")
         if any(known.get("/".join(pieces[:i])) is False for i in range(1, len(pieces))):
             raise ValueError("artifact file is used as a parent directory")
-    required = {"backend-test-plan": "plan.json", "backend-unfiltered-reference": "baseline-plan.json"}
+    required = {"backend-test-plan": "plan.json", "backend-unfiltered-reference": "baseline-plan.json",
+                "flutter-test-plan": "plan.json"}
     if artifact in required and known.get(required[artifact]) is not False:
         raise ValueError("artifact is missing its required plan")
     # CRC/decompression failures only affect this new private tree. Publish after
     # every member has been read and checked; existing/source files are never used.
-    with tempfile.TemporaryDirectory(prefix=".quality-artifact-", dir=server) as staging_name:
+    with tempfile.TemporaryDirectory(prefix=".quality-artifact-", dir=parent) as staging_name:
         staging = Path(staging_name)
         opened = {}
         try:
@@ -195,7 +215,7 @@ def extract_artifacts(raw, artifact, *, workspace=ROOT, runner_temp=None):
                 if copied != info.file_size:
                     raise ValueError("artifact member size differs")
             # Recheck before promotion, including a newly introduced symlink.
-            plain_node(server, directory=True)
+            plain_node(parent, directory=True)
             if destination.exists() or destination.is_symlink():
                 plain_node(destination, directory=True)
                 destination.rmdir()  # Only an empty destination may be replaced.

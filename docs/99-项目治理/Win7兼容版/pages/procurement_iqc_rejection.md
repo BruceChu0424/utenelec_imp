@@ -4,7 +4,7 @@
 
 ## W7-BIZ-092 · lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart
 
-模块 `procurement_iqc_rejection`；872 行；SHA256 `94efae5219ec2ade9d151fcf3ff1f1c37d69f9948a67b2a94ae68ba1557243da`。
+模块 `procurement_iqc_rejection`；872 行；SHA256 `4102a1357259ef8eaea1af2ae155def49f3dbab54245ca38241df6f915009b2f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

@@ -184,7 +184,7 @@
 
 ## W7-BIZ-181 · lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart
 
-模块 `warehouse`；652 行；SHA256 `253c713ba1064218cd1509063ceb910147220032d86198b11be1c6524a41db01`。
+模块 `warehouse`；652 行；SHA256 `04c5ec81cc8179d58cf3b703198dc450eaae3299a79df576d37cb9d3ab990183`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -436,7 +436,7 @@
 
 ## W7-BIZ-195 · lib/features/warehouse/pages/warehouse_insight_page.dart
 
-模块 `warehouse`；1315 行；SHA256 `a3f67499af60c0c3bd161d4fc1ad6f1b7612781444e6ef9dada551583c6c29e6`。
+模块 `warehouse`；1315 行；SHA256 `5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

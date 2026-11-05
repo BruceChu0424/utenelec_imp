@@ -307,8 +307,11 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order,consumption_basis,basis_output_qty)
                 VALUES(?,?,?,?,2,'FIXED_BATCH',50)
                 """, UUID.randomUUID(), assemblyId, batchMaterialId, new BigDecimal("4"));
-        // 重新学习后的窗口：累计减基线 = 3 个有效批次、暴露产量 3、净耗 10：每件 3.333…，按视图 6 位向上取整。
-        // 不良窗口 = 1.5 - 1 = 0.5：不良率 0.5 / 3.5 = 0.142857142…，采用时按 6 位四舍五入。
+        // The source operation explicitly adopts six places HALF_UP for 10/3.
+        // The defect-rate snapshot retains its separate six-place contract.
+        transaction.executeWithoutResult(status -> {
+        jdbc.queryForObject("SELECT set_config('app.business_precision_choices', ?, true)", String.class,
+                "{\"version\":1,\"choices\":{\"goods.bom.actual-usage\":{\"scale\":6,\"rounding\":\"HALF_UP\"}}}");
         jdbc.update("""
                 INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,
                     net_qty,exposure_output_qty,exposure_defect_qty,sample_count,
@@ -319,6 +322,8 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 INSERT INTO goods_bom_actual_usages(goods_id,component_goods_id,unit_id,output_unit_id,
                     net_qty,exposure_output_qty,exposure_defect_qty,sample_count) VALUES(?,?,?,?,9,3,1,3)
                 """, assemblyId, batchMaterialId, unitId, unitId);
+        });
+        assertThat(jdbc.queryForObject("SELECT numeric_derivation_policy->'choices'->'goods.bom.actual-usage'->>'scale' FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?", String.class, assemblyId, rawMaterialId)).isEqualTo("6");
         MaterialAnalysisService service = new MaterialAnalysisService(
                 entityManager,
                 mock(SecurityContextCurrentUser.class),
@@ -343,7 +348,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         assertThat(direct.usage().reason()).isEqualTo("NO_DATA");
         assertThat(direct.bomQty()).isEqualByComparingTo("2");
         assertThat(learned.usage().designQty()).isEqualByComparingTo("3");
-        assertThat(learned.usage().actualQty()).isEqualByComparingTo("3.333334");
+        assertThat(learned.usage().actualQty()).isEqualByComparingTo("3.333333");
         assertThat(learned.usage().actualQty()).isEqualByComparingTo(jdbc.queryForObject(
                 "SELECT effective_qty FROM v_goods_bom_item_usage WHERE bom_item_id=? AND usage_basis='ACTUAL'",
                 BigDecimal.class, learnedEdge));
@@ -353,7 +358,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         assertThat(learned.usage().defectRate()).isEqualByComparingTo(jdbc.queryForObject(
                 "SELECT round(defect_rate, 6) FROM v_goods_bom_item_usage WHERE bom_item_id=?", BigDecimal.class, learnedEdge));
         assertThat(direct.usage().defectRate()).isNull();
-        assertThat(learned.perProductQty()).isEqualByComparingTo("6.666668");
+        assertThat(learned.perProductQty()).isEqualByComparingTo("6.666666");
         assertThat(fixedBatch.usage().basis()).isEqualTo("DESIGN");
         assertThat(fixedBatch.usage().reason()).isEqualTo("NOT_LINEAR");
         assertThat(fixedBatch.usage().actualQty()).isNull();

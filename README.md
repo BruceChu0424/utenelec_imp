@@ -161,7 +161,7 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 
 | CI 作业 | 本地等价命令 |
 |---|---|
-| Flutter / Web | `dart format --output=none --set-exit-if-changed lib test` → `flutter pub get --enforce-lockfile` → `flutter analyze --no-pub` → `flutter test --no-pub` |
+| Flutter / Web | `flutter pub get --enforce-lockfile` → `dart format --output=none --set-exit-if-changed lib test` → `flutter analyze --no-pub` → `flutter test --no-pub` |
 | Backend 快道(单元 + 架构 + 契约) | `cd server && mvn -Duten.build.directory=target-fast verify` |
 | Backend 全量(真库 + 全链路) | `cd server && UTEN_RUN_DB_TESTS=true mvn verify`(Docker/Testcontainers；完整发现、分片与汇总见[测试规范](docs/00-项目准则/15-全量测试分片与耗时核对.md)) |
 | Deployment contracts | `python -m unittest discover -s deploy/updater -p "test*.py"`(以及 `deploy/postgres/backup`、`deploy/setup`、`deploy/monitoring`、`deploy/aliyun-oidc`、`deploy/ocr`；模板校验 `pwsh deploy/verify-templates.ps1`) |

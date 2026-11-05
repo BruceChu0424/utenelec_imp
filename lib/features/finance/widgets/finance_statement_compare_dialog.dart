@@ -292,9 +292,11 @@ class _ComparisonState extends ConsumerState<_Comparison>
     if (!_current) {
       return withFormDraft(
         UtenAlertDialog(
+          showCloseButton: true,
+          onClose: _close,
+
           title: const Text('访问范围已变化'),
           content: const Text('请从原入口重新打开；原文件和原账号草稿仍保留。'),
-          actions: [TextButton(onPressed: _close, child: const Text('关闭'))],
         ),
       );
     }
@@ -536,10 +538,6 @@ class _ComparisonState extends ConsumerState<_Comparison>
                       : _compare,
                   isLoading: _busy,
                   child: const Text('逐列比对'),
-                ),
-                TextButton(
-                  onPressed: _busy ? null : _close,
-                  child: const Text('关闭'),
                 ),
               ],
             ),

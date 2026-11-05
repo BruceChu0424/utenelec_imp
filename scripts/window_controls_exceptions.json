@@ -315,7 +315,7 @@
     "kind": "raw-close-icon",
     "path": "lib/features/expense/pages/expense_approval_detail_page.dart",
     "owner": "_ExpenseApprovalDetailPageState.build",
-    "fingerprint": "fd4f9c1ba8c4d6556016f9fefacc5401c5aa3a6b9d70fa32b98edccd11e249f3",
+    "fingerprint": "d3e7bd661c9b9007ab4deba90e68a05cc451323c717dce3652ab47448737ecbc",
     "count": 1,
     "reason": "Rejects an expense approval through its business decision callback."
   },
@@ -622,5 +622,21 @@
     "fingerprint": "3a6e870f566c4aab0cce6609cc832903367c902ae9d6cc0c515a04dd56060ab6",
     "count": 1,
     "reason": "Non-interactive cancelled material-analysis status icon. The tuple supplies a label, status glyph and color; it has no dismiss, navigation or window action."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/feedback/uten_workflow_progress.dart",
+    "owner": "_WorkflowNode.build",
+    "fingerprint": "b2b45922e4f451477aa39a0373b8e887d0b220588100f10019259d96d886a2ac",
+    "count": 1,
+    "reason": "Displays the rejected workflow node state without an interactive dismiss action."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+    "owner": "_EditorState._allocationEditor",
+    "fingerprint": "9287fe16d4cad74ab2851330deee189155bb2927028fcb930ecb4e1774a9a23d",
+    "count": 1,
+    "reason": "Clears only the selected client from an expense allocation row and marks its draft changed; it does not dismiss the editor."
   }
 ]

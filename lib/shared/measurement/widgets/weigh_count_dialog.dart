@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../core/network/business_precision.dart';
 import '../../../core/network/business_precision_coordinator.dart';
 import '../../drafts/form_draft_mixin.dart';
@@ -1074,7 +1075,10 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel>
         children: [
           const Text('身份、权限或来源已变化；原称重草稿保留，请关闭后重新进入。'),
           if (widget.onCancel != null)
-            UtenButton(onPressed: widget.onCancel, child: const Text('关闭')),
+            Align(
+              alignment: Alignment.centerRight,
+              child: UtenCloseButton(onPressed: widget.onCancel),
+            ),
         ],
       );
     }

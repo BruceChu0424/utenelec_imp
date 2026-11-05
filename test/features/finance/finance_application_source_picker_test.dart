@@ -9,6 +9,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/pages/finance_applications_page.dart';
@@ -167,7 +168,8 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(find.text('OLD-RESPONSE'), findsNothing);
-      await tester.tap(find.text('关闭'));
+      expect(find.byType(UtenCloseButton), findsOneWidget);
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
       expect(find.text('选择出差来源'), findsOneWidget);
       expect(tester.takeException(), isNull);

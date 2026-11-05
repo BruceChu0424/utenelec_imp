@@ -163,14 +163,11 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
   Widget build(BuildContext context) {
     if (ref.watch(exportContextEpochProvider) != _epoch) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('允许损耗率'),
         content: const Text('登录身份、权限或服务器已变化，请重新打开。'),
-        actions: [
-          UtenButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final canEdit = ref
@@ -651,14 +648,11 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor>
     if (!formDraftIdentityIsCurrent) {
       return withFormDraft(
         UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
+
           title: const Text('允许损耗率'),
           content: const Text('登录身份、权限或服务器已变化，原草稿已保留。'),
-          actions: [
-            UtenButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     }
@@ -684,7 +678,7 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor>
                     ],
                   ),
                   showCloseButton: true,
-                  onClose: _close,
+                  onClose: _busy ? null : _close,
                 ),
                 if (_error != null)
                   Padding(
@@ -836,10 +830,6 @@ class _PolicyEditorState extends ConsumerState<_PolicyEditor>
                           child: const Text('更正或停用'),
                         ),
                     ],
-                    UtenButton(
-                      onPressed: _busy ? null : _close,
-                      child: const Text('关闭'),
-                    ),
                   ],
                 ),
               ],

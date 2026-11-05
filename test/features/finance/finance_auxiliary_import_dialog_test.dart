@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/finance/widgets/finance_auxiliary_import_dialog.dart';
@@ -27,7 +28,7 @@ void main() {
     expect(api.applyIds, ['batch-1']);
     expect(
       tester
-          .widget<TextButton>(find.widgetWithText(TextButton, '关闭'))
+          .widget<UtenCloseButton>(find.byType(UtenCloseButton).last)
           .onPressed,
       isNull,
     );

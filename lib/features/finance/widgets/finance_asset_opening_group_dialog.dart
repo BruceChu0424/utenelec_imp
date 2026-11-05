@@ -1425,7 +1425,7 @@ class _FinanceAssetOpeningGroupSurfaceState
               icon: Icons.account_balance_outlined,
               title: Text('${_templates[_template]}原表接续'),
               showCloseButton: true,
-              onClose: _close,
+              onClose: _busy ? null : _close,
             ),
           ),
           Expanded(
@@ -1634,11 +1634,6 @@ class _FinanceAssetOpeningGroupSurfaceState
                             : null,
                         child: const Text('复核撤销本次接续'),
                       ),
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: _busy ? null : _close,
-                      child: const Text('关闭'),
-                    ),
                   ],
                 ),
               ],

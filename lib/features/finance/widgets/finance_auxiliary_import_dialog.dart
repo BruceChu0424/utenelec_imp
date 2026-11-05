@@ -673,13 +673,10 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
     if (ref.watch(exportContextEpochProvider) != _epoch ||
         !formDraftIdentityIsCurrent) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('访问范围已变化'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final frozen =
@@ -903,22 +900,6 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
                     ? (row) => _restore('${row['importId']}')
                     : null,
               ),
-            ),
-            UtenDialogActions(
-              alignment: MainAxisAlignment.end,
-              overflowAlignment: OverflowBarAlignment.end,
-              children: [
-                TextButton(
-                  onPressed:
-                      _busy ||
-                          _loading ||
-                          (_unknownUpload || _unknownApply) &&
-                              formDraftRecoveryId == null
-                      ? null
-                      : _close,
-                  child: const Text('关闭'),
-                ),
-              ],
             ),
           ],
         ),

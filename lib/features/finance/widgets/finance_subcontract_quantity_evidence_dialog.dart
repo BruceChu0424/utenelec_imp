@@ -171,14 +171,11 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory> {
   Widget build(BuildContext context) {
     if (!_current) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('原表数量资料'),
         content: const Text('身份或权限已变化，请重新打开。'),
-        actions: [
-          UtenButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final canEdit = ref
@@ -905,14 +902,11 @@ class _EvidenceEditorState extends ConsumerState<_EvidenceEditor>
     if (!formDraftIdentityIsCurrent) {
       return withFormDraft(
         UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
+
           title: const Text('原表数量资料'),
           content: const Text('身份或权限已变化，原草稿、附件和请求已保留。'),
-          actions: [
-            UtenButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     }
@@ -939,7 +933,7 @@ class _EvidenceEditorState extends ConsumerState<_EvidenceEditor>
                     ],
                   ),
                   showCloseButton: true,
-                  onClose: _close,
+                  onClose: _busy ? null : _close,
                 ),
                 if (_error != null)
                   Padding(
@@ -1283,10 +1277,6 @@ class _EvidenceEditorState extends ConsumerState<_EvidenceEditor>
                           child: const Text('更正或停用'),
                         ),
                     ],
-                    UtenButton(
-                      onPressed: _busy ? null : _close,
-                      child: const Text('关闭'),
-                    ),
                   ],
                 ),
               ],
@@ -1391,14 +1381,11 @@ class _EvidencePickerState extends ConsumerState<_EvidencePicker> {
   Widget build(BuildContext context) {
     if (!_current) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
+
         title: const Text('选择真实来源'),
         content: const Text('身份或权限已变化，请重新打开。'),
-        actions: [
-          UtenButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final group = widget.kind == 'GROUP';

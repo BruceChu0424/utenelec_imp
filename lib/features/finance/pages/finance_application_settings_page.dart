@@ -281,9 +281,14 @@ class _SettingsEditorState extends ConsumerState<_SettingsEditor> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            widget.settings ? '启用/关闭原申请流程' : '明确配置原岗位人员',
-            style: Theme.of(context).textTheme.titleLarge,
+          UtenDialogHeader(
+            padding: EdgeInsets.zero,
+            title: Text(
+              widget.settings ? '启用/关闭原申请流程' : '明确配置原岗位人员',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            showCloseButton: true,
+            onClose: _busy ? null : () => Navigator.pop(context),
           ),
           const SizedBox(height: 16),
           if (widget.settings)
@@ -361,11 +366,6 @@ class _SettingsEditorState extends ConsumerState<_SettingsEditor> {
             spacing: 8,
             alignment: WrapAlignment.end,
             children: [
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: _busy ? null : () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
               UtenButton(
                 onPressed: current && !_busy ? _save : null,
                 child: Text(_sent == null ? '保存' : '重试原设置'),

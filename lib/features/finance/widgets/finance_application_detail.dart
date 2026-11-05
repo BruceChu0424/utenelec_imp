@@ -838,9 +838,14 @@ class _ActionState extends ConsumerState<FinanceApplicationActionSurface>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              financeApplicationActionLabel(widget.mode, widget.application),
-              style: Theme.of(context).textTheme.titleLarge,
+            UtenDialogHeader(
+              padding: EdgeInsets.zero,
+              title: Text(
+                financeApplicationActionLabel(widget.mode, widget.application),
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              showCloseButton: true,
+              onClose: _saving ? null : () => Navigator.pop(context),
             ),
             Text(
               '${widget.application['application_no']}　${widget.application['title']}',
@@ -1032,11 +1037,6 @@ class _ActionState extends ConsumerState<FinanceApplicationActionSurface>
               runSpacing: 8,
               alignment: WrapAlignment.end,
               children: [
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed: _saving ? null : () => Navigator.pop(context),
-                  child: const Text('关闭'),
-                ),
                 if (_sent != null)
                   UtenButton(
                     type: UtenButtonType.secondary,

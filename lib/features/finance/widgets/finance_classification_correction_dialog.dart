@@ -730,6 +730,9 @@ class _CorrectionState extends ConsumerState<_Correction>
     if (!_current) {
       return withFormDraft(
         UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
+
           title: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -737,12 +740,6 @@ class _CorrectionState extends ConsumerState<_Correction>
               UtenFieldHintIcon(info: '身份、服务器或数据范围已变化，原账号私有草稿保留。'),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     }
@@ -1007,10 +1004,7 @@ class _CorrectionState extends ConsumerState<_Correction>
                           : null,
                       child: const Text('重新读取关联图'),
                     ),
-                    TextButton(
-                      onPressed: _busy ? null : _close,
-                      child: const Text('关闭'),
-                    ),
+
                     UtenButton(
                       onPressed:
                           _busy ||

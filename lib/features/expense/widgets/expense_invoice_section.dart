@@ -1316,14 +1316,11 @@ class _InvoiceVerifyDialogState extends ConsumerState<_InvoiceVerifyDialog> {
     final l10n = AppLocalizations.of(context);
     if (!_current) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.of(context).pop(),
+
         title: const Text('授权已变化'),
         content: const Text('请关闭后重新打开票据查验'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     return Stack(

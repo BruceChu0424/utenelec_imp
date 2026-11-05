@@ -209,6 +209,8 @@ class WorkshopMaterialV740SchemaPostgresTest {
     void cloneCase() throws Exception {
         db = MigratedSchemaBaseline.cloneConnection(TEMPLATE, "wm740_case_" + CLONES.incrementAndGet());
         exec("SELECT set_config('app.actor_id', ?, false)", ACTOR.toString());
+        exec("SELECT set_config('app.business_precision_choices', ?, false)",
+                "{\"version\":1,\"choices\":{\"quantity.share\":{\"scale\":4,\"rounding\":\"HALF_UP\"}}}");
     }
 
     @AfterEach
@@ -466,7 +468,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
         assertThat(str("""
                 SELECT origin || '|' || effective_from || '|' || design_qty_snapshot
                 FROM production_execution_periodic_materials WHERE execution_segment_id=?""", bomSegment))
-                .isEqualTo("BOM|" + GO_LIVE + "|0.01250");
+                .isEqualTo("BOM|" + GO_LIVE + "|0.0125");
 
         UUID choiceSegment = segment(P2);
         assertThat(state(choiceSegment)).isEqualTo("NEED_CHOICE");

@@ -15,6 +15,7 @@ class AuditSessionTableExportServiceTest {
     private final LocalDate from=LocalDate.of(2026,9,1),to=from.plusDays(1);
     @Test void exportUsesVisibleSessionSchemaAndFreezesOneSnapshotAcrossAllPages() {
         var row=mock(AuditSessionRow.class);
+        UUID sessionId=UUID.randomUUID();when(row.sessionId()).thenReturn(sessionId);
         when(row.actorDisplay()).thenReturn("员工");when(row.operationCount()).thenReturn(4L);
         when(query.sessionsForExport(actor,from,to,1,100,99L,null)).thenReturn(new AuditSessionPageResponse(Collections.nCopies(100,row),1,100,101,2,99));
         when(query.sessionsForExport(actor,from,to,2,100,99L,101L)).thenReturn(new AuditSessionPageResponse(List.of(row),2,100,101,2,99));
@@ -22,6 +23,7 @@ class AuditSessionTableExportServiceTest {
         assertThat(result.columns()).extracting(ExportColumn::key).containsExactly("actor","login","status","device","operations","failures","postLogout","logout","credential");
         assertThat(result.rows()).hasSize(101);
         assertThat(result.rows().getFirst()).containsEntry("operations",4L).containsEntry("actor","员工");
+        assertThat(result.rows().getFirst()).containsEntry("sessionId",sessionId);
         verify(query).sessionsForExport(actor,from,to,2,100,99L,101L);
     }
     @Test void exceedsConfiguredLimitOrDriftingSnapshotNeverSilentlyTruncates() {

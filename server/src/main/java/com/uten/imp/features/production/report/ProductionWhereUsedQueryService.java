@@ -290,6 +290,7 @@ public class ProductionWhereUsedQueryService {
                        color.name AS color_name,
                        goods.spec AS spec,
                        category.name AS category_name,
+                       CASE WHEN category.is_deleted = FALSE THEN category.id END AS category_id,
                        goods.status AS goods_status,
                        goods.auto_created AS auto_created,
                        goods.is_deleted AS goods_deleted,
@@ -431,6 +432,25 @@ public class ProductionWhereUsedQueryService {
                 "\"__currentBom\" DESC, \"lastUsed\" DESC NULLS LAST, \"goodsCode\" ASC",
                 sortKeys);
         var headerWhere=new com.uten.imp.common.report.ReportQueryKit.WhereBuilder("WHERE "+sourcePredicate(normalizedSource));
+        var selectedProducts=com.uten.imp.common.export.SelectedExportIds.parse(
+                filters==null?null:filters.get("selectedProductIds"));
+        if (selectedProducts!=null) {
+            headerWhere.add("row.product_id IN (:selectedProductIds)", "selectedProductIds", selectedProducts);
+        }
+        String selectedCategory=normalizeMaterialCategory(filters==null?null:filters.get("categoryId"));
+        if (HISTORICAL_UNCATEGORIZED.equals(selectedCategory)) {
+            headerWhere.add("row.category_id IS NULL", null, null);
+        } else if (selectedCategory!=null) {
+            // UNION makes legacy cycles converge; selecting a branch includes every live descendant.
+            headerWhere.add("""
+                    row.category_id IN (WITH RECURSIVE product_categories(id) AS (
+                        SELECT id FROM material_categories WHERE id=:productCategoryId AND NOT is_deleted
+                        UNION
+                        SELECT child.id FROM material_categories child
+                        JOIN product_categories parent ON child.parent_id=parent.id WHERE NOT child.is_deleted
+                    ) SELECT id FROM product_categories)
+                    """, "productCategoryId", UUID.fromString(selectedCategory));
+        }
         Map<String,String> types=new LinkedHashMap<>();
         visible.forEach(column->types.put(column.key(),column.type()));
         var searchKeys=com.uten.imp.common.report.ReportColumnSearch.apply(headerWhere,filters,types,
@@ -1002,7 +1022,7 @@ public class ProductionWhereUsedQueryService {
 
     /** Only displayed relationship fields may become durable export criteria. */
     public static boolean supportsHeaderParameter(String key) {
-        return key!=null&&key.startsWith("f.search.")&&columns().stream()
+        return "f.categoryId".equals(key)||"f.selectedProductIds".equals(key)||key!=null&&key.startsWith("f.search.")&&columns().stream()
                 .anyMatch(column->!column.key().startsWith("__")&&key.equals("f.search."+column.key()));
     }
 

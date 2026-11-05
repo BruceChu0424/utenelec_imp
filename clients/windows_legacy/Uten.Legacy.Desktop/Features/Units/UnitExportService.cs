@@ -12,20 +12,34 @@ namespace Uten.Legacy.Desktop.Features.Units
     public sealed class UnitExportService
     {
         private readonly SessionCoordinator session;
+        private UnitExportCapabilities capabilities = new UnitExportCapabilities(false, 0);
+        private UnitReadOwner capabilitiesOwner;
         public UnitExportService(SessionCoordinator session) { this.session = session ?? throw new ArgumentNullException(nameof(session)); }
-        public async Task<UnitReadSnapshot<bool>> AvailableAsync(CancellationToken token)
+        public async Task<UnitReadSnapshot<UnitExportCapabilities>> AvailableAsync(CancellationToken token)
         {
             Demand(); var owner = new UnitReadOwner(session);
             try
             {
                 string json = await session.GetAsync("/report-export-jobs/capabilities", token).ConfigureAwait(false);
-                Require(owner); var body = UnitJson.Object(UnitJson.Parse(json)); object available;
-                if (!body.TryGetValue("available", out available) || !(available is bool)) throw new FormatException("导出任务能力格式无效。");
-                return new UnitReadSnapshot<bool>((bool)available, owner, "/report-export-jobs/capabilities");
+                Require(owner); capabilities = SessionCoordinator.ParseUnitExportCapabilities(json); capabilitiesOwner = owner;
+                return new UnitReadSnapshot<UnitExportCapabilities>(capabilities, owner, "/report-export-jobs/capabilities");
             }
             catch (ApiException error) when (error.StatusCode == 404 || error.StatusCode == 501)
-            { Require(owner); return new UnitReadSnapshot<bool>(false, owner, "/report-export-jobs/capabilities"); }
+            { Require(owner); capabilities = new UnitExportCapabilities(false, 0); capabilitiesOwner = owner;
+                return new UnitReadSnapshot<UnitExportCapabilities>(capabilities, owner, "/report-export-jobs/capabilities"); }
         }
+        public static bool RequiresSelection(string body)
+        {
+            var root=UnitJson.Object(UnitJson.Parse(body));object raw;
+            return root.TryGetValue("parameters",out raw) && raw != null && UnitJson.Object(raw).ContainsKey("selectedIds");
+        }
+        public void RequireSelectionSupport()
+        {
+            Require(capabilitiesOwner);
+            if(!capabilities.SupportsSelection)throw SelectionUnsupported();
+        }
+        public static ApiException SelectionUnsupported()
+        { return new ApiException("EXPORT_SELECTION_UNSUPPORTED", "当前服务器尚不支持选中导出，请更新服务端后重试；本次未生成文件，可明确选择全部结果。"); }
         public async Task<UnitReadSnapshot<IReadOnlyList<MutationExportJob>>> RecentAsync(CancellationToken token)
         {
             Demand(); var owner = new UnitReadOwner(session);
@@ -51,6 +65,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         public MutationRequest PrepareSubmit(string localId, string frozenBody, UnitReadOwner owner)
         {
             Demand(); Require(owner); var mutationOwner = session.CaptureMutationOwner();
+            if (RequiresSelection(frozenBody)) RequireSelectionSupport();
             if (!owner.Matches(mutationOwner)) throw new ApiException("READ_SCOPE_CHANGED", "原导出条件的读取范围已变化，请重新打开导出。");
             return session.PrepareMutation(MutationAction.UnitExportSubmit, localId, frozenBody, mutationOwner);
         }
@@ -60,7 +75,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             if (!owner.Matches(mutationOwner)) throw new ApiException("READ_SCOPE_CHANGED", "原导出任务的读取范围已变化。");
             return session.PrepareMutation(MutationAction.UnitExportCancel, localId, null, mutationOwner, Id(jobId));
         }
-        public static string CreateBody(string jobId, UnitQuery query, UnitColumnProjection projection)
+        public static string CreateBody(string jobId, UnitQuery query, UnitColumnProjection projection, IReadOnlyList<string> selectedIds = null)
         {
             if (query == null) throw new ArgumentNullException(nameof(query)); jobId = Id(jobId);
             var filter = new Dictionary<string, object>();
@@ -73,11 +88,21 @@ namespace Uten.Legacy.Desktop.Features.Units
             }
             if (nulls.Count != 0) filter.Add("nullFields", nulls.OrderBy(value => value, StringComparer.Ordinal).ToArray());
             var json = new JavaScriptSerializer { MaxJsonLength = 65536 };
-            return json.Serialize(new Dictionary<string, object> {
+            var parameters = new Dictionary<string, string> { ["filter"] = json.Serialize(filter) };
+            if (selectedIds != null)
+            {
+                if (selectedIds.Count == 0 || selectedIds.Count > 1000 || selectedIds.Distinct(StringComparer.Ordinal).Count() != selectedIds.Count)
+                    throw new ApiException("EXPORT_SELECTION_INVALID", "本机导出任务最多选择1000项；更多资料请按分类或筛选导出全部。");
+                parameters.Add("selectedIds", json.Serialize(selectedIds.Select(Id).ToArray()));
+            }
+            string body = json.Serialize(new Dictionary<string, object> {
                 ["id"] = jobId, ["domain"] = "master", ["report"] = "unit", ["format"] = "xlsx",
-                ["parameters"] = new Dictionary<string, string> { ["filter"] = json.Serialize(filter) },
+                ["parameters"] = parameters,
                 ["sort"] = null, ["order"] = null,
                 ["columnProjection"] = projection == null ? null : json.DeserializeObject(projection.ToJson()) });
+            if (System.Text.Encoding.UTF8.GetByteCount(body) > 65536)
+                throw new ApiException("EXPORT_SELECTION_INVALID", "所选资料与筛选条件超出本机任务记录容量，请缩小选择或导出当前筛选全部资料。");
+            return body;
         }
         public static IDictionary<string, string> LegacyParameters(UnitQuery query)
         {

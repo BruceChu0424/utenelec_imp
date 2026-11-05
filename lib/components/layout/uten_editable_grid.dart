@@ -61,6 +61,7 @@ import 'package:flutter/scheduler.dart';
 import '../inputs/uten_input_decoration.dart';
 import 'dart:convert';
 import '../data_display/uten_status_cell_color.dart';
+import '../data_display/uten_table_output_scope.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../inputs/uten_table_cell_hints.dart';
@@ -910,6 +911,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.addColumnLabel = '添加列',
     this.tableKey,
     this.platformBinding,
+    this.outputSelectorOf,
     this.columnEditingEnabled = false,
   }) : assert(
          !showAddRow || createBlankRow != null,
@@ -918,6 +920,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 
   final String? tableKey;
   final PlatformTableBinding<T>? platformBinding;
+  final Map<String, String?> Function(T row)? outputSelectorOf;
 
   /// Only document entry forms opt in. Review/selection tables keep their
   /// existing layout controls without creating columns or editing field values.
@@ -1621,6 +1624,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         TableColumnProjection(
           tableKey: _platform.tableKey,
           scope: _platform.binding?.scope,
+          outputSelection: _outputSelection(),
           sourceKeys: {
             for (final column in _columns)
               _platform.canonicalKey(column.key): column.key,
@@ -1640,6 +1644,45 @@ class _UtenEditableGridState<T extends EditableGridRow>
         contextOwner: ModalRoute.of(context),
       );
     });
+  }
+
+  // Opaque local tokens retain checkbox occurrences; only raw selectors reach the server.
+  final _outputTokens = Expando<String>('grid-output-occurrence');
+  int _nextOutputToken = 0;
+  UtenTableOutputSelection _outputSelection() {
+    final selected = List<T>.of(_selectedRows());
+    Map<String, String?> selector(T row) {
+      if (widget.outputSelectorOf != null) return widget.outputSelectorOf!(row);
+      if (_platform.binding?.recordIdOf(row) case final String id) {
+        return {'@id': id};
+      }
+      return {
+        for (final column in _columns) column.key: column.textOf?.call(row),
+      };
+    }
+
+    String token(T row) =>
+        _outputTokens[row] ??= 'grid-output-${_nextOutputToken++}';
+    final ids = {for (final row in selected) token(row)};
+    return UtenTableOutputSelection(
+      ids: ids,
+      load: () async {
+        final work = UiWorkBudget(isCurrent: () => mounted);
+        final raw = <Map<String, String?>>[], shown = <Map<String, String?>>[];
+        for (final row in selected) {
+          raw.add(Map.of(selector(row)));
+          shown.add({
+            for (final column in _columns) column.key: column.textOf?.call(row),
+          });
+          await work.checkpoint();
+        }
+        return UtenTableOutputSelection(
+          ids: ids,
+          rows: await rectangularUtenOutputRows(raw, isCurrent: () => mounted),
+          displayRows: shown,
+        );
+      },
+    );
   }
 
   // 表头/表体 双向横滚同步（两 ScrollController + _syncing 防回环）；表体横滚条
@@ -1933,6 +1976,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     // 增删行改变表体高度 → sticky 表头位置需重算。只听行集变化：勾选由各行
     // 与表头全选格自己订阅，不整表重建。
     widget.controller.rowsListenable.addListener(_onControllerChanged);
+    widget.controller.addListener(_publishProjection);
     _scheduleStickyUpdate();
   }
 
@@ -2061,6 +2105,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _attachPresentation();
       oldWidget.controller.rowsListenable.removeListener(_onControllerChanged);
       widget.controller.rowsListenable.addListener(_onControllerChanged);
+      oldWidget.controller.removeListener(_publishProjection);
+      widget.controller.addListener(_publishProjection);
       _visibleRowsAll = null; // 可见行缓存按旧控制器修订号记的，作废。
       _autoGrowDirty = true;
       _rewireAutoGrowListeners(force: true);
@@ -2846,6 +2892,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _platform.dispose();
     _pagePos?.removeListener(_onPagePosChanged);
     widget.controller.rowsListenable.removeListener(_onControllerChanged);
+    widget.controller.removeListener(_publishProjection);
     for (final u in _autoGrowUnsubs) {
       u();
     }

@@ -139,6 +139,7 @@ public class AccountController {
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤/排序走 query，与 GET /list 一致） ----------
 
+    @com.uten.imp.common.web.JsonBodyLimit(2_200_000)
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('account:export')")
     public ResponseEntity<byte[]> export(

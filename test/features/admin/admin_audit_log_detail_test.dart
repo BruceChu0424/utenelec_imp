@@ -103,6 +103,25 @@ void main() {
             Key(sessionMode ? 'audit-session-table' : 'audit-event-table'),
           ),
         );
+        if (sessionMode) {
+          final table = tester.widget<MasterDataTableView<AuditSessionSummary>>(
+            find.byKey(const Key('audit-session-table')),
+          );
+          final row = table.rowsController!.items.first;
+          expect(table.outputSelectionEnabled, isTrue);
+          expect(table.selectable, isFalse);
+          expect(table.idOf!(row), row.sessionId);
+          expect(table.outputSelectorOf!(row), {'sessionId': row.sessionId});
+        } else {
+          final table = tester.widget<MasterDataTableView<AuditLogEntry>>(
+            find.byKey(const Key('audit-event-table')),
+          );
+          final row = table.rowsController!.items.first;
+          expect(table.outputSelectionEnabled, isTrue);
+          expect(table.selectable, isFalse);
+          expect(table.idOf!(row), row.id.toString());
+          expect(table.outputSelectorOf!(row), {'auditId': row.id.toString()});
+        }
         await tester.ensureVisible(header.first);
         await tester.pumpAndSettle();
         await tester.tap(header.hitTestable().first);

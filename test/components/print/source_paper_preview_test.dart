@@ -56,6 +56,8 @@ void main() {
         ),
       );
       await tester.tap(find.bySemanticsLabel('预览打印'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('table-output-all')));
       for (
         var frame = 0;
         frame < 8 && find.text('取消读取').evaluate().isEmpty;

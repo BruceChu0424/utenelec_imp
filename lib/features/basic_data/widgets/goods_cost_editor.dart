@@ -1153,6 +1153,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       ),
     ];
     return MasterDataTableView<Map<String, dynamic>>(
+      outputSelectionEnabled: true,
+      outputSelectorOf: (row) => {'rowKey': row['path']?.toString()},
       key: ValueKey('cost-material-${widget.detail.id}'),
       expensiveRowMounts: _editable,
       tableKey: _GoodsCostTabState._tableKey,
@@ -1734,6 +1736,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         _stale ? null : costText(_feeResultsByKey[r.json['key']]?['amount']);
     return UtenEditableGrid<GoodsCostFeeRow>(
       tableKey: 'master.goods.cost.fees',
+      outputSelectorOf: (row) => {'rowKey': row.outputRowKey},
       stickyHeaderPinned: _feePinned,
       toolbarActions: _tableActions(),
       platformBinding: PlatformTableBinding<GoodsCostFeeRow>(
@@ -2215,6 +2218,16 @@ extension _GoodsCostEditor on _GoodsCostTabState {
 class GoodsCostFeeRow extends EditableGridRow {
   GoodsCostFeeRow(Map<String, dynamic> value) : json = copyCostJson(value);
   final Map<String, dynamic> json;
+
+  /// Matches GoodsCostDocumentMapper.feeRowKey. Lengths are UTF-16 code units;
+  /// null and empty paths stay distinct, with no amount or display text in the key.
+  String? get outputRowKey {
+    final key = json['key']?.toString();
+    if (key == null || key.isEmpty) return null;
+    final path = json['targetPath']?.toString();
+    return '${key.length}:$key${path == null ? '-' : '${path.length}:$path'}';
+  }
+
   bool get generated => json['source'] == 'PRICE_COLUMN';
   String get columnKey {
     final key = json['key'].toString(), path = json['targetPath'].toString();

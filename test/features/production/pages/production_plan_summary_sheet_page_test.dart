@@ -137,6 +137,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('plan-summary-print')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('table-output-all')));
       await tester.pump();
       expect(bundle.requested, isTrue);
       _changeSummaryOwner(container, 'server');

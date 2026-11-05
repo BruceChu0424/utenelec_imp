@@ -1,0 +1,1123 @@
+{
+  "date": "2026-11-05",
+  "baseline": "f6e0d8532",
+  "branch": "uimp/table-output-import-trace-20261105",
+  "sourceIdentity": "This receipt and implementation share one task commit. Hashes normalize CRLF to LF only; no semantic source normalization.",
+  "request": "five screenshots; all applicable table outputs; preserve original export styling and integrate the range into the same filename/path/password dialog; local-main merge authorized",
+  "localIntegration": {
+    "target": "main",
+    "authorized": true,
+    "executionReceipt": "output/table-output-import-trace-20261105/LOCAL_MAIN_MERGE_RECEIPT.json"
+  },
+  "unchangedDependencyFiles": [
+    "pubspec.yaml",
+    "pubspec.lock"
+  ],
+  "databaseMigrationAdded": false,
+  "coverage": "coverage.json",
+  "coverageEntryCount": 72,
+  "validationGroups": [
+    {
+      "name": "final public output integration",
+      "passed": 90,
+      "failed": 0,
+      "skipped": 0,
+      "log": "build/verification/output-integration-final.log"
+    },
+    {
+      "name": "legacy version / same popup / cancel / nullable / precise fact / 50000-row paper",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "log": "build/verification/output-protocol-fixture-final.log",
+      "subsetOf": "final public output integration"
+    },
+    {
+      "name": "broader table and complete actual master-page regressions",
+      "passed": 106,
+      "failed": 0,
+      "log": "test-output-final-common.log",
+      "phase": "before final protocol and wait-layer delta, covered by final integration"
+    },
+    {
+      "name": "six actual report domains",
+      "passed": 79,
+      "failed": 0,
+      "skipped": 0,
+      "logs": [
+        "build/verification/report-callers-metadata-complete-rerun-20261105.log",
+        "build/verification/report-callers-finance-2501-20261105.log",
+        "build/verification/report-output-selection-callers-final-20261105.log"
+      ],
+      "details": "73 existing/updated cases + 6 new actual page selected-request cases; includes one-header/two-line identity and accepted filter/sort/date transport"
+    },
+    {
+      "name": "goods import, inventory and BOM actual callers",
+      "passed": 261,
+      "failed": 0,
+      "optionalCaptureSkipped": 1,
+      "logs": [
+        "build/verification/goods-import-and-stock-rerun.log",
+        "build/verification/bom-output-and-import-entry-final.log",
+        "build/verification/bom-occurrence-output-rerun.log"
+      ],
+      "details": "220 six-file cases + 14 import-entry cases + 27 BOM occurrence cases; isolated optional screenshot configuration separately passed"
+    },
+    {
+      "name": "cost selected scope and preparation",
+      "passed": 7,
+      "failed": 0,
+      "logs": [
+        "build/verification/cost-output-selected-scope-final.log",
+        "build/verification/cost-output-preparation-busy-rerun.log"
+      ],
+      "details": "six selection/draft/fullscreen tests plus one pending preparation case; repeated five-case run not added twice"
+    },
+    {
+      "name": "typed audit/workbench actual callers",
+      "passed": 48,
+      "failed": 0,
+      "evidence": "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json"
+    },
+    {
+      "name": "where-used, shelf and summary actual callers",
+      "passed": 81,
+      "failed": 0,
+      "details": "where-used UI and private transport, shelf/summary, 5001-row paper virtualization; later targeted finance/sales/workshop cases are recorded in feature logs, not blindly added"
+    },
+    {
+      "name": "backend combined v4",
+      "passed": 183,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "log": "server/output-selection-all-final-v4.log"
+    },
+    {
+      "name": "backend final capability delta",
+      "passed": 52,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "log": "server/output-selection-version-final.log",
+      "overlaps": "backend combined v4; freshly compiled affected classes"
+    },
+    {
+      "name": "backend import / goods projections / inventory identity",
+      "passed": 88,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "reports": "server/target-goods-import-20261105/surefire-reports"
+    },
+    {
+      "name": "actual selected cost XLSX/PDF",
+      "passed": 9,
+      "failed": 0,
+      "reports": "server/target-goods-import-20261105/surefire-reports/TEST-com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest.xml"
+    },
+    {
+      "name": "native latest, each x86 and x64",
+      "print": 23,
+      "export": 41,
+      "sharedIdentity": 9,
+      "capabilityHandshake": 6,
+      "failed": 0,
+      "evidence": "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json"
+    },
+    {
+      "name": "deployment and generated nginx contracts",
+      "passed": 9,
+      "failed": 0,
+      "bashSyntaxFiles": 2,
+      "evidence": "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json"
+    },
+    {
+      "name": "final real physical-line identity and affected report owner regressions",
+      "uniquePassed": 142,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "evidence": "report-line-identity-validation.json",
+      "details": "56 identity/scientific selector cases + 105 affected owner/permissions/totals/ledger cases; overlaps deduplicated in the owner receipt; one party array fixture updated to actual hidden metadata shape"
+    },
+    {
+      "name": "actual line identity UI in all six report domains",
+      "passed": 6,
+      "failed": 0,
+      "log": "build/verification/report-output-real-line-identity-callers-20261105.log",
+      "details": "same header and all identical visible values; second-page selection sends only authoritative __lineId"
+    }
+  ],
+  "resultCounting": "Groups overlap and include staged reruns. Do not add these counts into one claimed unique total.",
+  "staticAnalysis": {
+    "status": "passed",
+    "log": "build/verification/output-source-freeze-analyze.log",
+    "issues": 0,
+    "identityDeltaLog": "build/verification/report-identity-component-analyze.log"
+  },
+  "browserInteraction": {
+    "status": "passed",
+    "data": "synthetic, 3000 rows, no business server",
+    "cases": [
+      "two checked rows",
+      "one original-style export dialog",
+      "filename and password preserved while toggling range/resizing",
+      "1440x1080 expanded without vertical scrolling",
+      "390x844 complete controls",
+      "cancel retains two selected rows"
+    ],
+    "screenshots": [
+      "output/table-output-import-trace-20261105/browser-export-desktop.png",
+      "output/table-output-import-trace-20261105/browser-export-narrow.png"
+    ],
+    "fixtureServerStopped": true
+  },
+  "registryProtection": {
+    "items": 372,
+    "done": 10,
+    "idDrift": 0,
+    "statusOwnerDodDependenciesNativeTargetDrift": 0,
+    "oldNotesPrefixPreserved": true,
+    "canonicalEvidence": "build/table-output-final/canonical-version-registry-protection.json"
+  },
+  "limitations": [
+    "No remote push, formal package, company catalog write, deployment or activation.",
+    "No complete GitHub CI/release acceptance claim.",
+    "WPF remains a candidate; full ERP and real Win7 acceptance are incomplete.",
+    "No real PostgreSQL 50000-selection execution; padding bound is structurally verified.",
+    "No real nginx -t or Linux systemd execution; source contracts and shell syntax were verified.",
+    "Mixed-version and atomic rollback field acceptance were not performed."
+  ],
+  "sourceHashes": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/UnitExportMutationChecks.cs",
+      "sha256Lf": "c7d939fe37e7a0eadc85571cdfec08c927e9c632366a7a9d1ad12a23443c1fcf"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitColumnProjectionContract.cs",
+      "sha256Lf": "92207f42b88a180319c8b0fa898f1f12a1951c312f1512e3198b26a21546c42e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportDownload.cs",
+      "sha256Lf": "27ed2177bab3504de48bad32b6dee71f18e9ccaf99492a0f33e2ee76d143975c"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportMutationContract.cs",
+      "sha256Lf": "9f95f4309856689eeaa7a208564f5fbd048c94269da52160245cf701f5daf97f"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "sha256Lf": "b590a220aa285df38d2b4e3afd4cc1e34ddf529916ed71537cf4261d0465adf6"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportService.cs",
+      "sha256Lf": "2c78024f811cfe93de6cfd6e82090de0709f5ebf5fa6769dc51947f04f5f1bfa"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportUiChecks.cs",
+      "sha256Lf": "423eafdaae6be6b7d5bd6030f9d96518c93a67f4d8ae90651ba32707e6c42ab4"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs",
+      "sha256Lf": "2de74d80a51f954cf94ee2478752444e5f81bc800559897f26846278994d82c7"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitPrintSnapshot.cs",
+      "sha256Lf": "8204aad1fb3ae62a367c6d818105bd9e308e6b23f64d8531141259ca3dde3bd3"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitPrintWindow.cs",
+      "sha256Lf": "61b8dbd6a38fa2539d0cbca8500909b46d68b6675c277d4ac4a12f95ecbcc662"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "sha256Lf": "a753a076b01d21731080f5e63127f116a259643fdd50375c482dbe3c40f709da"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/NativePrintContractChecks.cs",
+      "sha256Lf": "7b5cc15a399958c87dd01359eb4f7e9fdf4ddb5951c77554ed9ecfa636e4f889"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/TableOutputScopeDialog.cs",
+      "sha256Lf": "08aca16cf9ce8515a3f5210f32f6de61238413e592ad90430aafcc033d678d7a"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256Lf": "3d7acd83428382768b050d3995d64f381edea2fd346d6cf079b3a8d226a97b8b"
+    },
+    {
+      "path": "clients/windows_legacy/progress/business-inventory.json",
+      "sha256Lf": "a26be03f9666c6559e8af51e36d4f68aebdd26863bb686271bc93fc8e9c3f4cf"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json",
+      "sha256Lf": "5ce3dbbb8c5a8e0900b2990b3f1d604558edbaf2efe3d46faecdf55127dd78fa"
+    },
+    {
+      "path": "clients/windows_legacy/progress/history.jsonl",
+      "sha256Lf": "99dea3607bec382b3ca23b28c71a32ceccf3467298466193d2d2b1beee64426d"
+    },
+    {
+      "path": "clients/windows_legacy/progress/work-items.json",
+      "sha256Lf": "ed9456aa770efd6540adeba711eb337adaeec8fa505d11e9bcfbe510049c0b09"
+    },
+    {
+      "path": "contracts/table-output-cost-identities.json",
+      "sha256Lf": "63e8d996a50d5c578f9aee35e5503532eb6709394a563548cc1b1dcc97d30422"
+    },
+    {
+      "path": "contracts/table-output-selection/v1.json",
+      "sha256Lf": "521afe4b8586a2a5ddfc46b71ef6dc73f8dc7dd10682d3c5a665a967a56202d6"
+    },
+    {
+      "path": "deploy/nginx/sync_output_selection_budget.py",
+      "sha256Lf": "5cb8486bc0a5c34536d582ca10cac7181e0892d51d48c35320e40f0dd351a030"
+    },
+    {
+      "path": "deploy/nginx/test_output_selection_budget.py",
+      "sha256Lf": "620763e8d8469e2f6244bd3d94cda82026b796318304bd2406573a38b114d332"
+    },
+    {
+      "path": "deploy/nginx/uten-imp-http-lan.conf",
+      "sha256Lf": "60674fbefd5d486e32e1e9b22865146a3a5569a01508398db9f4cb82a92a9f00"
+    },
+    {
+      "path": "deploy/nginx/uten-imp-internal-test.conf.example",
+      "sha256Lf": "6b44940b67e57d8aa830a4831221b4548bbfc96d67f6cf17a8c2d0ef28083c14"
+    },
+    {
+      "path": "deploy/nginx/uten-imp.conf.example",
+      "sha256Lf": "4f02873dfeea9a3b39cf0e2abe91eea15b1d224ddfd89920987a5cf7470d27b9"
+    },
+    {
+      "path": "deploy/setup/server.env.internal-storage.example",
+      "sha256Lf": "f4cc79a772cf0a12cd01a05f207616fbbe16fa032560f9418e8054452b425e30"
+    },
+    {
+      "path": "deploy/setup/server.env.internal-test.example",
+      "sha256Lf": "9a7d7db5181a1ba15e6813a4a98dbd3a4dd19e0aeb7ecb249febb63610a785bd"
+    },
+    {
+      "path": "deploy/setup/validate-internal-test-server-env.sh",
+      "sha256Lf": "e310ac5826df80e653656d94352f42dc4e1f78a48b2d0ed235f2952959176899"
+    },
+    {
+      "path": "deploy/setup/validate-server-env.sh",
+      "sha256Lf": "ec18329a2d8dfb77855d13678517104e04152648e8004eb3d6523d3f720c5099"
+    },
+    {
+      "path": "deploy/simple/RUNBOOK.zh-CN.md",
+      "sha256Lf": "ba659e17dd3a376d252668b49cdf55ddeeb49c40c8d7a992bddd2a223eaa27b5"
+    },
+    {
+      "path": "deploy/simple/test_report_export_storage.py",
+      "sha256Lf": "ca97eb75aa6988c60c7c5cc0639e0227da628cd401d77a8bf217f14f2a9e3d2a"
+    },
+    {
+      "path": "deploy/simple/units/uten-imp.service",
+      "sha256Lf": "bd3846203cec168253aad9fc22d4d727409d3707acf94766ce46e3f552ee9b7c"
+    },
+    {
+      "path": "deploy/systemd/uten-imp-internal-storage.conf.example",
+      "sha256Lf": "aedd8cc9856973efea674bb91a91fb9668e8c88e31a1c400d6fc022afd8a4a6a"
+    },
+    {
+      "path": "deploy/systemd/uten-imp-internal-test.service.example",
+      "sha256Lf": "8db7ba20cfd6107285309b0cf7816a462b0df8bb4b518b627c09cea38dbb220e"
+    },
+    {
+      "path": "deploy/systemd/uten-imp.service.example",
+      "sha256Lf": "94e10c174c1fc0539f8aeaed42cca852c200e3fb5f2fe29d0912432fa554234c"
+    },
+    {
+      "path": "docs/99-项目治理/2026-11-05-表格输出范围与货品模具反查修复.md",
+      "sha256Lf": "f2159b97d7ddf685d797fdc66333f77d3361c8e5adcf5cfd8441566aa4a9891c"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/04-当前接手记录.md",
+      "sha256Lf": "72135c50a36b2e817b04fe0df77df543ca6959ab72da5fc5de94d161a14d840c"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/07-变更与完成记录.md",
+      "sha256Lf": "4c615cf9ba9b863f5efbc8cda412ab4c685a3dedf52330005ebbe428921a0c8d"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/basic_data.md",
+      "sha256Lf": "8cbe7c755797482c900f04277af4e36da5c8bf4be75c3fda8248b3d04682f1e1"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/finance.md",
+      "sha256Lf": "73bc18dfb3180af44034ba9936eb5a7e98377bea9ab4ca4245f1d9fdc853e2c3"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/operations_workbench.md",
+      "sha256Lf": "7050a348e561defe54fc89803906b8577f520ba73df97be37d1c795c23be4e97"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/production.md",
+      "sha256Lf": "b4a2eeea7dd17acf3f3f8410e0cf354d45f062e8fa940a8129b37a0e3b2a32bc"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/purchase.md",
+      "sha256Lf": "dccf97096327f134a209c679a1d0832f34028353dc0a2fc17fd9c7105844ea25"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/sales.md",
+      "sha256Lf": "fee61513e6ee453c5ba89d8c818fa60a01e73b4ff0141fc7feacdebebabe7e7b"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/stock.md",
+      "sha256Lf": "3de3c97e1cfd8f294d2a7830580bf4b836d24b913c7599f8dcf722d68ebaa900"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/subcontract.md",
+      "sha256Lf": "54db6bec27f16ade0a2df666366201f07a92b93b44480bad9a8c3ddb33d3ff7f"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/warehouse.md",
+      "sha256Lf": "d20bd48734d5481a8c0cf41acf7aa7665983b4c2ed2db02c10e2f4482b689be6"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-admin.md",
+      "sha256Lf": "00fd98a668b9d6c6d9da77f0406d5cb8e8f5b9edb67c307a6a1c2e189e16d9d6"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-basic_data.md",
+      "sha256Lf": "fd1c98173f3eb3081b3abf4a1272ed0ba198cb479fb9e1ceb1cfae455458c4e1"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-operations_workbench.md",
+      "sha256Lf": "7b084c9bf89bb31906f84b0934426e85712a26235b3cad0516db220164cfcef2"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-production.md",
+      "sha256Lf": "36e7fd153ed75c35823b7f16343abf63d9e8700a6d467f4c33589561251ed243"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-subcontract.md",
+      "sha256Lf": "10e1892b334ca377ea86ca4dfbfb3e30d7b41017a31a74ce359bf37c78122be5"
+    },
+    {
+      "path": "docs/99-项目治理/表格输出范围-20261105/coverage.json",
+      "sha256Lf": "a306e45a14b4ab7f888d78081efb304cdf75ae16c5a936fbbeef2d9c87e85a0f"
+    },
+    {
+      "path": "docs/99-项目治理/表格输出范围-20261105/report-line-identity-validation.json",
+      "sha256Lf": "310949176a07431cc39e9535ab2cb71310cafac513cce82e101fd457dbfa83e5"
+    },
+    {
+      "path": "lib/components/buttons/uten_export_button.dart",
+      "sha256Lf": "b22bab07c460d90b668c263b30b9c26a7a581dd4e204d93b26640b7f2d6f959a"
+    },
+    {
+      "path": "lib/components/data_display/uten_table_output_scope.dart",
+      "sha256Lf": "5e81891e52a01773fb75c8284ab154796868bc203dbd30e0f3ad7fad9dc3888f"
+    },
+    {
+      "path": "lib/components/feedback/uten_task_progress_dialog.dart",
+      "sha256Lf": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac"
+    },
+    {
+      "path": "lib/components/layout/uten_editable_grid.dart",
+      "sha256Lf": "a4645bdf6966d150e5b4973c8b2aef74e3034598c2e7961923ae1e4ff8d5fa73"
+    },
+    {
+      "path": "lib/components/print/uten_print_preview.dart",
+      "sha256Lf": "8340089e8b182e575a6f2facf02622ac47722aa498a4961f0db218beed4ada27"
+    },
+    {
+      "path": "lib/core/print/print_bounds.dart",
+      "sha256Lf": "35e4be45d5363cdba23a1a9d5ba5fc7201f290d91993a8d3dac6c10f1e734a63"
+    },
+    {
+      "path": "lib/features/admin/pages/audit_overview_widgets.dart",
+      "sha256Lf": "c4f428909b9a8118f0158e05d428c3ad1ee9107547c1ef1cc94e84fd5f2f1bd0"
+    },
+    {
+      "path": "lib/features/basic_data/models/goods_import.dart",
+      "sha256Lf": "a29744324ef5abe23fb36801bcf327e64cfbedd2b113f561ca918037fbedaa92"
+    },
+    {
+      "path": "lib/features/basic_data/pages/goods_import_preview_page.dart",
+      "sha256Lf": "e36136ea2547ef63580339cde7a4d2b08e16cdde8591ef123516b96df91d5f4e"
+    },
+    {
+      "path": "lib/features/basic_data/pages/product_category_page.dart",
+      "sha256Lf": "8ce1a4c795a77a43fc7999580179aad74ac5383f43da4e94764f642d964a0703"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_preview.dart",
+      "sha256Lf": "7bca6ad7967b5e23be37c4c454fdb421c55c89ee1c1d42e8a2d5cc241c67f734"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_tab.dart",
+      "sha256Lf": "906dc8d5347a31e8a52a6f563bbabd29ab7eb4bdb93c06c9533a6966519b235b"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "sha256Lf": "e76e82ef0680a7c0734b7b77fe94bcf6540237a194e8489dd6275ebc7e27212b"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+      "sha256Lf": "3e8236958fbbbbb61471416a547d8ed666318d1c4cd2abda400987669acff821"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+      "sha256Lf": "c512b48a4e5686546d214d4b264b1b89c58dc0ba13656b8ad2d5df0340b6751f"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_import_dialog.dart",
+      "sha256Lf": "0a2e10fec3f280f519061f146c771fb0527a871138fca3a7b662a50cbb93917c"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_import_mode_picker.dart",
+      "sha256Lf": "518f486a1e0fdfd36eec75e8a3f810426258c67dd33a34e707de3c4b599ca1ed"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "sha256Lf": "37cd022d4e0f95da55a7d47a0c047f5d424c6a7cbd4389613f1db7d730a522f7"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+      "sha256Lf": "4ae97e95b320fc423f52374f473eeb100fd3e147ad745bf75367b15d8ade1118"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "sha256Lf": "015969866ac3465c1671995ab90aa6c374d5bb100cd291fa95fdd93563213285"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "sha256Lf": "09b117d18a059ce2d4e217b7e0c04136f2998d502ca80e410c8350f1be47bbb7"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "sha256Lf": "d4be8bb1355e0506f39e180ed19cc68f5eee471b71062886ad1a30f4fe1793bd"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256Lf": "3ba2b81cad32f859fcd579259786eec8ddfa4a98667fad4a4505bd2680dcac99"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "sha256Lf": "21e68d7318f7efdb424e7cac8f5160c879885f0783bfa3d9d47cb68754a18dcd"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_chart_dialog.dart",
+      "sha256Lf": "6cb580be96d01dad4eeb92d830c1f9a46ea237c7861d8aeec020358b0a09e4cc"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "sha256Lf": "c865fa1a09053b5690cee3ae40de5ea57963f487613823564eefedc594f903a5"
+    },
+    {
+      "path": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "sha256Lf": "56eca2621a34e778bad713bf37c66a59f2a48ac8480eddd9beab3ae3cc194e99"
+    },
+    {
+      "path": "lib/features/production/pages/production_plan_summary_sheet_page.dart",
+      "sha256Lf": "46ca9330b982fd88d5cc6d3965d3ce1a0b44a376a065e8b273ddb7f2212efd80"
+    },
+    {
+      "path": "lib/features/production/pages/production_report_page.dart",
+      "sha256Lf": "8adb2d2673a26fe079d0815dd19634d7c836eec3796ead59f96749ae1b84f746"
+    },
+    {
+      "path": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "sha256Lf": "a4f6afc23d9463eafd5992b8997dccc882fa3d13ba27b960a610e7110053892e"
+    },
+    {
+      "path": "lib/features/production/pages/where_used_report_page.dart",
+      "sha256Lf": "cc8525a354231814b80b25417aa281e60a2566849f2bded9da69fb63020ae239"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "sha256Lf": "d8a77121783a85ca365cffdd0a010fc9989c39aba3c4d4e9ec4cb5dee70f41ec"
+    },
+    {
+      "path": "lib/features/report/shared/report_print_preview.dart",
+      "sha256Lf": "6efe69bf0ab553d7d93e3bd8f8f1da77724d54fab8386d7d2ffaf164582c2b54"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_report_page.dart",
+      "sha256Lf": "8b37075f277b38f5e50e2124d0c0b5d934f54f0a7d994e166ef0ba6b03f55b1e"
+    },
+    {
+      "path": "lib/features/sales/templates/sales_quote_template_download_button.dart",
+      "sha256Lf": "b3bb825be3af86570f555b9424f7ddc1c4581d3e5e0e1bf5f8e3e4bd95c1336d"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "sha256Lf": "ed5f6ddb2dc90ddd2e9a97c5f076dc0056342a159b2ff0f13ce40a042521308b"
+    },
+    {
+      "path": "lib/features/stock/repositories/stock_query_repository.dart",
+      "sha256Lf": "8e241feb81fce57f1410557549eb17fa3d93424d7fd6ebc71e3a16832ed0c8b8"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "sha256Lf": "c6fa06e13be423c1f95b00a30bd4e57e5648c5f1ca091b28d93956bef3baf1ae"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "sha256Lf": "587298f821658a11e5049a8babb05febdc4c1f2b3911d3a64e75a167428429a9"
+    },
+    {
+      "path": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "sha256Lf": "0122c9f87a153bc43e7ac27d4958bf80b62086aca5928c81e425320458778fc2"
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "sha256Lf": "3c5bdf508ff9d893593ca541190d84358caed7f02f15e2751e657826c03c7e41"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "sha256Lf": "1b1bfb22eff9bfaba8400ceee2984eb190b83521d881794c3450a37a9854bbcc"
+    },
+    {
+      "path": "lib/shared/export/master_export_job.dart",
+      "sha256Lf": "e1e8d2988abeb657957892803716d337f9e7824f8f0adde1ae11ea355aa3a902"
+    },
+    {
+      "path": "lib/shared/export/report_export_job_dialog.dart",
+      "sha256Lf": "5074d4f6d7a87b61eed2bb4f2006b7e06fb9e5c97578b3e94e2a4734b949bff2"
+    },
+    {
+      "path": "lib/shared/export/report_export_jobs.dart",
+      "sha256Lf": "eba4ffbc8c3ddc11def635cf0898ec20b40126cbcc8d6b48dafb2ae6ec46c410"
+    },
+    {
+      "path": "lib/shared/platform_tables/table_column_projection.dart",
+      "sha256Lf": "15dc4e872dfa1aec327744db90472a5f16a104573a0346f2ad82c19cf55031eb"
+    },
+    {
+      "path": "lib/shared/stock_inventory/instant_inventory_row.dart",
+      "sha256Lf": "e03c25bec6f7a9e524a9a0519d2296f47877150ac01197760ec4e7a737de2e03"
+    },
+    {
+      "path": "server/.env.example",
+      "sha256Lf": "de2826deb67b676c6c11d68366615f251c496c5b57e2c63dc3a6f89c14a3a670"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/audit/AuditController.java",
+      "sha256Lf": "4571b03f619ba01c06ed6d7ec22ce844f59a5f5da600d85c38af00273a47e8d7"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/audit/AuditSessionTableExportService.java",
+      "sha256Lf": "287344578c79bc6e35949d1e6ddaad78383e8700da519337bd49da6d1e55a308"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/DocumentPageSink.java",
+      "sha256Lf": "fdc1d3bdad2f3e593ad7b8c195d757f61836f9dfdb0f9146028604b38006a8e4"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/ExportDocumentProjectionService.java",
+      "sha256Lf": "23880211ee37cedb1db1bb88f2905c49251de0afa65f62f3ab0ce11f97b33815"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/ExportPasswordRequest.java",
+      "sha256Lf": "ff0347b7cbb9480620cba3aea4a695c8003ab610397e239d98bac74048a30525"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/ExportRowSelection.java",
+      "sha256Lf": "2fdfa3de767cda53173a394c4c2ffb0c3dfec7fa1dda63161a1f402424f91132"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSelection.java",
+      "sha256Lf": "e4571e055835d88ae4fa3822bfc8df07e8d46f06b8e21a943c7ec43333679128"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSelectionAspect.java",
+      "sha256Lf": "d23a3aba1db1b99c214bf9dab0967c023c31e5fdf41e9c7e66f197d91bbc46ca"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSelectionRequest.java",
+      "sha256Lf": "b77082b99629eef8a1754e7e81b08321e72b3c65f2d6b74a397867b74bd9dd25"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSource.java",
+      "sha256Lf": "b477a91fab0e82309621d5e01c55ff1a7c6f432cd0a50ca115d94511c43c7577"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/OutputSelectionProtocol.java",
+      "sha256Lf": "097c8e48c9cac999dc195558e1e82d82da6d9ee3cfe59b1057577b97530a2e7b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/SelectedExportIds.java",
+      "sha256Lf": "a8245d6671b6b644c601dd2ba0188ddb57aa23b1e1d9a2e74c4685ef3a36dfcb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/TableColumnProjection.java",
+      "sha256Lf": "1add9759138412fddd381fd33c39c672cebcdc93f8f6478952dc760cbe9271b5"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/XlsxExportService.java",
+      "sha256Lf": "d569906bd2f7747b00d02c54802d3362462f19721522ee76465257da26d66f66"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartReports.java",
+      "sha256Lf": "4045fb27b81f199ff8457e958f36de1c0017d67181b3a624247b939f1fe23792"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java",
+      "sha256Lf": "c43e1d49c8b67b7f49dad34dbda3505949179ae7a9f2b1336b745f7865fc43f0"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+      "sha256Lf": "f42031bf4452990f2363649f21d17c21361a55edb661915a7986a3620509f8b5"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/account/AccountController.java",
+      "sha256Lf": "4515d24f6c5909121e5d12b939ecb5cff848a7b36a76f2e8b0b8fad59f3909ef"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/client/ClientController.java",
+      "sha256Lf": "c93901ace2ecd6965bcc2edf21b259e8263bbd413dd7af8527490b0fa8bf875d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/color/ColorController.java",
+      "sha256Lf": "4abe837ba4d91e2c353b77ab4d89937c37eeed583329f30e03a359e37b26a134"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/currency/CurrencyController.java",
+      "sha256Lf": "88040c4cadf0ed36fb38f57791fc22b80264167ab01fe89a5518615c1e4aa15f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/dto/ContactExportRequest.java",
+      "sha256Lf": "71d490a2f191fab3ee24ae9850d6dffe2aa7d24e3de10d0ae9a25a7199513a95"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/export/MasterReportExportSource.java",
+      "sha256Lf": "fd7396cb452c9daeabf18fd9329a759ff59d45d14701dc891f86ba47e9009cfd"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomController.java",
+      "sha256Lf": "010c9197d4d73f20590ef0f4d30020566c1c1cbc71684132ef47bed8f16f320e"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomExportProjection.java",
+      "sha256Lf": "87ad7e1e161e3bfad1e031948c8a9c3da32e012e63d83d84c0e061ea8f1d6723"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsController.java",
+      "sha256Lf": "780971fcf3688b7720ae2a82fc54e75625d4cd4d7ce0c9e1246f75ccd6e9f1f5"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsExportProjection.java",
+      "sha256Lf": "5c8aada3b4bebc7900ec0e6e9d7d6442313148f04ebd3aa95772814a4d773f8a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsActualCostExportController.java",
+      "sha256Lf": "b4c231592060e36429f78c0d4ff31a60aa778fa038a512e84439125057650343"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostDocumentMapper.java",
+      "sha256Lf": "7cb2746d535fcde931820854156104dc8e41f38c5e20961594467484cf0b3556"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostExportController.java",
+      "sha256Lf": "0ea20fad444cc2d8e8b3cac570ca92d54ca52c9035909cb4201f06dcc333bf65"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportProblemRow.java",
+      "sha256Lf": "a233337ac2bc4de4376f386b5345de29467f3f9f9ff69749d7738e77f4787b21"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportReport.java",
+      "sha256Lf": "9cafa6295a30a0d0932e9b7be950a562f8b6a06081abecfdc9d3d3dbe8b4794d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportService.java",
+      "sha256Lf": "4d04256730ac511a6c8edd5e3f8cffca0c316371ae67619340d940290f78a144"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/mould/MouldController.java",
+      "sha256Lf": "787b8922515eb522036d54f0f343e9afbb011ddb8128efd7d74536414c3a496f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/mould/MouldRepository.java",
+      "sha256Lf": "43fe63e582a0733b18c24af3e0169d66f98e192c38aa7c2f7a9a29ae465958c2"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/referencemethod/ReferenceMethodController.java",
+      "sha256Lf": "1c76597467759b1dd1becfe51735a53a5706dfe1ea19fa957047063efaa407ab"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/supplier/SupplierController.java",
+      "sha256Lf": "d4c22cf9e746f534bbe7150e9e2b13bd865977ea0070d1f4731d20eea7a9996c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/unit/UnitController.java",
+      "sha256Lf": "eda9bbfed5c59e2acc35e0e2cc5e0b3f84d4a54e4fe709772a5619fbd11a9853"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseController.java",
+      "sha256Lf": "d01ded42946f38cb1cd9492dd42c74b26800d4bddd048b2abe727b3afdddf6cf"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchExportController.java",
+      "sha256Lf": "28114e3263a467134170d9e2e80870d572da02672595346c240cb39e2212a913"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java",
+      "sha256Lf": "904a566b6922b54c2c6557e06672286d6fdd70aa15417c943272e91389564026"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskExportService.java",
+      "sha256Lf": "d7bfc241caa1aedf91dab75356c8094e58862efbab8739f1fe1edba51584af42"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportController.java",
+      "sha256Lf": "e37f6d391c81c4a40bcd70cd46e8ef278e5d5cb91aadefc68414b13f7366c565"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java",
+      "sha256Lf": "f0ec595e509b37b7066ef8ac1dd85b068e77318a10d0ee7cb090a03a7beb86fb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionWhereUsedQueryService.java",
+      "sha256Lf": "6d18a786fdd66971d5dbd13af4d7d5ec82fe7616883f62d86fdd070905fb3e3e"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/WhereUsedExportController.java",
+      "sha256Lf": "d701e68cc6caeb8c4206df2b96856a1c20362e08ac5a3d8fe1b17b87804e43b1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/WhereUsedExportService.java",
+      "sha256Lf": "298c89e2fc303d6a93675e16a833247fd532a788cf3a336629a298f8539b0661"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java",
+      "sha256Lf": "91a5eea63ab250f139d4606916c0f59a2af974d57c4d3369fbd5712c468ff440"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+      "sha256Lf": "e8a2a275220384e8bc14718911a643770d9c15c277729e4b75e94edbc84124fb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportController.java",
+      "sha256Lf": "7809f8c94f9d6edfeb7be04a951cba5c2fdd318f8c6842e02c71fea0ce2e3fcb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportRequest.java",
+      "sha256Lf": "ff05dd10dc2d115dbd01a233d9c0288045873db9d04528ea1f25cfc88ce650eb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportService.java",
+      "sha256Lf": "663c2bd395a277d658a60b507e7b73080b4fb62b33ffe32d7da2c97227e3c29c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportController.java",
+      "sha256Lf": "53a5413bd0e54849a4b908c76cbcf93a32f4cbbc5589c1be23375cf92539225a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+      "sha256Lf": "826609a8b4f5f3c3967b43d0011ae34a09c0b9094369f7c2f40552aac618e7df"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/ShelfLabelSql.java",
+      "sha256Lf": "1143c97a82209534721fd241497ad1b34b865ad4c994b49fb660cb6163549793"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java",
+      "sha256Lf": "090b2258084794d97e25bb7e7725fe4a2dde548c451fcbe068917811cae532f7"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java",
+      "sha256Lf": "859cfd4f89916175a4ea29ad67c8a2201f85730040658ee185982f243f92c58b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportController.java",
+      "sha256Lf": "ab8a4d266d0d91f70ac0bbd83c557547777f35f037d54f856611bc53345c29be"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+      "sha256Lf": "6b2ce305cab2a0934c75aca14f1289dbc18e1cc0085fd10b8217ef5c5c40d317"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportController.java",
+      "sha256Lf": "b38cf2cfd7bc3faa00756f53c20ddf93fc21d89a57e50405185bfc5cc88cba9d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+      "sha256Lf": "4c84166aa91db8326e8fb7fa28753a11f5ec68a719d88d8e81921acf9c6c2178"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java",
+      "sha256Lf": "6e4a45df0a5475a4d60ad838a8dbdd627e04d7fe43f9c953dea736cddad105e6"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterController.java",
+      "sha256Lf": "cbbaadf571941d39f795c2d6bd178db138649119dedd4b9f03e3ce5916d03d30"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java",
+      "sha256Lf": "53622f921b102df7c1c0edad0477903d8fd4d9a1d6492c3903d069ec29f0f5b5"
+    },
+    {
+      "path": "server/src/main/resources/application.yml",
+      "sha256Lf": "26f4412437d15ce115eef18a194f437bbf9ccbe860bcff31e11a8064153eaec2"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/audit/AuditSessionTableExportServiceTest.java",
+      "sha256Lf": "93474eab8d45735b04551218b742a1743de662258b3a987c9b98489103caa016"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/ExportRowSelectionTest.java",
+      "sha256Lf": "eab0b1fef34bc306a11e43f09f30d29dc909c97a523459e52d56b82155ae6c4a"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/MasterExportSelectionTest.java",
+      "sha256Lf": "74ff206adeaf1e5e27ed3ad7849872363c686e31864e24054ac2b04f2e855947"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/OutputSelectionCapabilitiesTest.java",
+      "sha256Lf": "0e3521c31b8d6d3b33352e1cd8d0ce76cdb0f28478f0bc4eba48054fece2cd29"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/SelectedDocumentProjectionTest.java",
+      "sha256Lf": "e2479874d629895e05455530f0f10eb76a9f50f8e2ca8d20d632e04127c511f3"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/SelectedExportIdsTest.java",
+      "sha256Lf": "5dd482cb46c61546185ca32335e047bf3d1ec7c81d89df96a9506c35050cbc3b"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/XlsxSelectedRowsStreamingTest.java",
+      "sha256Lf": "22ce4aa70579388a849c02c2ef5e3877c03b9e509b5c0550c0c823b4315cbabd"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/report/CommercialReportLineIdentityTest.java",
+      "sha256Lf": "8dfb3ef7d616efbd9d42969ee9f8fe3144fb3ae0c3c9727a5f40dca4332dbf8a"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/report/StockFinanceReportLineIdentityTest.java",
+      "sha256Lf": "9bde0b75452463e8a84f41f4fa383275756dc6cddc07d14295bb825d27916b85"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/web/OutputSelectionRequestBodyLimitMvcTest.java",
+      "sha256Lf": "bef3ae3a33c9039ff85d7ef68137c9028ac503f5a97408b1e833e16f6ba01356"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartDirectoryExportTest.java",
+      "sha256Lf": "f63f63d3f775af2cef47c4d74c6e96ea0ca1c8d65562d25f6ba67c83bf44bbcb"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/report/FinanceReportPartyStatementTest.java",
+      "sha256Lf": "dd5b1c069d54b2e728eb00adddd3d1150855f6e103a1e88c1df5e1316edeb012"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/export/MasterExportSelectionAspectTest.java",
+      "sha256Lf": "c1b76f94da9f7c4eb48d7cf56ff5ce2310a4731316af39891f35ad1055b1b318"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/GoodsBomExportProjectionTest.java",
+      "sha256Lf": "97d9a63f667b1b70d89020e8b07772592c996048b92b291bebc93a77f707f817"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostDocumentMapperTest.java",
+      "sha256Lf": "5b1d900510df8549d9407f42c976a2acd91e2df4eb2a58425024469927e25094"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportCellCorrectionsSafetyTest.java",
+      "sha256Lf": "6b336ad306f8c9c62abd0ca2e75203518b9dbce286f40d115e4a12bd1df6f2fb"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportMouldReferenceTest.java",
+      "sha256Lf": "788bd299cd8397d2487468a70d77e2ec66c6c6ae00490c550505882ece7fe621"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportPaperTest.java",
+      "sha256Lf": "c0c7dd0b788d56883658b20f7e65092763c9274f146db164dff3a56bd2459df3"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryServiceTest.java",
+      "sha256Lf": "2791330d14ad2d8ae2d1ebc2520f55c1f28f06073efcad7d5615af429d4edd56"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskExportServiceTest.java",
+      "sha256Lf": "d99ff6cda98ae2e7e6f92304f554b81060525852d94733559e2c88b0f5238b08"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/report/ProductionWhereUsedQueryServiceTest.java",
+      "sha256Lf": "74c00379ef370e2fc10f8f1049b11cad60a2b7d0673ade3750a11187e22d6d9e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/report/WhereUsedExportAndReplacementSecurityTest.java",
+      "sha256Lf": "52500de7eb93fad933d90bf1f8c6cdabe632637bedcccfb9f2dabc0ce6c80f3f"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/report/WhereUsedExportServiceTest.java",
+      "sha256Lf": "1ebf69c263cf5edf27b0c53715f361877bcf4fb7abf201db0ea59775e5478847"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/report/ProductionSubcontractLineIdentityTest.java",
+      "sha256Lf": "f91b31ae50735dc6274987665be523a8309001ca175e6d094725095d67db6d68"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/reporting/export/MasterReportExportSourceTest.java",
+      "sha256Lf": "45dc3a40594ac2e10ca7115f9f010e34fc7e207b744259c35061468ee80c2e39"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/reporting/export/ReportExportServiceTest.java",
+      "sha256Lf": "916178a93ecf6e7ae066fdedb8d5d2db3711b33d7e79e3e879bb7672a182e794"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/ShelfLabelOutputScopeTest.java",
+      "sha256Lf": "738ef5f2163f014008b08647c30084101bc3d70193a10547fd1eef498ff753ba"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/report/ShelfLabelExportPagingTest.java",
+      "sha256Lf": "d51958a5c504a69dfb8c3471fd82ab87552b3d9408e7240dc58a0438fbce2870"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/report/StockReportWarehouseInventoryScopeTest.java",
+      "sha256Lf": "1e3b98a0f79d14d9150e8fb48e1dc9741f2fd9e58fe4b7e8b44fd826ce72b6b1"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterOutputIdentityTest.java",
+      "sha256Lf": "43b5e05b9f9ae9740b623602aae8994dc847bcd61ba8fe38a3047c4f8beaddb1"
+    },
+    {
+      "path": "test/components/platform_scale_surfaces_test.dart",
+      "sha256Lf": "2c93d3a6605767e9fcef40724d217a61fa1248b592c4d7c1f6a25040f4873343"
+    },
+    {
+      "path": "test/components/print/source_paper_preview_test.dart",
+      "sha256Lf": "39b2b3ab0b45840f10dd0328ee86a770398addd73205eb1a358ec7eb220bf4ac"
+    },
+    {
+      "path": "test/components/print/uten_print_read_boundary_test.dart",
+      "sha256Lf": "9dfd5471ed36f96e7674fb22455509fbdc99b5e311946ba627e153555af24862"
+    },
+    {
+      "path": "test/components/print/uten_print_work_budget_test.dart",
+      "sha256Lf": "37851e5b612a569e08fc56b7eed09fd006c5bf8f46e39be1a3acae0103fd75a6"
+    },
+    {
+      "path": "test/components/uten_app_bar_action_lifecycle_test.dart",
+      "sha256Lf": "fcb5dfa84e463fd591fb2f187ffb5d5f4af823118ded2c7a59a035ffabf9a3d3"
+    },
+    {
+      "path": "test/components/uten_export_button_permission_test.dart",
+      "sha256Lf": "05733b9e19ffd93158b51a6dca1af0a514f2f9f23263fe459e2c68d893804508"
+    },
+    {
+      "path": "test/components/uten_export_private_selection_test.dart",
+      "sha256Lf": "88f1b0d0d1d0f3eb4e049a87d451191fae516d486fd6e45ececfe05c0fc122b3"
+    },
+    {
+      "path": "test/components/uten_table_output_scope_test.dart",
+      "sha256Lf": "92216bdaf313202bc87b2ad30938b33cd90b3dc155956124318a2e64bd6f72ef"
+    },
+    {
+      "path": "test/components/uten_table_text_selection_consumers_test.dart",
+      "sha256Lf": "b1fb7bb3558233b6f47272769cfa8b0c8a2233de697c3fbd9a93c6955643d27c"
+    },
+    {
+      "path": "test/features/admin/admin_audit_log_detail_test.dart",
+      "sha256Lf": "13f28b7ff574bfc7b8e118cd940063c9f397e371c6edfe710560194ea1cd68d9"
+    },
+    {
+      "path": "test/features/basic_data/goods_bom_preview_test.dart",
+      "sha256Lf": "f4802041ea991fcf2667637ad3228e02efafe6cbd1f9c73b2019d8a596189d70"
+    },
+    {
+      "path": "test/features/basic_data/goods_bom_tree_expansion_test.dart",
+      "sha256Lf": "62472b20920dd4e71f536d2ce1905b4209eb3220322639b56474be0718f9679d"
+    },
+    {
+      "path": "test/features/basic_data/goods_import_dialog_test.dart",
+      "sha256Lf": "9087db9e294a0277cec485cf1b7dd9171dd87ec476ec4c59f42f2037e3b8467f"
+    },
+    {
+      "path": "test/features/basic_data/goods_import_mode_picker_test.dart",
+      "sha256Lf": "057205bef5c73a6a4b8588baef2165ad29dc1d8ead06fc180ed407daf8c11d41"
+    },
+    {
+      "path": "test/features/basic_data/pages/goods_import_preview_page_test.dart",
+      "sha256Lf": "23bad8bb4d0b084f8f260e536e7f56456f8e62ac4476884c514e357b2016492a"
+    },
+    {
+      "path": "test/features/basic_data/pages/master_complete_print_consumers_test.dart",
+      "sha256Lf": "5466511b036a3f3d5860def84be638bc81d2a378ddb941a88efc0008951d4ded"
+    },
+    {
+      "path": "test/features/basic_data/pages/product_category_page_column_permissions_test.dart",
+      "sha256Lf": "dd76a9096198d95ee02c1c102a7aa1e4eeb9646b7576981bd506800439ac606d"
+    },
+    {
+      "path": "test/features/basic_data/widgets/goods_cost_tab_test.dart",
+      "sha256Lf": "f7127cf75c43e1e528e67c112e95f557a30943ac8936730099bbda43546cfe71"
+    },
+    {
+      "path": "test/features/basic_data/widgets/warehouse_inventory_panel_test.dart",
+      "sha256Lf": "f8da65f93f764e8dadac7ad44baf4090ea4474fd68595025c0acf8c25d47d15a"
+    },
+    {
+      "path": "test/features/finance/finance_chart_dialog_test.dart",
+      "sha256Lf": "312b0145a733f6192681b3791c65f5d51fae06f27ef486a97c9e6fdeb2eaf01f"
+    },
+    {
+      "path": "test/features/finance/finance_statement_document_dialog_test.dart",
+      "sha256Lf": "88548cf27aa482c807cd50c09525b3a6fa7be4c9637cfdb21ffb73430b93aeb0"
+    },
+    {
+      "path": "test/features/finance/finance_statement_template_preview_test.dart",
+      "sha256Lf": "aea0b8f54e3d8b547adb4a23d9ce2203211be5b0eee15f50c6aa283dcc8da917"
+    },
+    {
+      "path": "test/features/operations_workbench/operations_workbench_desktop_table_test.dart",
+      "sha256Lf": "1faa337623968fde42f4ac732e5e83f6cf644ffba7160289fea1d0d7a5917770"
+    },
+    {
+      "path": "test/features/production/pages/production_plan_summary_sheet_page_test.dart",
+      "sha256Lf": "64daa8c25f15e47f1d7c0aac463f971011d4f2c80e2996319f1268ab8b0c95df"
+    },
+    {
+      "path": "test/features/production/pages/production_workshop_tasks_page_test.dart",
+      "sha256Lf": "70e78b050884148127137714772cad4353062d3bf1b4a4389c5e4a3d23b2596b"
+    },
+    {
+      "path": "test/features/production/where_used_report_page_interaction_test.dart",
+      "sha256Lf": "cfe78d52ebdde132c26134b916deddcf3ace39ffb23d1f26d56e87f169cbda12"
+    },
+    {
+      "path": "test/features/report/report_metadata_pagination_test.dart",
+      "sha256Lf": "82186dee28bcb2e2f4f3fc89d36b8d9db56080b346ae1b8fa09ea2e74a6c3193"
+    },
+    {
+      "path": "test/features/report/report_output_selection_callers_test.dart",
+      "sha256Lf": "865ed56c0a5dc58cb7143e7eef5cd952667cf4345d100c8698159e8194f0e97a"
+    },
+    {
+      "path": "test/features/report/report_print_preview_test.dart",
+      "sha256Lf": "c4eea8967179be4c2187f8e39d261be51ee6af58cffc2443cc82c7dfb5e21d8e"
+    },
+    {
+      "path": "test/features/sales/pages/sales_report_currency_drilldown_test.dart",
+      "sha256Lf": "d68dc84c10696b5557453cdae9bd991001264968ceaeca014c77d14a98214ee1"
+    },
+    {
+      "path": "test/features/warehouse/pages/shelf_label_page_test.dart",
+      "sha256Lf": "a67991f33ef9a396a29568ceaada7a26256702974405c01c93830612a781c78c"
+    },
+    {
+      "path": "test/features/warehouse/warehouse_task_records_view_test.dart",
+      "sha256Lf": "3379661d87efa412b80ef3b5e9c1a63ba8d283842d3c8efdc7d16641349fac45"
+    },
+    {
+      "path": "test/shared/export/master_export_job_test.dart",
+      "sha256Lf": "36335adf832bbef59aecccb48f012735f5924a974f59c3eb23d7df1ea66c1176"
+    },
+    {
+      "path": "test/shared/export/report_export_jobs_test.dart",
+      "sha256Lf": "fd7f678f0d5f2d2008ccc99b34802968af30682bac1836d4333b2ea02b9d77b9"
+    },
+    {
+      "path": "tool/table_output_scope_harness.dart",
+      "sha256Lf": "484f9938043c4873a84c73d87bd123237ae3ab054bb6af9c1d183d2b7aac6962"
+    }
+  ],
+  "hiddenReportIdentity": "__lineId comes from each existing physical/event grain, never from labels or fabricated fixture lineId. Aggregate grain and visible columns remain unchanged. Selected values are mapped from authoritative source rows."
+}

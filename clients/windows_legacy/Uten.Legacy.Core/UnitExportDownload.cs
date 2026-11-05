@@ -33,9 +33,17 @@ namespace Uten.Legacy.Core
         /// <summary>Only for an unavailable durable export-job capability; never a fallback
         /// after a possibly accepted submit. The UI owns that explicit capability decision.</summary>
         public Task<UnitExportFile> DownloadLegacyUnitExportAsync(IDictionary<string, string> parameters, string password,
-            string projectionJson, string outputPath, MutationOwnerSnapshot owner, CancellationToken token, IProgress<long> progress = null)
+            string projectionJson, string outputPath, MutationOwnerSnapshot owner, CancellationToken token, IProgress<long> progress = null,
+            IReadOnlyList<string> selectedIds = null, int selectionVersion = 0)
         {
             var body = new Dictionary<string, object> { ["password"] = ValidateExportPassword(password) };
+            if (selectedIds != null)
+            {
+                if(selectionVersion < 1)throw new ApiException("EXPORT_SELECTION_UNSUPPORTED", "当前服务器尚不支持选中导出；本次未生成文件，请更新服务端或明确选择全部结果。");
+                if (selectedIds.Count == 0 || selectedIds.Count > 1000 || selectedIds.Distinct(StringComparer.Ordinal).Count() != selectedIds.Count)
+                    throw new ApiException("EXPORT_SELECTION_INVALID", "本机导出最多选择1000项，请缩小选择或导出当前筛选全部资料。");
+                body.Add("selectedIds", selectedIds.Select(CanonicalCommandId).ToArray());
+            }
             if (projectionJson != null)
             {
                 if (new UTF8Encoding(false, true).GetByteCount(projectionJson) > 12000) throw new ApiException("EXPORT_PROJECTION_INVALID", "导出列定义过大。");

@@ -52,6 +52,7 @@ class _ReportApi extends ApiClient {
   final queries = <Map<String, dynamic>>[];
   int pages = 2;
   bool previewClamp = false;
+  int? largePreviewRows;
   bool headerFacts = false;
   bool failHeaders = false;
   final postBodies = <Object?>[];
@@ -133,13 +134,35 @@ class _ReportApi extends ApiClient {
     }
     final page = parameters['page'] as int? ?? 1;
     final omitted = parameters['includeCount'] == false;
-    if (previewClamp && omitted && parameters['size'] == 500) {
+    if (largePreviewRows case final int total when parameters['size'] == 500) {
+      final start = (page - 1) * 500;
+      final length = (total - start).clamp(0, 500).toInt();
+      return {
+        'readScopeVersion': 'fixture-v1',
+        'page': page,
+        'size': 500,
+        'total': omitted ? -1 : total,
+        'totalPages': omitted ? -1 : (total / 500).ceil(),
+        if (parameters['includeColumns'] != false)
+          'columns': [
+            {'key': 'proof', 'label': '记录', 'type': 'text'},
+          ],
+        'rows': List.generate(
+          length,
+          (index) => {
+            'id': 'finance-line-${start + index + 1}',
+            'proof': '完整打印第${start + index + 1}行',
+          },
+        ),
+      };
+    }
+    if (previewClamp && parameters['size'] == 500) {
       return {
         'readScopeVersion': 'fixture-v1',
         'page': page,
         'size': 2,
-        'total': -1,
-        'totalPages': -1,
+        'total': omitted ? -1 : 3,
+        'totalPages': omitted ? -1 : 2,
         if (parameters['includeColumns'] != false)
           'columns': [
             {'key': 'proof', 'label': '记录', 'type': 'text'},
@@ -398,6 +421,30 @@ void main() {
       await tester.pump(const Duration(milliseconds: 800));
     },
   );
+  testWidgets(
+    'finance ordinary page print reads all 2501 rows beyond the former prefix ceiling',
+    (tester) async {
+      final api = _ReportApi();
+      await _mount(tester, const FinanceReportTablePage(cardId: 'detail'), api);
+      final button = _toolbarAction<UtenPrintPreviewButton>(tester);
+      api.largePreviewRows = 2501;
+      final before = api.queries.length;
+      final printed = await tester.runAsync(button.loader);
+      expect(printed!.rows, hasLength(2501));
+      expect(printed.rows.first, ['完整打印第1行']);
+      expect(printed.rows.last, ['完整打印第2501行']);
+      expect(printed.rowIds!.toSet(), hasLength(2501));
+      final reads = api.queries.skip(before).toList();
+      expect(reads.map((query) => query['page']), [1, 2, 3, 4, 5, 6]);
+      expect(reads.map((query) => query['size']), everyElement(500));
+      expect(reads.map((query) => query['includeCount']), everyElement(true));
+      expect(reads.map((query) => query['includeTotals']), everyElement(true));
+      for (final entry in button.exportQuery!.entries) {
+        expect(reads.every((query) => query[entry.key] == entry.value), isTrue);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
   final pages = <String, Widget>{
     'sales': const SalesReportPage(kind: SalesReportKind.summary),
     'purchase': const PurchaseReportTablePage(kind: PurchaseReportKind.summary),
@@ -426,7 +473,7 @@ void main() {
   };
   for (final entry in pages.entries) {
     testWidgets(
-      '${entry.key} print loader respects actual server pages and keeps the declared preview scope',
+      '${entry.key} print loader respects actual server pages and reads the complete filtered scope',
       (tester) async {
         final api = _ReportApi();
         await _mount(tester, entry.value, api);
@@ -445,9 +492,14 @@ void main() {
           'repeated-head',
         ]);
         final reads = api.queries.skip(before).toList();
-        expect(reads.map((query) => query['page']), [1, 2, 3]);
+        expect(reads.map((query) => query['page']), [1, 2]);
         expect(reads.map((query) => query['size']), everyElement(500));
-        expect(button.subtitle, contains('2000'));
+        expect(reads.map((query) => query['includeCount']), everyElement(true));
+        expect(
+          reads.map((query) => query['includeTotals']),
+          everyElement(true),
+        );
+        expect(button.subtitle, contains('全部筛选结果'));
         for (final filter
             in (button.exportQuery ?? const <String, dynamic>{}).entries) {
           expect(

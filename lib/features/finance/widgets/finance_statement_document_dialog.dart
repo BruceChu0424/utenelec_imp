@@ -585,6 +585,7 @@ class _OriginalState extends ConsumerState<_Original> {
                         data?.documentMetadata['title']?.toString() ?? '对账原件',
                     subtitle: '原件共${data?.total ?? 0}行',
                     applyTableProjection: false,
+                    showOutputScope: false,
                     enabled: !_busy && data != null,
                     loader: () => loadBoundedReportPrintPreview(
                       api: _api,
@@ -592,7 +593,6 @@ class _OriginalState extends ConsumerState<_Original> {
                       queryOf: () => {},
                       isCurrent: () => _current,
                       repeatColumnHeaders: true,
-                      requireComplete: true,
                       rowLimit: maximumCompleteOriginalPrintRows,
                     ),
                     exportEndpoint: '/finance/reports/export',
@@ -601,6 +601,7 @@ class _OriginalState extends ConsumerState<_Original> {
                     exportPermission: Perm.financeReportExport,
                   ),
                   UtenExportButton(
+                    showOutputScope: false,
                     endpoint: '/finance/reports/export',
                     report: _report,
                     queryParams: _export,

@@ -151,6 +151,8 @@ void main() {
     await _pumpPage(tester, _FakeStockQueryRepository());
     await tester.tap(find.text('预览打印'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('table-output-all')));
+    await tester.pumpAndSettle();
     final code = find.descendant(
       of: find.byType(Table),
       matching: find.text('GL-1001'),
@@ -172,6 +174,68 @@ void main() {
     expect(_table(tester).items.length, 4);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'selected shelf print preserves warehouse goods and color identity and cancels without reading',
+    (tester) async {
+      final repository = _FakeStockQueryRepository();
+      await _pumpPage(tester, repository);
+      final table = _table(tester);
+      final selected = table.items.first;
+      expect(table.outputSelectorOf!(selected), {
+        'warehouseId': selected.warehouseId,
+        'goodsId': selected.goodsId,
+        'colorId': selected.colorId,
+      });
+      table.onSelectedIdsChanged!({selected.rowKey});
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('预览打印'));
+      await tester.pumpAndSettle();
+      expect(find.text('仅已选（1 项）'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(repository.outputQueries, isEmpty);
+      await tester.tap(find.text('预览打印'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('table-output-selected')));
+      await tester.pumpAndSettle();
+      final paperRows = find.descendant(
+        of: find.byType(Table),
+        matching: find.text(selected.goodsCode!),
+      );
+      expect(paperRows, findsOneWidget);
+      expect(repository.outputQueries, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'complete shelf print previews more than five thousand rows with bounded mounted pages',
+    (tester) async {
+      final output = List.generate(
+        5001,
+        (index) => ShelfLabelRow(
+          goodsId: 'large-$index',
+          goodsCode: 'L$index',
+          goodsName: '大批量物料$index',
+          rack: 'A31',
+          place: 'A31-1-1',
+          parsed: true,
+        ),
+      );
+      await _pumpPage(tester, _FakeStockQueryRepository(outputRows: output));
+      await tester.tap(find.text('预览打印'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('table-output-all')));
+      await tester.pumpAndSettle();
+      final pages = tester.widget<ListView>(
+        find.byKey(const Key('shelf-label-print-pages')),
+      );
+      expect(pages.childrenDelegate.estimatedChildCount, 313);
+      expect(find.byType(Table).evaluate().length, lessThan(6));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 MasterDataTableView<ShelfLabelRow> _table(WidgetTester tester) =>
@@ -240,8 +304,10 @@ ApiClient _dictApi() {
 
 /// 假库存查询仓储：记录 rack/keyword/warehouseId/includeDisabled 入参并按之过滤。
 class _FakeStockQueryRepository extends StockQueryRepository {
+  final outputQueries = <Map<String, dynamic>>[];
   _FakeStockQueryRepository({
     List<ShelfLabelRow>? rows,
+    this.outputRows,
     List<ShelfLayoutRack>? layout,
     List<String>? racks,
   }) : rows = rows ?? _defaultRows,
@@ -250,6 +316,7 @@ class _FakeStockQueryRepository extends StockQueryRepository {
        super(ApiClient(Dio()));
 
   final List<ShelfLabelRow> rows;
+  final List<ShelfLabelRow>? outputRows;
   final List<ShelfLayoutRack> layout;
   final List<String> racks;
 
@@ -351,6 +418,14 @@ class _FakeStockQueryRepository extends StockQueryRepository {
   }) async {
     layoutWarehouseCalls.add(warehouseId);
     return layout;
+  }
+
+  @override
+  Future<List<ShelfLabelRow>> shelfLabelsForOutput({
+    required Map<String, dynamic> query,
+  }) async {
+    outputQueries.add(query);
+    return outputRows ?? rows;
   }
 
   @override

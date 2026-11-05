@@ -170,6 +170,7 @@ void main() {
             body: Builder(
               builder: (context) => TextButton(
                 onPressed: () => showUtenPrintPreview(
+                  showOutputScope: false,
                   context: context,
                   title: '大表预览',
                   loader: () async => table,
@@ -254,6 +255,7 @@ void main() {
             body: Builder(
               builder: (context) => TextButton(
                 onPressed: () => showUtenPrintPreview(
+                  showOutputScope: false,
                   context: context,
                   title: '宽表打印预览',
                   loader: () async => _table(60),

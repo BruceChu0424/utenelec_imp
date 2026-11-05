@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.time.LocalDate;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -159,6 +160,18 @@ public class StockQueryController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(defaultValue = "false") boolean includeDisabled) {
         return service.shelfLabelRows(rack, keyword, warehouseId, includeDisabled);
+    }
+
+    @GetMapping("/shelf-labels/output")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabelsForOutput(
+            @RequestParam(required=false) String rack,
+            @RequestParam(required=false) String keyword,
+            @RequestParam(required=false) UUID warehouseId,
+            @RequestParam(defaultValue="false") boolean includeDisabled,
+            @RequestParam Map<String,String> parameters) {
+        return service.shelfLabelRowsForOutput(rack,keyword,warehouseId,includeDisabled,
+                com.uten.imp.common.report.ReportQueryKit.facetsOf(parameters));
     }
 
     @GetMapping("/shelf-labels/racks")

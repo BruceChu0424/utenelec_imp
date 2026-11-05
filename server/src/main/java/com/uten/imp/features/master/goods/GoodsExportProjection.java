@@ -67,6 +67,6 @@ public final class GoodsExportProjection {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "货品导出需保留系统标识、组装信息ID、编号、货品名称和类别，请减少选中的导出列后重试");
         }
-        return new TableColumnProjection(projection.tableKey(), projection.scope(), columns);
+        return new TableColumnProjection(projection.tableKey(), projection.scope(), columns, projection.rowSelection());
     }
 }

@@ -48,7 +48,7 @@ final class GoodsBomExportProjection {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "配件清单导出需保留序号、编号、名称和设计使用数量，请减少选中的导出列后重试");
         }
-        return new TableColumnProjection(projection.tableKey(), projection.scope(), columns);
+        return new TableColumnProjection(projection.tableKey(), projection.scope(), columns, projection.rowSelection());
     }
 
     private static Map<String, String> orderedRequired() {

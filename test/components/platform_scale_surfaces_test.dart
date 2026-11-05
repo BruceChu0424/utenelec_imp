@@ -311,6 +311,7 @@ void main() {
         Builder(
           builder: (context) => FilledButton(
             onPressed: () => showUtenPrintPreview(
+              showOutputScope: false,
               context: context,
               title: '供应商明细与物料统计',
               applyTableProjection: false,

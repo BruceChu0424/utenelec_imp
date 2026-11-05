@@ -70,13 +70,14 @@ public class MasterReportExportSource implements MasterReportExportPort {
 
     /** Call before persisting a job so unknown/credential fields are never stored as a private filter. */
     @Override
-    public void validate(ReportExportQuery request) { filter(request); }
+    public void validate(ReportExportQuery request) { filter(request); selection(request); }
 
     @Override
     public ExportPayload read(ReportExportQuery request) {
         Object filter = filter(request);
         com.uten.imp.security.CurrentAuthorityGuard.requireAll(permission(request.report()));
         int maxRows = limits.exportMaxRows();
+        try (var ignored = com.uten.imp.common.export.MasterExportSelection.open(selection(request))) {
         return switch (request.report()) {
             case "goods" -> goods.export((GoodsQueryFilter)filter, request.sort(), request.order(), maxRows);
             case "client" -> clients.export((ClientQueryFilter)filter, request.sort(), request.order(), maxRows);
@@ -90,11 +91,17 @@ public class MasterReportExportSource implements MasterReportExportPort {
             case "settlement_method" -> references.exportSettlementAdmin((SettlementMethodAdminQueryFilter)filter, maxRows);
             default -> throw invalid();
         };
+        }
+    }
+
+    private java.util.List<java.util.UUID> selection(ReportExportQuery request) {
+        return com.uten.imp.common.export.MasterExportSelection.parse(request.parameters().get("selectedIds"), json);
     }
 
     private Object filter(ReportExportQuery request) {
         requireReport(request.report());
-        if (!"master".equals(request.domain()) || !request.parameters().keySet().equals(Set.of("filter"))) throw invalid();
+        if (!"master".equals(request.domain()) || !request.parameters().containsKey("filter")
+                || !Set.of("filter", "selectedIds").containsAll(request.parameters().keySet())) throw invalid();
         String raw = request.parameters().get("filter");
         if (raw == null || raw.getBytes(StandardCharsets.UTF_8).length > 64 * 1024) throw invalid();
         try {

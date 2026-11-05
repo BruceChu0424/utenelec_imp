@@ -94,6 +94,7 @@ public class StockReportService {
         cols.add(c("__unitId", "", "text", null, "i.unit_id"));
         if (DOC_DRAW.equals(dt)) cols.add(c("__baseUnitName", "", "text", null, "base_unit.name"));
         cols.add(c("__srcId", "", "text", null, "o.id"));
+        cols.add(c("__lineId", "", "text", null, "i.id"));
         String dataSelect = "SELECT " + selectClause(cols);
         String fromJoin = DETAIL_FROM;
         WhereBuilder w = new WhereBuilder(
@@ -523,6 +524,8 @@ public class StockReportService {
             List<Map<String, Object>> rows = new ArrayList<>(r.getItems().size());
             for (var it : r.getItems()) {
                 Map<String, Object> m = new LinkedHashMap<>();
+                m.put("goodsId", it.getGoodsId());
+                m.put("colorId", it.getColorId());
                 m.put("category", it.getCategoryName());
                 m.put("goodsCode", it.getGoodsCode());
                 m.put("series", it.getSeries());
@@ -589,6 +592,7 @@ public class StockReportService {
         String kw = p == null ? null : p.get("keyword");
         UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
         boolean includeDisabled = p != null && "true".equalsIgnoreCase(p.get("includeDisabled"));
+        var headerFilters=ReportQueryKit.facetsOf(p);
           List<ExportColumn> cols = new ArrayList<>(List.of(
                   new ExportColumn("warehouseName", "实际仓库", "text"),
                   new ExportColumn("rack", "库行", "text"),
@@ -602,14 +606,17 @@ public class StockReportService {
                 new ExportColumn("series", "物料系列", "text"),
                 new ExportColumn("unitName", "单位", "text"),
                   new ExportColumn("qty", "仓库颜色库存(非库位盘点数)", "number", null, null, "unitName")));
-        if (includeDisabled) {
-            cols.add(new ExportColumn("status", "状态", "text"));
-        }
+        cols.add(new ExportColumn("status", "状态", "text"));
         BiFunction<Integer, Integer, ExportPayload> loader = (page, size) -> {
-            var items = stockQueryService.shelfLabelRowsPage(rack, kw, warehouseId, includeDisabled, page, size);
+            var items = headerFilters.isEmpty()
+                    ?stockQueryService.shelfLabelRowsPage(rack, kw, warehouseId, includeDisabled, page, size)
+                    :stockQueryService.shelfLabelRowsPage(rack, kw, warehouseId, includeDisabled, page, size,headerFilters);
             List<Map<String, Object>> rows = new ArrayList<>(items.size());
         for (var it : items) {
               Map<String, Object> m = new LinkedHashMap<>();
+              m.put("warehouseId",it.getWarehouseId()==null?null:it.getWarehouseId().toString());
+              m.put("goodsId",it.getGoodsId().toString());
+              m.put("colorId",it.getColorId()==null?null:it.getColorId().toString());
               m.put("warehouseName", it.getWarehouseName() == null ? "主档建议(未指定仓库)" : it.getWarehouseName());
               m.put("rack", it.isParsed() ? it.getRack() : "未分层");
             m.put("level", it.getLevel());
@@ -621,10 +628,7 @@ public class StockReportService {
             m.put("colorName", it.getColorName());
             m.put("unitName", it.getUnitName());
             m.put("qty", it.getQty());
-            if (includeDisabled) {
-                // 与页面状态列同一套文案（启用 / 已禁用），导出与屏上对得上。
-                m.put("status", it.isDisabled() ? "已禁用" : "启用");
-            }
+            m.put("status", it.isDisabled() ? "已禁用" : "启用");
             rows.add(m);
         }
             return new ExportPayload(cols, rows, -1);

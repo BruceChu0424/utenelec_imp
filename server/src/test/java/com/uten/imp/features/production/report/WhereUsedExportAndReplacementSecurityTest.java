@@ -23,6 +23,8 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Method-security proxies plus actual encrypted workbook/PDF rendering. */
 class WhereUsedExportAndReplacementSecurityTest {
@@ -114,5 +116,62 @@ class WhereUsedExportAndReplacementSecurityTest {
     private void login(Set<String> permissions) {
         AuthUser user = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "reader", permissions, false, true, false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
+    }
+
+    @Test @SuppressWarnings({"unchecked","rawtypes"})
+    void privateBodyTransportsFiftyThousandSelectedProductsThroughMvcWithoutPuttingThemInTheUrl() throws Exception {
+        login(Set.of("production_where_used:view","production_where_used:export"));
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        String selected=json.writeValueAsString(java.util.stream.IntStream.rangeClosed(1,50_000)
+                .mapToObj(index->new UUID(1,index).toString()).toList());
+        var document=new ExportDocument("物料反查",List.of(),List.of(new ExportDocument.Section("产品",List.of(
+                new ExportColumn("name","名称","text")),List.of(Map.of("name","实际权威产品")))));
+        when(source.document(eq(material),eq("current"),isNull(),isNull(),isNull(),isNull(),anyMap())).thenReturn(document);
+        var http=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(exports)
+                .setControllerAdvice(new com.uten.imp.common.web.GlobalExceptionHandler()).build();
+        UUID category=UUID.randomUUID();
+        var result=http.perform(post("/api/production/reports/where-used/export")
+                .queryParam("materialGoodsId",material.toString()).queryParam("source","current")
+                .queryParam("f.categoryId",category.toString()).queryParam("f.search.goodsName","产品_%")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("format","xlsx","password","","selectedProductIds",selected))))
+                .andExpect(status().isOk()).andReturn();
+        assertFalse(Objects.toString(result.getRequest().getQueryString(),"").contains("selectedProductIds"));
+        assertTrue(Objects.toString(result.getRequest().getQueryString(),"").length()<1000);
+        var filters=org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(source).document(eq(material),eq("current"),isNull(),isNull(),isNull(),isNull(),filters.capture());
+        assertEquals(selected,filters.getValue().get("selectedProductIds"));
+        assertEquals(category.toString(),filters.getValue().get("categoryId"));
+        assertEquals("产品_%",filters.getValue().get("search.goodsName"));
+        assertEquals(50_000,SelectedExportIds.parse((String)filters.getValue().get("selectedProductIds")).size());
+    }
+
+    @Test void conflictingOrEmptyPrivateSelectionsAreRejectedThroughMvcBeforeReadingTheSource() throws Exception {
+        login(Set.of("production_where_used:view","production_where_used:export"));
+        var http=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(exports)
+                .setControllerAdvice(new com.uten.imp.common.web.GlobalExceptionHandler()).build();
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        for(String value:List.of("[]","[\""+UUID.randomUUID()+"\"]")) {
+            http.perform(post("/api/production/reports/where-used/export").queryParam("materialGoodsId",material.toString())
+                    .queryParam("f.selectedProductIds","[\""+UUID.randomUUID()+"\"]")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of("format","xlsx","selectedProductIds",value))))
+                    .andExpect(status().isUnprocessableEntity());
+        }
+        verifyNoInteractions(source);
+    }
+
+    @Test void legacyUrlSelectionStillBindsAndIsValidatedAsTheSameFilter() throws Exception {
+        login(Set.of("production_where_used:view","production_where_used:export"));
+        String selected="[\""+UUID.randomUUID()+"\"]";
+        when(source.document(eq(material),eq("all"),isNull(),isNull(),isNull(),isNull(),anyMap())).thenReturn(
+                new ExportDocument("旧地址",List.of(),List.of(new ExportDocument.Section("产品",List.of(new ExportColumn("name","名称","text")),List.of()))));
+        var http=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(exports)
+                .setControllerAdvice(new com.uten.imp.common.web.GlobalExceptionHandler()).build();
+        http.perform(post("/api/production/reports/where-used/export").queryParam("materialGoodsId",material.toString())
+                .queryParam("f.selectedProductIds",selected).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("{\"format\":\"xlsx\"}"))
+                .andExpect(status().isOk());
+        verify(source).document(eq(material),eq("all"),isNull(),isNull(),isNull(),isNull(),eq(Map.of("selectedProductIds",selected)));
     }
 }

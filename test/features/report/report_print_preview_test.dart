@@ -74,7 +74,6 @@ void main() {
         queryOf: () => {},
         isCurrent: () => true,
         rowLimit: 20000,
-        requireComplete: true,
       );
       expect(result.rows, hasLength(2501));
       expect(result.rows.last, ['original-row-2500']);
@@ -106,6 +105,7 @@ void main() {
           endpointOf: () => '/original',
           queryOf: () => {},
           isCurrent: () => true,
+          rowLimit: 2000,
         ),
         throwsA(isA<FormatException>()),
       );
@@ -127,7 +127,6 @@ void main() {
           queryOf: () => {},
           isCurrent: () => true,
           rowLimit: 20000,
-          requireComplete: true,
         ),
         throwsA(isA<FormatException>()),
       );
@@ -236,7 +235,7 @@ void main() {
       );
       expect(
         api.requests.map((query) => query['includeCount']),
-        everyElement(false),
+        everyElement(true),
       );
       expect(api.requests.map((query) => query['includeColumns']), [
         true,
@@ -269,6 +268,7 @@ void main() {
         queryOf: () => const {},
         isCurrent: () => true,
         rowLimit: 3,
+        requireComplete: false,
       );
       expect(result.rows, [
         ['A'],

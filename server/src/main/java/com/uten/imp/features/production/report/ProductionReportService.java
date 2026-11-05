@@ -286,6 +286,7 @@ public class ProductionReportService {
                 // 故把行单位名投进派生表、不进前端 columns（"__" 前缀由 execute 过滤）。
                 ReportColumn.text("__unitName", ""),
                 ReportColumn.text("__unitId", ""),
+                ReportColumn.text("__lineId", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳生产计划编辑页
         String dataSelect = """
                 SELECT i.bill_no AS "billNo", i.bill_date AS "billDate",
@@ -299,7 +300,7 @@ public class ProductionReportService {
                        i.oqty AS "oqty", i.qty AS "qty",
                        i.plan_begin_date AS "planBeginDate", i.plan_end_date AS "planEndDate",
                        i.iqty AS "iqty", i.request_note AS "requestNote", i.remark AS "summary",
-                       un.name AS "__unitName", i.unit_id AS "__unitId", p.id AS "__srcId"
+                       un.name AS "__unitName", i.unit_id AS "__unitId", i.id AS "__lineId", p.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM production_plan_items i

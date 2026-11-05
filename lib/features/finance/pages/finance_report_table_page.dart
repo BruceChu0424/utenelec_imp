@@ -460,16 +460,15 @@ class _FinanceReportTablePageState
       ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// Originals read all bounded rows; ordinary reports retain prefix previews.
+  /// Complete filtered output; source originals retain their separate paper budget.
   Future<UtenPrintTable> _printLoader({bool template = false}) async {
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration;
     final epoch = ref.read(exportContextEpochProvider);
     return loadBoundedReportPrintPreview(
-      requireComplete: _partyStatement || _materialStatement,
       rowLimit: _partyStatement || _materialStatement
           ? maximumCompleteOriginalPrintRows
-          : defaultReportPrintPreviewRows,
+          : maximumTableOutputRows,
       useSuggestedWidths: template || _replicatedReport,
       includeValueUnits: !_replicatedReport,
       repeatColumnHeaders: _replicatedReport,
@@ -1827,7 +1826,7 @@ class _FinanceReportTablePageState
           title: _variant.label,
           subtitle: _partyStatement || _materialStatement
               ? null
-              : '日期 ${_fmt(_queryFrom)} ~ ${_fmt(_queryTo)}(最多前 2000 行)',
+              : '日期 ${_fmt(_queryFrom)} ~ ${_fmt(_queryTo)}（全部筛选结果）',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
           exportPermission: Perm.financeReportExport,

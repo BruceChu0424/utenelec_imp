@@ -33,6 +33,8 @@ public final class DocumentPageSink implements AutoCloseable {
     public interface Consumer {
         void begin(Header header);
         void accept(Page page);
+        /** Scoped and document adapters may both finalize; implementations must be idempotent. */
+        default void complete() { }
     }
     /** One file contract for immutable documents and both streaming writers. */
     public static final class RowBudget {
@@ -57,9 +59,10 @@ public final class DocumentPageSink implements AutoCloseable {
 
     private static final ThreadLocal<Consumer> CURRENT=new ThreadLocal<>();
     private final Consumer previous;
+    private final Consumer sink;
     private final Thread owner=Thread.currentThread();
     private boolean closed;
-    private DocumentPageSink(Consumer sink) {previous=CURRENT.get();CURRENT.set(Objects.requireNonNull(sink));}
+    private DocumentPageSink(Consumer sink) {this.sink=Objects.requireNonNull(sink);previous=CURRENT.get();CURRENT.set(sink);}
     public static DocumentPageSink open(Consumer sink) {return new DocumentPageSink(sink);}
     public static Consumer current() {return CURRENT.get();}
     /** Bounded compatibility adapter: both document formats use this same section order. */
@@ -75,10 +78,12 @@ public final class DocumentPageSink implements AutoCloseable {
             for(int start=0;start<rows.size();start+=200)
                 sink.accept(new Page("section-"+index,rows.subList(start,Math.min(rows.size(),start+200))));
         }
+        sink.complete();
     }
     @Override public void close() {
         if(Thread.currentThread()!=owner) throw new IllegalStateException("Document sink belongs to another thread");
         if(closed)return;closed=true;
-        if(previous==null)CURRENT.remove();else CURRENT.set(previous);
+        try {sink.complete();}
+        finally {if(previous==null)CURRENT.remove();else CURRENT.set(previous);}
     }
 }

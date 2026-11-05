@@ -634,7 +634,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           sort: sort,
           order: order,
         ),
-        idOf: (row) => '${row.goodsId}|${row.colorId}',
+        idOf: (row) => row.rowKey,
         includeRowIds: false,
         headers: [for (final column in columns) column.label],
         columnKeys: [for (final column in columns) column.key],
@@ -642,6 +642,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           for (final column in columns) column.value(row) ?? '',
         ],
         factsOf: (row) => {
+          ...row.identityFields,
           'qty': row.qty?.toString(),
           if (_canViewCost) 'costAmount': row.costAmount?.toString(),
           if (_canViewCost) 'costPrice': row.costPrice?.toString(),
@@ -980,6 +981,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
               ),
         ),
         items: _page?.items ?? const [],
+        idOf: (row) => row.goodsId == null ? null : row.rowKey,
+        outputSelectorOf: (row) => row.identityFields,
         rowKeyOf: (r) => stockCountRowKey(r.goodsId ?? '', r.colorId),
         toolbarActions: [
           InstantInventoryPeriodButton(
@@ -1005,7 +1008,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           UtenPrintPreviewButton(
             enabled: _resultsReady,
             title: '即时库存',
-            subtitle: '最多前 2000 行',
             loader: _printLoader,
             exportEndpoint: '/stock/reports/export',
             exportPermission: Perm.stockReportExport,

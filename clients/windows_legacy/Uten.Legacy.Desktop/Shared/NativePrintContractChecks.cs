@@ -140,6 +140,14 @@ namespace Uten.Legacy.Desktop.Shared
                     await session.LoginAsync("fixture", "fixture-password", CancellationToken.None);
                     var snapshot = await UnitPrintSnapshot.LoadAsync(session, new UnitQuery(), CancellationToken.None);
                     check(snapshot.Rows.Count == 205 && pages == 3 && writes == 0 && snapshot.IsCurrent(session), "view-only full print uses all scoped pages, never export authority");
+                    var ids = new[] { new Guid(1, 0, 0, new byte[8]).ToString("D"), new Guid(205, 0, 0, new byte[8]).ToString("D") };
+                    var selected = await UnitPrintSnapshot.LoadAsync(session, new UnitQuery(), CancellationToken.None, selectedIds: ids);
+                    check(selected.Rows.Count == 2 && selected.Rows[0].Id == ids[0] && selected.Rows[1].Id == ids[1] && writes == 0,
+                        "selected print validates current scoped pages and includes cross-page last selection");
+                    bool rejected = false;
+                    try { await UnitPrintSnapshot.LoadAsync(session, new UnitQuery(), CancellationToken.None, selectedIds: new[] { Guid.NewGuid().ToString("D") }); }
+                    catch (ApiException error) { rejected = error.Code == "PRINT_SELECTION_CHANGED"; }
+                    check(rejected, "stale selection fails closed instead of publishing all or partial results");
                 }
             }
         }

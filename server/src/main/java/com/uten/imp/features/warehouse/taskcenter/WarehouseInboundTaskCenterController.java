@@ -64,6 +64,7 @@ public class WarehouseInboundTaskCenterController {
     }
 
     /** 按当前筛选结果导出表格（2026-10-29 用户批注）：与列表同授权同投影，密码走请求体。 */
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/export")
     @PreAuthorize(VIEW_AUTHORITIES)
     public ResponseEntity<byte[]> export(

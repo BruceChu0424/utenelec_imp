@@ -417,7 +417,7 @@ public class FinanceReportService {
                 ReportColumn.money("offsetLocal", "往来抵销人民币").withUnitLabel("元").totaled("合计往来抵销人民币"),
                 ReportColumn.money("balanceLocal", "未结人民币").withUnitLabel("元").totaled("合计未结人民币"),
                 ReportColumn.text("remark", "备注", 160),
-                ReportColumn.text("__currencyId", ""));
+                ReportColumn.text("__currencyId", ""), ReportColumn.text("__lineId", ""));
         String dataSelect = """
                 SELECT l.bill_no AS "billNo", l.source_doc_no AS "sourceDocNo",
                        refs.sales_order_nos AS "salesOrderNos",
@@ -439,7 +439,7 @@ public class FinanceReportService {
                        l.amount_received_local AS "receivedLocal",
                        l.amount_write_off_local AS "writeOffLocal",
                        l.amount_offset_local AS "offsetLocal",
-                       l.amount_balance AS "balanceLocal", l.remark AS "remark", l.currency_id AS "__currencyId"
+                       l.amount_balance AS "balanceLocal", l.remark AS "remark", l.currency_id AS "__currencyId", l.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM ar_ap_ledger l
@@ -511,7 +511,7 @@ public class FinanceReportService {
                         .totaled("合计未发运待收原币", "currencyCode", "__currencyId"),
                 ReportColumn.text("planStatus", "待收计划状态", 120),
                 ReportColumn.text("remark", "备注", 160),
-                ReportColumn.text("__currencyId", ""));
+                ReportColumn.text("__currencyId", ""), ReportColumn.text("__lineId", ""));
         String dataSelect = """
                 SELECT sales_order.bill_no AS "orderNo", sales_order.bill_date AS "orderDate",
                        client.name AS "clientName",
@@ -536,7 +536,7 @@ public class FinanceReportService {
                            WHEN COALESCE(recognized.amount_original,0)<COALESCE(sales_order.total_original,0)
                                THEN '部分发运'
                            ELSE '已全部立账' END AS "planStatus",
-                       sales_order.remark AS "remark", sales_order.currency_id AS "__currencyId"
+                       sales_order.remark AS "remark", sales_order.currency_id AS "__currencyId", sales_order.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM sales_orders sales_order
@@ -1086,7 +1086,7 @@ public class FinanceReportService {
                 ReportColumn.money("otherFee", "其它费用").withUnitLabel("元").totaled("合计其它费用"),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""),
-                ReportColumn.text("__currencyId", ""));  // 隐藏：行点击跳收款单编辑页
+                ReportColumn.text("__currencyId", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳收款单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
@@ -1110,7 +1110,7 @@ public class FinanceReportService {
                        CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
                             THEN t.other_fee ELSE 0 END AS "otherFee",
                        COALESCE(i.remark, t.remark) AS "remark",
-                       t.id AS "__srcId", COALESCE(i.currency_id,t.currency_id) AS "__currencyId"
+                       t.id AS "__srcId", COALESCE(i.currency_id,t.currency_id) AS "__currencyId", COALESCE(i.id,t.id) AS "__lineId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
@@ -1375,7 +1375,7 @@ public class FinanceReportService {
                 ReportColumn.text("remark", "备注", 160), ReportColumn.text("summary", "摘要", 160),
                 // 序号是行号，不是量。
                 ReportColumn.number("lineNo", "序号"),
-                ReportColumn.text("__srcId", ""),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳费用单编辑页
+                ReportColumn.text("__srcId", ""),ReportColumn.text("__currencyId",""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳费用单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
@@ -1385,7 +1385,7 @@ public class FinanceReportService {
                        ps.name AS "styleName", i.qty AS "qty", i.price AS "price", i.amount_local AS "lineAmount",
                        COALESCE(i.counterpart_name,'') AS "counterpartName", d.name AS "departmentName",
                        ca.name AS "counterpartAccount", t.remark AS "remark", i.summary AS "summary", i.line_no AS "lineNo",
-                       t.id AS "__srcId",t.currency_id AS "__currencyId"
+                       t.id AS "__srcId",t.currency_id AS "__currencyId", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM finance_expense_items i
@@ -1429,7 +1429,7 @@ public class FinanceReportService {
                 ReportColumn.money("lineAmount", "支出金额").withUnitLabel("元").totaled("合计支出金额"),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账户", 140),
                 ReportColumn.text("summary", "摘要", 160),
-                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳费用单编辑页
+                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳费用单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName", a.name AS "accountName",
@@ -1439,7 +1439,7 @@ public class FinanceReportService {
                        COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary",
                        t.id AS "__srcId",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency") + """
-                       AS "currencyCode",t.currency_id AS "__currencyId"
+                       AS "currencyCode",t.currency_id AS "__currencyId", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM finance_expense_items i
@@ -1483,7 +1483,7 @@ public class FinanceReportService {
                 ReportColumn.text("styleName", "收入项目名称", 130),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账号", 140),
                 ReportColumn.text("summary", "摘要", 160), ReportColumn.text("remark", "备注", 160),
-                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳收入单编辑页
+                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳收入单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
@@ -1493,7 +1493,7 @@ public class FinanceReportService {
                        i.summary AS "summary", t.remark AS "remark",
                        t.id AS "__srcId",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency") + """
-                       AS "currencyCode",t.currency_id AS "__currencyId"
+                       AS "currencyCode",t.currency_id AS "__currencyId", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM finance_other_income_items i
@@ -1535,7 +1535,7 @@ public class FinanceReportService {
                 ReportColumn.money("incomeAmount", "收入金额").withUnitLabel("元").totaled("合计收入金额"),
                 ReportColumn.text("counterpartName", "对方", 120),
                 ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("summary", "摘要", 160),
-                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳收入单编辑页
+                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳收入单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName", a.name AS "accountName",
@@ -1546,7 +1546,7 @@ public class FinanceReportService {
                        COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary",
                        t.id AS "__srcId",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency") + """
-                       AS "currencyCode",t.currency_id AS "__currencyId"
+                       AS "currencyCode",t.currency_id AS "__currencyId", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM finance_other_income_items i
@@ -1605,7 +1605,7 @@ public class FinanceReportService {
                 ReportColumn.text("otherFeeStyle", "其它费用项目", 150),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""),
-                ReportColumn.text("__currencyId", ""));  // 隐藏：行点击跳收款单编辑页（费用冲销源单为收款单）
+                ReportColumn.text("__currencyId", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳收款单编辑页（费用冲销源单为收款单）
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
@@ -1626,7 +1626,7 @@ public class FinanceReportService {
                        CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
                             THEN t.other_fee ELSE 0 END AS "otherFee",
                        style.name AS "otherFeeStyle", COALESCE(i.remark,t.remark) AS "remark",
-                       t.id AS "__srcId", COALESCE(i.currency_id,t.currency_id) AS "__currencyId"
+                       t.id AS "__srcId", COALESCE(i.currency_id,t.currency_id) AS "__currencyId", COALESCE(i.id,t.id) AS "__lineId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
@@ -1690,6 +1690,7 @@ public class FinanceReportService {
             columns.add(2,ReportColumn.text("type","类型",100));
             columns.add(ReportColumn.text("remark","摘要",160));
         }
+        columns.add(ReportColumn.text("__lineId",""));
         PartyStatementHeaderQuery headers = new PartyStatementHeaderQuery(filters, false, simple);
         String ordering = headers.orderBy(sort, order);
         if (partyId==null) return empty(columns).withColumnSearchKeys(headers.keys());
@@ -2135,13 +2136,15 @@ public class FinanceReportService {
                 ReportColumn.text("currencyCode","币别",80),ReportColumn.number("rate","汇率"),
                 ReportColumn.text("checkNo","支票号",120),ReportColumn.text("summary","摘要",160),
                 ReportColumn.text("status","审核状态",90),ReportColumn.text("__srcId",""),ReportColumn.text("__currencyId","")));
+        if(detail)columns.add(ReportColumn.text("__lineId",""));
         // 明细取各行金额；汇总只取单头一次，不把多转入账户展开后再加单头。
         String projection="SELECT t.bill_no,t.bill_date,out_account.name"
                 +(detail?",in_account.name":"")
                 +(detail?",i.amount_original,i.amount_local":",t.amount_original,t.amount_local")
                 +","+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
                 +",t.exchange_rate,t.invoice_no,"+(detail?"i.summary":"t.remark")
-                +",CASE t.status WHEN 1 THEN '已审核' WHEN -1 THEN '已红冲' ELSE '草稿' END,t.id,t.currency_id";
+                +",CASE t.status WHEN 1 THEN '已审核' WHEN -1 THEN '已红冲' ELSE '草稿' END,t.id,t.currency_id"
+                +(detail?",i.id":"");
         String from="FROM finance_bank_transfers t "
                 +(detail?"JOIN finance_bank_transfer_lines i ON i.transfer_id=t.id AND NOT COALESCE(i.is_deleted,false) LEFT JOIN accounts in_account ON in_account.id=i.in_account_id ":"")
                 +"LEFT JOIN accounts out_account ON out_account.id=t.out_account_id "
@@ -2403,7 +2406,9 @@ public class FinanceReportService {
             PartyStatementHeaderQuery headers, String ordering, boolean simple) {
         int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
         LocalDate fromMonth=from==null?null:from.withDayOfMonth(1);
-        String selected=columns.stream().map(column->"\""+column.key()+"\"")
+        String selected=columns.stream().map(column->column.key().equals("__lineId")
+                ? "(\"eventOrder\"::text||':'||\"eventId\"::text) AS \"__lineId\""
+                : "\""+column.key()+"\"")
                 .collect(java.util.stream.Collectors.joining(","));
         var conditions = headers.criteria();
         String filtered = "SELECT * FROM (" + core + ") report WHERE " + conditions.predicate();
@@ -2737,6 +2742,11 @@ public class FinanceReportService {
             case "cost/plastic-detail" -> (pg, sz) -> costService.plasticDetail(
                     p == null ? null : p.get("kind"), keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
             // C3 总账（GlReportService；year/month 缺省取 dateTo 年/月）
+            case "gl/chart-directory" -> (pg,sz) -> {
+                com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+                return com.uten.imp.features.finance.gl.FinanceChartReports.directory(em,pg,sz,
+                        FinanceReportColumnOptions.from(p,sort,order),p==null?null:p.get("keyword"));
+            };
             case "gl/chart-codes", "gl/chart-template" -> (pg,sz) -> {
                 com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
                 return com.uten.imp.features.finance.gl.FinanceChartReports.read(em,report.equals("gl/chart-template"),pg,sz,FinanceReportColumnOptions.from(p,sort,order));

@@ -17,6 +17,8 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_table_output_scope.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
@@ -66,6 +68,8 @@ class _ProductionPlanSummarySheetPageState
   CancelToken? _workshopCancelToken;
   int _workshopLoadGeneration = 0;
   bool _printing = false;
+  bool _choosingPrintScope = false;
+  Completer<void>? _printRetired;
   int _printGeneration = 0;
 
   @override
@@ -77,6 +81,7 @@ class _ProductionPlanSummarySheetPageState
       ++_analysisLoadGeneration;
       ++_workshopLoadGeneration;
       ++_printGeneration;
+      if (_printRetired?.isCompleted == false) _printRetired!.complete();
       _workshopCancelToken?.cancel('summary reader changed');
       setState(() {
         _analysis = null;
@@ -87,6 +92,7 @@ class _ProductionPlanSummarySheetPageState
         _workshopsLoaded = false;
         _workshopsError = null;
         _printing = false;
+        _choosingPrintScope = false;
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
@@ -94,6 +100,7 @@ class _ProductionPlanSummarySheetPageState
 
   @override
   void dispose() {
+    if (_printRetired?.isCompleted == false) _printRetired!.complete();
     _workshopLoadGeneration++;
     _workshopCancelToken?.cancel('summary page disposed');
     super.dispose();
@@ -788,7 +795,9 @@ class _ProductionPlanSummarySheetPageState
         size: UtenButtonSize.large,
         icon: Icons.print_outlined,
         isLoading: _printing,
-        onPressed: !_workshopsLoaded || _printing ? null : _print,
+        onPressed: !_workshopsLoaded || _printing || _choosingPrintScope
+            ? null
+            : _print,
         onDisabledTap: !_workshopsLoaded && !_printing
             ? () => context.appWarning(_workshopsError ?? '正在核对默认车间，请稍候或重新读取')
             : null,
@@ -801,21 +810,44 @@ class _ProductionPlanSummarySheetPageState
 
   Future<void> _print() async {
     final analysis = _analysis;
-    if (_printing || analysis == null || !_workshopsLoaded) return;
+    if (_printing ||
+        _choosingPrintScope ||
+        analysis == null ||
+        !_workshopsLoaded) {
+      return;
+    }
     final ownerCurrent = captureReadOwner(ref);
     final generation = ++_printGeneration;
+    final retired = _printRetired = Completer<void>();
     bool current() =>
         ownerCurrent() &&
         generation == _printGeneration &&
         identical(_analysis, analysis);
     final filename = '生产备料计划汇总单-$_today.pdf';
-    setState(() => _printing = true);
+    setState(() => _choosingPrintScope = true);
     try {
-      final bytes = await _buildPdf(
-        companyName: ref.read(platformBrandingSnapshotProvider).companyName,
-        isCurrent: current,
+      final outputScope = await showUtenTableOutputScope(
+        context: context,
+        action: '打印',
+        selectedCount: 0,
       );
-      if (!current()) return;
+      if (!mounted || !current() || outputScope == null) return;
+      setState(() {
+        _choosingPrintScope = false;
+        _printing = true;
+      });
+      final bytes = await UtenBusyOverlay.run(
+        context,
+        title: '正在生成生产备料汇总单',
+        action: () => Future.any<Uint8List?>([
+          _buildPdf(
+            companyName: ref.read(platformBrandingSnapshotProvider).companyName,
+            isCurrent: current,
+          ),
+          retired.future.then((_) => null),
+        ]),
+      );
+      if (!current() || bytes == null) return;
       final ok = await printPdfBytes(bytes, filename);
       if (!mounted || !current()) return;
       if (!ok) context.appWarning('打印流程未完成');
@@ -827,7 +859,10 @@ class _ProductionPlanSummarySheetPageState
       );
     } finally {
       if (mounted && generation == _printGeneration) {
-        setState(() => _printing = false);
+        setState(() {
+          _printing = false;
+          _choosingPrintScope = false;
+        });
       }
     }
   }

@@ -961,13 +961,57 @@ public class StockQueryService {
                 Math.max(1, page), Math.max(1, Math.min(500, size)));
     }
 
+    @Transactional(readOnly=true)
+    public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabelRowsPage(
+            String rack,String keyword,UUID warehouseId,boolean includeDisabled,int page,int size,Map<String,String> filters) {
+        return readShelfLabelRows(rack,keyword,warehouseId,includeDisabled,
+                Math.max(1,page),Math.max(1,Math.min(500,size)),shelfHeaderFilters(filters));
+    }
+
+    /** One complete output snapshot; the interactive 5,000-row display ceiling never truncates paper. */
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public List<com.uten.imp.features.stock.dto.ShelfLabelRow> shelfLabelRowsForOutput(
+            String rack,String keyword,UUID warehouseId,boolean includeDisabled,Map<String,String> filters) {
+        var header=shelfHeaderFilters(filters);
+        var result=new ArrayList<com.uten.imp.features.stock.dto.ShelfLabelRow>();
+        for(int page=1;page<=101;page++) {
+            if(Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+            var batch=readShelfLabelRows(rack,keyword,warehouseId,includeDisabled,page,500,header);
+            result.addAll(batch);
+            if(result.size()>50_000) throw new ApiException(ErrorCode.VALIDATION_FAILED,"打印结果超过50000行，请收窄筛选；本次未生成文件");
+            if(batch.size()<500) return result;
+        }
+        throw new IllegalStateException("Shelf output pagination did not terminate");
+    }
+
+    static Map<String,String> shelfHeaderFilters(Map<String,String> filters) {
+        var result=new java.util.LinkedHashMap<String,String>();
+        if(filters==null) return result;
+        for(String key:List.of("rack","level","status")) {
+            String value=filters.get(key);
+            if(value==null||value.isBlank()) continue;
+            if(value.length()>100) throw new ApiException(ErrorCode.VALIDATION_FAILED,"货架筛选内容过长");
+            if("level".equals(key)&&com.uten.imp.common.report.ReportQueryKit.parseRequiredInt(value)<0)
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"货架层数不能小于0");
+            if("status".equals(key)&&!Set.of("启用","已禁用").contains(value))
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"货架状态筛选无效");
+            result.put(key,value);
+        }
+        return result;
+    }
+
     private List<com.uten.imp.features.stock.dto.ShelfLabelRow> readShelfLabelRows(
             String rack, String keyword, UUID warehouseId, boolean includeDisabled, Integer page, Integer size) {
+        return readShelfLabelRows(rack,keyword,warehouseId,includeDisabled,page,size,Map.of());
+    }
+
+    private List<com.uten.imp.features.stock.dto.ShelfLabelRow> readShelfLabelRows(
+            String rack,String keyword,UUID warehouseId,boolean includeDisabled,Integer page,Integer size,Map<String,String> filters) {
         boolean hasRack = rack != null && !rack.isBlank();
         boolean hasKw = keyword != null && !keyword.isBlank();
         var q = com.uten.imp.common.report.ReportExportCursor.query(em, page == null
                 ? ShelfLabelSql.rows(warehouseId != null, includeDisabled, hasRack, hasKw)
-                : ShelfLabelSql.rowsPage(warehouseId != null, includeDisabled, hasRack, hasKw));
+                : ShelfLabelSql.rowsPage(warehouseId != null, includeDisabled, hasRack, hasKw,filters));
         if (page != null) {
             if (size == null) throw new IllegalArgumentException("Paged shelf labels require a page size");
             q.setParameter("__limit", size);
@@ -976,6 +1020,9 @@ public class StockQueryService {
         if (warehouseId != null) q.setParameter("warehouseId", warehouseId);
         if (hasRack) q.setParameter("rack", rack.trim());
         if (hasKw) q.setParameter("kw", KeywordSearch.phrase(keyword));
+        if(filters.containsKey("rack")&&!"未分层".equals(filters.get("rack"))) q.setParameter("headerRack",filters.get("rack"));
+        if(filters.containsKey("level")) q.setParameter("headerLevel",Integer.parseInt(filters.get("level")));
+        if(filters.containsKey("status")) q.setParameter("headerDisabled","已禁用".equals(filters.get("status")));
         @SuppressWarnings("unchecked")
         List<Object[]> rows = page == null ? q.getResultList()
                 : com.uten.imp.common.report.ReportExportCursor.rows(em, q);

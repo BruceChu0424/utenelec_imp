@@ -23,6 +23,7 @@ import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'package:go_router/go_router.dart';
@@ -406,7 +407,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
+  /// 按真实服务器分页完整读取当前筛选结果，保持权威列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration;
@@ -555,7 +556,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         ),
         UtenPrintPreviewButton(
           title: '销售${_docType.label}${_kind.shortLabel}报表',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（全部筛选结果）',
           loader: _printLoader,
           exportEndpoint: '/sales/reports/export',
           exportPermission: Perm.salesReportExport,
@@ -866,7 +867,7 @@ class _SalesClientDetailDialogState
     context.push(RoutePath.salesDocDetail(widget.docSeg, srcId));
   }
 
-  /// 按当前客户、日期、币种和排序分页读取前2000行，不推测服务端页长。
+  /// 按当前客户、日期、币种和排序完整分页读取，不推测服务端页长。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration;
@@ -940,10 +941,20 @@ class _SalesClientDetailDialogState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               UtenDialogHeader(
-                title: Text('${widget.clientName} · ${widget.docType.label}明细'),
-                subtitle: Text(
-                  '${widget.dateFrom} ~ ${widget.dateTo}'
-                  '${data != null && data.total >= 0 ? '，共 ${data.total} 条' : ''}',
+                title: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '${widget.clientName} · ${widget.docType.label}明细',
+                      ),
+                    ),
+                    UtenFieldHintIcon(
+                      info:
+                          '${widget.dateFrom} ~ ${widget.dateTo}'
+                          '${data != null && data.total >= 0 ? '，共 ${data.total} 条' : ''}',
+                      dense: true,
+                    ),
+                  ],
                 ),
                 icon: Icons.person_outline_rounded,
                 showCloseButton: true,
@@ -956,9 +967,11 @@ class _SalesClientDetailDialogState
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                 children: [
                   UtenPrintPreviewButton(
+                    tableKey:
+                        'features.sales.pages.sales_report_page.SalesClientDetailDialogState.build.1',
+                    enabled: data != null && !_loading,
                     title: '${widget.clientName} · ${widget.docType.label}明细',
-                    subtitle:
-                        '${widget.dateFrom} ~ ${widget.dateTo}(最多前 2000 行)',
+                    subtitle: '${widget.dateFrom} ~ ${widget.dateTo}（全部筛选结果）',
                     loader: _printLoader,
                     type: UtenButtonType.primary,
                     size: UtenButtonSize.large,
@@ -974,6 +987,7 @@ class _SalesClientDetailDialogState
                     : data == null
                     ? const UtenEmpty()
                     : MasterDataTableView<Map<String, dynamic>>(
+                        outputSelectionEnabled: true,
                         tableKey:
                             'features.sales.pages.sales_report_page.SalesClientDetailDialogState.build.1',
                         rowsController: _tableRows,

@@ -11,6 +11,9 @@ import jakarta.validation.constraints.Size;
 public record ExportPasswordRequest(
         @Size(max = 128, message = "导出密码长度不能超过 128 位")
         String password,
-        @jakarta.validation.Valid TableColumnProjection columnProjection) {
+        @jakarta.validation.Valid TableColumnProjection columnProjection,
+        @Size(min = 1, max = MasterExportSelection.MAX_IDS) java.util.List<java.util.UUID> selectedIds)
+        implements MasterExportSelectionRequest {
+    public ExportPasswordRequest(String password, TableColumnProjection columnProjection) { this(password, columnProjection, null); }
     public ExportPasswordRequest(String password) { this(password, null); }
 }

@@ -23,7 +23,10 @@ import java.util.UUID;
 @RequestMapping("/api/production/reports/where-used")
 @RequiredArgsConstructor
 public class WhereUsedExportController {
-    public record Request(@Size(max = 128) String password, String format) { }
+    public record Request(@Size(max = 128) String password,String format,
+            @Size(max=2_000_002) String selectedProductIds) {
+        public Request(String password,String format) { this(password,format,null); }
+    }
     private final WhereUsedExportService service;
     private final XlsxExportService excel;
     private final TabularPdfExportService pdf;
@@ -31,6 +34,7 @@ public class WhereUsedExportController {
     private final SecurityContextCurrentUser currentUser;
     private final AuditService audit;
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('production_where_used:view') and hasAuthority('production_where_used:export')")
     public ResponseEntity<byte[]> export(@RequestParam UUID materialGoodsId,
@@ -44,8 +48,18 @@ public class WhereUsedExportController {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出格式只能选择 Excel 或 PDF");
         var servlet=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
         java.util.Map<String,String> parameters=new java.util.LinkedHashMap<>();
-        if(servlet!=null)servlet.getParameterMap().forEach((key,values)->{if(values.length==1)parameters.put(key,values[0]);});
+        if(servlet!=null)servlet.getParameterMap().forEach((key,values)->{
+            if("f.selectedProductIds".equals(key)&&values.length!=1)
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"选中产品范围只能提供一次");
+            if(values.length==1)parameters.put(key,values[0]);
+        });
         var headers=com.uten.imp.common.report.ReportQueryKit.facetsOf(parameters);
+        var privateSelection=com.uten.imp.common.export.SelectedExportIds.parse(request.selectedProductIds());
+        var legacySelection=com.uten.imp.common.export.SelectedExportIds.parse(headers.get("selectedProductIds"));
+        if(privateSelection!=null&&legacySelection!=null
+                &&!java.util.Set.copyOf(privateSelection).equals(java.util.Set.copyOf(legacySelection)))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"正文与旧地址中的选中产品范围不同，请重新选择导出");
+        if(privateSelection!=null)headers.put("selectedProductIds",request.selectedProductIds());
         var document = headers.isEmpty()?service.document(materialGoodsId,source,dateFrom,dateTo,sort,order)
                 :service.document(materialGoodsId,source,dateFrom,dateTo,sort,order,headers);
         byte[] bytes = format.equals("pdf") ? pdf.build(document, request.password())

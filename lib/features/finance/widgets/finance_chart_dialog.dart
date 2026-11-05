@@ -14,6 +14,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/search/keyword_search.dart';
+import '../../../shared/platform_tables/table_column_projection.dart';
+import '../../basic_data/models/master_facet.dart';
 import 'finance_entry_file_picker.dart';
 import 'gl_report_line_bindings_dialog.dart';
 import 'finance_native_posting_accounts_dialog.dart';
@@ -51,6 +54,9 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
   Map<String, dynamic>? _preview;
   String? _error;
   String _keyword = '';
+  final Map<String, String?> _directoryFilters = {};
+  String? _directorySort;
+  bool _directoryAscending = true;
   bool _busy = false, _changed = false, _unknown = false;
   bool _newAccountOpen = false;
   Map<String, dynamic>? _pendingMapping;
@@ -396,6 +402,66 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
     UtenExportButton(
       endpoint: '/finance/reports/export',
       report: 'gl/chart-template',
+      showOutputScope: false,
+      frozenProjection: const TableColumnProjection(
+        tableKey: 'finance.chart.import.template',
+        columns: [
+          TableProjectedColumn(
+            key: 'code',
+            label: '科目编码',
+            width: 120,
+            type: 'text',
+          ),
+          TableProjectedColumn(
+            key: 'name',
+            label: '科目名称',
+            width: 230,
+            type: 'text',
+          ),
+          TableProjectedColumn(
+            key: 'currency',
+            label: '外币名称',
+            width: 100,
+            type: 'text',
+          ),
+          TableProjectedColumn(
+            key: 'd0',
+            label: '期初借方',
+            width: 120,
+            type: 'money',
+          ),
+          TableProjectedColumn(
+            key: 'c0',
+            label: '期初贷方',
+            width: 120,
+            type: 'money',
+          ),
+          TableProjectedColumn(
+            key: 'd',
+            label: '本期发生借方',
+            width: 120,
+            type: 'money',
+          ),
+          TableProjectedColumn(
+            key: 'c',
+            label: '本期发生贷方',
+            width: 120,
+            type: 'money',
+          ),
+          TableProjectedColumn(
+            key: 'd1',
+            label: '期末借方',
+            width: 120,
+            type: 'money',
+          ),
+          TableProjectedColumn(
+            key: 'c1',
+            label: '期末贷方',
+            width: 120,
+            type: 'money',
+          ),
+        ],
+      ),
       queryParams: const {},
       requiredPermission: Perm.financeReportExport,
       filename: '科目目录导入模板',
@@ -404,8 +470,16 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
     ),
     UtenExportButton(
       endpoint: '/finance/reports/export',
-      report: 'gl/chart-codes',
-      queryParams: const {},
+      report: 'gl/chart-directory',
+      tableKey: 'finance.chart.directory',
+      queryParams: {
+        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+        for (final entry in _directoryFilters.entries)
+          if (entry.value?.isNotEmpty ?? false) 'f.${entry.key}': entry.value,
+        'sort': ?_directorySort,
+        if (_directorySort != null)
+          'order': _directoryAscending ? 'asc' : 'desc',
+      },
       requiredPermission: Perm.financeReportExport,
       filename: '科目代码对应',
       label: '导出当前对应',
@@ -430,14 +504,71 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
       child: const Text('刷新/恢复批次'),
     ),
   ];
+
+  String? _directoryValue(Map<String, dynamic> row, String key) {
+    final value = switch (key) {
+      'classification' =>
+        FinanceRequirementNames
+                .chartClassificationLabels[row['classification']] ??
+            '待维护',
+      'targets' => _maps(
+        row['targets'],
+      ).map((target) => '${target['code']} ${target['name']}').join('；'),
+      _ => row[key]?.toString(),
+    };
+    return value?.trim().isEmpty == true ? null : value;
+  }
+
   Widget _directoryTable() {
-    final visible = _accounts
+    final keywordRows = _accounts
         .where(
-          (row) => '${row['code']} ${row['name']}'.contains(_keyword.trim()),
+          (row) => matchesKeywordSearch([
+            row['code']?.toString(),
+            row['name']?.toString(),
+          ], _keyword),
         )
         .toList();
+    final visible = keywordRows
+        .where(
+          (row) => _directoryFilters.entries.every((entry) {
+            final selected = entry.value;
+            if (selected == null || selected.isEmpty) return true;
+            final search = entry.key.startsWith('search.');
+            final key = search ? entry.key.substring(7) : entry.key;
+            final actual = _directoryValue(row, key);
+            return search
+                ? matchesKeywordSearch([actual], selected)
+                : selected == kMasterFilterNullValue
+                ? actual == null
+                : actual == selected;
+          }),
+        )
+        .toList();
+    if (_directorySort != null) {
+      visible.sort((left, right) {
+        final comparison = (_directoryValue(left, _directorySort!) ?? '')
+            .compareTo(_directoryValue(right, _directorySort!) ?? '');
+        return _directoryAscending ? comparison : -comparison;
+      });
+    }
+    final facets = <String, List<MasterFacetBucket>>{};
+    for (final key in ['code', 'name', 'currencyName', 'classification']) {
+      final counts = <String, int>{};
+      for (final row in keywordRows) {
+        final value = _directoryValue(row, key);
+        if (value != null) counts[value] = (counts[value] ?? 0) + 1;
+      }
+      facets[key] = [
+        for (final entry in counts.entries)
+          MasterFacetBucket(value: entry.key, count: entry.value),
+      ];
+    }
     return MasterDataTableView<Map<String, dynamic>>(
+      outputSelectionEnabled: true,
+      outputIdOf: (row) => row['code']?.toString(),
+      outputSelectorOf: (row) => {'code': row['code']?.toString()},
       tableKey: 'finance.chart.directory',
+      paginationScope: _keyword,
       virtualized: true,
       expensiveRowMounts: false,
       showPaginationControls: false,
@@ -448,7 +579,6 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
           width: 120,
           value: (row) => row['code']?.toString(),
           sortable: true,
-          filterFromRows: true,
         ),
         MasterColumnDef(
           key: 'name',
@@ -456,14 +586,12 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
           width: 230,
           value: (row) => row['name']?.toString(),
           sortable: true,
-          filterFromRows: true,
         ),
         MasterColumnDef(
           key: 'currencyName',
           label: '外币名称',
           width: 100,
           value: (row) => row['currencyName']?.toString(),
-          filterFromRows: true,
         ),
         MasterColumnDef(
           key: 'classification',
@@ -473,7 +601,6 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
               FinanceRequirementNames
                   .chartClassificationLabels[row['classification']] ??
               '待维护',
-          filterFromRows: true,
         ),
         MasterColumnDef(
           key: 'targets',
@@ -499,10 +626,28 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
           ),
       ],
       items: visible,
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      facets: facets,
+      nullCounts: {
+        for (final key in facets.keys)
+          key: keywordRows
+              .where((row) => _directoryValue(row, key) == null)
+              .length,
+      },
+      filters: Map.unmodifiable(_directoryFilters),
+      serverColumnSearch: true,
+      onFilterChanged: (key, value) => setState(() {
+        if (value == null || value.isEmpty) {
+          _directoryFilters.remove(key);
+        } else {
+          _directoryFilters[key] = value;
+        }
+      }),
+      sortColumn: _directorySort,
+      sortAscending: _directoryAscending,
+      onSortChange: (key, ascending) => setState(() {
+        _directorySort = key;
+        _directoryAscending = ascending;
+      }),
       toolbarLeadingActions: [
         SizedBox(
           width: 220,

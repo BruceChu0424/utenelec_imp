@@ -21,6 +21,9 @@ ExecStartPre=/bin/sh -c 'if [ "$${UTEN_ATTACHMENT_SCANNER_PROVIDER:-disabled}" =
 # /opt/uten-imp/releases/<version> directory. Never overwrite files through it.
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+StateDirectory=uten-imp-report-exports
+StateDirectoryMode=0700
+Environment=UTEN_REPORT_EXPORT_DIRECTORY=/var/lib/uten-imp-report-exports
 # Independent persistent catalog for update and first-install packages. Its
 # private media parent is already covered by ReadWritePaths; never use current/web.
 Environment=UTEN_CLIENT_RELEASES_DIR=/var/lib/uten-imp-media/attachments/client-releases

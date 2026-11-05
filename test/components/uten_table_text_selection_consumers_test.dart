@@ -79,6 +79,7 @@ void main() {
         Builder(
           builder: (context) => TextButton(
             onPressed: () => showUtenPrintPreview(
+              showOutputScope: false,
               context: context,
               title: 'Copy preview',
               loader: () async => const UtenPrintTable(

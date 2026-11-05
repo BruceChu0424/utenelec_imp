@@ -10,6 +10,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_drop_target.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
@@ -1071,6 +1072,7 @@ void main() {
     await tester.pump();
     expect(repo.commits, 1);
     expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(find.byType(UtenBusyOverlay), findsOneWidget);
     repo.pending!.complete(
       const GoodsImportResult(
         batchId: 'batch:1',
@@ -1083,6 +1085,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('完成'), findsOneWidget);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
     expect(repo.commits, 1);
   });
 

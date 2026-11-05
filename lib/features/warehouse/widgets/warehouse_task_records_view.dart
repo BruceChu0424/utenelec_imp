@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/print/complete_print_snapshot.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -1150,7 +1151,7 @@ class _WarehouseTaskRecordsViewState
   Map<String, dynamic> get _exportQuery =>
       _exportQueryOf(WarehouseListScope.of(context));
 
-  /// 预览打印（2026-10-29 用户批注）：按当前筛选翻页取前 2000 行，
+  /// 预览打印：按当前筛选完整翻页，
   /// 列取 [_buildColumns] 的表头与显示值，与服务端导出列集同源。
   Future<UtenPrintTable> _loadPrintTable() async {
     final repository = ref.read(warehouseTaskCenterRepositoryProvider);
@@ -1180,11 +1181,9 @@ class _WarehouseTaskRecordsViewState
         scope == ref.read(authenticatedScopeProvider) &&
         server == ref.read(apiBaseUrlProvider) &&
         epoch == ref.read(exportContextEpochProvider);
-    const rowLimit = 2000;
-    const pageSize = 100;
-    final records = <WarehouseTaskCenterRecord>[];
-    for (var page = 1; records.length < rowLimit; page++) {
-      final result = await repository.list(
+    final columns = _buildColumns();
+    return loadCompletePrintSnapshot<WarehouseTaskCenterRecord>(
+      loadPage: (page, size) => repository.list(
         direction: pageDirection,
         source: pageSource,
         view: pageView,
@@ -1196,30 +1195,18 @@ class _WarehouseTaskRecordsViewState
         dateTo: pageDateTo,
         warehouseScope: warehouseScope,
         page: page,
-        size: pageSize,
+        size: size,
         sort: pageSort,
         order: pageOrder,
-      );
-      if (!current()) {
-        throw const FormatException('打印期间筛选或登录状态已变化，请重新预览');
-      }
-      records.addAll(result.items.take(rowLimit - records.length));
-      if (records.length >= result.total || result.items.length < pageSize) {
-        break;
-      }
-    }
-    final columns = _buildColumns();
-    return UtenPrintTable(
-      columnKeys: List.unmodifiable(columns.map((column) => column.key)),
-      headers: List.unmodifiable(columns.map((column) => column.label)),
-      rows: List.unmodifiable(
-        records.map(
-          (record) => List<String>.unmodifiable(
-            columns.map((column) => column.value(record)),
-          ),
-        ),
       ),
-      rowIds: List.unmodifiable(records.map((record) => record.rowKey)),
+      idOf: (record) => record.rowKey,
+      columnKeys: [for (final column in columns) column.key],
+      headers: [for (final column in columns) column.label],
+      cellsOf: (record) => [
+        for (final column in columns) column.value(record) ?? '',
+      ],
+      factsOf: (record) => {'rowKey': record.rowKey},
+      isCurrent: current,
     );
   }
 
@@ -1308,6 +1295,7 @@ class _WarehouseTaskRecordsViewState
         externalFilterKeys: const {'status'},
         selectable: selectable,
         idOf: (row) => _canSelect(row) ? row.rowKey : null,
+        outputSelectorOf: (row) => {'rowKey': row.rowKey},
         rowKeyOf: (row) => row.rowKey,
         selectedIds: _selected,
         onSelectedIdsChanged: _select,
@@ -1326,7 +1314,6 @@ class _WarehouseTaskRecordsViewState
           // 预览打印 + 下载表格（2026-10-29 用户批注）：按当前筛选结果，全部分类共用本表。
           UtenPrintPreviewButton(
             title: _exportTitle,
-            subtitle: '按当前筛选（最多前 2000 行）',
             enabled: !_busy && !_loading,
             loader: _loadPrintTable,
             exportEndpoint:

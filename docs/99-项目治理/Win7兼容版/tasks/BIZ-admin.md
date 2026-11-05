@@ -118,9 +118,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`；`clients/windows_legacy/progress/evidence/table-output-selection-20261105.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03：日期范围UI合同增量：外部单一选择日期入口，卡内最右Uten红圆白X清除，默认中国壁钟最近一个日历月，年月标题直接跳年/月。该业务WPF宿主仍未迁移；后续接入公共UtenDateRangeDialog，并保留本业务日期/时区/开放边界及服务端权威，不开放占位写入口。见 E-DATE-RANGE-ENTRY-20261103。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03：日期范围UI合同增量：外部单一选择日期入口，卡内最右Uten红圆白X清除，默认中国壁钟最近一个日历月，年月标题直接跳年/月。该业务WPF宿主仍未迁移；后续接入公共UtenDateRangeDialog，并保留本业务日期/时区/开放边界及服务端权威，不开放占位写入口。见 E-DATE-RANGE-ENTRY-20261103。；2026-11-05: Flutter audit event/session tables use real auditId/sessionId for output-only selection; server exports retain those implicit source identities without adding columns or changing authority. Native audit center output remains unported. See E-TABLE-OUTPUT-SELECTION-20261105.。
 
 ## W7-BIZ-006
 

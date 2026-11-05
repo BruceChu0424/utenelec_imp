@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/data_display/uten_table_output_scope.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
@@ -935,6 +936,20 @@ void main() {
       // Complete snapshots yield to timer turns between bounded CPU slices.
       final result = (await tester.runAsync(print.loader))!;
       expect(result.rows, hasLength(2500));
+      final selected = (await tester.runAsync(
+        () => selectUtenPrintRows(
+          result,
+          const UtenTableOutputSelection(
+            ids: {'goods-25-99|red'},
+            rows: [
+              {'goodsId': 'goods-25-99', 'colorId': 'red'},
+            ],
+          ),
+        ),
+      ))!;
+      expect(selected.rows, hasLength(1));
+      expect(selected.factValues!.single['goodsId'], 'goods-25-99');
+      expect(selected.factValues!.single['colorId'], 'red');
       expect(result.columnKeys, isNot(contains('costAmount')));
       expect(
         result.factValues!.every((row) => !row.containsKey('costAmount')),

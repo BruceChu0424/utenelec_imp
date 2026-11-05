@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_dialog_modules.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/goods_import.dart';
 import 'goods_import_dialog.dart';
@@ -46,7 +47,6 @@ class _GoodsImportModePickerDialogState
       title: const UtenDialogHeading(
         icon: Icons.file_upload_outlined,
         title: Text('选择导入方式'),
-        subtitle: Text('请选择本次导入的处理方式'),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -65,8 +65,13 @@ class _GoodsImportModePickerDialogState
                   GoodsImportMode.updateOnly => Icons.edit_note_outlined,
                   GoodsImportMode.mixed => Icons.merge_type_rounded,
                 },
-                title: Text(mode.label),
-                subtitle: Text(_descriptionOf(mode)),
+                title: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(child: Text(mode.label)),
+                    UtenFieldHintIcon(info: _descriptionOf(mode), dense: true),
+                  ],
+                ),
                 selected: mode == _selected,
                 onTap: () => setState(() => _selected = mode),
               ),

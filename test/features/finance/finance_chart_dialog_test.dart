@@ -4,8 +4,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -15,6 +20,67 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets(
+    'directory export preserves display schema, code identity and the current query',
+    (tester) async {
+      final projections = TableColumnProjectionController();
+      addTearDown(projections.dispose);
+      await _pump(
+        tester,
+        _ChartApi()..actualImports = 1,
+        projections: projections,
+      );
+      MasterDataTableView<Map<String, dynamic>> table() => tester.widget(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is MasterDataTableView<Map<String, dynamic>> &&
+              widget.tableKey == 'finance.chart.directory',
+        ),
+      );
+      UtenExportButton export() => table().toolbarActions!
+          .whereType<UtenExportButton>()
+          .singleWhere((button) => button.report == 'gl/chart-directory');
+      expect(
+        table().columns
+            .where((column) => column.exportable)
+            .map((column) => column.key),
+        ['code', 'name', 'currencyName', 'classification', 'targets'],
+      );
+      expect(table().outputSelectorOf!(table().items.single), {'code': '1001'});
+      await tester.tap(find.text('库存现金'));
+      await tester.pumpAndSettle();
+      final selected = await tester.runAsync(
+        () => projections.tables.single.outputSelection.snapshot(),
+      );
+      expect(selected!.ids, {'1001'});
+      expect(selected.rows, [
+        {'code': '1001'},
+      ]);
+      final search = find.descendant(
+        of: find.byType(UtenSearchBar),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, '1001 现金');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(table().items, hasLength(1));
+      expect(export().queryParams, containsPair('keyword', '1001 现金'));
+      table().onFilterChanged('classification', '待维护');
+      await tester.pumpAndSettle();
+      expect(export().queryParams, containsPair('f.classification', '待维护'));
+      table().onSortChange!('code', false);
+      await tester.pumpAndSettle();
+      expect(export().queryParams, containsPair('sort', 'code'));
+      expect(export().queryParams, containsPair('order', 'desc'));
+      final template = table().toolbarActions!
+          .whereType<UtenExportButton>()
+          .singleWhere((button) => button.report == 'gl/chart-template');
+      expect(template.showOutputScope, isFalse);
+      expect(template.frozenProjection!.columns, hasLength(9));
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'source reason preserves base currency and loss category can be selected by mouse',
     (tester) async {
@@ -127,6 +193,7 @@ Future<void> _pump(
   double width = 1400,
   double height = 900,
   double scale = 1,
+  TableColumnProjectionController? projections,
 }) async {
   await tester.binding.setSurfaceSize(Size(width, height));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -143,6 +210,7 @@ Future<void> _pump(
         currentPermissionsProvider.overrideWithValue(const {
           Perm.paymentStyleEdit,
           Perm.paymentStyleCreate,
+          Perm.financeReportExport,
         }),
         financeEntryFilePickerProvider.overrideWithValue(
           () async => PlatformFile(
@@ -157,7 +225,12 @@ Future<void> _pump(
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(scale)),
-          child: child!,
+          child: projections == null
+              ? child!
+              : TableColumnProjectionScope(
+                  controller: projections,
+                  child: child!,
+                ),
         ),
         home: const FinanceChartDialog(canEdit: true),
       ),

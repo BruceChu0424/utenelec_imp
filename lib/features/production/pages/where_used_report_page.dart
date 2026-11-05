@@ -8,6 +8,7 @@ import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 当前 BOM、旧生产快照、新生产履约需求和委外历史证据由后端分别聚合；
 // 日期只过滤历史证据，当前 BOM 始终表示查询时现状。
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,7 @@ import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -27,6 +29,8 @@ import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -48,6 +52,8 @@ import '../../../shared/stock_ledger/material_trace_repository.dart';
 import '../../../shared/stock_ledger/widgets/goods_production_trace_view.dart';
 import '../../../shared/stock_ledger/widgets/material_trace_subject_picker.dart';
 import '../../basic_data/models/goods_node.dart';
+import '../../basic_data/models/product_category_node.dart';
+import '../../basic_data/widgets/uten_category_tree_view.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
@@ -84,6 +90,18 @@ enum _TraceEntry {
 
 enum _TraceResultMode { actual, relationships }
 
+final _whereUsedCategoriesProvider =
+    FutureProvider.autoDispose<List<ProductCategoryNode>>((ref) async {
+      final boundary = ref.watch(sensitiveReadBoundaryProvider);
+      final json = await boundary.api.get(
+        '/production/reports/where-used/material-categories',
+      );
+      return [
+        for (final item in json['items'] as List? ?? const [])
+          ProductCategoryNode.fromJson(Map<String, dynamic>.from(item as Map)),
+      ];
+    });
+
 typedef _TraceCandidate = ({
   MaterialTraceSubject subject,
   GoodsListItem? material,
@@ -106,6 +124,7 @@ class _WhereUsedQuerySnapshot {
     required this.sortKey,
     required this.sortAscending,
     required this.headers,
+    required this.categoryId,
   });
 
   final GoodsListItem material;
@@ -116,6 +135,7 @@ class _WhereUsedQuerySnapshot {
   final String? sortKey;
   final bool sortAscending;
   final Map<String, String> headers;
+  final String? categoryId;
 }
 
 class WhereUsedReportPage extends ConsumerStatefulWidget {
@@ -138,6 +158,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   final _subjectController = TextEditingController();
   bool _queryDirty = false;
   GoodsListItem? _material;
+  ProductCategoryNode? _productCategory;
   MaterialTraceSubject? _subject;
   _TraceEntry _entry = _TraceEntry.goods;
   _TraceResultMode _mode = _TraceResultMode.relationships;
@@ -166,6 +187,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   bool _openingDetail = false;
   bool _replacing = false;
   Set<String> _selectedProductIds = {};
+  final Map<String, bool> _productReplacementEligibility = {};
   String? _loadError;
   ModalRoute<dynamic>? _filterRoute;
   ModalRoute<dynamic>? _basisRoute;
@@ -210,6 +232,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         ++_traceReloadTick;
         _subject = null;
         _material = null;
+        _productCategory = null;
         _restoreSubjectDisplay();
         _entry = _TraceEntry.goods;
         _mode = _TraceResultMode.relationships;
@@ -292,6 +315,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     _loadError = null;
     _loading = false;
     _selectedProductIds = {};
+    _productReplacementEligibility.clear();
   }
 
   static _TraceCandidate _materialCandidate(GoodsListItem material) => (
@@ -450,6 +474,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       sortKey: _sortKey,
       sortAscending: _sortAscending,
       headers: Map.unmodifiable(_headers),
+      categoryId: _productCategory?.id,
     );
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
@@ -466,6 +491,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       final query = <String, dynamic>{
         'materialGoodsId': snapshot.material.id,
         'source': snapshot.source.apiValue,
+        if (snapshot.categoryId != null) 'f.categoryId': snapshot.categoryId,
         if (snapshot.from != null) 'dateFrom': _formatDate(snapshot.from!),
         if (snapshot.to != null) 'dateTo': _formatDate(snapshot.to!),
         'size': _size,
@@ -504,6 +530,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       setState(() {
         _acceptedPageReadQuery = freezePagedReadQuery(query);
         _data = cached.snapshot;
+        for (final row in cached.snapshot.rows) {
+          final id = row['__productId']?.toString();
+          if (id != null) {
+            _productReplacementEligibility[id] = row['__currentBom'] == true;
+          }
+        }
         _loadedQuery = snapshot;
         _page = snapshot.page;
         _loading = false;
@@ -537,6 +569,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   Map<String, dynamic> get _pageReadQuery => {
     'materialGoodsId': _material?.id,
     'source': _source.apiValue,
+    if (_productCategory != null) 'f.categoryId': _productCategory!.id,
     if (_limitHistoryDates) 'dateFrom': _formatDate(_from),
     if (_limitHistoryDates) 'dateTo': _formatDate(_to),
     'size': _size,
@@ -655,62 +688,97 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     });
     return UtenRefreshScope(
       controller: _refreshController,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: '物料反查与追溯',
-          leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production),
-          ),
-          actions: [
-            IconButton(
-              key: const Key('where-used-basis'),
-              icon: const Icon(Icons.info_outline_rounded),
-              tooltip: '依据说明',
-              onPressed: _showBasis,
-            ),
-            UtenRefreshButton(
-              tooltip: '刷新当前结果',
-              enabled: !(_subject == null || _loading),
-              busy: _loading,
-              onRefresh: _refreshQuery,
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: UtenContentContainer.wide(
-            child: Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: UtenCollapsingHeaderScrollView(
-                collapsingHeader: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Card(
-                      margin: EdgeInsets.zero,
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s16),
-                        child: _buildQueryToolbar(),
-                      ),
+      child: Stack(
+        children: [
+          Scaffold(
+            appBar: UtenAppBar(
+              title: '物料反查与追溯',
+              titleWidget: _subject == null
+                  ? null
+                  : Row(
+                      children: [
+                        const Text('物料反查与追溯'),
+                        const SizedBox(width: UtenSpacing.s12),
+                        Flexible(
+                          child: Tooltip(
+                            message: _subjectLabel(_subject!),
+                            child: Text(
+                              _subjectLabel(_subject!),
+                              key: const Key('where-used-current-subject'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    if (_entry != _TraceEntry.document) ...[
-                      _buildTitle(theme),
-                      const SizedBox(height: UtenSpacing.s12),
-                    ],
-                    if (_mode == _TraceResultMode.relationships &&
-                        unattributed > 0)
-                      _UnattributedNotice(
-                        count: unattributed,
-                        quantity:
-                            _data?.meta['unattributedDemandQtyExact'] ??
-                            _data?.meta['unattributedDemandQty'],
-                      ),
-                  ],
+              leading: UtenBackButton(
+                onPressed: () =>
+                    backTo(context, defaultPath: RouteName.production),
+              ),
+              actions: [
+                IconButton(
+                  key: const Key('where-used-basis'),
+                  icon: const Icon(Icons.info_outline_rounded),
+                  tooltip: '依据说明',
+                  onPressed: _showBasis,
                 ),
-                body: _buildResultPane(theme),
+                UtenRefreshButton(
+                  tooltip: '刷新当前结果',
+                  enabled: !(_subject == null || _loading),
+                  busy: _loading,
+                  onRefresh: _refreshQuery,
+                ),
+              ],
+            ),
+            body: SafeArea(
+              child: UtenContentContainer.wide(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  child: UtenCollapsingHeaderScrollView(
+                    collapsingHeader: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Card(
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s16),
+                            child: _buildQueryToolbar(),
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
+                        if (_entry != _TraceEntry.document) ...[
+                          _buildTitle(theme),
+                          const SizedBox(height: UtenSpacing.s12),
+                        ],
+                        if (_mode == _TraceResultMode.relationships &&
+                            unattributed > 0)
+                          _UnattributedNotice(
+                            count: unattributed,
+                            quantity:
+                                _data?.meta['unattributedDemandQtyExact'] ??
+                                _data?.meta['unattributedDemandQty'],
+                          ),
+                      ],
+                    ),
+                    body: _buildResultPane(theme),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+          if (_loading)
+            UtenBusyOverlay(
+              title: '正在查询物料关系',
+              showDoNotLeaveHint: false,
+              onCancel: () => setState(() {
+                ++_loadGeneration;
+                _reportRead.invalidate();
+                _loading = false;
+              }),
+            ),
+        ],
       ),
     );
   }
@@ -1241,7 +1309,23 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   }
 
   Widget _buildResultPane(ThemeData theme) {
-    if (_mode == _TraceResultMode.relationships) return _buildTablePane(theme);
+    if (_mode == _TraceResultMode.relationships) {
+      return UtenSplitView(
+        persistenceKey: 'production.whereUsed.products',
+        initialLeadingWidth: 240,
+        minLeadingWidth: 180,
+        minTrailingWidth: 480,
+        minTwoPaneWidth: 760,
+        selectedLeadingLabel: _productCategory?.name ?? '全部分类',
+        selectedLeadingKey: _productCategory?.id,
+        openLeadingButtonKey: const Key('where-used-open-categories'),
+        leading: _WhereUsedCategoryPane(
+          selectedId: _productCategory?.id,
+          onSelected: _selectProductCategory,
+        ),
+        trailing: _buildTablePane(theme),
+      );
+    }
     final subject = _subject;
     if (subject == null) {
       return _StatePanel(
@@ -1268,6 +1352,16 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         if (mounted && epoch == _readEpoch) _followTraceSubject(value);
       },
     );
+  }
+
+  Future<void> _selectProductCategory(ProductCategoryNode? category) async {
+    if (_productCategory?.id == category?.id) return;
+    setState(() {
+      _productCategory = category;
+      _page = 1;
+      _invalidateLoadedResults();
+    });
+    if (_material != null) await _load();
   }
 
   void _followTraceSubject(MaterialTraceSubject subject) {
@@ -1297,6 +1391,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   Map<String, dynamic> _exportQuery(_WhereUsedQuerySnapshot query) => {
     'materialGoodsId': query.material.id,
     'source': query.source.apiValue,
+    if (query.categoryId != null) 'f.categoryId': query.categoryId,
     if (query.from != null) 'dateFrom': _formatDate(query.from!),
     if (query.to != null) 'dateTo': _formatDate(query.to!),
     ...sortQueryParams(query.sortKey, query.sortAscending),
@@ -1311,8 +1406,15 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     final format = await showDialog<String>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
-        title: Text(l10n.whereUsedExportFiltered),
-        content: Text(l10n.whereUsedExportDescription),
+        title: Row(
+          children: [
+            Expanded(child: Text(l10n.whereUsedExportFiltered)),
+            UtenFieldHintIcon(
+              info: l10n.whereUsedExportDescription,
+              dense: true,
+            ),
+          ],
+        ),
         actions: [
           UtenButton(
             type: UtenButtonType.ghost,
@@ -1348,6 +1450,20 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         query == null ||
         _selectedProductIds.isEmpty ||
         !ref.read(currentPermissionsProvider).contains(Perm.goodsBomEdit)) {
+      return;
+    }
+    // The table retains cross-page selections, including rows accepted through
+    // its prefetched read window rather than a page-level _load completion.
+    for (final row in _tableRows.items) {
+      final id = row['__productId']?.toString();
+      if (id != null) {
+        _productReplacementEligibility[id] = row['__currentBom'] == true;
+      }
+    }
+    if (_selectedProductIds.any(
+      (id) => _productReplacementEligibility[id] != true,
+    )) {
+      context.appInfo('已选项目包含仅有历史关系的产品，请取消这些勾选后再一键替换。');
       return;
     }
     final epoch = _readEpoch;
@@ -1419,8 +1535,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       columns: columns,
       requiredLeadingColumnKeys: const ['goodsName', 'goodsCode', 'colorName'],
       selectable: true,
-      idOf: (row) =>
-          row['__currentBom'] == true ? row['__productId']?.toString() : null,
+      idOf: (row) => row['__productId']?.toString(),
       selectedIds: _selectedProductIds,
       onSelectedIdsChanged: (ids) => setState(() => _selectedProductIds = ids),
       unselectableLeadingBuilder: (context, row) => Tooltip(
@@ -1448,6 +1563,13 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             endpoint: '/production/reports/where-used/export',
             report: 'where-used',
             queryParams: _exportQuery(_loadedQuery!),
+            selectedIds: _selectedProductIds,
+            legacyPrivateQuery: const {
+              'f.selectedProductIds': 'selectedProductIds',
+            },
+            queryForSelection: (ids) => {
+              'f.selectedProductIds': jsonEncode(ids.toList()..sort()),
+            },
             requiredPermission: Perm.productionWhereUsedExport,
             enabled: !_loading,
             label: l10n.whereUsedExportFiltered,
@@ -1501,6 +1623,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       paginationScope: (
         _reportRead.snapshotRevision,
         _material?.id,
+        _productCategory?.id,
         _source,
         _limitHistoryDates,
         _from,
@@ -1551,6 +1674,95 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           if (info != null) UtenFieldHintIcon(info: info, dense: true),
         ],
       ),
+    );
+  }
+}
+
+/// Uses the report's read projection, so category discovery never grants master-data access.
+class _WhereUsedCategoryPane extends ConsumerWidget {
+  const _WhereUsedCategoryPane({
+    required this.selectedId,
+    required this.onSelected,
+  });
+
+  final String? selectedId;
+  final ValueChanged<ProductCategoryNode?> onSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final categories = ref.watch(_whereUsedCategoriesProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '产品分类',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              const UtenFieldHintIcon(
+                info: '按产品当前分类筛选 BOM 与历史关系，包含所选分类的全部子类；不改变物料和历史证据的归属。',
+                dense: true,
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          key: const Key('where-used-all-categories'),
+          dense: true,
+          selected: selectedId == null,
+          leading: const Icon(Icons.account_tree_outlined),
+          title: const Text('全部分类'),
+          trailing: selectedId == null ? const Icon(Icons.check_rounded) : null,
+          onTap: () {
+            onSelected(null);
+            UtenHierarchyPanelScope.maybeOf(context)?.onSelection?.call();
+          },
+        ),
+        Expanded(
+          child: categories.when(
+            data: (nodes) => UtenCategoryTreeView<ProductCategoryNode>(
+              key: const Key('where-used-product-categories'),
+              nodes: nodes,
+              mode: UtenCategoryTreeMode.single,
+              selectedIds: {?selectedId},
+              onNodeTap: onSelected,
+              onToggleSelect: onSelected,
+              initiallyExpandDepth: 1,
+              flatLevelColors: true,
+            ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => Center(
+              child: UtenButton(
+                type: UtenButtonType.secondary,
+                onPressed: () async {
+                  try {
+                    await UtenBusyOverlay.run(
+                      context,
+                      title: '正在加载产品分类',
+                      action: () async {
+                        ref.invalidate(_whereUsedCategoriesProvider);
+                        await ref.read(_whereUsedCategoriesProvider.future);
+                      },
+                    );
+                  } catch (error) {
+                    if (context.mounted) {
+                      context.appError(
+                        error is ApiException ? error.message : '分类加载失败，请稍后重试',
+                      );
+                    }
+                  }
+                },
+                child: const Text('重新加载分类'),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

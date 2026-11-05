@@ -49,6 +49,14 @@ class InstantInventoryRow {
 
   final String? goodsId;
   final String? colorId;
+
+  /// Identity within the current warehouse/query scope; ownership is a filter,
+  /// not a substitute for the physical stock scope.
+  String get rowKey => '$goodsId|$colorId';
+  Map<String, String?> get identityFields => {
+    'goodsId': goodsId,
+    'colorId': colorId,
+  };
   final String? categoryName; // 所属类型
   final String? model; // 型号
   final String? cNumber; // 客户型号

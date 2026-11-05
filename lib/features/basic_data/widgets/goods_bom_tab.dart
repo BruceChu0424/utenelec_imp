@@ -45,7 +45,7 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 import '../../../shared/search/retain_hierarchy_filter_context.dart';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,6 +54,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/buttons/uten_tree_expansion_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_table_row_drag.dart';
+import '../../../components/data_display/uten_table_output_scope.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -68,6 +69,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -1870,6 +1872,50 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 正好就是删除动作需要的(父货品, 关系行)二元组。一条关系在树里出现两次时
   /// 两处会一起勾上，这是**正确**的：删的本来就是同一条关系。
   static String _rowId(_BomRow r) => '${r.parentGoodsId}|${r.node.item.id}';
+
+  UtenTableOutputSelection _outputSelectionFor(List<_BomRow> visible) {
+    final selected = Set<String>.unmodifiable(_selectedRowIds);
+    final occurrences = [
+      for (final row in visible)
+        if (!row.isPlaceholder && selected.contains(_rowId(row))) row,
+    ];
+    final ids = Set<String>.unmodifiable(
+      occurrences.map((row) => row.occurrenceKey),
+    );
+    final loadRevision = _loadRevision;
+    final expansionRevision = _treeExpansionRevision;
+    final modeRevision = _modeRevision;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    return UtenTableOutputSelection(
+      ids: ids,
+      load: () async {
+        final work = UiWorkBudget(
+          isCurrent: () =>
+              mounted &&
+              loadRevision == _loadRevision &&
+              expansionRevision == _treeExpansionRevision &&
+              modeRevision == _modeRevision &&
+              boundary == ref.read(sensitiveReadBoundaryProvider) &&
+              setEquals(selected, _selectedRowIds),
+        );
+        final rows = <Map<String, String?>>[];
+        for (final row in occurrences) {
+          rows.add(
+            Map.unmodifiable({
+              'seq': row.seq,
+              'componentGoodsId': row.node.item.componentGoodsId,
+            }),
+          );
+          await work.checkpoint();
+        }
+        work.ensureCurrent();
+        return UtenTableOutputSelection(
+          ids: ids,
+          rows: List.unmodifiable(rows),
+        );
+      },
+    );
+  }
 
   /// 把已经看不见的行从勾选集里剪掉。
   ///
@@ -4007,6 +4053,11 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   selectable: selectable,
                   // _BomRow 无天然唯一 id，用复合键(见 _rowId)。
                   idOf: (row) => row.isPlaceholder ? null : _rowId(row),
+                  outputSelectorOf: (row) => {
+                    'seq': row.seq,
+                    'componentGoodsId': row.node.item.componentGoodsId,
+                  },
+                  outputSelection: () => _outputSelectionFor(visible),
                   unselectableLeadingBuilder: (_, _) => const SizedBox.shrink(),
                   rowKeyOf: (row) => row.occurrenceKey,
                   selectedIds: _selectedRowIds,

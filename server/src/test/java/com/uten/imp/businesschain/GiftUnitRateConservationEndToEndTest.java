@@ -48,6 +48,7 @@ class GiftUnitRateConservationEndToEndTest {
     @Autowired ProcurementInspectionService inspection;
     @Autowired ProcurementIqcStockInService stockIn;
     @Autowired DocumentUnapprovalService unapproval;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     private FullChainEndToEndTest harness;
     private static final BigDecimal RATE=new BigDecimal("1.00005");
     private record F(FullChainEndToEndTest.World w,UUID requestItem,UUID order,UUID orderItem,UUID currency,UUID unit){}
@@ -70,25 +71,25 @@ class GiftUnitRateConservationEndToEndTest {
         assertThat(ap(returned)).isZero();assertThat(closed(f)).isFalse();
         evidence(f,received,returned,"FREE_RETURN_APPROVED",Map.of("stockQty","1.00005","stockValue","5","returnAP","0","closed","false","returnGiftBase","1.00005"));
         var returnCommand=new DocumentUnapprovalService.UnapproveRequest("gift-rate-return-unapprove-"+returned,"赠品退货镜像原冻结分量");
-        var returnDraft=(com.uten.imp.features.purchase.ret.dto.ReturnDetail)unapproval.unapprove("purchaseReturn",returned,returnCommand);
+        var returnDraft=(com.uten.imp.features.purchase.ret.dto.ReturnDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReturn",returned,returnCommand);
         assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
-        assertThat(((com.uten.imp.features.purchase.ret.dto.ReturnDetail)unapproval.unapprove("purchaseReturn",returned,returnCommand)).getId()).isEqualTo(returnDraft.getId());
+        assertThat(((com.uten.imp.features.purchase.ret.dto.ReturnDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReturn",returned,returnCommand)).getId()).isEqualTo(returnDraft.getId());
         returns.approve(returnDraft.getId());
         checks.assertThat(stock(f)).as("New return generation uses the same original free base").isEqualByComparingTo("1.00005");
         returns.reverse(returnDraft.getId());assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         checks.assertThat(closed(f)).as("Mirrored return reverse restores fulfillment").isTrue();
-        // Existing value provenance deliberately blocks erasing a receipt after a
-        // compensated ISSUE history. Test that guard with no side effects, then
-        // exercise receipt unapproval on an independent unused physical source.
+        // Keep a real downstream return active before checking the source guard.
+        UUID activeReturn=returned(f,source,"0","1");returns.approve(activeReturn);
+        assertThat(stock(f)).isEqualByComparingTo("1.00005");assertThat(value(f)).isEqualByComparingTo("5");assertThat(ap(activeReturn)).isZero();
         assertThatThrownBy(()->receipts.reverse(received)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
-        assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");assertThat(ap(received)).isEqualByComparingTo("10");
-        evidence(f,received,returnDraft.getId(),"USED_RECEIPT_REVERSAL_REFUSED_WITH_NO_EFFECT",Map.of("stockQty","2.0001","stockValue","10","AP","10","domainReversal","409 unused cost head","canReverseHint","observed separately from domain"));
+        assertThat(stock(f)).isEqualByComparingTo("1.00005");assertThat(value(f)).isEqualByComparingTo("5");assertThat(ap(received)).isEqualByComparingTo("10");
+        evidence(f,received,activeReturn,"USED_RECEIPT_REVERSAL_REFUSED_WITH_NO_EFFECT",Map.of("stockQty","1.00005","stockValue","5","AP","10","domainReversal","409 active return source","canReverseHint","observed separately from domain"));
         F fresh=fixture();UUID untouched=receipt(fresh,"1","1");receipts.approve(untouched);passAndStock(fresh,untouched);
         var command=new DocumentUnapprovalService.UnapproveRequest("gift-rate-unapprove-"+untouched,"转换残差仍按原冻结事实反审");
-        var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",untouched,command);
+        var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",untouched,command);
         assertThat(stock(fresh)).isZero();assertThat(value(fresh)).isZero();assertThat(ap(untouched)).isZero();assertThat(closed(fresh)).isFalse();
         evidence(fresh,untouched,null,"UNUSED_RECEIPT_UNAPPROVED",Map.of("stockQty","0","stockValue","0","AP","0","closed","false"));
-        var replay=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",untouched,command);
+        var replay=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",untouched,command);
         assertThat(replay.getId()).isEqualTo(draft.getId());assertThat(stock(fresh)).isZero();
         receipts.approve(draft.getId());passAndStock(fresh,draft.getId());
         assertThat(stock(fresh)).isEqualByComparingTo("2.0001");assertThat(value(fresh)).isEqualByComparingTo("10");assertThat(ap(draft.getId())).isEqualByComparingTo("10");
@@ -96,6 +97,23 @@ class GiftUnitRateConservationEndToEndTest {
         assertThatThrownBy(()->receipts.approve(draft.getId())).isInstanceOf(com.uten.imp.common.web.ApiException.class);
         assertThat(stock(fresh)).isEqualByComparingTo("2.0001");checks.assertAll();
         evidence(fresh,draft.getId(),null,"NEW_RECEIPT_GENERATION_STOCKED_AND_REPLAY_GUARDED",Map.of("stockQty","2.0001","stockValue","10","AP","10","closed","true"));
+    }
+
+    @Test void anIncompleteSuccessorRollsBackTheOriginalReversalAndEveryPosting(){
+        F f=fixture();UUID received=receipt(f,"1","1");receipts.approve(received);passAndStock(f,received);
+        String original=db.queryForObject("SELECT to_jsonb(item)::text FROM purchase_receipt_items item WHERE receipt_id=?",String.class,received);
+        var beforeOrder=db.queryForMap("SELECT received_qty,gift_received_qty,returned_qty,gift_returned_qty FROM purchase_order_items WHERE id=?",f.orderItem());
+        assertThatThrownBy(()->new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status->{
+            var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",received,
+                    new DocumentUnapprovalService.UnapproveRequest("incomplete-successor-"+received,"验证草稿不完整时整个反审回滚"));
+            db.update("DELETE FROM purchase_receipt_items WHERE receipt_id=?",draft.getId());
+            return null;
+        })).hasStackTraceContaining("unapproval source line map is incomplete");
+        assertThat(receipts.detail(received).getStatus()).isEqualTo((short)1);
+        assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");assertThat(ap(received)).isEqualByComparingTo("10");
+        assertThat(db.queryForObject("SELECT to_jsonb(item)::text FROM purchase_receipt_items item WHERE receipt_id=?",String.class,received)).isEqualTo(original);
+        assertThat(db.queryForMap("SELECT received_qty,gift_received_qty,returned_qty,gift_returned_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isEqualTo(beforeOrder);
+        assertThat(number("SELECT count(*) FROM document_unapprovals WHERE family='purchaseReceipt' AND original_id=?",received)).isZero();
     }
 
     @Test void paidFirstAndPartialGiftReceiptsCloseByTheirOwnFrozenBasesAndFreeReturnsRemainSeparate(){

@@ -11,7 +11,7 @@ public final class ProcurementReadRoutes {
             "^/api/(purchase|subcontract)/orders/[0-9a-fA-F-]{36}/print-data$");
     private static final Pattern WORKBENCH_EXPORT = Pattern.compile(
             "^/api/operations/workbench/(purchase|subcontract)/export$");
-    private static final Pattern PRINT_AUTHORIZATION = Pattern.compile(
+    private static final Pattern PRINT_PERMISSION_QUERY = Pattern.compile(
             "^/api/(purchase|subcontract)/orders/print-authorization$");
     private ProcurementReadRoutes() { }
     public static String printDataScope(String path) {
@@ -28,5 +28,8 @@ public final class ProcurementReadRoutes {
     public static String workbenchDomainScope(String domain) {
         return domain != null && domain.startsWith("workbench_") ? OWNER_SCOPES.get(domain.substring(10)) : null;
     }
-    public static boolean printAuthorization(String path) { return path != null && PRINT_AUTHORIZATION.matcher(path).matches(); }
+    /** POST-only digest verification query; the route performs no write and grants nothing here. */
+    public static boolean printPermissionQuery(String method, String path) {
+        return "POST".equals(method) && path != null && PRINT_PERMISSION_QUERY.matcher(path).matches();
+    }
 }

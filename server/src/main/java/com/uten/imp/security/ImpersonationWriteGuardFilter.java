@@ -90,7 +90,7 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
         return com.uten.imp.common.web.GoodsSearchReadRoutes.matches(method,path)
                 || com.uten.imp.common.web.EmployeeCandidateReadRoutes.matches(method,path)
                 || com.uten.imp.common.web.ExactBodyReadRoutes.matches(method,path)
-                || com.uten.imp.common.report.ProcurementReadRoutes.printAuthorization(path);
+                || com.uten.imp.common.report.ProcurementReadRoutes.printPermissionQuery(method, path);
     }
     static boolean readOnlyFacetCandidate(HttpServletRequest request,String method,String path) {
         var route=com.uten.imp.common.report.NativeFacetRoutes.find(path);

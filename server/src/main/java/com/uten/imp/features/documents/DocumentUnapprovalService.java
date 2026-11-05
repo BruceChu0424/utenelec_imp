@@ -75,11 +75,12 @@ public class DocumentUnapprovalService {
         var draftId = UUID.randomUUID();
         var billNo = numbers.nextNumber(adapter.numberPrefix(originalId));
         copyHeader(adapter.header(), originalId, draftId, billNo);
-        var lineIds = copyLines(adapter, originalId, draftId, billNo);
-        for (var source : adapter.sources()) copySources(source, lineIds);
-        copyPlatformFields(originalId,draftId,lineIds);
-        adapter.afterDraftCreated(originalId, draftId);
-        // The same original can have only one successor even when a lost response is retried with a new key.
+        var lineIds = planLines(adapter, originalId);
+        if (adapter.inheritsFrozenLineFacts()) {
+            em.createNativeQuery("SET CONSTRAINTS document_unapproval_frozen_source_complete DEFERRED").executeUpdate();
+        }
+        // The same transaction registers the complete source map before its
+        // frozen details are inherited. Any later failure rolls back the lineage.
         em.createNativeQuery("""
                 INSERT INTO document_unapprovals(family,original_id,draft_id,draft_bill_no,request_key,
                         reason,line_id_map,created_by)
@@ -88,6 +89,10 @@ public class DocumentUnapprovalService {
                 .setParameter("draft", draftId).setParameter("number", billNo)
                 .setParameter("key", request.idempotencyKey().strip()).setParameter("reason", request.reason().strip())
                 .setParameter("lines", lineMapJson(lineIds)).setParameter("actor", currentUser.requireId()).executeUpdate();
+        copyLines(adapter, draftId, billNo, lineIds);
+        for (var source : adapter.sources()) copySources(source, lineIds);
+        copyPlatformFields(originalId,draftId,lineIds);
+        adapter.afterDraftCreated(originalId, draftId);
         em.flush();
         return successorDetail(adapter,draftId,originalId);
     }
@@ -201,17 +206,26 @@ public class DocumentUnapprovalService {
         if (changed != 1) throw new ApiException(ErrorCode.CONFLICT,"反审来源已变化，本次未生成草稿");
     }
 
-    private Map<UUID,UUID> copyLines(DocumentUnapprovalPort adapter, UUID originalId, UUID draftId, String billNo) {
+    private Map<UUID,UUID> planLines(DocumentUnapprovalPort adapter, UUID originalId) {
         var spec=adapter.lines();
         Map<UUID,UUID> result = new LinkedHashMap<>();
         List<?> ids=em.createNativeQuery("SELECT id FROM "+spec.table()+" WHERE "+spec.parentColumn()+"=:original"
                 +(spec.softDeleted()?" AND NOT is_deleted":"")+" ORDER BY line_no,id")
                 .setParameter("original",originalId).getResultList();
-        for(Object id:ids) {
-            UUID newId=UUID.randomUUID(); result.put((UUID)id,newId);
+        for (Object id : ids) result.put((UUID) id, UUID.randomUUID());
+        return result;
+    }
+
+    private void copyLines(DocumentUnapprovalPort adapter, UUID draftId, String billNo, Map<UUID,UUID> lines) {
+        var spec=adapter.lines();
+        for (var line : lines.entrySet()) {
+            UUID id=line.getKey(),newId=line.getValue();
             var columns=new ArrayList<>(List.of("id",spec.parentColumn(),"created_at","updated_at","created_by","updated_by"));
             var values=new ArrayList<>(List.of(":newLine",":draft","CURRENT_TIMESTAMP","CURRENT_TIMESTAMP","source.created_by",":actor"));
             columns.addAll(spec.inputs()); values.addAll(spec.inputs().stream().map(column->"source."+column).toList());
+            if (adapter.inheritsFrozenLineFacts()) {
+                columns.add("unapproval_source_item_id"); values.add("source.id");
+            }
             columns.addAll(adapter.generatedLineInputs().keySet()); values.addAll(adapter.generatedLineInputs().values());
             if(spec.lineBillNumber()) { columns.add("bill_no"); values.add(":number"); }
             var query=em.createNativeQuery("INSERT INTO "+spec.table()+" ("+String.join(",",columns)+") SELECT "
@@ -221,7 +235,6 @@ public class DocumentUnapprovalService {
             if(spec.lineBillNumber()) query.setParameter("number",billNo);
             if(query.executeUpdate()!=1) throw new ApiException(ErrorCode.CONFLICT,"反审明细已变化，本次未生成草稿");
         }
-        return result;
     }
 
     private void copySources(DocumentUnapprovalPort.SourceSnapshot spec, Map<UUID,UUID> lines) {

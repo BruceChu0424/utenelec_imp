@@ -25,4 +25,5 @@ public class PurchaseOrderUnapprovalAdapter implements DocumentUnapprovalPort {
     @Override public List<SourceSnapshot> sources() {
         return List.of(new SourceSnapshot("purchase_order_item_sources","order_item_id",List.of("request_item_id","alloc_qty","allocated_gift_qty","line_no")));
     }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
 }

@@ -22,4 +22,5 @@ public class SubcontractMaterialReturnUnapprovalAdapter implements DocumentUnapp
         List.of("bill_date","supplier_id","warehouse_id","worker_id","maker_id","b_style","remark","total_original","total_local","source_doc_no"),true,false); }
     @Override public TableSnapshot lines() { return new TableSnapshot("subcontract_material_return_items","material_return_id",
         List.of("bill_date","material_issue_item_id","order_item_id","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","price","amount_original","amount_local","parent_goods_id","parent_goods_code_snapshot","parent_goods_name_snapshot","parent_goods_snapshot_source","parent_color_id","weight","source_doc_no","girth_qty","issue_no","order_no","remark"),false,true); }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
 }

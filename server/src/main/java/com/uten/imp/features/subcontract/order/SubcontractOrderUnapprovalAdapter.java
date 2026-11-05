@@ -25,4 +25,5 @@ public class SubcontractOrderUnapprovalAdapter implements DocumentUnapprovalPort
     @Override public List<SourceSnapshot> sources() {
         return List.of(new SourceSnapshot("subcontract_order_item_sources","order_item_id",List.of("application_item_id","alloc_qty","line_no")));
     }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
 }

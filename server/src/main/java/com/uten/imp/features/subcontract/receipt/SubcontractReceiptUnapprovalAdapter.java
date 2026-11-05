@@ -22,4 +22,5 @@ public class SubcontractReceiptUnapprovalAdapter implements DocumentUnapprovalPo
         List.of("bill_date","supplier_id","warehouse_id","currency_id","exchange_rate","tax_rate","sender_id","maker_id","last_date","remark","total_original","total_local","source_doc_no","settlement_style_legacy","settlement_method_id"),true,false); }
     @Override public TableSnapshot lines() { return new TableSnapshot("subcontract_receipt_items","receipt_id",
         List.of("bill_date","order_item_id","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","replacement_intent","price","amount_original","amount_local","order_qty","weight","source_doc_no","girth_qty","step_legacy_id","order_no","remark"),false,true); }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
 }

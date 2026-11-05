@@ -22,4 +22,5 @@ public class PurchaseReceiptUnapprovalAdapter implements DocumentUnapprovalPort 
         List.of("quantity_semantics","bill_date","supplier_id","warehouse_id","currency_id","exchange_rate","tax_rate","sender_id","receiver_id","purchaser_id","maker_id","settlement_style_legacy","settlement_method_id","remark","total_original","total_local","source_doc_no"),true,false); }
     @Override public TableSnapshot lines() { return new TableSnapshot("purchase_receipt_items","receipt_id",
         List.of("quantity_semantics","bill_date","order_item_id","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","replacement_intent","gift_replacement_intent","price","amount_original","amount_local","gift_qty","weight","source_doc_no","order_no","sales_order_no","production_plan_no","remark"),false,true); }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
 }

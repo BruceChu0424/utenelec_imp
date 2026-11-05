@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.delivery.BomReferenceIdentitySql;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -29,6 +30,8 @@ class MaterialAnalysisUuidFallbackContractTest {
         // Legacy-only color shadows are detected as invalid data; they are never
         // dereferenced to manufacture a UUID for a new analysis material row.
         assertThat(source)
+                .contains("BomReferenceIdentitySql.edgeProblems(\"b\",\"component\",\"component_unit\",\"resolved_color\")");
+        assertThat(canonical(BomReferenceIdentitySql.edgeProblems("b", "component", "component_unit", "resolved_color")))
                 .contains(canonical("""
                         b.color_id IS NULL
                         AND NULLIF(b.color_legacy_id,0) IS NOT NULL

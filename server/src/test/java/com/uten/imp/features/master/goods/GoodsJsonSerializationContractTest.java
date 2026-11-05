@@ -148,8 +148,15 @@ class GoodsJsonSerializationContractTest {
         String json = objectMapper.writeValueAsString(emptyInstance(type));
         List<String> names = new ArrayList<>();
         try (JsonParser parser = objectMapper.getFactory().createParser(json)) {
+            int depth = 0;
             while (parser.nextToken() != null) {
-                if (parser.currentToken() == JsonToken.FIELD_NAME) {
+                if (parser.currentToken() == JsonToken.START_OBJECT || parser.currentToken() == JsonToken.START_ARRAY) {
+                    depth++;
+                } else if (parser.currentToken() == JsonToken.END_OBJECT || parser.currentToken() == JsonToken.END_ARRAY) {
+                    depth--;
+                } else if (parser.currentToken() == JsonToken.FIELD_NAME && depth == 1) {
+                    // budgetExact intentionally repeats cost names inside its own object.
+                    // Keep streaming so duplicate root properties still fail the contract.
                     names.add(parser.currentName());
                 }
             }

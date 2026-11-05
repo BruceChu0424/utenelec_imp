@@ -41,10 +41,14 @@ import 'package:uten_imp/features/production/widgets/production_overproduction_r
 import 'package:uten_imp/features/production/widgets/material_preparation_status_style.dart';
 import 'package:uten_imp/features/production/widgets/material_preparation_route_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+
+import '../../../shared/drafts/memory_form_draft_storage.dart';
 
 part 'material_analysis_policy_cases.dart';
 part 'material_analysis_quantity_presentation_cases.dart';
@@ -65,6 +69,11 @@ const _permissions = {
   Perm.productionMaterialAnalysisNotify,
   Perm.productionMaterialAnalysisCrossReallocate,
 };
+
+class _MaterialSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
 
 /// 已下达的行要追加(还需安排为 0 却再下)属超量, 勾选 / 提交都要超量权限
 /// (服务端 allowedActions 也要带 OVER_SUPPLY, 见 _pump 的 overSupply)。
@@ -8216,6 +8225,7 @@ Future<void> _pump(
           ProductionPlanRepository(api),
         ),
         apiClientProvider.overrideWithValue(api),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,
@@ -8226,11 +8236,14 @@ Future<void> _pump(
           )
         else
           currentPermissionsProvider.overrideWithValue(permissions),
-        if (projectionOwnerControls)
-          apiBaseUrlProvider.overrideWith(
-            (ref) => ref.watch(_projectionOwnerServer),
-          ),
+        apiBaseUrlProvider.overrideWith(
+          (ref) => projectionOwnerControls
+              ? ref.watch(_projectionOwnerServer)
+              : 'http://localhost:8080/api',
+        ),
         if (session != null) sessionProvider.overrideWith(() => session),
+        if (session != null)
+          sessionSnapshotProvider.overrideWith(_MaterialSnapshot.new),
         // 部门仓库一律接到假后端(riverpod 3 起 apiClientProvider 在测试里可构造，
         // 不覆写会让真实 Dio 的 /org/departments/tree 在假时钟下永不完成，拖死
         // 车间/负责人默认值那一批附带读取)。没给 departmentTree 时假后端按

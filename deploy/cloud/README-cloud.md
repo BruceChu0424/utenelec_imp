@@ -1,7 +1,7 @@
 <!-- LEGACY-CLOUD-RUNBOOK-EXECUTION-FORBIDDEN -->
 # 阿里云 ECS 灾备设计草案：本地单主库 + 云端热备（当前禁止执行）
 
-> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../../simple/RUNBOOK.zh-CN.md)。
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../simple/RUNBOOK.zh-CN.md)。
 
 <!-- CLOUD-DEPLOYMENT-DEFERRED-20260812 -->
 > **2026-08-12 负责人范围决定**：当前只建设公司内部 ERP 测试服务器，云端 ERP 应用、热备、自动切换和

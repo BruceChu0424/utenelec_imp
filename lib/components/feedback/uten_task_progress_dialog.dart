@@ -54,7 +54,9 @@ Future<T> runUtenBlockingTask<T>({
   navigator.push(route);
   invalidation?.addListener(dismissIfInvalidated);
   try {
-    // Paint the busy state before starting work, including synchronous encoding.
+    // The route mounts first; its busy overlay inserts the root entry after
+    // that frame. Paint that entry before work, including synchronous encoding.
+    await WidgetsBinding.instance.endOfFrame;
     await WidgetsBinding.instance.endOfFrame;
     if (isCurrent != null && !isCurrent()) {
       throw StateError('操作已取消，请重新操作');

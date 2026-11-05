@@ -51,6 +51,9 @@ class FlutterEvidenceTests(unittest.TestCase):
         patch.object(runner, "source_identity", return_value=SOURCE).start()
         patch.object(runner, "ci_identity", return_value=CI).start()
         patch.object(runner, "BROWSER_FILES", ()).start()
+        # CI's checkout SHA belongs to the real repository. Keep the same
+        # production gate active with the identity owned by this fixture.
+        patch.dict(os.environ, {"GITHUB_SHA": SOURCE["sha"]}).start()
 
     def plan(self, count=2):
         return runner.make_plan(runner.inventory(self.root), count, {}, SOURCE)

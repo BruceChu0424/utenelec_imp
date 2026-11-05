@@ -26,6 +26,7 @@ import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -635,6 +636,11 @@ abstract class _MaterialAnalysisPageBase
 
   String? _serverRefreshNotice;
   bool _booting = true;
+
+  // A new visit is a new creation intent even when its sources are identical
+  // to a cancelled analysis. Keep this stable within the visit so retrying a
+  // lost response still replays that request instead of creating another one.
+  late final String _newAnalysisIntentId = const Uuid().v4();
 
   /// 带着来源进页 (排产看板「联合分析所选」) 时由进页流程自动发起的第一次分析。
   /// 只有这种情况用整页进度卡代替候选区 (候选表尚未加载, 否则会闪一张空表);

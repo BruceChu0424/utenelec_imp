@@ -548,6 +548,7 @@ void main() {
       'spec',
       'colorLegacyId',
       'unitLegacyId',
+      'stockQty',
     ]);
     final second = goodsTable.items.firstWhere(
       (goods) => goods.id == 'goods-b',

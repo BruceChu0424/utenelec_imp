@@ -29,6 +29,10 @@ Map<String, dynamic> weightEntryDraft(
   'quantityPendingReason': weight.quantityPendingReason,
   'quantityPrecision': weight.quantityPrecision?.toJson(),
   'quantityPrecisionSource': weight.quantityPrecisionSource,
+  if (weight.unitWeightInput != null) ...{
+    'unitWeightInput': weight.unitWeightInput,
+    'unitWeightInputUnit': weight.unitWeightInputUnit?.code,
+  },
   if (qty != null)
     'qtyDerived':
         qty.autofilled &&
@@ -41,6 +45,7 @@ void restoreWeightEntryDraft(
   WeightEntryController weight,
   Object? raw, {
   UtenAutofillTextController? qty,
+  String? unitWeightQuantityText,
 }) {
   if (raw is! Map) return;
   final kg = raw['kg'];
@@ -77,6 +82,15 @@ void restoreWeightEntryDraft(
   weight.quantityPrecisionSource = raw['quantityPrecisionSource'] as String?;
   if (raw['quantityPendingReason'] case final String reason) {
     weight.markQtyPending(reason);
+  }
+  if (raw['unitWeightInput'] case final String input) {
+    weight.setUnitWeightInput(
+      input,
+      unit:
+          WeightUnit.parse(raw['unitWeightInputUnit']?.toString()) ??
+          WeightUnit.g,
+      quantityText: unitWeightQuantityText ?? qty?.text,
+    );
   }
 }
 

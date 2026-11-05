@@ -441,7 +441,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(_inputs.first, '1');
     await tester.pump();
-    expect(_cellMessage(tester), '数值可能有问题');
+    expect(_cellMessage(tester), isNull);
     expect(_input(tester).decoration!.errorText, isNull);
     expect(_tooltip(tester), contains('预计 20 kg'));
     expect(_tooltip(tester), contains('-95.0%'));
@@ -473,15 +473,11 @@ void main() {
     expect(find.byKey(const ValueKey('weight-cell-suggestion')), findsNothing);
     await tester.enterText(_inputs.first, '1');
     await tester.pumpAndSettle();
-    final warning = find.text('数值可能有问题');
-    expect(warning, findsOneWidget);
+    expect(find.text('数值可能有问题'), findsNothing);
+    expect(_tooltip(tester), contains('数值可能有问题'));
     final fieldRect = tester.getRect(
       find.byKey(const ValueKey('weight-cell-content')),
     );
-    final warningRect = tester.getRect(warning);
-    expect(warningRect.bottom, lessThanOrEqualTo(fieldRect.bottom));
-    expect(warningRect.right, lessThanOrEqualTo(fieldRect.right));
-    expect(warningRect.left, greaterThanOrEqualTo(fieldRect.left));
     expect(fieldRect.height, lessThan(100));
     expect(find.byKey(const ValueKey('weight-cell-weigh')), findsOneWidget);
     expect(find.byKey(const ValueKey('weight-cell-status')), findsNothing);
@@ -601,7 +597,8 @@ void main() {
     await tester.pump();
     expect(row.weight.kg, isNull);
     expect(row.weight.hasError, isTrue);
-    expect(_cellMessage(tester), weightInputErrorText);
+    expect(_cellMessage(tester), isNull);
+    expect(_tooltip(tester), contains(weightInputErrorText));
     expect(find.byKey(const ValueKey('weight-cell-status')), findsNothing);
 
     // 0 = 没称。
@@ -762,14 +759,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('所有统计偏差均黄框文字提醒，正常只有悬停说明，无单元格提示图标', (tester) async {
+  testWidgets('统计偏差保留黄框，说明进字段弹层和列头入口且不另起一行', (tester) async {
     final row = _Row(params: _learned, qty: '10000');
     await _pump(tester, [row]);
 
     await tester.enterText(_inputs.first, '18.5');
     await tester.pump();
     expect(_input(tester).decoration!.errorText, isNull);
-    expect(_cellMessage(tester), '数值可能有问题');
+    expect(_cellMessage(tester), isNull);
     expect(_tooltip(tester), contains('比登记少约'));
     expect(
       _input(tester).decoration!.enabledBorder!.borderSide.color,
@@ -783,7 +780,7 @@ void main() {
     await tester.enterText(_inputs.first, '19.3');
     await tester.pump();
     expect(_input(tester).decoration!.errorText, isNull);
-    expect(_cellMessage(tester), '数值可能有问题');
+    expect(_cellMessage(tester), isNull);
     expect(_tooltip(tester), contains('(-3.4641562601583242%)'));
 
     await tester.enterText(_inputs.first, '20');

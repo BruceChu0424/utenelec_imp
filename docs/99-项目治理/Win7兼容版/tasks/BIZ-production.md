@@ -358,9 +358,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/order-bom-delivery-20261104.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。；2026-11-03：物料分析主表、汇总及分桶供应方式只读；服务端拒绝改角色且不回写 goods.source_type，历史已下达事实保留。WPF 尚未迁移，保持 todo。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。；2026-11-03：物料分析主表、汇总及分桶供应方式只读；服务端拒绝改角色且不回写 goods.source_type，历史已下达事实保留。WPF 尚未迁移，保持 todo。；2026-11-04：订单BOM交付配置、必要加工、组件实物库存及发货合同新增；本WPF入口尚未迁移，保留原状态/DoD/依赖，不开放占位写入。见E-ORDER-BOM-DELIVERY-20261104。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：物料分析须同步来源确认资格routeConfirmable与物理补缺actionable区别，库存覆盖不误标待维护；普通覆盖行仍可在权威办理上下文中显式追加公共备货，已占现货不释放/重复占需求。首建/刷新/人工确认与主表/汇总/下单共用投影，原库存归属、供应方式、权限和未知来源闸门不可放松。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。。
 
 ## W7-BIZ-109
 
@@ -407,9 +407,9 @@
 9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：生产增补申请列表/创建/详情三个真实productionRoutes构造；须逐入口迁移原基本VIEW、申请/审核权限、来源数量、版本及未知提交，不把三个路由当作三个已完成workflow。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：生产增补申请列表/创建/详情三个真实productionRoutes构造；须逐入口迁移原基本VIEW、申请/审核权限、来源数量、版本及未知提交，不把三个路由当作三个已完成workflow。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：生产工单追加用料须一次选择1-100项原冻结材料、分别填数量并原子提交，复用单项计划审批与实际领料状态机；逐材料批准后仓库按授权和实际发料，不直接扣库存/改原定额。批量幂等、重复/取消/未知提交及大表虚拟化完整集合须原生迁移，不能以只读单项页代替。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。。
 
 ## W7-BIZ-219
 

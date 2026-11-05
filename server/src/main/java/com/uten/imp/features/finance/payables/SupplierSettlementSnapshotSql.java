@@ -44,6 +44,15 @@ final class SupplierSettlementSnapshotSql {
                            (reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE,
                            amount_original,source_amount_local
                     FROM supplier_open_item_offsets WHERE status='REVERSED'
+                    UNION ALL
+                    SELECT target_ledger_id,effective_date,amount_original,target_local
+                    FROM finance_supplier_advance_applications
+                    WHERE status IN ('APPLIED','REVERSED')
+                    UNION ALL
+                    SELECT target_ledger_id,
+                           (reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE,
+                           -amount_original,-target_local
+                    FROM finance_supplier_advance_applications WHERE status='REVERSED'
                 ), payment_sum AS (
                     SELECT ledger_id,
                            COALESCE(SUM(amount_original) FILTER (WHERE event_date<:start),0) prior_original,

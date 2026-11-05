@@ -39,6 +39,7 @@ class SalesDocFilter {
     this.financeRejected,
     this.warehouseWorkStatus,
     this.stage,
+    this.receivableState,
     this.bucket,
     this.billNo,
     this.columnSearch = const {},
@@ -60,6 +61,7 @@ class SalesDocFilter {
   final String? warehouseWorkStatus; // 出货仓库作业状态
   /// 出货单真实阶段分段（shipments 端点 stage 参数，见 [SalesShipmentStage]，2026-09-20）。
   final String? stage;
+  final String? receivableState;
 
   /// 报价分桶(quotes 端点 bucket 参数，见 [SalesQuoteStage]，ADR-134)：与分段计数同一口径。
   final String? bucket;
@@ -122,6 +124,8 @@ class SalesRepository {
       if (filter.warehouseWorkStatus != null &&
           filter.warehouseWorkStatus!.trim().isNotEmpty)
         'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
+      if (filter.receivableState != null)
+        'receivableState': filter.receivableState,
       if (filter.stage != null && filter.stage!.trim().isNotEmpty)
         'stage': filter.stage!.trim(),
       if (filter.bucket != null && filter.bucket!.trim().isNotEmpty)
@@ -205,6 +209,8 @@ class SalesRepository {
       if (filter.warehouseWorkStatus != null &&
           filter.warehouseWorkStatus!.trim().isNotEmpty)
         'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
+      if (filter.receivableState != null)
+        'receivableState': filter.receivableState,
       if (filter.stage != null && filter.stage!.trim().isNotEmpty)
         'stage': filter.stage!.trim(),
       if (filter.bucket != null && filter.bucket!.trim().isNotEmpty)

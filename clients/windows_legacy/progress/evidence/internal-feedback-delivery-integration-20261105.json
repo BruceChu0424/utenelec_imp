@@ -1,0 +1,61 @@
+{
+  "id": "E-INTERNAL-FEEDBACK-DELIVERY-INTEGRATION-20261105",
+  "branch": "uimp/completed-integration-20261105",
+  "parents": {
+    "main": "afe9fcd8af0121a8287d798024f553fa90247f79",
+    "internalFeedback": "f02312a36235bf6917645a4ef9aa2a2563be1ecb"
+  },
+  "scope": "Completed internal feedback task integrated with completed order/BOM/delivery work; no active finance audit, visual workflow or loading WIP imported.",
+  "mergeResolutions": {
+    "registry": "Three-way stable ID merge; both appended notes/evidence retained, history union retained; canonical inventory/render regenerated.",
+    "salesDetail": "Both delivery contract imports and current shipment receivable view retained.",
+    "materialSourceHint": "Keep main stable missing-source marker used by coverage projection; preserve task public ordering authority and stock-covered source confirmation.",
+    "routePending": "Keep main deliveryContext exclusion, physical shortage and null guards.",
+    "routeConfirmable": "Exclude transparent deliveryContext MaterialRow while permitting positive-demand stock-covered physical components."
+  },
+  "migration": {
+    "originalUnpublishedTask": "V1049__receipt_explicit_order_collection_source.sql",
+    "integrated": "V1057__receipt_explicit_order_collection_source.sql",
+    "reason": "V1049 is already the completed sales delivery plan; V1057 is the actual empty slot in the included main sequence. Active tasks keep isolated unpublished numbering and must be renumbered when completed and integrated.",
+    "publishedMigrationsChanged": false,
+    "historicalEvidenceRetained": true
+  },
+  "governance": {
+    "workPackages": 372,
+    "protectedFields": [
+      "status",
+      "owner",
+      "nativeTargets",
+      "dependencies",
+      "definitionOfDone"
+    ],
+    "unchangedAgainstBothParents": {
+      "main": true,
+      "internalFeedback": true
+    },
+    "fullErpEquivalent": false,
+    "win7Accepted": false,
+    "inventorySha256": "04fe65008819b376850f1b604d0fa2beaeaf269194d301a41ca3058b9fd16f82",
+    "workItemsSha256": "1ee6b149106414b8aee7276da4241d5fdef4b868364a96e434ae25b3446ecee2"
+  },
+  "inventoryFix": "Resolve public classes in direct Dart parts as members of the imported library, retaining alias/show/hide rules and physical source provenance. Do not infer transitive imported factories as page routes.",
+  "validation": {
+    "progressTrackerUnitTests": "15/15 passed",
+    "businessInventoryUnitTests": "6/6 passed, including unchanged repository production 3-route assertion and direct-part alias/hide fixture",
+    "canonicalInventoryAndRegistry": "business_inventory --write, progress_tracker sync, progress_tracker check passed; check re-collected and compared the exact inventory and rendered documents",
+    "dartFormatting": "2 files, 0 changed; package:flutter_lints include unresolved before dependency restore; no analyze claim",
+    "javaBehaviorRegression": "Authored transparentDeliveryParentNeverBecomesAnOrderingRoute; not executed in this merge subtask, root validation required",
+    "fullFrontendBackendAndCI": "root validation required"
+  },
+  "sourceSha256": {
+    "lib/features/sales/pages/sales_doc_detail_page.dart": "369c3901038ce918782e2acb7120aab6a5175cd7aa8e667b092a2e2bf8457246",
+    "lib/features/production/pages/material_analysis_material_table.dart": "ce1206513e0b3d5e14a52e080bc8eca4d5b16b806df7ce39bafa00195c51a828",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java": "1c0d1a95cf6b97aef76f6714547c45cc5af34e6745ec7a57f4ac8d81ec6a7eb2",
+    "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteAutoConfirmTest.java": "3d261f715caadd89546e8749c808bbe00bc410ee0e9bcc29d02927a0515e3588",
+    "server/src/main/resources/db/migration/V1057__receipt_explicit_order_collection_source.sql": "650a2d090fd48375cdec1178ddcc3e4abce780debeec5860b7477c4ae7a2b5c6",
+    "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderAttributionPostgresTest.java": "dee70005f35c1ace3579bd817195f498d30148714f75d97b32750a323a86e57f",
+    "clients/windows_legacy/tools/business_inventory.py": "7891a0891e808efd0e984017915814c61a3ce5bb71b35de86859471409569f08",
+    "clients/windows_legacy/tools/test_business_inventory.py": "8acd4a92e38f537b2e11e6ec2c0fc9683a41dd95abc9d6b753862f37b35e52f5"
+  },
+  "capturedAtUtc": "2026-11-05T15:37:37.657671+00:00"
+}

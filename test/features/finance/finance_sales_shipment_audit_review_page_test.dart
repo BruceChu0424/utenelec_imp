@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 // 出货财务审核详情页（财务专用视图）测试——2026-09-12 从销售出货详情页拆分迁移：
 // 认领机制、放行/退回决策、客户未分类阻断、认领失败重试等行为契约保持不变，
 // 只是把宿主从共享详情页的弹窗搬到了 /finance/sales-shipment-audits/:id 专页。
@@ -204,6 +205,81 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
   });
 
+  testWidgets(
+    '1500 shipment lines keep top more and required review rate reachable without changing the claim or inputs',
+    (tester) async {
+      final api = await _pumpReviewPage(
+        tester,
+        surfaceSize: const Size(1280, 900),
+        claimSucceeds: true,
+        detail: {
+          'id': 'shipment-large-review',
+          'billNo': 'XS-LARGE-EXAMPLE',
+          'status': 0,
+          'financeAudit': 0,
+          'salesConfirmed': true,
+          'financeReviewPending': true,
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': [
+            for (var i = 0; i < 1500; i++)
+              {'id': 'line-$i', 'goodsId': 'goods-$i', 'qty': 1, 'price': 1},
+          ],
+        },
+        financeAuditInfo: const {
+          'shipmentId': 'shipment-large-review',
+          'reviewRevision': 1,
+          'contentHash': 'large-example',
+          'financeAudit': 0,
+          'currencyName': '美元',
+          'baseCurrency': false,
+          'financeRateReady': false,
+          'suggestedExchangeRate': '',
+        },
+      );
+      final rate = find.byKey(const Key('finance-audit-exchange-rate'));
+      expect(rate, findsNothing);
+      await _openReviewReferences(tester);
+      expect(rate, findsOneWidget);
+      expect(rate.hitTestable(), findsOneWidget);
+      expect(tester.widget<TextField>(rate).readOnly, false);
+      await tester.enterText(rate, '7.2300');
+      await tester.tap(find.text('审核资料与参考'));
+      await tester.pumpAndSettle();
+      await _openReviewReferences(tester);
+      expect(tester.widget<TextField>(rate).controller!.text, '7.2300');
+      await tester.enterText(rate, '');
+      await tester.tap(find.text('审核资料与参考'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('finance-shipment-audit-approve')));
+      await tester.pumpAndSettle();
+      expect(
+        rate,
+        findsOneWidget,
+        reason:
+            'Missing-rate validation must reveal the editor after all 1500 rows',
+      );
+      expect(rate.hitTestable(), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is UtenFieldHintIcon &&
+              w.errorMessage?.contains('请填写记账汇率') == true,
+        ),
+        findsOneWidget,
+      );
+      expect(api.postPaths.where((p) => p.endsWith('/finance-audit')), isEmpty);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('finance-shipment-audit-approve')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('review page previews customer facts before posting approval', (
     tester,
   ) async {
@@ -265,13 +341,19 @@ void main() {
     expect(find.textContaining('XS-20260912-001'), findsWidgets);
     expect(find.textContaining('待财务审核'), findsOneWidget);
     expect(find.text('合同定金'), findsOneWidget);
-    // 本单币种(美金)一档：应收未收 / 可用预收 / 还差多少，都写成「金额 币种」。
+    await _openReviewReferences(tester);
+    // 客户整体资金退居辅助详情，不能冒充本批已收；超额风险仍在收起时可见。
+    expect(
+      find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
+      findsOneWidget,
+    );
+
     expect(find.text('应收未收'), findsOneWidget);
     expect(find.text('0.00 美金'), findsOneWidget);
     expect(find.text('可用预收'), findsOneWidget);
     expect(find.text('25.00 美金'), findsNWidgets(2));
     expect(find.text('预收有余'), findsOneWidget);
-    // 收起状态仍完整显示超额风险；金额明细随统一的查看更多展开。
+    // 金额详情展开后，超额风险继续保留。
     expect(
       find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
       findsOneWidget,
@@ -290,8 +372,6 @@ void main() {
         contains('30.00 人民币'),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('detail-summary-toggle')));
-    await tester.pumpAndSettle();
     // 铺底额只和全部币种正式应收(折本币，不扣预收)比，超出标红。
     expect(find.text('全部币种应收(折本币)'), findsOneWidget);
     expect(find.text('100.00 人民币'), findsOneWidget);
@@ -314,7 +394,7 @@ void main() {
     await tester.tap(explanation);
     await tester.pumpAndSettle();
     expect(find.textContaining('只算已审核到账的预收'), findsOneWidget);
-    expect(find.textContaining('结账方式来自本单'), findsOneWidget);
+    expect(find.textContaining('结款方式来自本单'), findsOneWidget);
     expect(
       api.postPaths.where((path) => path.endsWith('/finance-audit')),
       isEmpty,
@@ -459,7 +539,7 @@ void main() {
       },
     );
 
-    expect(find.text('结账方式'), findsOneWidget);
+    expect(find.text('结款方式'), findsOneWidget);
     expect(find.text('汇款'), findsOneWidget);
     expect(find.textContaining('货款类别'), findsNothing);
     expect(find.textContaining('尚未完成销售货款分类'), findsNothing);
@@ -522,9 +602,18 @@ void main() {
         },
       );
 
+      await _openReviewReferences(tester);
       expect(find.text('主档参考汇率(美金)'), findsOneWidget);
       expect(find.text('未维护'), findsOneWidget);
-      expect(find.byKey(const Key('finance-audit-rate-block')), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFieldHintIcon &&
+              widget.info?.contains('币种主档没有参考汇率') == true,
+        ),
+        findsWidgets,
+      );
+      await _openReviewReferences(tester);
       final rateField = find.byKey(const Key('finance-audit-exchange-rate'));
       expect(rateField, findsOneWidget);
       expect(tester.widget<TextField>(rateField).controller!.text, isEmpty);
@@ -605,6 +694,7 @@ void main() {
       },
     );
     expect(find.byKey(const Key('finance-audit-rate-block')), findsNothing);
+    await _openReviewReferences(tester);
     final rateField = find.byKey(const Key('finance-audit-exchange-rate'));
     expect(tester.widget<TextField>(rateField).controller!.text, '7');
     expect(tester.widget<TextField>(rateField).readOnly, isFalse);
@@ -649,8 +739,10 @@ void main() {
         'suggestedExchangeRate': '1',
       },
     );
+    await _openReviewReferences(tester);
     expect(find.text('1(本位币)'), findsOneWidget);
     expect(find.byKey(const Key('finance-audit-rate-block')), findsNothing);
+    await _openReviewReferences(tester);
     final rateField = find.byKey(const Key('finance-audit-exchange-rate'));
     expect(tester.widget<TextField>(rateField).controller!.text, '1');
     expect(tester.widget<TextField>(rateField).readOnly, isTrue);
@@ -695,11 +787,19 @@ void main() {
       },
     );
     expect(find.byKey(const Key('finance-audit-exchange-rate')), findsNothing);
+    await _openReviewReferences(tester);
     final frozen = find.byKey(const Key('finance-audit-rate-frozen'));
     expect(frozen, findsOneWidget);
-    expect(tester.widget<Text>(frozen).data, contains('已冻结记账汇率 7.25'));
-    expect(tester.widget<Text>(frozen).data, contains('1 美金 = 7.25'));
-    expect(tester.widget<Text>(frozen).data, isNot(contains('USD')));
+    expect(tester.widget<UtenSummaryField>(frozen).label, '审核时汇率');
+    expect(tester.widget<UtenSummaryField>(frozen).value, '7.25');
+    expect(
+      tester.widget<UtenSummaryField>(frozen).info,
+      contains('1 美金 = 7.25'),
+    );
+    expect(
+      tester.widget<UtenSummaryField>(frozen).info,
+      isNot(contains('USD')),
+    );
   });
 
   testWidgets('reject requires reason and posts finance-audit-reject', (
@@ -868,6 +968,7 @@ void main() {
       },
     );
     expect(find.textContaining('已退回销售'), findsOneWidget);
+    await _openReviewReferences(tester);
     expect(find.textContaining('客户结账方式待核对'), findsWidgets);
     final reverse = find.byKey(
       const Key('finance-shipment-audit-reject-reverse-btn'),
@@ -888,6 +989,22 @@ void main() {
   });
 }
 
+Future<void> _openReviewReferences(WidgetTester tester) async {
+  final positions = tester
+      .stateList<ScrollableState>(find.byType(Scrollable))
+      .toList();
+  for (final state in positions.reversed) {
+    if (state.mounted && state.position.hasContentDimensions) {
+      state.position.jumpTo(state.position.minScrollExtent);
+    }
+  }
+  await tester.pumpAndSettle();
+  final more = find.byKey(const ValueKey('detail-summary-toggle')).first;
+  await tester.ensureVisible(more);
+  await tester.tap(more);
+  await tester.pumpAndSettle();
+}
+
 Future<_ReviewApi> _pumpReviewPage(
   WidgetTester tester, {
   required Map<String, dynamic> detail,
@@ -903,6 +1020,10 @@ Future<_ReviewApi> _pumpReviewPage(
   Completer<List<Map<String, dynamic>>>? namesGate,
 }) async {
   await tester.binding.setSurfaceSize(surfaceSize);
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = surfaceSize;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final api = _ReviewApi(

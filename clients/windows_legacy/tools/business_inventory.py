@@ -305,12 +305,21 @@ def _routes(router: Unit, constants: dict, sources: Sources, allowed_ranges=None
     for entry in imports:
         imported = sources.get(entry["source"]) if entry["source"] else None
         if not imported: continue
-        for item in _classes(imported):
-            if (item["name"].startswith("_") or item["name"] in entry["hideSymbols"]
-                    or entry["showSymbols"] and item["name"] not in entry["showSymbols"]):
-                continue
-            name = (entry["importAlias"] + "." if entry["importAlias"] else "") + item["name"]
-            class_sources[name].append(imported.source)
+        # Dart parts belong to their importing library: a page moved to a
+        # direct part keeps the library's route, alias and show/hide contract.
+        # Ordinary imported dependencies are deliberately not expanded here.
+        declarations = [imported]
+        for directive in _imports(imported, sources):
+            if directive["directive"] == "part" and directive["source"]:
+                part = sources.get(directive["source"])
+                if part: declarations.append(part)
+        for declaration in declarations:
+            for item in _classes(declaration):
+                if (item["name"].startswith("_") or item["name"] in entry["hideSymbols"]
+                        or entry["showSymbols"] and item["name"] not in entry["showSymbols"]):
+                    continue
+                name = (entry["importAlias"] + "." if entry["importAlias"] else "") + item["name"]
+                class_sources[name].extend([imported.source, declaration.source])
     routes = []
     for match in re.finditer(r"\b(GoRoute|DraftAwareGoRoute|ShellRoute)\s*\(", router.mask):
         if allowed_ranges is not None and not any(start <= match.start() < end for start, end in allowed_ranges):

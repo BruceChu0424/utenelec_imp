@@ -3139,7 +3139,8 @@ void main() {
         tester,
         'material-analysis-bucket-action-buy',
       );
-      await _submitIssuePage(tester);
+      // 大草稿编码在真实原生事件循环完成，与下方501行未知提交用例同口径等待。
+      await _submitIssuePage(tester, nativeDraftWork: true);
       expect(
         find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
@@ -4565,6 +4566,231 @@ void main() {
     },
   );
 
+  testWidgets('库存覆盖且路线未确认的行按覆盖口径展示，不再挂「待维护货品来源」', (tester) async {
+    // 兼容刷新前的旧快照：覆盖状态不能误报来源缺失，未确认时先锁住写入。
+    // 新服务端刷新会按主档确认来源；届时可按权限显式办理公共备货。
+    final json = _makeTreeAnalysisJson();
+    (json['flatMaterials'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((material) => material['materialLineId'] == 'buy-child')
+      ..['routeConfirmed'] = false
+      ..['sourceSuggestion'] = 'BUY'
+      ..['availableQty'] = 12
+      ..['allocatedAvailableQty'] = 12
+      ..['shortageQty'] = 0
+      ..['demandSupplyGapQty'] = 0
+      ..['additionalSupplyRecommendedQty'] = 0
+      ..['actionable'] = false
+      // 修复后的服务端对覆盖行不再回 ROUTE_PENDING，而是路线建议链的
+      // 第一步（未下达）；客户端把它当「未下达」交给覆盖口径兜底。
+      ..['flowStage'] = 'BUY_PENDING_ISSUE';
+    await _pumpPage(
+      tester,
+      size: const Size(1400, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisRoute,
+        Perm.productionMaterialAnalysisNotify,
+      },
+      allowedActions: const ['CONFIRM_ROUTES', 'NOTIFY_SUPPLY'],
+      analysisJson: json,
+    );
+    final row = await _materialTableRowVisible(tester, 'buy-child');
+    // 进度列：覆盖口径，不是「待维护货品来源」。
+    expect(
+      find.descendant(of: row, matching: find.text('本层库存已齐')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: row, matching: find.text('待维护货品来源')),
+      findsNothing,
+    );
+    // 供应方式列照常显示货品主档建议（采购）。
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('material-route-readonly-buy-child')),
+          )
+          .data,
+      '采购',
+    );
+    // 下单数量格：与「已确认 + 库存覆盖」行同款锁 0，不再给可编辑输入框，
+    // 也不再提示「先确认供应方式」。
+    expect(
+      find.descendant(of: row, matching: _cascadeSeedQtyField('buy-child')),
+      findsNothing,
+      reason: '覆盖行没有可编辑的下单输入框',
+    );
+    expect(
+      find.descendant(of: row, matching: find.byType(Checkbox)),
+      findsOneWidget,
+      reason: '不可办理但主档建议可解析的行保留灰框，悬浮说明为什么勾不了',
+    );
+    final checkbox = find.descendant(of: row, matching: find.byType(Checkbox));
+    expect(
+      tester
+          .widget<Tooltip>(
+            find.ancestor(of: checkbox, matching: find.byType(Tooltip)),
+          )
+          .message,
+      contains('本批库存已覆盖，无需补缺'),
+    );
+  });
+
+  testWidgets('库存已覆盖的已确认来源可显式备货，取消保留输入，重试不重复下单', (tester) async {
+    final json = _makeTreeAnalysisJson()
+      ..['allowedActions'] = const ['NOTIFY_SUPPLY', 'OVER_SUPPLY'];
+    final material = (json['flatMaterials'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((row) => row['materialLineId'] == 'buy-child');
+    material.addAll({
+      'sourceConfirmed': 'BUY',
+      'routeConfirmed': true,
+      'controlStage': 'START',
+      'requiredQty': 12,
+      'availableQty': 12,
+      'allocatedAvailableQty': 12,
+      'shortageQty': 0,
+      'demandSupplyGapQty': 0,
+      'additionalSupplyRecommendedQty': 0,
+      'planningUncoveredQty': 0,
+      'actionable': false,
+      'flowStage': 'BUY_PENDING_ISSUE',
+      'aggregatePreparation': {
+        'requiredQty': 12,
+        'orderedQty': 0,
+        'allocatedOrderedQty': 0,
+        'totalOrderedQty': 0,
+        'orderedQtyExact': true,
+        'planningUncoveredQty': 0,
+        'netShortageQty': 0,
+        'targetMaterialLineIds': <String>[],
+        'actionable': true,
+      },
+    });
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1600, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisNotify,
+        Perm.productionMaterialAnalysisOverSupply,
+      },
+      allowedActions: const ['NOTIFY_SUPPLY', 'OVER_SUPPLY'],
+      analysisJson: json,
+      responseOverride: (request) {
+        if (!request.path.endsWith('/aggregate-orders/preview')) return null;
+        final result = _aggregateFixturePreview(
+          json,
+          request.data as Map<String, dynamic>,
+        );
+        for (final raw in result['groups'] as List) {
+          final group = raw as Map;
+          group['publicExtraQty'] = group['requestedQty'];
+          for (final source in group['sources'] as List) {
+            (source as Map)['allocatedQty'] = 0;
+          }
+        }
+        return result;
+      },
+    );
+    await _materialTableRowVisible(tester, 'buy-child');
+    final field = _cascadeSeedQtyField('buy-child');
+    expect(field, findsOneWidget);
+    await tester.enterText(field, '5');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    final submit = find.byKey(const Key('material-analysis-submit-orders'));
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
+    expect(find.text('保留余量，额外下单'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('本批已绑定现货不释放') ?? false),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, '5');
+    expect(
+      harness.requests.where(
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
+      ),
+      isEmpty,
+    );
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保留余量，额外下单'));
+    await _continueClaimChoiceDialog(tester);
+    final confirmation = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('确认下单'),
+    );
+    expect(confirmation, findsOneWidget);
+    await tester.tap(confirmation);
+    await tester.tap(confirmation, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    final sent = harness.requests.where(
+      (request) => request.path.endsWith('/aggregate-orders/submit'),
+    );
+    expect(sent, hasLength(1));
+    final body = sent.single.data as Map;
+    expect(body['skipAutoClaim'], isTrue);
+    expect(((body['groups'] as List).single as Map)['qty'], '5');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('库存已覆盖但没有超量权限时保持零量只读', (tester) async {
+    final json = _makeTreeAnalysisJson();
+    final material = (json['flatMaterials'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((row) => row['materialLineId'] == 'buy-child');
+    material.addAll({
+      'requiredQty': 12,
+      'allocatedAvailableQty': 12,
+      'shortageQty': 0,
+      'demandSupplyGapQty': 0,
+      'additionalSupplyRecommendedQty': 0,
+      'actionable': false,
+      'flowStage': 'BUY_PENDING_ISSUE',
+      'aggregatePreparation': {
+        'requiredQty': 12,
+        'orderedQty': 0,
+        'allocatedOrderedQty': 0,
+        'totalOrderedQty': 0,
+        'orderedQtyExact': true,
+        'planningUncoveredQty': 0,
+        'netShortageQty': 0,
+        'targetMaterialLineIds': <String>[],
+        'actionable': true,
+      },
+    });
+    await _pumpPage(
+      tester,
+      size: const Size(1600, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisNotify,
+      },
+      allowedActions: const ['NOTIFY_SUPPLY'],
+      analysisJson: json,
+    );
+    await _materialTableRowVisible(tester, 'buy-child');
+    expect(_cascadeSeedQtyField('buy-child'), findsNothing);
+    expect(find.text('待维护货品来源'), findsNothing);
+  });
+
   testWidgets(
     'a refresh response carrying routeResetCount shows a re-confirm notice',
     (tester) async {
@@ -5900,6 +6126,7 @@ void main() {
       await tester.pump();
       await tester.tap(submit);
       await tester.pumpAndSettle();
+      await _continueClaimChoiceDialog(tester);
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),

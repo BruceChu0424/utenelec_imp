@@ -102,6 +102,7 @@ import '../widgets/ar_ap_picker_dialog.dart';
 import '../widgets/customer_prepayment_apply_panel.dart';
 import '../widgets/customer_prepayment_receipt_fields.dart';
 import '../widgets/finance_grid_columns.dart';
+import '../widgets/receipt_order_collection_panel.dart';
 import '../widgets/finance_style_picker.dart';
 import '../widgets/finance_entry_l10n.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -151,6 +152,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   DateTime _bankBookedAt = ChinaDateTime.now();
 
   String? _accountId;
+  String? _partyReferenceId;
+  String? _partyReferenceName;
+  String _partyDisplayName(FinanceNameService names) =>
+      _partyReferenceId == _partyId && _partyReferenceName != null
+      ? _partyReferenceName!
+      : _cfg.isClient
+      ? names.client(_partyId)
+      : names.supplier(_partyId);
   String? _partyId; // clientId / supplierId
   String? _currencyId;
   String? _otherFeeStyleId;
@@ -309,6 +318,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     'agentStatementNo': _agentStatementNo.text,
     'accountId': _accountId,
     'partyId': _partyId,
+    'partyReferenceId': _partyReferenceId,
+    'partyReferenceName': _partyReferenceName,
     'currencyId': _currencyId,
     'otherFeeStyleId': _otherFeeStyleId,
     'settlementAgentSupplierId': _settlementAgentSupplierId,
@@ -344,6 +355,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           'appliedLedgerId': row.appliedLedgerId,
           'appliedBillNo': row.appliedBillNo,
           'authoritativeSalesOrderId': row.authoritativeSalesOrderId,
+          'requestedSalesOrderId': row.requestedSalesOrderId,
           'sourceDocType': row.sourceDocType,
           'sourceDocNo': row.sourceDocNo,
           'currencyId': row.currencyId,
@@ -392,6 +404,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     _agentStatementNo.text = draftText(data, 'agentStatementNo');
     _accountId = data['accountId'] as String?;
     _partyId = data['partyId'] as String?;
+    _partyReferenceId = data['partyReferenceId'] as String?;
+    _partyReferenceName = data['partyReferenceName'] as String?;
     _currencyId = data['currencyId'] as String?;
     _otherFeeStyleId = data['otherFeeStyleId'] as String?;
     _settlementAgentSupplierId = data['settlementAgentSupplierId'] as String?;
@@ -432,6 +446,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         row.appliedBillNo = item['appliedBillNo'] as String?;
         row.authoritativeSalesOrderId =
             item['authoritativeSalesOrderId'] as String?;
+        row.requestedSalesOrderId = item['requestedSalesOrderId'] as String?;
         row.sourceDocType = item['sourceDocType'] as String?;
         row.sourceDocNo = item['sourceDocNo'] as String?;
         row.currencyId = item['currencyId'] as String?;
@@ -651,6 +666,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         }
         _accountId = d.accountId ?? d.outAccountId;
         _partyId = d.clientId ?? d.supplierId;
+        _partyReferenceId = _partyId;
+        _partyReferenceName = d.partyName;
         _currencyId = d.currencyId;
         _otherFeeStyleId = d.otherFeeStyleId;
         _financePaymentMethodId =
@@ -676,7 +693,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               ..platformFields.sourceRecordId = it.id
               ..appliedLedgerId = it.appliedLedgerId
               ..appliedBillNo = it.appliedBillNo
+              ..sourceDocType = it.appliedSourceDocType
+              ..sourceDocNo = it.appliedSourceDocNo
               ..authoritativeSalesOrderId = it.salesOrderId
+              ..requestedSalesOrderId = it.requestedSalesOrderId
               ..salesOrderIds = it.salesOrderId == null
                   ? const []
                   : [it.salesOrderId!]
@@ -824,6 +844,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       onSwitchToPrepayment: canSwitchToPrepayment
           ? _switchToPrepaymentAndPickOrder
           : null,
+      receiptBatches: _cfg.type == FinanceDocType.receipt,
+      initialAmounts: {
+        for (final row in _grid.rows)
+          if (row.appliedLedgerId != null)
+            row.appliedLedgerId!: row.amount.text,
+      },
     );
     if (!mounted || !isCurrent()) return;
     if (picked == null || picked.isEmpty) return;
@@ -898,7 +924,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     if (!mounted) return;
     _onReceiptKindChanged(_receiptKindCustomerPrepayment);
     if (!mounted || _receiptKind != _receiptKindCustomerPrepayment) return;
-    final selected = await showSalesOrderPicker(context, ref);
+    final selected = await showSalesOrderPicker(
+      context,
+      ref,
+      receiptSources: true,
+    );
     if (!mounted || selected == null) return;
     _onPrepaymentOrderSelected(selected);
   }
@@ -1075,8 +1105,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
 
   void _onPrepaymentOrderSelected(SalesDocListItem order) {
     if (!mounted || _saving || _createdDocId != null) return;
-    if (order.status != kSalesStatusApproved || order.stopped || order.closed) {
-      context.appWarning('客户订单预收只能绑定已审核、未中止且未结案的销售订单');
+    if (order.status != kSalesStatusApproved || order.stopped) {
+      context.appWarning('客户订单预收只能绑定已审核、未中止的销售订单；已完成订单的真实多付仍保留本单预收');
       return;
     }
     final clientId = order.clientId;
@@ -1228,6 +1258,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         final lineRemark = r.remark.text.trim();
         itemsBody.add({
           'appliedLedgerId': ledgerId,
+          if (r.requestedSalesOrderId != null)
+            'requestedSalesOrderId': r.requestedSalesOrderId,
           'appliedBillNo': r.appliedBillNo,
           'clientId': _partyId,
           'currencyId': currencyId,
@@ -2555,7 +2587,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                               const UtenDropdownItem(
                                                 value:
                                                     _receiptKindCustomerPrepayment,
-                                                label: '登记订单预收(订单未发货的定金/预付款)',
+                                                label: '订单预收（定金/多付）',
                                               ),
                                           ],
                                           onChanged: _onReceiptKindChanged,
@@ -2568,7 +2600,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                           initialId: _partyId,
                                           initialName: _partyId == null
                                               ? null
-                                              : names.client(_partyId),
+                                              : _partyDisplayName(names),
                                           required: true,
                                           onPick: _pickReceiptClient,
                                           onChanged: _onReceiptClientChanged,
@@ -2579,8 +2611,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                             ? ClientPickerField(
                                                 label: _cfg.partyLabel,
                                                 initialId: _partyId,
-                                                initialName: names.client(
-                                                  _partyId,
+                                                initialName: _partyDisplayName(
+                                                  names,
                                                 ),
                                                 required: true,
                                                 onPick: () => resolvePickedParty(
@@ -2602,8 +2634,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                             : SupplierPickerField(
                                                 label: _cfg.partyLabel,
                                                 initialId: _partyId,
-                                                initialName: names.supplier(
-                                                  _partyId,
+                                                initialName: _partyDisplayName(
+                                                  names,
                                                 ),
                                                 required: true,
                                                 onPick: () => resolvePickedParty(
@@ -2682,7 +2714,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                   salesOrderBillNo: _receiptSalesOrderBillNo,
                                   clientLabel: _partyId == null
                                       ? '随销售订单锁定'
-                                      : names.client(_partyId),
+                                      : _partyDisplayName(names),
                                   currencyLabel: _currencyId == null
                                       ? '随销售订单锁定'
                                       : names.currency(_currencyId),
@@ -2732,7 +2764,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                               _saving || _createdDocId != null
                                               ? null
                                               : _applyCustomerPrepayment,
-                                          child: const Text('预收抵扣'),
+                                          child: const Text('用定金抵款'),
                                         ),
                                     ],
                                     if (_cfg.type == FinanceDocType.payment)
@@ -2777,8 +2809,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                           key: const ValueKey(
                                             'receipt-import-ar',
                                           ),
-                                          label: '引用应收',
-                                          compactLabel: '引用应收',
+                                          label: '按出货单收款',
+                                          compactLabel: '按出货单收款',
                                           onPressed:
                                               _saving || _createdDocId != null
                                               ? null

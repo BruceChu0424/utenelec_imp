@@ -23,15 +23,12 @@ public class CustomerActualReceiptContext implements CustomerActualReceiptContex
                 GROUP BY source_doc_id
             ), facts AS (
                 SELECT r.id,r.bill_no,r.bank_booked_at,c.name AS account_currency,r.account_amount,r.account_amount_local,
-                    (r.legacy_id IS NULL AND r.settlement_authority_version>=2 AND r.bank_booked_at IS NOT NULL
-                     AND NULLIF(btrim(r.bank_reference),'') IS NOT NULL AND r.account_amount>0 AND r.account_amount_local>0
-                     AND f.count=1 AND f.account_id=r.account_id AND f.currency_id=r.account_currency_id
-                     AND f.incoming=r.account_amount AND f.outgoing=0 AND f.cash_local=r.account_amount_local) IS TRUE AS verified
+                    (%s) IS TRUE AS verified
                 FROM finance_receipts r LEFT JOIN flow f ON f.source_doc_id=r.id LEFT JOIN currencies c ON c.id=r.account_currency_id
                 WHERE r.client_id=:client AND r.currency_id=:currency AND r.status=1 AND NOT r.is_deleted
                   AND COALESCE(r.bank_booked_at,r.bill_date::timestamp AT TIME ZONE 'Asia/Shanghai')<=:asOf
             )
-            """;
+            """.formatted(ReceiptCashPostingProof.verified("r","f"));
     @Override public Context read(UUID clientId,UUID currencyId,OffsetDateTime asOf){
         var facts=NativeQueryResults.objectArrayRows(em.createNativeQuery(FACTS+"""
                 , totals AS (SELECT count(*) FILTER(WHERE verified) AS verified_count,

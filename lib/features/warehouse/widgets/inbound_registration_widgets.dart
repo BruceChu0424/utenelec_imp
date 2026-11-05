@@ -30,6 +30,7 @@ import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../shared/measurement/widgets/weight_totals.dart';
+import '../../../shared/measurement/widgets/unit_weight_grid_column.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
@@ -605,6 +606,20 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
         ),
       );
     },
+  );
+
+  EditableGridColumn<T> unitWeight({
+    required String? Function(T line) quantityTextOf,
+    required bool Function(T line) enabled,
+    Listenable? Function(T line)? quantityListenableOf,
+    Object? Function(T line)? exactKgOf,
+  }) => unitWeightGridColumn<T>(
+    controllerOf: (line) => line.weight,
+    quantityTextOf: quantityTextOf,
+    quantityListenableOf: quantityListenableOf,
+    enabledOf: (line) => enabled(line) && !line.locked,
+    unitNameOf: unitNameOf,
+    exactKgOf: exactKgOf,
   );
 
   /// 「实称重量」录入列(可选；逐行各记各的，永不批量)。

@@ -241,7 +241,18 @@ void main() {
         'spec',
         'colorLegacyId',
         'unitLegacyId',
+        'stockQty',
       ]);
+      final stockColumn = table().columns.singleWhere(
+        (column) => column.key == 'stockQty',
+      );
+      expect(stockColumn.label, '即时库存');
+      expect(stockColumn.columnSearchEnabled, isFalse);
+      expect(stockColumn.value(table().items.first), '9007199254740993.123456');
+      expect(
+        stockColumn.value(const GoodsListItem(id: 'no-stock-authority')),
+        isNull,
+      );
       expect(table().serverColumnSearch, isTrue);
       table().onFilterChanged('search.series', '5m');
       await tester.pumpAndSettle();
@@ -275,9 +286,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(table().items.map((item) => item.id).toSet(), {'black', 'white'});
       expect(api.reads.last['categoryRootIds'], ['material']);
-      await tester.tap(find.byKey(const ValueKey('goods-picker-item-black')));
+      await tester.tapAt(
+        tester.getTopLeft(
+              find.byKey(const ValueKey('goods-picker-item-black')),
+            ) +
+            const Offset(16, 20),
+      );
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('goods-picker-item-white')));
+      await tester.tapAt(
+        tester.getTopLeft(
+              find.byKey(const ValueKey('goods-picker-item-white')),
+            ) +
+            const Offset(16, 20),
+      );
       await tester.pump();
       await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
       await tester.pumpAndSettle();
@@ -426,6 +447,7 @@ class _ColumnApi extends ApiClient {
     'unitName': '个',
     'unitId': 'unit-piece',
     'status': '使用',
+    'stockQtyDisplayText': '9007199254740993.123456',
     'spec': '250V',
   };
 }

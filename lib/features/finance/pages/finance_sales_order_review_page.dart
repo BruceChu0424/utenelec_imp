@@ -61,6 +61,7 @@ import '../widgets/finance_document_unapproval_action.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/drafts/review_authority_refresh_mixin.dart';
 import '../../../shared/widgets/sales_order_money_summary_card.dart';
+import '../../../shared/widgets/sales_order_money_position_view.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -1239,9 +1240,17 @@ class _FinanceSalesOrderReviewPageState
             fullCurrencyName: true,
           ),
           emphasis: true,
-          danger: true,
         ),
         ...metrics,
+        if (canViewMoneySummary && r.moneyPosition != null)
+          UtenSummaryField(
+            label: '待确认收款',
+            info: '本订单尚未审核的收款草稿，不计入已收，也不抵扣待收。',
+            value: financeMoneyWithUnitSuffix(
+              r.moneyPosition!.pendingReceiptOriginal,
+              currencyName: r.currencyName,
+            ),
+          ),
         UtenSummaryField(label: '交货日', value: r.deliverDate, emphasis: true),
       ],
       facts: [
@@ -1287,6 +1296,9 @@ class _FinanceSalesOrderReviewPageState
         if (fundingDetails.isNotEmpty)
           Text('订单资金明细', style: theme.textTheme.titleSmall),
         ...fundingDetails,
+        if (!canViewMoneySummary)
+          if (r.moneyPosition case final position?)
+            SalesOrderMoneyPositionView(value: position),
       ],
     );
     if (!canViewMoneySummary) return card(const [], const [], const []);

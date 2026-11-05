@@ -84,6 +84,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   String? appliedBillNo;
   List<String> salesOrderIds = const [];
   String? authoritativeSalesOrderId;
+  String? requestedSalesOrderId;
   String? sourceDocType;
   String? sourceDocNo;
   List<String> salesOrderNos = const [];
@@ -174,11 +175,16 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   }
 
   void applyLedger(AppliedArAp a) {
+    if (a.clientId != null) {
+      entry.partyId = a.clientId;
+      entry.partyName = a.clientName;
+    }
     final r = this
       ..appliedLedgerId = a.ledgerId
       ..appliedBillNo = a.appliedBillNo
       ..salesOrderIds = a.salesOrderIds
       ..authoritativeSalesOrderId = a.authoritativeSalesOrderId
+      ..requestedSalesOrderId = a.requestedSalesOrderId
       ..sourceDocType = a.sourceDocType
       ..sourceDocNo = a.sourceDocNo
       ..salesOrderNos = a.salesOrderNos
@@ -403,12 +409,13 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
   final columns = [
     EditableGridColumn<FinanceGridRow>(
       key: 'appliedBillNo',
-      label: '应收单号',
+      label: '出货单/原来源',
+      headerInfo: '实际出货单号或已核验历史期初原来源；系统应收编号保留在核对明细，不编造订单或出货单。',
       width: 160,
       // 行 model 普通字段（AR 引入时随行回填）——只给 textOf，行集变化时整体量宽。
-      textOf: (r) => r.appliedBillNo ?? '',
+      textOf: (r) => r.sourceDocNo ?? r.appliedBillNo ?? '',
       cellBuilder: (context, row) => Text(
-        row.appliedBillNo ?? '—',
+        row.sourceDocNo ?? row.appliedBillNo ?? '—',
         style: TextStyle(
           color: row.appliedBillNo == null
               ? Theme.of(context).colorScheme.onSurfaceVariant
@@ -418,17 +425,18 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'source',
-      label: '来源类型 / 单号',
+      label: '应收编号/来源',
+      headerInfo: '保留系统应收编号供核对；实际出货单或期初原来源在前一列，两个编号各保留其用途。',
       width: 200,
       // 单行省略号（2026-09-16 全站口径）+ 随文本自动加宽，不再折两行撑高整行。
       textOf: (row) =>
           '${financeArApSourceTypeLabel(row.sourceDocType)}'
-          '${row.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.sourceDocNo}' : ''}',
+          '${row.appliedBillNo?.trim().isNotEmpty == true ? ' · ${row.appliedBillNo}' : ''}',
       filterValueOf: (row) => financeArApSourceTypeLabel(row.sourceDocType),
       columnSearchEnabled: true,
       cellBuilder: (context, row) => Text(
         '${financeArApSourceTypeLabel(row.sourceDocType)}'
-        '${row.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.sourceDocNo}' : ''}',
+        '${row.appliedBillNo?.trim().isNotEmpty == true ? ' · ${row.appliedBillNo}' : ''}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -537,7 +545,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本次分配收款(原币)',
+      label: '本次收款',
       width: 220,
       numeric: true,
       frozenTextOf: (row) => row.amount.text,
@@ -555,7 +563,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, labelText: '本次分配收款(原币)'),
+            InputDecoration(isDense: true, labelText: '本次收款'),
           ),
         ),
       ),
@@ -746,6 +754,7 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       ),
     EditableGridColumn<FinanceGridRow>(
       key: 'style',
+      required: true,
       label: type == FinanceDocType.expense ? '费用项目' : '收入项目',
       width: 200,
       // 随所选名称自动加宽（2026-09-16）：此前不接 textOf，选完长名称既不撑列

@@ -71,6 +71,8 @@ public class SalesOrderFinanceConfirmService {
     private final SalesOrderRevisionService revisions;
     // ADR-128: 客户应收只经 finance 的共用余额查询取, 本服务不再自写 ar_ap_ledger 汇总。
     private final PartyOpenBalancePort partyBalances;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.SalesOrderMoneyReadPort orderMoney;
     @org.springframework.beans.factory.annotation.Autowired
     private SalesOrderTimelineService timeline;
 
@@ -384,13 +386,13 @@ public class SalesOrderFinanceConfirmService {
      * 财务审核详情（V300 专用审核页）：订单主表 + 明细 + 客户财务快照
      * （应收余额/信用额度/铺底额/超信用）。仅已审未结案订单可进入审核视图。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public SalesOrderFinanceReviewDto review(UUID orderId) {
         return review(orderId, false);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_order_manager:view')")
     public SalesOrderFinanceReviewDto managerReview(UUID orderId) {
         return review(orderId, true);
@@ -557,7 +559,8 @@ public class SalesOrderFinanceConfirmService {
                 manager ? order.getManagerReview().getDecisionClaimId() : null,
                 manager && order.getManagerReview().approved() && !order.isFinanceConfirmed() && !order.isFinanceRejected()
                     && order.getRequotedToId() == null && order.getStatus() != null && order.getStatus() == 1 && !order.isStopped(),
-                manager ? timeline.managerEvents(order) : List.of());
+                manager ? timeline.managerEvents(order) : List.of(),
+                !manager && orderMoney!=null ? orderMoney.read(List.of(orderId),false).get(orderId) : null);
     }
 
     private static String managerReadOnlyReason(SalesOrder order) {

@@ -195,7 +195,7 @@ class FinancePaymentSettlementTest {
                 currentUser, names, em, references, numbers, access, glPostingService,
                 accountFlowLedger,
                 mock(com.uten.imp.features.finance.payables.SupplierPayableHoldGuard.class),
-                mock(com.uten.imp.features.finance.payables.FinanceSupplierSettlementDependencies.class));
+                mock(com.uten.imp.features.finance.payables.FinanceSupplierSettlementDependencies.class), mock(com.uten.imp.application.port.FinancePartyReferenceLabelsPort.class));
         new ImportedDocumentFixture()
                 .documents("finance_payments", payments::values)
                 .wire(service, em);
@@ -332,8 +332,10 @@ class FinancePaymentSettlementTest {
 
         assertThatThrownBy(() -> service.approve(draft.getId()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("供应商预付资产科目")
-                .hasMessageContaining("当前禁止审核");
+                // 2026-11-04 财务整合（0aaffa3aa）后直接付款的预付资产链由 SupplierPrepaymentPort 提供；
+                // 端口缺失时按来源未就绪失败关闭，原单据保留，不再是旧的科目缺失文案。
+                .hasMessageContaining("供应商预付资产来源尚未准备好")
+                .hasMessageContaining("原单据已保留");
 
         assertThat(payments.get(draft.getId()).getStatus()).isZero();
         verify(accountUpdate, never()).executeUpdate();
@@ -362,6 +364,30 @@ class FinancePaymentSettlementTest {
                 .hasMessageContaining("跨币种核销");
 
         verify(lineRepo, never()).save(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(shorts = {0, -1})
+    void draftRejectsInactivePayables(short status) {
+        ArApLedger payable = payable("100", "700", "7");
+        payable.setStatus(status);
+        assertThatThrownBy(() -> service.create(request(payable, CURRENCY_ID, "7.2", "30")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("尚未生效或已撤销");
+        verify(lineRepo, never()).save(any());
+        verify(accountUpdate, never()).executeUpdate();
+    }
+
+    @Test
+    void approvalRechecksPayableStatusAfterDraftWasCreated() {
+        ArApLedger payable = payable("100", "700", "7");
+        FinancePaymentDetail draft = service.create(request(payable, CURRENCY_ID, "7.2", "30"));
+        payable.setStatus((short) -1);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.add(0L);
+        assertThatThrownBy(() -> service.approve(draft.getId()))
+                .isInstanceOf(ApiException.class).hasMessageContaining("尚未生效或已撤销");
+        verify(accountUpdate, never()).executeUpdate();
+        verify(reconciliationInsert, never()).executeUpdate();
     }
 
     @Test
@@ -607,6 +633,26 @@ class FinancePaymentSettlementTest {
         Query query = mock(Query.class);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         return query;
+    }
+
+    @Test
+    void futureBankDebitRemainsInDraftAndCannotChangePayableOrBankAtApproval() {
+        ArApLedger payable=payable("100","700","7");
+        var request=request(payable,CURRENCY_ID,"7.2","30");
+        OffsetDateTime future=OffsetDateTime.now().plusDays(1);
+        request.setBankBookedAt(future);
+        var draft=service.create(request);
+        assertThat(payments.get(draft.getId()).getBankBookedAt()).isEqualTo(future);
+        verify(accountUpdate,never()).executeUpdate();verify(reconciliationInsert,never()).executeUpdate();
+        clearInvocations(ledgerRepo,accountUpdate,reconciliationInsert,glPostingService);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        assertThatThrownBy(()->service.approve(draft.getId())).isInstanceOf(ApiException.class).hasMessageContaining("尚未发生");
+        assertThat(payments.get(draft.getId()).getStatus()).isZero();
+        assertThat(payments.get(draft.getId()).getBankBookedAt()).isEqualTo(future);
+        assertMoney(payable.getAmountBalanceOriginal(),"100");assertMoney(payable.getAmountBalance(),"700");
+        assertMoney(payable.getAmountReceivedOriginal(),"0");
+        verify(ledgerRepo,never()).save(any());verify(accountUpdate,never()).executeUpdate();
+        verify(reconciliationInsert,never()).executeUpdate();verify(glPostingService,never()).postActualBankPayment(draft.getId());
     }
 
     @Test

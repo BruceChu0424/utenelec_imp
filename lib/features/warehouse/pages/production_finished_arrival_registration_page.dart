@@ -285,7 +285,11 @@ class _ProductionFinishedArrivalRegistrationPageState
       }
       final qty = draftText(item, 'stockInQty');
       if (qty.isNotEmpty) row.stockInQty.text = qty;
-      restoreWeightEntryDraft(row.weight, item['weight']);
+      restoreWeightEntryDraft(
+        row.weight,
+        item['weight'],
+        unitWeightQuantityText: row.lot.reportedQtyText,
+      );
       if (item['selected'] == true) _grid.setSelected([row], true);
     }
     _ensureWeightParams();
@@ -629,6 +633,7 @@ class _ProductionFinishedArrivalRegistrationPageState
     final excludedCount = _editableRows.length - rows.length;
     // 整批一次扫完再报：按类别各汇总成一条，不同类别分行列出。
     final badQty = <String>[];
+    final badWeight = <String>[];
     final missingWarehouse = <String>[];
     final missingPlace = <String>[];
     final placeTooLong = <String>[];
@@ -644,6 +649,13 @@ class _ProductionFinishedArrivalRegistrationPageState
       final row = _grid.rows[index];
       if (!submitted.contains(row)) continue;
       final label = '第 ${index + 1} 行(${row.report.reportNo} ${row.goodsName})';
+      if (_exactKg(row) == null && row.weight.hasError) {
+        badWeight.add(label);
+        rememberInvalid(
+          row,
+          row.weight.unitWeightError == null ? 'weight' : 'unitWeight',
+        );
+      }
       if (stockInFirst) {
         final qty = double.tryParse(row.stockInQty.text.trim());
         if (qty == null ||
@@ -667,6 +679,8 @@ class _ProductionFinishedArrivalRegistrationPageState
       }
     }
     final rowIssues = <String>[
+      if (badWeight.isNotEmpty)
+        inboundRowIssueMessage(badWeight, '的重量输入无效，原输入已保留', action: '请核对后再提交'),
       if (badQty.isNotEmpty)
         inboundRowIssueMessage(
           badQty,
@@ -1326,6 +1340,11 @@ class _ProductionFinishedArrivalRegistrationPageState
         headerInfo:
             '必填，不超过 100 字。选定入库仓库后按「该仓记住的库位 → 货品资料通用库位」'
             '自动带出；黄框 = 预填待核对，可直接修改。登记成功后自动记住为该仓默认库位。',
+      ),
+      shared.unitWeight(
+        quantityTextOf: (row) => row.lot.reportedQtyText,
+        enabled: editable,
+        exactKgOf: _exactKg,
       ),
     ];
   }

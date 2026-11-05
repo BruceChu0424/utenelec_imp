@@ -13,6 +13,29 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class FinanceReceiptSourceAllocationExactTest {
+    @Test void ordinaryShipmentCollectionMayKeepNullOrderAndReadsOnlyTheChosenLedgerSources(){
+        EntityManager em=mock(EntityManager.class);Query q=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(q);when(q.setParameter(anyString(),any())).thenReturn(q);
+        when(q.getResultList()).thenReturn(List.<Object[]>of(new Object[]{new BigDecimal("10"),new BigDecimal("70")}));
+        var ledger=new ArApLedger();ledger.setId(UUID.randomUUID());ledger.setAmountBalanceOriginal(BigDecimal.TEN);ledger.setAmountBalance(new BigDecimal("70"));
+        var service=new FinanceReceiptSourceAllocationService(em,mock(SecurityContextCurrentUser.class));
+        assertEquals(0,new BigDecimal("7").compareTo(service.plannedBookAmount(ledger,BigDecimal.ONE)));
+        verify(q).setParameter("ledger",ledger.getId());
+    }
+    @Test void selectedSecondOrderDoesNotConsumeTheFirstOrdersAvailableMoneyOrBookValue(){
+        EntityManager em=mock(EntityManager.class);Query q=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(q);when(q.setParameter(anyString(),any())).thenReturn(q);
+        when(q.getSingleResult()).thenReturn(1L);
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        when(q.getResultList()).thenReturn(List.of(new Object[]{BigDecimal.TEN,new BigDecimal("60"),first},
+                new Object[]{BigDecimal.TEN,new BigDecimal("80"),second}));
+        var ledger=new ArApLedger();ledger.setId(UUID.randomUUID());ledger.setAmountBalanceOriginal(new BigDecimal("20"));ledger.setAmountBalance(new BigDecimal("140"));
+        var service=new FinanceReceiptSourceAllocationService(em,mock(SecurityContextCurrentUser.class));
+        assertEquals(0,new BigDecimal("40").compareTo(service.plannedBookAmount(ledger,new BigDecimal("5"),second)));
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->service.plannedBookAmount(ledger,new BigDecimal("11"),second));
+        when(q.getSingleResult()).thenReturn(0L);
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->service.plannedBookAmount(ledger,BigDecimal.ONE,UUID.randomUUID()));
+    }
     @Test void distinctOrderSourcesKeepTheirConfirmedBookPartsInsteadOfUsingTheAggregatedArRatio() {
         EntityManager em=mock(EntityManager.class);Query q=mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(q);when(q.setParameter(anyString(),any())).thenReturn(q);

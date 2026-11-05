@@ -21,6 +21,10 @@ import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../shared/models/decimal_text.dart';
 import '../../../shared/models/party_open_balance.dart';
+import '../../../shared/models/sales_order_money_position.dart';
+import '../../../shared/models/shipment_receivable_position.dart';
+export '../../../shared/models/shipment_receivable_position.dart';
+export '../../../shared/models/sales_order_money_position.dart';
 import 'sales_quote_workflow.dart';
 export '../../../shared/models/sales_shipment_policy.dart';
 export 'sales_quote_workflow.dart';
@@ -375,6 +379,9 @@ class ShipmentFinanceAuditInfo {
   const ShipmentFinanceAuditInfo({
     this.shipmentId,
     this.actualReceiptContext,
+    this.receivablePosition,
+    this.frozenReceivablePosition,
+    this.orderMoneyPositions = const {},
     this.financeAuditorName,
     this.financeAudit,
     this.clientName,
@@ -429,8 +436,11 @@ class ShipmentFinanceAuditInfo {
   final String? previousCommercialSnapshot;
 
   final CustomerActualReceiptContext? actualReceiptContext;
+  final Map<String, SalesOrderMoneyPosition> orderMoneyPositions;
   final String? financeAuditorName;
   final String? shipmentId;
+  final ShipmentReceivablePosition? receivablePosition,
+      frozenReceivablePosition;
   final int? financeAudit;
   final String? clientName;
   final String? settlementMethodId;
@@ -445,6 +455,20 @@ class ShipmentFinanceAuditInfo {
   factory ShipmentFinanceAuditInfo.fromJson(Map<String, dynamic> json) =>
       ShipmentFinanceAuditInfo(
         shipmentId: _text(json['shipmentId']),
+        receivablePosition: readShipmentReceivablePosition(
+          json['receivablePosition'],
+        ),
+        frozenReceivablePosition: readShipmentReceivablePosition(
+          json['frozenReceivablePosition'],
+        ),
+        orderMoneyPositions: {
+          for (final entry
+              in (json['orderMoneyPositions'] as Map? ?? const {}).entries)
+            if (entry.value is Map)
+              entry.key.toString(): SalesOrderMoneyPosition.fromJson(
+                Map<String, dynamic>.from(entry.value as Map),
+              ),
+        },
         actualReceiptContext: json['actualReceiptContext'] is Map
             ? CustomerActualReceiptContext.fromJson(
                 Map<String, dynamic>.from(json['actualReceiptContext'] as Map),
@@ -728,6 +752,8 @@ class SalesDocListItem {
     this.sellerId,
     this.financeConfirmed = false,
     this.financeRejected = false,
+    this.moneyPosition,
+    this.receivablePosition,
   });
   final CustomerShipmentWorkflow shipmentWorkflow;
 
@@ -791,6 +817,8 @@ class SalesDocListItem {
 
   /// 财务驳回（V300）：已审未确认且被财务驳回，待销售修正；列表显示驳回徽章。
   final bool financeRejected;
+  final SalesOrderMoneyPosition? moneyPosition;
+  final ShipmentReceivablePosition? receivablePosition;
 
   factory SalesDocListItem.fromJson(
     Map<String, dynamic> json,
@@ -843,6 +871,14 @@ class SalesDocListItem {
     sellerId: json['sellerId'] as String?,
     financeConfirmed: (json['financeConfirmed'] as bool?) ?? false,
     financeRejected: (json['financeRejected'] as bool?) ?? false,
+    receivablePosition: readShipmentReceivablePosition(
+      json['receivablePosition'],
+    ),
+    moneyPosition: json['moneyPosition'] is Map
+        ? SalesOrderMoneyPosition.fromJson(
+            Map<String, dynamic>.from(json['moneyPosition'] as Map),
+          )
+        : null,
   );
 }
 
@@ -1154,6 +1190,7 @@ class SalesDocDetail {
     this.shipmentWorkflow = const CustomerShipmentWorkflow(),
     this.quoteWorkflow = SalesQuoteWorkflow.empty,
     required this.id,
+    this.receivablePosition,
     this.legacyId,
     this.billNo,
     this.billDate,
@@ -1238,6 +1275,7 @@ class SalesDocDetail {
   final Map<String, String> exactDecimals;
 
   final String id;
+  final ShipmentReceivablePosition? receivablePosition;
   final int? legacyId;
   final String? billNo;
   final String? billDate;
@@ -1365,6 +1403,9 @@ class SalesDocDetail {
         SalesOrderShipmentRef.fromJson(e as Map<String, dynamic>),
     ],
     id: json['id'] as String,
+    receivablePosition: readShipmentReceivablePosition(
+      json['receivablePosition'],
+    ),
     legacyId: (json['legacyId'] as num?)?.toInt(),
     billNo: json['billNo'] as String?,
     billDate: json['billDate'] as String?,

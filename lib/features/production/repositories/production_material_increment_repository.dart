@@ -106,20 +106,72 @@ class ProductionMaterialIncrementRepository {
   }) async => ProductionMaterialIncrementRequest(
     await api.post(
       '$_base/requests',
-      body: {
-        'originalDemandId': demand['originalDemandId'],
-        'targetSegmentId': context.segmentId,
-        'supplementProofId': ?context.supplementProofId,
-        'deltaQty': deltaQty,
-        'reason': reason,
-        'expectedDemandVersion': demand['lockVersion'],
-        'idempotencyKey': businessIdempotencyKey(
-          'material-increment-request',
-          '${demand['originalDemandId']}|${context.segmentId}|${context.supplementProofId}|${demand['lockVersion']}|${demand['requestGeneration']}|${demand['approvedIncrementQty']}|$deltaQty|$reason',
-        ),
-      },
+      body: submissionBody(
+        context: context,
+        demand: demand,
+        deltaQty: deltaQty,
+        reason: reason,
+      ),
     ),
   );
+
+  /// Both single and batch actions keep the original per-material receipt key.
+  /// Quantity strings from the editor reach BigDecimal without a double roundtrip.
+  Map<String, dynamic> submissionBody({
+    required ProductionMaterialIncrementContext context,
+    required Map<String, dynamic> demand,
+    required Object deltaQty,
+    required String reason,
+  }) => {
+    'originalDemandId': demand['originalDemandId'],
+    'targetSegmentId': context.segmentId,
+    'supplementProofId': ?context.supplementProofId,
+    'deltaQty': deltaQty,
+    'reason': reason,
+    'expectedDemandVersion': demand['lockVersion'],
+    'idempotencyKey': businessIdempotencyKey(
+      'material-increment-request',
+      '${demand['originalDemandId']}|${context.segmentId}|${context.supplementProofId}|${demand['lockVersion']}|${demand['requestGeneration']}|${demand['approvedIncrementQty']}|$deltaQty|$reason',
+    ),
+  };
+
+  Future<List<ProductionMaterialIncrementRequest>> submitBatch(
+    List<Map<String, dynamic>> requests,
+  ) async {
+    final result = await api.post(
+      '$_base/requests/batch',
+      body: {'requests': requests},
+    );
+    final rows = result['requests'];
+    if (rows is! List || rows.length != requests.length) {
+      throw const FormatException('追加申请回执不完整，请保留原内容核对结果');
+    }
+    final accepted = rows
+        .map(
+          (row) => ProductionMaterialIncrementRequest(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList();
+    final expected = requests.map((row) => row['originalDemandId']).toSet();
+    if (accepted.map((row) => row.originalDemandId).toSet().length !=
+            expected.length ||
+        !accepted.every(
+          (row) =>
+              row.data['id'] is String &&
+              row.id.trim().isNotEmpty &&
+              expected.contains(row.originalDemandId) &&
+              requests.any(
+                (original) =>
+                    original['originalDemandId'] == row.originalDemandId &&
+                    original['targetSegmentId'] == row.targetSegmentId,
+              ),
+        )) {
+      throw const FormatException('追加申请回执来源不一致，请保留原内容核对结果');
+    }
+    return accepted;
+  }
+
   Future<ProductionMaterialIncrementRequest> decide(
     ProductionMaterialIncrementRequest request, {
     required bool approve,

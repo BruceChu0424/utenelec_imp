@@ -2,7 +2,16 @@ import 'package:flutter/widgets.dart';
 
 /// Settlement facts belong to an entry, never to a global supplier/account.
 class FinanceEntryTerms extends ChangeNotifier {
-  String? partyId;
+  String? _partyId;
+  String? get partyId => _partyId;
+  set partyId(String? value) {
+    if (value != _partyId) {
+      partyName = null;
+    }
+    _partyId = value;
+  }
+
+  String? partyName;
   String? accountId;
   String? currencyId;
   String? methodId;
@@ -40,6 +49,7 @@ class FinanceEntryTerms extends ChangeNotifier {
 
   Map<String, dynamic> toJson() => {
     'partyId': partyId,
+    if (partyName != null) 'partyName': partyName,
     'accountId': accountId,
     'currencyId': currencyId,
     'methodId': methodId,
@@ -62,6 +72,7 @@ class FinanceEntryTerms extends ChangeNotifier {
 
   void restore(Map<String, dynamic> value) {
     partyId = value['partyId'] as String?;
+    partyName = value['partyName'] as String?;
     accountId = value['accountId'] as String?;
     currencyId = value['currencyId'] as String?;
     methodId = value['methodId'] as String?;

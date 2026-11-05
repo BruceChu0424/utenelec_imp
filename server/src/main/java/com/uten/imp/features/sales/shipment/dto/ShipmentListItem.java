@@ -15,6 +15,11 @@ public class ShipmentListItem extends com.uten.imp.common.history.DocumentHistor
     private final ShipmentWorkflowView workflow=new ShipmentWorkflowView();
     @com.fasterxml.jackson.annotation.JsonUnwrapped
     private final OriginalMoney money=new OriginalMoney();
+    @Getter(lombok.AccessLevel.NONE) @com.fasterxml.jackson.annotation.JsonIgnore
+    private final ReceivableView receivableView=new ReceivableView();
+    public com.uten.imp.application.port.ShipmentReceivablePositionPort.Position getReceivablePosition(){return receivableView.position;}
+    public void setReceivablePosition(com.uten.imp.application.port.ShipmentReceivablePositionPort.Position value){receivableView.position=value;}
+    private static final class ReceivableView {private com.uten.imp.application.port.ShipmentReceivablePositionPort.Position position;}
     private UUID id;
     private String billNo;
     private LocalDate billDate;

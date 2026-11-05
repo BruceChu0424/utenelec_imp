@@ -1754,6 +1754,19 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
             columnSearchEnabled: false,
             value: (goods) => goods.isRelatedSearchMatch ? '相关结果' : '货品匹配',
           ),
+        if (widget.dataSource?.pickerColumns == null)
+          MasterColumnDef(
+            key: 'stockQty',
+            label: '即时库存',
+            width: 130,
+            type: 'number',
+            info:
+                '当前良品现存数量合计，含各颜色；不含不良品仓和车间内料仓，'
+                '未扣订单预留，不等于可用数量。无库存读取权限时显示空值。',
+            columnSearchEnabled: false,
+            exactValueOf: (goods) => goods.stockQtyText,
+            value: (goods) => goods.stockQtyText,
+          ),
       ],
       items: _paged?.items ?? const [],
       rowKeyOf: (goods) => goods.id,

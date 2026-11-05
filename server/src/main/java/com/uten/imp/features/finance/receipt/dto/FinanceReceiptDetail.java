@@ -1,6 +1,5 @@
 package com.uten.imp.features.finance.receipt.dto;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
@@ -11,7 +10,6 @@ import java.util.UUID;
 
 /** 销售收款单详情（主表全字段 + 明细列表）。 */
 @Getter
-@AllArgsConstructor
 public class FinanceReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
@@ -71,6 +69,69 @@ public class FinanceReceiptDetail extends com.uten.imp.common.history.DocumentHi
     private UUID feePaymentAccountId;
     private UUID feeAccountCurrencyId;
     private BigDecimal feeAccountExchangeRate;
+
+
+    /** Existing constructor retained; reference labels are additive read-only DTO fields. */
+    public FinanceReceiptDetail(UUID id, Integer legacyId, String billNo, LocalDate billDate, String receiptKind, UUID salesOrderId, UUID clientId, UUID accountId, UUID counterpartAccountId, UUID currencyId, BigDecimal exchangeRate, BigDecimal amountOriginal, BigDecimal amountLocal, BigDecimal bankFee, BigDecimal otherFee, UUID otherFeeStyleId, UUID receiptMethodId, Integer receiptMethodLegacyId, String invoiceNo, OffsetDateTime cancelDate, UUID operatorId, UUID makerId, UUID approverId, String sourceRemark, String remark, Short status, boolean closed, List<FinanceReceiptLineDto> items, String makerName, java.time.Instant createdAt, long version, short settlementAuthorityVersion, String createIdempotencyKey, String settlementChannel, UUID settlementAgentSupplierId, String settlementAgentNameSnapshot, String settlementRateQuoteDirection, String exchangeRateSource, OffsetDateTime exchangeRateEffectiveAt, OffsetDateTime bankBookedAt, String bankReference, String agentStatementNo, UUID accountCurrencyId, BigDecimal accountExchangeRate, String accountExchangeRateSource, BigDecimal accountAmount, BigDecimal accountAmountLocal, BigDecimal settlementGrossLocal, BigDecimal bankFeeAccountAmount, BigDecimal otherFeeAccountAmount, String feeSettlementMode, String feeBearer, UUID feePaymentAccountId, UUID feeAccountCurrencyId, BigDecimal feeAccountExchangeRate) {
+        this.id=id;
+        this.legacyId=legacyId;
+        this.billNo=billNo;
+        this.billDate=billDate;
+        this.receiptKind=receiptKind;
+        this.salesOrderId=salesOrderId;
+        this.clientId=clientId;
+        this.accountId=accountId;
+        this.counterpartAccountId=counterpartAccountId;
+        this.currencyId=currencyId;
+        this.exchangeRate=exchangeRate;
+        this.amountOriginal=amountOriginal;
+        this.amountLocal=amountLocal;
+        this.bankFee=bankFee;
+        this.otherFee=otherFee;
+        this.otherFeeStyleId=otherFeeStyleId;
+        this.receiptMethodId=receiptMethodId;
+        this.receiptMethodLegacyId=receiptMethodLegacyId;
+        this.invoiceNo=invoiceNo;
+        this.cancelDate=cancelDate;
+        this.operatorId=operatorId;
+        this.makerId=makerId;
+        this.approverId=approverId;
+        this.sourceRemark=sourceRemark;
+        this.remark=remark;
+        this.status=status;
+        this.closed=closed;
+        this.items=items;
+        this.makerName=makerName;
+        this.createdAt=createdAt;
+        this.version=version;
+        this.settlementAuthorityVersion=settlementAuthorityVersion;
+        this.createIdempotencyKey=createIdempotencyKey;
+        this.settlementChannel=settlementChannel;
+        this.settlementAgentSupplierId=settlementAgentSupplierId;
+        this.settlementAgentNameSnapshot=settlementAgentNameSnapshot;
+        this.settlementRateQuoteDirection=settlementRateQuoteDirection;
+        this.exchangeRateSource=exchangeRateSource;
+        this.exchangeRateEffectiveAt=exchangeRateEffectiveAt;
+        this.bankBookedAt=bankBookedAt;
+        this.bankReference=bankReference;
+        this.agentStatementNo=agentStatementNo;
+        this.accountCurrencyId=accountCurrencyId;
+        this.accountExchangeRate=accountExchangeRate;
+        this.accountExchangeRateSource=accountExchangeRateSource;
+        this.accountAmount=accountAmount;
+        this.accountAmountLocal=accountAmountLocal;
+        this.settlementGrossLocal=settlementGrossLocal;
+        this.bankFeeAccountAmount=bankFeeAccountAmount;
+        this.otherFeeAccountAmount=otherFeeAccountAmount;
+        this.feeSettlementMode=feeSettlementMode;
+        this.feeBearer=feeBearer;
+        this.feePaymentAccountId=feePaymentAccountId;
+        this.feeAccountCurrencyId=feeAccountCurrencyId;
+        this.feeAccountExchangeRate=feeAccountExchangeRate;
+    }
+
+    private String clientName;
+    public FinanceReceiptDetail withClientName(String name) { this.clientName=name; return this; }
 
     // Additive exact text never passes through a binary floating-point value.
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }

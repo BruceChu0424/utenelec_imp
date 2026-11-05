@@ -22,6 +22,9 @@ public class ProductionMaterialIncrementController {
     @PostMapping("/requests")
     @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:request_material_increment')")
     public RequestView submit(@Valid @RequestBody SubmitRequest request){return service.submit(request);}
+    @PostMapping("/requests/batch")
+    @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:request_material_increment')")
+    public BatchSubmitResult submitBatch(@Valid @RequestBody BatchSubmitRequest request){return service.submitBatch(request);}
     @GetMapping("/requests") @PreAuthorize("hasAnyAuthority('production_plan:view','production_plan:approve')")
     public PageResponse<RequestView> list(@RequestParam(defaultValue="PENDING") String status,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return service.list(status,page,size);}

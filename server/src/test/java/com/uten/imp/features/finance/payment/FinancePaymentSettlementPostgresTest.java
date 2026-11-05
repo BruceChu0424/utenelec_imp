@@ -85,6 +85,8 @@ class FinancePaymentSettlementPostgresTest {
     private GlPostingService glPostingService;
 
     @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativeAccounts;
+    @Autowired private com.uten.imp.features.finance.statement.FinanceAuxiliaryService auxiliaries;
 
     @AfterEach
     void clearSecurityContext() {
@@ -149,7 +151,7 @@ class FinancePaymentSettlementPostgresTest {
 
         glPostingService.generate(currentPeriod());
         var entries = jdbc.queryForList("""
-                SELECT entry.line_no, entry.direction, entry.amount
+                SELECT entry.line_no, entry.style_id, entry.direction, entry.amount
                 FROM gl_entries entry
                 JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id
                 WHERE voucher.source='AUTO'
@@ -158,12 +160,17 @@ class FinancePaymentSettlementPostgresTest {
                 ORDER BY entry.line_no
                 """, draft.getId());
         assertThat(entries).hasSize(3);
-        assertThat(((Number) entries.get(0).get("direction")).intValue()).isEqualTo(1);
-        assertMoney(entries.get(0).get("amount"), "210.0000");
-        assertThat(((Number) entries.get(1).get("direction")).intValue()).isEqualTo(-1);
-        assertMoney(entries.get(1).get("amount"), "216.0000");
-        assertThat(((Number) entries.get(2).get("direction")).intValue()).isEqualTo(1);
-        assertMoney(entries.get(2).get("amount"), "6.0000");
+        var frozenStyles=jdbc.queryForMap("SELECT gl_ap_style_id,gl_account_style_id,gl_fx_style_id FROM finance_payments WHERE id=?",draft.getId());
+        var apEntry=entries.stream().filter(row->frozenStyles.get("gl_ap_style_id").equals(row.get("style_id"))).toList();
+        var bankEntry=entries.stream().filter(row->frozenStyles.get("gl_account_style_id").equals(row.get("style_id"))).toList();
+        var fxEntry=entries.stream().filter(row->frozenStyles.get("gl_fx_style_id").equals(row.get("style_id"))).toList();
+        assertThat(apEntry).hasSize(1);assertThat(bankEntry).hasSize(1);assertThat(fxEntry).hasSize(1);
+        assertThat(((Number)apEntry.getFirst().get("direction")).intValue()).isEqualTo(1);
+        assertMoney(apEntry.getFirst().get("amount"), "210.0000");
+        assertThat(((Number)bankEntry.getFirst().get("direction")).intValue()).isEqualTo(-1);
+        assertMoney(bankEntry.getFirst().get("amount"), "216.0000");
+        assertThat(((Number)fxEntry.getFirst().get("direction")).intValue()).isEqualTo(1);
+        assertMoney(fxEntry.getFirst().get("amount"), "6.0000");
         assertMoney(jdbc.queryForObject("""
                 SELECT SUM(entry.direction*entry.amount)
                 FROM gl_entries entry
@@ -471,6 +478,8 @@ class FinancePaymentSettlementPostgresTest {
             UUID supplierId,
             UUID accountId,
             UUID ledgerId) {
+        UUID sourceActor=UUID.randomUUID();
+        loginAsSuperAdmin(sourceActor,UUID.randomUUID(),"payable-source-approver");
         seedAccountingStyles();
         jdbc.update("""
                 INSERT INTO currencies (id, code, name, exchange_rate, status)
@@ -490,6 +499,20 @@ class FinancePaymentSettlementPostgresTest {
                         (SELECT id FROM payment_styles WHERE path='/102/' AND category='ACCOUNT'
                            AND status='使用' AND COALESCE(is_deleted,false)=false))
                 """, accountId, "ACC-PAY-" + accountId, currencyId);
+        // The payment must use the account/auxiliary identity of its actual original AP.
+        // These are explicit fixture correspondences, not a fallback inferred at payment time.
+        UUID base=jdbc.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND status='使用' AND NOT is_deleted ORDER BY id LIMIT 1",UUID.class);
+        for(var definition:Map.of("2202","AP_CONTROL","1405","INVENTORY_ASSET").entrySet()){
+            UUID style=jdbc.queryForObject("SELECT system_posting_style_id(?)",UUID.class,definition.getValue());
+            jdbc.update("""
+                INSERT INTO finance_chart_codes(code,name,currency_name,currency_id,classification,source_kind,source_reference,sort_order,source_row,updated_by)
+                VALUES(?,?,'',?,?,'MANUAL','付款PG真实原立账来源',1,1,?)
+                ON CONFLICT(code) DO UPDATE SET currency_id=excluded.currency_id
+                """,definition.getKey(),"付款PG明确原科目-"+definition.getKey(),base,definition.getKey().equals("2202")?"LIABILITY":"ASSET",sourceActor);
+            jdbc.update("INSERT INTO finance_chart_code_styles(code,style_id,created_by) VALUES(?,?,?) ON CONFLICT(style_id) DO NOTHING",definition.getKey(),style,sourceActor);
+        }
+        auxiliaries.save(new com.uten.imp.features.finance.statement.FinanceAuxiliaryContracts.Save(null,null,
+                "付款PG原立账来源","SUP-PAY-"+supplierId,"付款结算测试供应商","SUPPLIER",supplierId,"真实供应商UUID与原应付科目","2202"));
         UUID receiptId=UUID.randomUUID(),receiptItemId=UUID.randomUUID(),unitId=UUID.randomUUID(),goodsId=UUID.randomUUID(),warehouseId=UUID.randomUUID();
         String receiptNo="CJ20260801%06d".formatted(BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet());
         new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(transaction->{
@@ -518,7 +541,19 @@ class FinancePaymentSettlementPostgresTest {
                     false, 1, false)
                 """, ledgerId, receiptId,receiptNo,
                 receiptNo, supplierId, currencyId);
+        nativeAccounts.captureArAp(ledgerId);
         });
+        glPostingService.generate("2026-08");
+        var original=jdbc.queryForMap("""
+            SELECT entry.amount,allocation.amount_original,allocation.amount_local,allocation.original_currency_id,
+                allocation.account_code,allocation.party_id_snapshot
+            FROM finance_native_debt_entry_refs ref JOIN gl_entries entry ON entry.id=ref.entry_id
+            JOIN finance_gl_entry_allocations allocation ON allocation.entry_id=entry.id
+            WHERE ref.ledger_id=?
+            """,ledgerId);
+        assertMoney(original.get("amount"),"700");assertMoney(original.get("amount_original"),"100");
+        assertMoney(original.get("amount_local"),"700");assertThat(original.get("original_currency_id")).isEqualTo(currencyId);
+        assertThat(original.get("account_code")).isEqualTo("2202");assertThat(original.get("party_id_snapshot")).isEqualTo(supplierId);
     }
 
     private void seedAccountingStyles() {

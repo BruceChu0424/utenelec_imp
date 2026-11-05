@@ -45,6 +45,9 @@ public class OrderListItem extends com.uten.imp.features.sales.SalesReviewDocume
     private UUID requotedToId;
     private java.time.OffsetDateTime requotedAt;
     private String readOnlyReason;
+    /** Finance authority only, absent for callers without both finance and price visibility. */
+    @lombok.Setter
+    private com.uten.imp.application.port.SalesOrderMoneyReadPort.Position moneyPosition;
 
     @Override public void disableHistoryActions() {
         writable = false;

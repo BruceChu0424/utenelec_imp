@@ -14,6 +14,8 @@ import '../../../components/feedback/uten_dialog.dart';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import '../../../core/responsive/compact_presentation.dart';
+import '../../../components/layout/uten_action_overflow.dart';
 import '../../../shared/drafts/form_draft_master_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,6 +28,7 @@ import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -55,6 +58,7 @@ import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
+import '../../../shared/widgets/shipment_receivable_position_view.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
@@ -148,6 +152,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
   /// 最近一个月加载），none 仅为值形态护栏。
   UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
+  String? _receivableState;
+  bool _receivableFiltering = false;
+  _SalesDocSeg? _beforeReceivableSegment;
+  UtenHistoryTimeValue? _beforeReceivableTime;
 
   /// 可发货置顶（订货单工作台小项）：true 时后端按"有预留单排前 + 交货日升序"
   /// 排序，忽略列排序。
@@ -273,6 +281,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         _statsGeneration++;
         _stats = null;
         _columnFilters.reset();
+        if (_receivableState != null &&
+            !canViewShipmentReceivableMoney(
+              ref.read(currentPermissionsProvider),
+              administrator: ref.read(isSuperAdminProvider),
+            )) {
+          _restoreReceivableRange();
+        }
         clearDraftSelection();
         _list.invalidateReadOwner(notify: false);
       });
@@ -327,6 +342,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     _stage = null;
     _statusSeg = null;
     _historyTime = UtenHistoryTimeValue.lastMonth();
+    _receivableState = null;
+    _beforeReceivableSegment = null;
+    _beforeReceivableTime = null;
     _clientIdFilter = null;
     _financeAuditFilter = null;
     _warehouseWorkStatusFilter = null;
@@ -560,6 +578,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       status: _isDraftStage ? kSalesStatusDraft : _statusSeg?.status,
       // 出货真实阶段(草稿/等待财务审核/…)走 stage，报价分桶走 bucket，历史记录不限。
       stage: _quoteStaged ? null : _statusSeg?.shipmentStage,
+      receivableState: _receivableState,
       bucket: !_quoteStaged ? null : _statusSeg?.shipmentStage,
       chain: _isOrder && !_isHistory ? _cardChain() : null,
       chainGroup: _isOrder && !_isHistory ? _cardChainGroup() : null,
@@ -629,6 +648,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     _historyTime,
     _historyTime.range?.start,
     _historyTime.range?.end,
+    _receivableState,
     _clientIdFilter,
     _financeAuditFilter,
     _warehouseWorkStatusFilter,
@@ -736,9 +756,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
 
   void _selectStatusSeg(_SalesDocSeg seg) {
     if (seg == _statusSeg) return;
-    final wasHistory = _statusSeg?.history == true;
+    final wasHistory =
+        (_receivableState == null ? _statusSeg : _beforeReceivableSegment)
+            ?.history ==
+        true;
     clearDraftSelection();
     setState(() {
+      if (_receivableState != null) _restoreReceivableRange();
       _statusSeg = seg;
       // 进历史段重新按默认近一个月加载；历史内换状态筛选保留已选时间
       // （ADR-180 历史保留原时间范围）；非历史段回 all() 占位。
@@ -752,6 +776,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (_receivableState != null) return;
     if (value == _historyTime) return;
     setState(() => _historyTime = value);
     _reload(1);
@@ -943,25 +968,57 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         ),
       MasterColumnDef(
         key: 'total',
-        label: _isOrder ? '订单金额' : '合计',
+        label: _isOrder
+            ? '订单金额'
+            : _cfg.type.isShipment
+            ? '货款'
+            : '合计',
         width: 170,
         type: 'money',
         // 订单先选币种，只在同币种范围内比较或排序原币金额。
-        sortable: _canSearchAmount && (!_isOrder || _currencyIdFilter != null),
+        sortable:
+            !_cfg.type.isShipment &&
+            _canSearchAmount &&
+            (!_isOrder || _currencyIdFilter != null),
         columnSearchEnabled:
-            _canSearchAmount && (!_isOrder || _currencyIdFilter != null),
-        exactValueOf: (it) => it.priceMasked
+            !_cfg.type.isShipment &&
+            _canSearchAmount &&
+            (!_isOrder || _currencyIdFilter != null),
+        exactValueOf: (it) =>
+            _cfg.type.isShipment &&
+                it.receivablePosition != null &&
+                canViewShipmentReceivableMoney(
+                  ref.read(currentPermissionsProvider),
+                  administrator: ref.read(isSuperAdminProvider),
+                )
+            ? it.receivablePosition!.formalReceivableOriginal ??
+                  it.receivablePosition!.shipmentOriginal
+            : it.priceMasked
             ? null
             : _isOrder
             ? it.totalOriginalText
             : it.totalLocalText,
-        info: _isOrder
+        info: _cfg.type.isShipment
+            ? '本批货款优先按原币显示，与已收、还欠使用同一币种；未出库时为本批计划货款，不提前形成应收。金额按单元格所示币种核对。'
+            : _isOrder
             ? '订单金额按原币检索和排序，先在币种列选定币种；不同币种不相加。'
             : '按本币金额的原始十进制值检索和排序，隐藏金额不参与查询。',
         // 订单列表显示所选币种的原币合计，不把人民币换算暴露给销售端。
         // 其它销售单据仍沿用各自既有的本币列表口径。
         // 金额带币种后缀（2026-10-10 口径）：订单=原币+行币种名，其余=本币「元」。
-        value: (it) => it.priceMasked
+        value: (it) =>
+            _cfg.type.isShipment &&
+                it.receivablePosition != null &&
+                canViewShipmentReceivableMoney(
+                  ref.read(currentPermissionsProvider),
+                  administrator: ref.read(isSuperAdminProvider),
+                )
+            ? shipmentPositionMoney(
+                it.receivablePosition!,
+                it.receivablePosition!.formalReceivableOriginal ??
+                    it.receivablePosition!.shipmentOriginal,
+              )
+            : it.priceMasked
             ? '***'
             : _isOrder
             ? financeMoneyWithUnitSuffix(
@@ -985,7 +1042,215 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
               ? null
               : '${it.delayWarning ? '⚠ ' : ''}${it.deliverDate!.substring(0, 10)}',
         ),
+      if (_isOrder &&
+          (_hasPermission(Perm.salesOrderFinanceView) ||
+              _hasPermission(Perm.salesShipmentFinanceView) ||
+              (_hasPermission(Perm.financeViewAll) &&
+                  _hasPermission(Perm.customerPrepaymentView) &&
+                  _hasPermission(Perm.salesOrderPriceView)))) ...[
+        MasterColumnDef(
+          key: 'orderCashReceived',
+          label: '订单已收(辅助)',
+          width: 160,
+          type: 'money',
+          columnSearchEnabled: false,
+          info:
+              '本订单原币的已审核收款：准确归属本单的应收收款、绑定本单的预收款，'
+              '以及已正式分配给本单的通用预收；预收核销不重复计入，费用减免不冒充收款。'
+              '银行手续费及账户实际到账以收款单为准；客户其他订单款不计入。',
+          exactValueOf: (it) => it.moneyPosition?.cashReceivedOriginal,
+          value: (it) => it.moneyPosition?.hasUnallocated == true
+              ? '待财务核对'
+              : financeMoneyWithUnitSuffix(
+                  it.moneyPosition?.cashReceivedOriginal,
+                  currencyName: names.currency(it.currencyId),
+                ),
+        ),
+        MasterColumnDef(
+          key: 'orderMoneyRemaining',
+          label: '未收计划(辅助)',
+          width: 160,
+          type: 'money',
+          columnSearchEnabled: false,
+          info:
+              '本单正式未收、未发货金额和退货余额按来源汇总，再扣本单仍可用的预收。'
+              '客户未分配预收另列，不自动抵扣。含未发货计划，不是本批还欠，不作催收依据；为零也不代替发货审核。',
+          exactValueOf: (it) => it.moneyPosition?.plannedRemainingOriginal,
+          value: (it) =>
+              it.moneyPosition != null &&
+                  (!it.moneyPosition!.positionComplete ||
+                      it.moneyPosition!.hasUnallocated)
+              ? '待财务核对'
+              : financeMoneyWithUnitSuffix(
+                  it.moneyPosition?.plannedRemainingOriginal,
+                  currencyName: names.currency(it.currencyId),
+                ),
+        ),
+        MasterColumnDef(
+          key: 'orderPendingReceipt',
+          label: '待确认收款',
+          width: 160,
+          type: 'money',
+          columnSearchEnabled: false,
+          info: '已明确引用本订单、尚未审核的收款草稿金额；不计入本单已收，不抵扣本单待收，可能取消或审核失败。',
+          exactValueOf: (it) => it.moneyPosition?.pendingReceiptOriginal,
+          value: (it) => financeMoneyWithUnitSuffix(
+            it.moneyPosition?.pendingReceiptOriginal,
+            currencyName: names.currency(it.currencyId),
+          ),
+        ),
+        if (_hasPermission(Perm.financeViewAll) &&
+            _hasPermission(Perm.customerPrepaymentView) &&
+            _hasPermission(Perm.salesOrderPriceView))
+          MasterColumnDef(
+            key: 'customerUnassignedPrepayment',
+            label: '客户未分配预收',
+            width: 180,
+            type: 'money',
+            columnSearchEnabled: false,
+            info:
+                '同一客户、同一原币尚未指定订单的可用预收；属于客户层面的共同资金，'
+                '不计入本单已收或直接抵扣本单待收，不跨订单、币种重复使用。',
+            exactValueOf: (it) =>
+                it.moneyPosition?.customerUnassignedPrepaymentOriginal,
+            value: (it) => financeMoneyWithUnitSuffix(
+              it.moneyPosition?.customerUnassignedPrepaymentOriginal,
+              currencyName: names.currency(it.currencyId),
+            ),
+          ),
+      ],
+      if (_cfg.type.isShipment &&
+          canViewShipmentReceivableMoney(
+            ref.read(currentPermissionsProvider),
+            administrator: ref.read(isSuperAdminProvider),
+          )) ...[
+        MasterColumnDef(
+          key: 'shipmentPaid',
+          label: '已收',
+          width: 170,
+          type: 'money',
+
+          columnSearchEnabled: false,
+          info: shipmentReceivableHint,
+          value: (row) => row.receivablePosition == null
+              ? '待读取'
+              : shipmentPaidLabel(row.receivablePosition!),
+          cellColor: (_, row) => row.receivablePosition?.needsReview == true
+              ? utenStatusBadgeCellColor(UtenStatusBadgeType.danger)
+              : null,
+        ),
+        MasterColumnDef(
+          key: 'shipmentDebt',
+          label: '还欠',
+          width: 180,
+          type: 'money',
+
+          columnSearchEnabled: false,
+          info: shipmentReceivableHint,
+          value: (row) => row.receivablePosition == null
+              ? '待读取'
+              : shipmentDebtLabel(row.receivablePosition!),
+          cellColor: (_, row) =>
+              row.receivablePosition?.hasDebt == true ||
+                  row.receivablePosition?.needsReview == true
+              ? utenStatusBadgeCellColor(UtenStatusBadgeType.danger)
+              : null,
+        ),
+        MasterColumnDef(
+          key: 'shipmentDue',
+          label: '到期',
+          width: 150,
+
+          columnSearchEnabled: false,
+          info: '到期日来自本批原应收；尾款约定请核对原备注或结款方式，未到账仍保留本批还欠。',
+          value: (row) => row.receivablePosition?.isOverdue == true
+              ? '${row.receivablePosition!.dueDate} · 逾期${row.receivablePosition!.overdueDays}天'
+              : row.receivablePosition == null
+              ? '待读取'
+              : row.receivablePosition!.notPosted
+              ? '待出库'
+              : row.receivablePosition?.dueDate ?? '未约定',
+          cellColor: (_, row) => row.receivablePosition?.isOverdue == true
+              ? utenStatusBadgeCellColor(UtenStatusBadgeType.danger)
+              : null,
+        ),
+      ],
     ];
+  }
+
+  Future<void> _toggleReceivableFilter() async {
+    if (_receivableFiltering ||
+        !_isHistory ||
+        !_cfg.type.isShipment ||
+        !canViewShipmentReceivableMoney(
+          ref.read(currentPermissionsProvider),
+          administrator: ref.read(isSuperAdminProvider),
+        )) {
+      return;
+    }
+    setState(() {
+      _receivableFiltering = true;
+      if (_receivableState == null) {
+        _beforeReceivableSegment = _statusSeg;
+        _beforeReceivableTime = _historyTime;
+        _receivableState = 'OPEN';
+        _statusSeg = const _SalesDocSeg.history(
+          null,
+          SalesShipmentStage.shipped,
+        );
+        _historyTime = const UtenHistoryTimeValue.all();
+      } else {
+        _restoreReceivableRange();
+      }
+    });
+    try {
+      await UtenBusyOverlay.run(
+        context,
+        title: '正在查找本批还欠',
+        action: () => _reload(1),
+      );
+    } finally {
+      if (mounted) setState(() => _receivableFiltering = false);
+    }
+  }
+
+  void _restoreReceivableRange() {
+    _receivableState = null;
+    _statusSeg = _beforeReceivableSegment;
+    _historyTime = _beforeReceivableTime ?? UtenHistoryTimeValue.lastMonth();
+    _beforeReceivableSegment = null;
+    _beforeReceivableTime = null;
+  }
+
+  List<Widget> _receivableFilterActions() {
+    final actions = <Widget>[
+      if (_cfg.type.isShipment &&
+          _isHistory &&
+          canViewShipmentReceivableMoney(
+            ref.read(currentPermissionsProvider),
+            administrator: ref.read(isSuperAdminProvider),
+          ))
+        UtenButton(
+          key: const ValueKey('shipment-outstanding-all-dates'),
+          closeBeforeAction: true,
+          type: UtenButtonType.secondary,
+          icon: _receivableState == null
+              ? Icons.filter_alt_outlined
+              : Icons.filter_alt_off_outlined,
+          onPressed: _receivableFiltering ? null : _toggleReceivableFilter,
+          child: Text(_receivableState == null ? '只看还欠（全部日期）' : '还欠（全部日期）· 关闭'),
+        ),
+    ];
+    return UtenCompactPresentation.of(context) && actions.isNotEmpty
+        ? [
+            UtenActionOverflow(
+              key: const ValueKey('shipment-filter-actions'),
+              label: '筛选操作',
+              forceCompact: true,
+              children: actions,
+            ),
+          ]
+        : actions;
   }
 
   List<Widget> _listActions() => [
@@ -1264,6 +1529,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               'sales-doc-history-time-${_cfg.type.pathSegment}',
                             ),
                             value: _historyTime,
+                            enabled: _receivableState == null,
+                            allLabel: _receivableState == null ? '全部' : '全部日期',
                             onChanged: _onHistoryTime,
                           ),
                         )
@@ -1284,8 +1551,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               'sales-doc-history-time-${_cfg.type.pathSegment}',
                             ),
                             value: _historyTime,
+                            enabled: _receivableState == null,
+                            allLabel: _receivableState == null ? '全部' : '全部日期',
                             onChanged: _onHistoryTime,
                           ),
+                        ..._receivableFilterActions(),
                       ],
                       rowsController: _tableRows,
                       bottomContentPadding:
@@ -1392,7 +1662,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         actions: [
           UtenRefreshButton(
             onRefresh: () async {
-              await Future.wait([_reload(), if (_isOrder) _loadStats()]);
+              await UtenBusyOverlay.run(
+                context,
+                title: '正在刷新${_cfg.label}',
+                action: () async {
+                  await Future.wait([_reload(), if (_isOrder) _loadStats()]);
+                },
+              );
             },
           ),
         ],

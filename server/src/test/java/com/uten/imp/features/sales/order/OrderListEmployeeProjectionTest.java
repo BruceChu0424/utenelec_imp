@@ -53,6 +53,8 @@ class OrderListEmployeeProjectionTest {
     @Mock private EmployeeNameResolver names;
     @Mock private ProcurementApprovalProjectionQuery approvals;
     @Mock private SalesPriceMasker salesPrices;
+    @Mock private com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    @Mock private com.uten.imp.application.port.SalesOrderMoneyReadPort orderMoney;
     @Mock private CommercialPriceVisibility commercialPrices;
     @InjectMocks private SalesOrderService sales;
     @InjectMocks private PurchaseOrderService purchase;
@@ -66,6 +68,8 @@ class OrderListEmployeeProjectionTest {
         com.uten.imp.support.ImportedDocumentFixture.prepared(sales);
         com.uten.imp.support.ImportedDocumentFixture.prepared(purchase);
         com.uten.imp.support.ImportedDocumentFixture.prepared(subcontract);
+        // Mockito's successful constructor injection does not also wire Spring field injection.
+        ReflectionTestUtils.setField(sales, "orderMoney", orderMoney);
         ReflectionTestUtils.setField(purchase, "commercialPriceVisibility", commercialPrices);
         ReflectionTestUtils.setField(subcontract, "commercialPriceVisibility", commercialPrices);
     }
@@ -105,6 +109,22 @@ class OrderListEmployeeProjectionTest {
                 1, 20, null, null);
         assertThat(result.getItems()).isEmpty();
         verifyNoInteractions(names);
+    }
+
+    @Test void financeReviewerGetsOnlyVisibleOrderMoneyWithoutCustomerGlobalAdvanceAuthority(){
+        SalesOrder order=sale(null);
+        com.uten.imp.support.ImportedDocumentFixture.forService(sales).document("sales_orders",order);
+        when(salesRepository.findAll(any(Specification.class),any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(order),PageRequest.of(0,20),1));
+        when(names.namesOf(anyCollection())).thenReturn(Map.of());
+        when(currentUser.get()).thenReturn(java.util.Optional.of(new com.uten.imp.security.AuthUser(
+                UUID.randomUUID(),UUID.randomUUID(),"reviewer",Set.of("sales_shipment_finance:view"),false,true,false)));
+        var position=com.uten.imp.application.port.SalesOrderMoneyReadPort.Position.unavailable();
+        when(orderMoney.read(List.of(order.getId()),false)).thenReturn(Map.of(order.getId(),position));
+        var result=sales.list(new OrderQueryFilter(null,null,null,null,null,null,null,null),1,20,null,null);
+        assertThat(result.getItems().getFirst().getMoneyPosition()).isSameAs(position);
+        assertThat(result.getItems().getFirst().isPriceMasked()).isTrue();
+        verify(orderMoney).read(List.of(order.getId()),false);
     }
 
     @Test void purchaseListPassesThroughApprovalSnapshotsWithoutLookingUpEmployees() {

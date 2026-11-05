@@ -8856,7 +8856,7 @@ public class MaterialAnalysisService {
             Map<String, List<MaterialRow>> groups = new LinkedHashMap<>();
             for (MaterialRow row : materials) {
                 byId.put(row.id(), row);
-                if (!row.actionable()) continue;
+                if (!row.routeConfirmable()) continue;
                 String key = row.actionGroupKey();
                 keys.put(row.id(), key);
                 groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(row);
@@ -8874,7 +8874,7 @@ public class MaterialAnalysisService {
             if (key == null) {
                 MaterialRow row = byId.get(decision.materialLineId());
                 if (row == null) throw validation("物料分析代表节点不存在");
-                if (!row.actionable()) throw validation("该节点当前没有独立需求，不能确认供应路线");
+                if (!row.routeConfirmable()) throw validation("该节点当前没有独立需求，不能确认供应路线");
                 key = keyById.get(row.id());
             }
             List<MaterialRow> group = byKey.getOrDefault(key, List.of());
@@ -10288,6 +10288,11 @@ public class MaterialAnalysisService {
 
         MaterialNodeIdentity nodeIdentity() {
             return new MaterialNodeIdentity(analysisItemId, nodeKey);
+        }
+
+        @Override public boolean routeConfirmable() {
+            // Transparent delivery parents carry context, never a supply route.
+            return !deliveryContext && requiredQty != null && requiredQty.signum() > 0;
         }
 
         @Override public boolean actionable() {

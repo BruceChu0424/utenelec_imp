@@ -1970,6 +1970,9 @@ final class _MaterialAggregateTableController {
   bool inactiveSourceContext(_MaterialGroup group) {
     final material = group.representative;
     if (material.hasPriorityMakeSupplement) return false;
+    // 未确认来源也会令 preparation.actionable=false；正需求仍属于本来源，
+    // 不能把库存覆盖/待确认误报成已转交生产责任。
+    if (material.requiredQty > 0) return false;
     final anchor = owner._tableMakeAnchorOf(group);
     if (anchor?.canSchedule == true && (anchor?.remainingQty ?? 0) > 0.0001) {
       return false;

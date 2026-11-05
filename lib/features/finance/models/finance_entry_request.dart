@@ -32,7 +32,14 @@ String financeEntryGroupKey(Map<String, dynamic> body) {
     header['feeSettlementMode'] = 'DEDUCTED_FROM_PROCEEDS';
     header['feeBearer'] = 'COMPANY';
   }
-  return jsonEncode(header);
+  final selectedOrders = <String>{
+    for (final item in body['items'] as List? ?? const [])
+      if (item is Map &&
+          item['requestedSalesOrderId'] is String &&
+          (item['requestedSalesOrderId'] as String).trim().isNotEmpty)
+        (item['requestedSalesOrderId'] as String).trim().toLowerCase(),
+  }.toList()..sort();
+  return '${jsonEncode(header)}${selectedOrders.isEmpty ? '' : '|order-sources:${jsonEncode(selectedOrders)}'}';
 }
 
 /// Raw decimal text is submitted unchanged; server services own accounting.
@@ -89,6 +96,8 @@ Map<String, dynamic> financeEntryRequest(
     }
     item.addAll({
       'appliedLedgerId': row.appliedLedgerId,
+      if (config.isClient && row.requestedSalesOrderId != null)
+        'requestedSalesOrderId': row.requestedSalesOrderId,
       'appliedBillNo': row.appliedBillNo,
       if (config.isClient) 'clientId': terms.partyId,
       if (config.isClient) 'currencyId': terms.currencyId,

@@ -18,6 +18,7 @@ public class FinanceReceiptLineInput extends com.uten.imp.common.platformcolumns
 
     /** 引用的 AR 行 id；普通销售收款审核时必填。 */
     private UUID appliedLedgerId;
+    private UUID requestedSalesOrderId;
 
     private String appliedBillNo;
 

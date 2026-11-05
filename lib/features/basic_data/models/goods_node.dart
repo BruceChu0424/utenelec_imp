@@ -125,6 +125,10 @@ class GoodsListItem {
   String? get discountText =>
       financeExactTrimmed(discountDisplayText ?? discount?.toString());
   final String? stockQtyDisplayText;
+
+  /// Exact server quantity; omitted stock authority stays unknown, never zero.
+  String? get stockQtyText =>
+      financeExactTrimmed(stockQtyDisplayText ?? stockQty?.toString());
   final String? status;
   final int? legacyId;
   final String? series;

@@ -77,7 +77,8 @@ public record SalesOrderFinanceReviewDto(
         Boolean matchesQuote,
         UUID requotedToId,
         OffsetDateTime requotedAt,
-        String readOnlyReason, UUID managerDecisionClaimId, boolean managerReversible, List<OrderProgressTimelineEvent> managerHistory) {
+        String readOnlyReason, UUID managerDecisionClaimId, boolean managerReversible, List<OrderProgressTimelineEvent> managerHistory,
+        com.uten.imp.application.port.SalesOrderMoneyReadPort.Position moneyPosition) {
 
     /** 来源报价核价信息(订单确认只需再核信用与条款; 价格已由财务在报价上核定)。 */
     public record SourceQuote(

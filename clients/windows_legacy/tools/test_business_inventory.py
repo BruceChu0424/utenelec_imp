@@ -66,6 +66,27 @@ final router = GoRouter(routes: [
         self.assertIsNone(result["fullWorkflowCount"])
         self.assertTrue(result["interpretation"]["pageFilesAreNotWorkflows"])
 
+    def test_direct_part_page_keeps_library_route_alias_and_visibility(self):
+        library = "lib/features/fixture/pages/bundle_pages.dart"
+        part = "lib/features/fixture/pages/bundle_create.dart"
+        self.write(library, "part 'bundle_create.dart';\nclass ListPage {}")
+        self.write(part, "part of 'bundle_pages.dart';\nclass CreatePage {}\nclass HiddenPage {}")
+        self.write(inventory.ROUTER, """
+import '../../features/fixture/pages/bundle_pages.dart' as companion hide HiddenPage;
+final router = GoRouter(routes: [
+  GoRoute(path: '/list', builder: (_, _) => companion.ListPage()),
+  GoRoute(path: '/create', builder: (_, _) => companion.CreatePage()),
+  GoRoute(path: '/hidden', builder: (_, _) => companion.HiddenPage()),
+]);
+""")
+        result = inventory.collect()
+        self.assertEqual(1, len(result["pages"]), "A direct part does not create another work package")
+        page = result["pages"][0]
+        self.assertEqual({"/list", "/create"}, {route["path"] for route in page["routerBindings"]})
+        self.assertEqual(part, page["partUnits"][0]["source"])
+        constructor = next(route for route in result["routerInventory"] if route["path"] == "/create")["constructedClasses"][0]
+        self.assertEqual({library, part}, set(constructor["sources"]))
+
     def test_registered_route_fragment_has_its_own_source_but_import_only_routes_do_not_bind(self):
         plural = "lib/features/fixture/pages/bundle_pages.dart"
         fragment = "lib/features/fixture/fixture_routes.dart"

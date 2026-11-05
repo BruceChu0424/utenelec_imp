@@ -54,6 +54,45 @@ final _liveFinishedScope = StateProvider<AuthenticatedScope?>(
 );
 
 void main() {
+  testWidgets('成品到货以行单位单重录入，包装换算不重复乘，提交本批总重', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(2000, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArrivalRegistrationApi(
+      warehouseId: 'warehouse-1',
+      placeHint: 'CP-01',
+      unitRate: 12,
+    );
+    await _openPage(
+      tester,
+      api: api,
+      canRegister: true,
+      clearSelection: false,
+      overrides: warehouseWeightTestOverrides(
+        api,
+        repository: FakeWeightRepository(
+          api,
+          byGoods: const {_goods1: learnedTwoGramParams},
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('unit-weight-cell-input')),
+      '24g',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('weight-cell-input')))
+          .controller!
+          .text,
+      '0.24',
+    );
+    await _submit(tester);
+    final item = (api.postBodies.single['lots'] as List).single as Map;
+    expect(item['weight'].toString(), '0.24');
+    expect(tester.takeException(), isNull);
+  });
+
   for (final withExtra in [false, true]) {
     testWidgets(
       'sparse superadmin finished arrival form requires explicit extra ($withExtra)',
@@ -192,7 +231,7 @@ void main() {
     final body = api.postBodies.single;
     final item = (body['lots'] as List).single as Map;
     expect(item['lotId'], _row1);
-    expect(item['weight'], 0.03);
+    expect(item['weight'], '0.03');
     // 幂等键带重量指纹：改了重量是另一个请求。
     expect(
       body['idempotencyKey'] as String,

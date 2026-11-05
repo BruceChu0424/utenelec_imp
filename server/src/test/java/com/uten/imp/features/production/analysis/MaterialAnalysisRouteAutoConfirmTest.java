@@ -37,7 +37,7 @@ class MaterialAnalysisRouteAutoConfirmTest {
     }
 
     @Test
-    void confirmedCoveredBlockedAndDownstreamRowsAreNeverTouched() {
+    void stockCoverageDoesNotBlockSourceConfirmationWhileIssuedAndBlockedRowsStayLocked() {
         var confirmed = row(1, "a", "10", "BUY", "MAKE");
         var covered = row(1, "b", "0", "BUY", null);
         var blocked = row(1, "c", "10", "BUY", null, UUID.randomUUID());
@@ -51,8 +51,37 @@ class MaterialAnalysisRouteAutoConfirmTest {
         var plan = MaterialAnalysisRouteAutoConfirm.plan(List.of(confirmed, covered, blocked, withTask, liveGroup, issued),
                 Map.of(blocked.analysisItemId(), "销售订单已停止"), facts);
 
-        assertThat(plan.changes()).isEmpty();
-        assertThat(plan.groupCount()).isZero();
+        assertThat(plan.changes()).extracting(MaterialAnalysisRouteBatchWriter.Change::materialId)
+                .containsExactly(covered.id());
+        assertThat(plan.groupCount()).isEqualTo(1);
+        assertThat(covered.actionable()).isFalse();
+        assertThat(covered.routeConfirmable()).isTrue();
+    }
+
+    @Test
+    void firstSnapshotAndRefreshConfirmCoveredSourcesButNeverInventMissingMasterSources() {
+        UUID goods = UUID.randomUUID(), unit = UUID.randomUUID();
+        var first = new MaterialAnalysisService.SnapshotCandidate(UUID.randomUUID(), ITEM, "covered",
+                goods, null, unit, 1, "BUY", BigDecimal.TEN, BigDecimal.ZERO);
+        var missing = new MaterialAnalysisService.SnapshotCandidate(UUID.randomUUID(), ITEM, "missing",
+                UUID.randomUUID(), null, unit, 1, "REVIEW", BigDecimal.TEN, BigDecimal.ZERO);
+        var inactive = new MaterialAnalysisService.SnapshotCandidate(UUID.randomUUID(), ITEM, "inactive",
+                UUID.randomUUID(), null, unit, 1, "BUY", BigDecimal.ZERO, BigDecimal.ZERO);
+        assertThat(first.actionable()).isFalse();
+        assertThat(MaterialAnalysisRouteAutoConfirm.plan(List.of(first, missing, inactive), Map.of(), NO_FACTS).changes())
+                .extracting(MaterialAnalysisRouteBatchWriter.Change::materialId).containsExactly(first.id());
+    }
+
+    @Test
+    void transparentDeliveryParentNeverBecomesAnOrderingRoute() {
+        var transparent = row(1, "delivery-parent", "0", "MAKE", null, ITEM, true);
+        var stockedComponent = row(2, "physical-child", "0", "BUY", null);
+
+        assertThat(transparent.requiredQty()).isPositive();
+        assertThat(transparent.routeConfirmable()).isFalse();
+        assertThat(MaterialAnalysisRouteAutoConfirm.hasCandidates(List.of(transparent), Map.of())).isFalse();
+        assertThat(MaterialAnalysisRouteAutoConfirm.plan(List.of(transparent, stockedComponent), Map.of(), NO_FACTS).changes())
+                .extracting(MaterialAnalysisRouteBatchWriter.Change::materialId).containsExactly(stockedComponent.id());
     }
 
     @Test
@@ -106,6 +135,11 @@ class MaterialAnalysisRouteAutoConfirmTest {
 
     private static MaterialAnalysisService.MaterialRow row(int depth, String nodeKey, String shortage,
             String suggestion, String confirmed, UUID item) {
+        return row(depth, nodeKey, shortage, suggestion, confirmed, item, false);
+    }
+
+    private static MaterialAnalysisService.MaterialRow row(int depth, String nodeKey, String shortage,
+            String suggestion, String confirmed, UUID item, boolean deliveryContext) {
         BigDecimal one = BigDecimal.ONE;
         return new MaterialAnalysisService.MaterialRow(
                 UUID.randomUUID(), item, nodeKey, UUID.randomUUID(), "G-" + nodeKey, nodeKey, null,
@@ -114,7 +148,7 @@ class MaterialAnalysisRouteAutoConfirmTest {
                 MaterialAnalysisService.BomUsage.design(one),
                 new BigDecimal("10"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, new BigDecimal(shortage), null, suggestion, confirmed, null, false,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, deliveryContext, false, List.of());
     }
 
     private static SupplyActionView action(String groupKey, String status) {

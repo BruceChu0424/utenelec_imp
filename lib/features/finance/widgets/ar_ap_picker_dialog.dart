@@ -18,6 +18,8 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_dialog_chrome.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -26,6 +28,8 @@ import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_client.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
@@ -59,6 +63,9 @@ class AppliedArAp {
     this.prepaymentAppliedOriginal,
     this.salesOrderIds = const [],
     this.authoritativeSalesOrderId,
+    this.requestedSalesOrderId,
+    this.clientId,
+    this.clientName,
     this.salesOrderNos = const [],
   });
   final String ledgerId;
@@ -80,6 +87,8 @@ class AppliedArAp {
   final String? prepaymentAppliedOriginal;
   final List<String> salesOrderIds;
   final String? authoritativeSalesOrderId;
+  final String? requestedSalesOrderId;
+  final String? clientId, clientName;
   final List<String> salesOrderNos;
 }
 
@@ -93,6 +102,8 @@ Future<List<AppliedArAp>?> showArApPickerDialog(
   required String? partyId,
   String? lockedCurrencyId,
   VoidCallback? onSwitchToPrepayment,
+  bool receiptBatches = false,
+  Map<String, String> initialAmounts = const {},
 }) {
   return showUtenAdaptivePanel<List<AppliedArAp>>(
     context: context,
@@ -103,6 +114,8 @@ Future<List<AppliedArAp>?> showArApPickerDialog(
       partyId: partyId,
       lockedCurrencyId: lockedCurrencyId,
       onSwitchToPrepayment: onSwitchToPrepayment,
+      receiptBatches: receiptBatches,
+      initialAmounts: Map.of(initialAmounts),
     ),
   );
 }
@@ -128,11 +141,15 @@ class _ArApPickerSheet extends ConsumerStatefulWidget {
     required this.partyId,
     required this.lockedCurrencyId,
     this.onSwitchToPrepayment,
+    this.receiptBatches = false,
+    this.initialAmounts = const {},
   });
   final String direction;
   final String? partyId;
   final String? lockedCurrencyId;
   final VoidCallback? onSwitchToPrepayment;
+  final bool receiptBatches;
+  final Map<String, String> initialAmounts;
 
   @override
   ConsumerState<_ArApPickerSheet> createState() => _ArApPickerSheetState();
@@ -199,6 +216,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
   }
 
   Object get _readQuery => [
+    widget.receiptBatches,
+    if (widget.receiptBatches) ref.read(apiClientProvider),
     ref.read(arApLedgerRepositoryProvider),
     widget.direction,
     widget.partyId,
@@ -211,7 +230,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     if (!reset && (_loading || _loadingMore || _page >= _totalPages)) return;
     final version = ++_requestVersion;
     final keyword = _keyword;
-    if (widget.partyId == null || widget.partyId!.isEmpty) {
+    if (!widget.receiptBatches &&
+        (widget.partyId == null || widget.partyId!.isEmpty)) {
       setState(() {
         _items = const [];
         _error = null;
@@ -231,7 +251,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       final requestedPage = reset ? 1 : _page + 1;
       final repository = ref.read(arApLedgerRepositoryProvider);
       final direction = widget.direction;
-      final partyId = widget.partyId!;
+      final partyId = widget.partyId;
       final query = _readQuery;
       final r = await readScopedPage<ArApLedgerItem>(
         requestedPage,
@@ -239,33 +259,57 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         currentQuery: () => _readQuery,
         useCache: !reset,
         canPrefetch: () => false,
-        fetchPage: (target) => repository.openItemsForParty(
-          direction: direction,
-          partyId: partyId,
-          page: target,
-          keyword: keyword,
-        ),
+        fetchPage: (target) async {
+          if (widget.receiptBatches) {
+            final json = await ref
+                .read(apiClientProvider)
+                .get(
+                  '/finance/receipts/shipment-sources',
+                  query: {
+                    'clientId': ?partyId,
+                    'page': target,
+                    'size': 50,
+                    if (keyword.isNotEmpty) 'keyword': keyword,
+                  },
+                );
+            return PagedResult.fromJsonResponsive(
+              json,
+              ArApLedgerItem.fromJson,
+            );
+          }
+          return repository.openItemsForParty(
+            direction: direction,
+            partyId: partyId!,
+            page: target,
+            keyword: keyword,
+          );
+        },
       );
       if (!mounted || version != _requestVersion) return;
-      await ref
-          .read(financeNameServiceProvider)
-          .loadPartyNames(
-            clientIds: widget.direction == 'AR' ? [widget.partyId!] : const [],
-            supplierIds: widget.direction == 'AP'
-                ? [widget.partyId!]
-                : const [],
-          );
+      if (!widget.receiptBatches) {
+        await ref
+            .read(financeNameServiceProvider)
+            .loadPartyNames(
+              clientIds: widget.direction == 'AR'
+                  ? [widget.partyId!]
+                  : const [],
+              supplierIds: widget.direction == 'AP'
+                  ? [widget.partyId!]
+                  : const [],
+            );
+      }
       if (!mounted || version != _requestVersion) return;
       for (final it in r.items) {
         _knownItems[it.id] = it;
         _amtCtrls.putIfAbsent(
           it.id,
           () => TextEditingController(
-            text:
-                it.amountBalanceOriginalText ??
-                (it.amountBalanceOriginal == null
-                    ? ''
-                    : it.amountBalanceOriginal!.toString()),
+            text: widget.receiptBatches
+                ? widget.initialAmounts[it.id] ?? ''
+                : it.amountBalanceOriginalText ??
+                      (it.amountBalanceOriginal == null
+                          ? ''
+                          : it.amountBalanceOriginal!.toString()),
           ),
         );
       }
@@ -427,14 +471,15 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       currencyId ??= it.currencyId;
       final amountText = _amtCtrls[it.id]?.text.trim() ?? '';
       final amountUnits = financeAmountUnits(amountText);
-      if (amountUnits == null || amountUnits <= BigInt.zero) {
+      final blank = widget.receiptBatches && amountText.isEmpty;
+      if (!blank && (amountUnits == null || amountUnits <= BigInt.zero)) {
         _showSelectionMessage(
           '${it.billNo ?? '该$_ledgerNoun'}：请填写大于 0 的本次$_actionNoun金额',
         );
         return;
       }
       final openUnits = financeAmountUnits(it.amountBalanceOriginalText);
-      if (openUnits != null && amountUnits > openUnits) {
+      if (openUnits != null && amountUnits != null && amountUnits > openUnits) {
         _showSelectionMessage(
           '${it.billNo ?? '该$_ledgerNoun'}：本次$_actionNoun不能超过${_isAr ? '未收' : '未付'}金额',
         );
@@ -443,8 +488,10 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       out.add(
         AppliedArAp(
           ledgerId: it.id,
+          clientId: it.clientId,
+          clientName: it.clientName,
           appliedBillNo: it.billNo,
-          receiptAmountText: financeAmountFromUnits(amountUnits),
+          receiptAmountText: blank ? '' : financeAmountFromUnits(amountUnits!),
           sourceDocType: it.sourceDocType,
           sourceDocNo: it.sourceDocNo,
           currencyId: it.currencyId,
@@ -546,31 +593,51 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     final partyName = _isAr
         ? names.client(widget.partyId)
         : names.supplier(widget.partyId);
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(theme, partyName),
-            const Divider(height: 1),
-            Expanded(child: _buildBody(theme)),
-          ],
+    return Stack(
+      children: [
+        Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(theme, partyName),
+                const Divider(height: 1),
+                Expanded(child: _buildBody(theme)),
+                _buildFooter(theme),
+              ],
+            ),
+          ),
         ),
-      ),
+        if (_loading || _loadingMore)
+          UtenBusyOverlay(
+            title: _isAr ? '加载出货应收' : '加载应付',
+            showDoNotLeaveHint: false,
+            cancelLabel: '取消选择',
+            onCancel: () {
+              invalidateScopedPageReads();
+              ++_requestVersion;
+              Navigator.of(context).pop();
+            },
+          ),
+      ],
     );
   }
 
   Widget _buildHeader(ThemeData theme, String partyName) {
-    final title = _isAr ? '引用应收' : '引用应付';
+    final title = widget.receiptBatches
+        ? '选出货单'
+        : _isAr
+        ? '引用应收'
+        : '引用应付';
     return UtenPanelHeader(
-      title: title,
-      subtitle: partyName,
+      title: widget.partyId == null ? title : '$title · $partyName',
       closeButtonKey: const ValueKey('ar-ap-close'),
       onClose: () => Navigator.of(context).pop(),
     );
   }
 
   Widget _buildBody(ThemeData theme) {
-    if (widget.partyId == null || widget.partyId!.isEmpty) {
+    if (!widget.receiptBatches &&
+        (widget.partyId == null || widget.partyId!.isEmpty)) {
       return Center(
         child: Text(
           '请先选择${_isAr ? '客户' : '供应商'}', // TODO(l10n): 补 arb
@@ -757,7 +824,6 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
               ),
             ),
           ),
-        _buildFooter(theme),
       ],
     );
   }
@@ -765,41 +831,86 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
   Widget _buildFooter(ThemeData theme) {
     final n = _selectedIds.length;
     final currencyId = _selectedCurrencyId;
-    return SafeArea(
-      child: Container(
+    final summary = Wrap(
+      key: const ValueKey('ar-ap-selection-summary'),
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s12,
+      runSpacing: UtenSpacing.s4,
+      children: [
+        Text(
+          '已选 $n 行',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (currencyId != null)
+          Text(
+            '本次币种：${_currencyLabel(currencyId)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
+    final actions = UtenDialogActions(
+      padding: EdgeInsets.zero,
+      showDivider: false,
+      alignment: MainAxisAlignment.end,
+      overflowAlignment: OverflowBarAlignment.end,
+      children: [
+        TextButton(
+          key: const ValueKey('ar-ap-cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton.icon(
+          key: const ValueKey('ar-ap-confirm'),
+          onPressed: _readRetired || n == 0 ? null : _confirm,
+          icon: const Icon(Icons.check_rounded, size: 18),
+          label: Text(
+            widget.receiptBatches
+                ? '引用出货单'
+                : _isAr
+                ? '引用应收'
+                : '引用应付',
+          ),
+        ),
+      ],
+    );
+    return SizedBox(
+      key: const ValueKey('ar-ap-footer'),
+      width: double.infinity,
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           border: Border(
             top: BorderSide(color: theme.colorScheme.outlineVariant),
           ),
         ),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Wrap(
-          alignment: WrapAlignment.end,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            Text(
-              '已选 $n 行', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (currencyId != null)
-              Text(
-                '本次币种：${_currencyLabel(currencyId)}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            FilledButton.icon(
-              key: const ValueKey('ar-ap-confirm'),
-              onPressed: _readRetired || n == 0 ? null : _confirm,
-              icon: const Icon(Icons.check_rounded, size: 18),
-              label: Text(_isAr ? '引用应收' : '引用应付'), // TODO(l10n): 补 arb
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 600) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    summary,
+                    const SizedBox(height: UtenSpacing.s8),
+                    actions,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: summary),
+                  const SizedBox(width: UtenSpacing.s12),
+                  SizedBox(width: 280, child: actions),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -849,10 +960,12 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'billNo',
-      label: '$_ledgerNoun单号',
+      label: widget.receiptBatches ? '出货单/原来源' : '$_ledgerNoun单号',
       width: 160,
       cellBuilder: (context, row) => Text(
-        row.item.billNo ?? '—',
+        (widget.receiptBatches ? row.item.sourceDocNo : null) ??
+            row.item.billNo ??
+            '—',
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),
@@ -865,7 +978,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     EditableGridColumn<_LedgerRow>(
       key: 'salesOrders',
       label: _isAr ? '销售订单号' : '关联单号',
-      headerInfo: _isAr ? '多订单应收：审核后按不可变来源顺序分配并留痕' : null,
+      headerInfo: _isAr ? '订单号仅辅助归属；本次收款只核销明确勾选的出货应收，不跨批次自动分摊。' : null,
       width: 230,
       // textOf（复制/编辑态）保留全量；屏幕格走多值截断+弹窗口径（2026-10-29）。
       textOf: (row) => row.item.salesOrderNos.isEmpty
@@ -915,7 +1028,14 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     // 行缺币种或金额非数字（—/***)时不拼单位。
     EditableGridColumn<_LedgerRow>(
       key: 'amount',
-      label: _isAr ? '应收总额' : '应付金额',
+      label: widget.receiptBatches
+          ? '货款'
+          : _isAr
+          ? '应收总额'
+          : '应付金额',
+      headerInfo: widget.receiptBatches
+          ? '本次明确选择的出货批次已立账原币货款；不包含同订单其他出货批次。'
+          : null,
       width: 140,
       numeric: true,
       columnSearchEnabled: false,
@@ -924,27 +1044,47 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       cellBuilder: (context, row) => Text(
         _moneyWithRowCurrency(
           row,
-          _fmt(row.item.amountOriginal ?? row.item.amountOriginalLocal),
+          row.item.amountOriginalText ??
+              row.item.amountOriginalLocalText ??
+              '—',
         ),
       ),
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'settled',
-      label: _isAr ? '累计已收' : '已付金额',
+      label: widget.receiptBatches
+          ? '已收'
+          : _isAr
+          ? '累计已收'
+          : '已付金额',
+      headerInfo: widget.receiptBatches
+          ? '本批核准现金收款加已经实际抵扣到本批的定金；未抵定金、未来约定及退减不冒充收款。'
+          : null,
       width: 140,
       numeric: true,
       columnSearchEnabled: false,
-      exactValueOf: (row) =>
-          row.item.amountReceivedOriginalText ??
-          (_isAr ? null : row.item.amountSettledText),
+      exactValueOf: (row) => widget.receiptBatches
+          ? financeExactSumTexts([
+              row.item.amountReceivedOriginalText,
+              row.item.prepaymentAppliedOriginal ?? '0',
+            ])
+          : row.item.amountReceivedOriginalText ??
+                (_isAr ? null : row.item.amountSettledText),
       cellBuilder: (context, row) => Text(
         _moneyWithRowCurrency(
           row,
-          _fmt(
-            _isAr
-                ? row.item.amountReceivedOriginal
-                : row.item.amountReceivedOriginal ?? row.item.amountSettled,
-          ),
+          widget.receiptBatches
+              ? financeExactSumTexts([
+                      row.item.amountReceivedOriginalText,
+                      row.item.prepaymentAppliedOriginal ?? '0',
+                    ]) ??
+                    '—'
+              : _fmt(
+                  _isAr
+                      ? row.item.amountReceivedOriginal
+                      : row.item.amountReceivedOriginal ??
+                            row.item.amountSettled,
+                ),
         ),
       ),
     ),
@@ -977,7 +1117,14 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       ),
     EditableGridColumn<_LedgerRow>(
       key: 'balance',
-      label: _isAr ? '本次可收' : '未付金额',
+      label: widget.receiptBatches
+          ? '还欠'
+          : _isAr
+          ? '本次可收'
+          : '未付金额',
+      headerInfo: widget.receiptBatches
+          ? '本批正式应收当前原币未收余额；只收部分时余额保留，不跨其他出货批次自动扣款。'
+          : null,
       width: 140,
       numeric: true,
       columnSearchEnabled: false,
@@ -986,12 +1133,26 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         row.item.amountBalanceOriginal == null
             ? '待财务核验'
             : _moneyWithRowCurrency(row, _fmt(row.item.amountBalanceOriginal)),
-        style: const TextStyle(fontWeight: FontWeight.w600),
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color:
+              widget.receiptBatches &&
+                  (financeAmountUnits(
+                            row.item.amountBalanceOriginalText ?? '',
+                          ) ??
+                          BigInt.zero) >
+                      BigInt.zero
+              ? Theme.of(context).colorScheme.error
+              : null,
+        ),
       ),
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'thisAmt',
       label: '本次$_actionNoun金额',
+      headerInfo: widget.receiptBatches
+          ? '只填这次实际收到并分给本批的钱，不把还欠金额当作已到账。留空可先引用，主表仍须明确填写后才能保存。'
+          : null,
       width: 160,
       numeric: true,
       columnSearchEnabled: false,
@@ -1015,6 +1176,14 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         ),
       ),
     ),
+    if (widget.receiptBatches)
+      EditableGridColumn<_LedgerRow>(
+        key: 'receiptClient',
+        label: '客户',
+        width: 180,
+        textOf: (row) => row.item.clientName ?? '—',
+        cellBuilder: (_, row) => Text(row.item.clientName ?? '—'),
+      ),
   ];
 
   /// 金额文本 + 行币种单位（行缺币种或金额非数字时原文返回）。

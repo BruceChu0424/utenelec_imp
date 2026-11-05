@@ -9,7 +9,7 @@ import '../../../components/buttons/uten_button.dart';
 // - 格子接受带后缀的输入 (850g / 1.2t / 3斤 / 2lb), 失焦后规范成列单位; 0 或空 = 没称。
 // - 有可靠依据时预填建议重量(黄框待核对, 与全站预填口径一致)；用户改字后停止自动覆盖；
 //   货品/行单位本身是重量单位时只读灰字「=25 kg」(服务端按数量精确换算)。
-// - 偏差: 琥珀框与文字提示，悬停给出依据；说明图标统一放表头。
+// - 偏差: 琥珀框，依据通过字段弹层和列头提示入口展示，不另起说明行。
 // - 格子外层用 UtenEditorTooltip 保留稳定输入子树(空闲时给一句固定短提示)：
 //   提示内容或 TooltipVisibility 变化会移除 Flutter 的 RawTooltip 包装；单靠同一
 //   Tooltip/ValueKey 不能保住 TextField，必须保留其 Element 与原生输入连接。
@@ -26,7 +26,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_editor_tooltip.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -92,6 +91,12 @@ class WeightEntryController extends ChangeNotifier {
   BusinessPrecisionChoice? quantityPrecision;
   String? quantityPrecisionSource, quantityPendingReason;
   WeightUnit? _displayPrecisionUnit;
+  String? _unitWeightKgText, _unitWeightInput, _unitWeightError;
+  WeightUnit? _unitWeightInputUnit;
+  String? get unitWeightKgText => _unitWeightKgText;
+  String? get unitWeightInput => _unitWeightInput;
+  WeightUnit? get unitWeightInputUnit => _unitWeightInputUnit;
+  String? get unitWeightError => _unitWeightError;
   WeightUnit get unit => _unit;
 
   /// Compatibility for estimates; recorded payloads and sums use [kgText].
@@ -108,9 +113,13 @@ class WeightEntryController extends ChangeNotifier {
   bool get isSuggested => _suggestedKg != null;
   String? get suggestionSource => _suggestionSource;
   bool get userEdited => _userEdited;
-  bool get hasError => _error != null || quantityPendingReason != null;
+  bool get hasError =>
+      _error != null ||
+      _unitWeightError != null ||
+      quantityPendingReason != null;
   String? get errorText =>
       _error ??
+      _unitWeightError ??
       (quantityPendingReason == null ? null : '数量换算需选择精度，或填写实际数量；原重量已保留');
   String? get displayPrecisionReason => displayKgText == null
       ? null
@@ -204,6 +213,16 @@ class WeightEntryController extends ChangeNotifier {
     bool qtyFromWeight = false,
     bool userEdited = true,
   }) {
+    _applyKgText(kg, qtyFromWeight: qtyFromWeight, userEdited: userEdited);
+    notifyListeners();
+  }
+
+  void _applyKgText(
+    String? kg, {
+    bool qtyFromWeight = false,
+    bool userEdited = true,
+  }) {
+    _clearUnitWeight();
     final value = _positiveText(kg);
     _userEdited = userEdited || value != null;
     _suggestedKg = null;
@@ -222,7 +241,52 @@ class WeightEntryController extends ChangeNotifier {
       _qtyEstimateNote = null;
       _autofilledQtyText = null;
     }
+  }
+
+  void _clearUnitWeight() {
+    _unitWeightKgText = null;
+    _unitWeightInput = null;
+    _unitWeightInputUnit = null;
+    _unitWeightError = null;
+  }
+
+  /// A manually entered per-item weight drives the recorded total. Quantity
+  /// changes retain this exact factor; editing the total retires it.
+  void setUnitWeightInput(
+    String raw, {
+    required WeightUnit unit,
+    required String? quantityText,
+  }) {
+    final parsed = parseWithSuffix(raw, unit);
+    final unitKg = _positiveText(parsed?.kgText);
+    final quantity = _positiveText(financeExactDecimal(quantityText));
+    final error = raw.trim().isEmpty
+        ? null
+        : unitKg == null
+        ? '请输入大于 0 的单重，可带 g、kg 等单位'
+        : quantity == null
+        ? '请先填写大于 0 的实物数量，单重原输入已保留'
+        : null;
+    _applyKgText(
+      error == null && unitKg != null && quantity != null
+          ? financeExactMultiplyTexts([unitKg, quantity])
+          : null,
+    );
+    _unitWeightKgText = unitKg;
+    _unitWeightInput = raw;
+    _unitWeightInputUnit = unit;
+    _unitWeightError = error;
     notifyListeners();
+  }
+
+  void updateUnitWeightQuantity(String? quantityText) {
+    final raw = _unitWeightInput;
+    if (raw == null) return;
+    setUnitWeightInput(
+      raw,
+      unit: _unitWeightInputUnit ?? WeightUnit.g,
+      quantityText: quantityText,
+    );
   }
 
   void restoreInputEvidence({
@@ -294,6 +358,7 @@ class WeightEntryController extends ChangeNotifier {
     if (text.text == _lastText) return;
     _lastText = text.text;
     if (_programmatic) return;
+    _clearUnitWeight();
     _userEdited = true;
     _suggestedKg = null;
     _suggestionSource = null;
@@ -1012,6 +1077,7 @@ class _WeightCellState<T extends EditableGridRow>
           InputDecoration(
             isDense: true,
             hintText: '重量',
+            errorText: error,
             enabledBorder: border(focused: false),
             focusedBorder: border(focused: true),
             suffixIconConstraints: BoxConstraints(
@@ -1022,9 +1088,7 @@ class _WeightCellState<T extends EditableGridRow>
                 ? null
                 : Row(mainAxisSize: MainAxisSize.min, children: suffix),
           ),
-          info: c.isSuggested
-              ? '${c.suggestionSource ?? '系统预填'}；预估 ${formatWeight(c.suggestedKg!, display: WeightDisplay.of(widget.entryUnit))}，尚未实称。请输入秤上读数。'
-              : null,
+          info: info,
         ),
         theme,
         autofilled: c.isSuggested && error == null && !deviation,
@@ -1040,28 +1104,9 @@ class _WeightCellState<T extends EditableGridRow>
         : primaryMessage == null
         ? reference
         : '$primaryMessage\n$reference';
-    final content = Column(
+    final content = KeyedSubtree(
       key: const ValueKey('weight-cell-content'),
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        field,
-        if (error != null || deviation)
-          Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s4),
-            child: error != null
-                ? UtenFieldMessage.error(
-                    error,
-                    key: const ValueKey('weight-cell-message'),
-                    maxLines: 2,
-                  )
-                : const UtenFieldMessage.autofill(
-                    '数值可能有问题',
-                    key: ValueKey('weight-cell-message'),
-                    maxLines: 2,
-                  ),
-          ),
-      ],
+      child: field,
     );
     // 聚焦时公共表格会静默提示，RawTooltip 因此移除自己的包装。共享边界保留
     // 编辑子树，避免第一次键盘输入被已关闭的 TextInputClient 吞掉。

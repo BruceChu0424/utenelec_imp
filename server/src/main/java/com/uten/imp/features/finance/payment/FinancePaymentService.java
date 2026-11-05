@@ -109,6 +109,8 @@ public class FinancePaymentService {
     private final SupplierPayableHoldGuard payableHoldGuard;
     private final com.uten.imp.features.finance.payables.FinanceSupplierSettlementDependencies settlementDependencies;
 
+    private final com.uten.imp.application.port.FinancePartyReferenceLabelsPort partyLabels;
+
     @Transactional(readOnly = true)
     public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter originalFilter, int page, int size, String sort, String order) {
         final FinancePaymentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
@@ -117,7 +119,8 @@ public class FinancePaymentService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec,pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<FinancePayment> p = paymentRepo.findAll(searchPage.specification(), searchPage.pageable());
-        PageResponse<FinancePaymentListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        var labels=partyLabels.suppliers(p.getContent().stream().map(FinancePayment::getSupplierId).filter(Objects::nonNull).distinct().toList());
+        PageResponse<FinancePaymentListItem> result = new PageResponse<>(p.map(item->toList(item).withSupplierName(item.getSupplierId()==null?null:labels.get(item.getSupplierId()))).getContent(), p);
         return retainedRecords.page(result, "finance_payments", p.getContent());
     }
 
@@ -312,6 +315,8 @@ public class FinancePaymentService {
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
+        if(p.getBankBookedAt()!=null)com.uten.imp.common.finance.ActualBankBookingPolicy.requireOccurred(
+                p.getBankBookedAt(),"银行实际扣款时间");
         requireAuthoritativeAmounts(p, "审核");
         if (p.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "付款单需指定付款账户");
@@ -630,6 +635,9 @@ public class FinancePaymentService {
             boolean allowHeaderDefaults) {
         if (!"AP".equals(ledger.getDirection())) {
             throw new ApiException(ErrorCode.BUSINESS, "采购付款只能引用应付记录");
+        }
+        if (ledger.getStatus() == null || ledger.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.CONFLICT, "引用的应付尚未生效或已撤销，请核对原单据后再付款");
         }
         if ("PREPAYMENT".equals(ledger.getOpenItemKind())) {
             throw new ApiException(ErrorCode.CONFLICT, "供应商预付款不能作为普通应付引用");
@@ -953,7 +961,8 @@ public class FinancePaymentService {
                 p.getSourceRemark(), p.getRemark(), p.getStatus(), p.isClosed(), items,
                 nameResolver.nameOf(p.getMakerId()), p.getCreatedAt(),
                 p.getVersion() == null ? 0L : p.getVersion(),
-                p.getCreateIdempotencyKey()).withBankAuthority(p);
+                p.getCreateIdempotencyKey()).withBankAuthority(p).withSupplierName(
+                p.getSupplierId()==null?null:partyLabels.suppliers(List.of(p.getSupplierId())).get(p.getSupplierId()));
     }
 
     private FinancePayment require(UUID id) { return require(id, false); }

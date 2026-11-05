@@ -35,7 +35,11 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
   final ValueChanged<SalesDocListItem> onOrderSelected;
 
   Future<void> _pickOrder(BuildContext context, WidgetRef ref) async {
-    final selected = await showSalesOrderPicker(context, ref);
+    final selected = await showSalesOrderPicker(
+      context,
+      ref,
+      receiptSources: true,
+    );
     if (selected != null) onOrderSelected(selected);
   }
 

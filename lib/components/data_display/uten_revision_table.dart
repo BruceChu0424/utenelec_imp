@@ -103,6 +103,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
     this.embedded = false,
     this.primary = false,
     this.summaryBar,
+    this.scrollToEndRequest = 0,
     this.bottomContentPadding = 0,
     this.stickyHeaderPinned,
     this.tableKey,
@@ -127,6 +128,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
   final bool? expensiveRowMounts;
   final bool primary;
   final Widget? summaryBar;
+  final int scrollToEndRequest;
   final double bottomContentPadding;
   final ValueNotifier<bool>? stickyHeaderPinned;
 
@@ -344,6 +346,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
             : child,
       ),
       summaryBar: summaryBar,
+      scrollToEndRequest: scrollToEndRequest,
     );
   }
 }

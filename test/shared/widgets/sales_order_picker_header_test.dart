@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/data_display/uten_table_read_status.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/sales_order_picker.dart';
@@ -50,6 +52,75 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  testWidgets(
+    'order picker cancels loading without publishing the late page, then retries under a fresh read owner',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final api = _HeldApi();
+      SalesDocListItem? selected;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sharedPreferencesProvider.overrideWithValue(
+              await SharedPreferences.getInstance(),
+            ),
+            currentPermissionsProvider.overrideWithValue({Perm.salesOrderView}),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, _) => Scaffold(
+                body: TextButton(
+                  onPressed: () async {
+                    selected = await showSalesOrderPicker(context, ref);
+                  },
+                  child: const Text('选择来源'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('选择来源'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(api.started, isTrue);
+      await tester.tap(find.text('取消加载'));
+      await tester.pumpAndSettle();
+      api.pending.complete({
+        'items': [
+          {'id': 'old', 'billNo': 'STALE-ORDER', 'status': 1},
+        ],
+        'page': 1,
+        'size': 20,
+        'total': 1,
+        'totalPages': 1,
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('STALE-ORDER'), findsNothing);
+      expect(selected, isNull);
+      expect(
+        tester
+            .widget<UtenTableReadStatus>(find.byType(UtenTableReadStatus))
+            .reason,
+        '已取消加载，原搜索条件已保留',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('master-table-initial-read-retry')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SO-001'));
+      await tester.pumpAndSettle();
+      expect(find.text('已选择：SO-001'), findsOneWidget);
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(selected?.billNo, 'SO-001');
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'order picker header queries the server and confirms one source',
     (tester) async {
@@ -101,13 +172,26 @@ void main() {
       expect(find.text('SO-002'), findsOneWidget);
       expect(selected, isNull);
       await tester.tap(find.text('SO-002'));
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(find.text('SO-002'));
       await tester.pumpAndSettle();
+      expect(find.text('已选择：SO-002'), findsOneWidget);
+      expect(selected, isNull);
       await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
       expect(selected?.billNo, 'SO-002');
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+class _HeldApi extends _Api {
+  final pending = Completer<Map<String, dynamic>>();
+  bool started = false;
+  @override
+  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) {
+    if (path == '/sales/orders' && !started) {
+      started = true;
+      return pending.future;
+    }
+    return super.get(path, query: query);
+  }
 }

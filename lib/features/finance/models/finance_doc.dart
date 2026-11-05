@@ -120,6 +120,7 @@ class FinanceDocListItem {
     this.receiptKind,
     this.salesOrderId,
     this.partyId,
+    this.partyName,
     this.accountId,
     this.outAccountId,
     this.amountLocal,
@@ -139,6 +140,7 @@ class FinanceDocListItem {
   final String? billDate;
   final String? receiptKind;
   final String? salesOrderId;
+  final String? partyName;
   final String? partyId; // receipt→clientId / payment→supplierId；其它=null
   final String? accountId;
   final String? outAccountId; // bankTransfer 用
@@ -159,6 +161,7 @@ class FinanceDocListItem {
         salesOrderId: json['salesOrderId'] as String?,
         // receipt 用 clientId、payment 用 supplierId、其余无 party。
         partyId: (json['clientId'] ?? json['supplierId']) as String?,
+        partyName: (json['clientName'] ?? json['supplierName']) as String?,
         accountId: (json['accountId'] ?? json['outAccountId']) as String?,
         outAccountId: json['outAccountId'] as String?,
         amountOriginalText: financeDecimalText(json['amountOriginalExact']),
@@ -188,6 +191,10 @@ class FinanceDocItem {
     this.appliedBillNo,
     this.partyId,
     this.salesOrderId,
+    this.requestedSalesOrderId,
+    this.appliedSourceDocType,
+    this.appliedSourceDocId,
+    this.appliedSourceDocNo,
     this.expenseStyleId,
     this.postingPurpose = AccountingExpensePurpose.ordinaryExpense,
     this.incomeStyleId,
@@ -231,6 +238,8 @@ class FinanceDocItem {
   final String? appliedBillNo;
   final String? partyId;
   final String? salesOrderId;
+  final String? requestedSalesOrderId;
+  final String? appliedSourceDocType, appliedSourceDocId, appliedSourceDocNo;
   // expense/otherIncome 分摊
   final String? expenseStyleId;
   final AccountingExpensePurpose postingPurpose;
@@ -279,7 +288,12 @@ class FinanceDocItem {
     appliedLedgerId: json['appliedLedgerId'] as String?,
     appliedBillNo: json['appliedBillNo'] as String?,
     partyId: (json['clientId'] ?? json['partyId']) as String?,
-    salesOrderId: json['salesOrderId'] as String?,
+    salesOrderId:
+        (json['requestedSalesOrderId'] ?? json['salesOrderId']) as String?,
+    requestedSalesOrderId: json['requestedSalesOrderId'] as String?,
+    appliedSourceDocType: json['appliedSourceDocType'] as String?,
+    appliedSourceDocId: json['appliedSourceDocId'] as String?,
+    appliedSourceDocNo: json['appliedSourceDocNo'] as String?,
     expenseStyleId: json['expenseStyleId'] as String?,
     postingPurpose: AccountingExpensePurpose.fromApi(json['postingPurpose']),
     incomeStyleId: json['incomeStyleId'] as String?,
@@ -347,6 +361,7 @@ class FinanceDocDetail {
     this.billDate,
     this.receiptKind,
     this.salesOrderId,
+    this.partyName,
     this.clientId,
     this.supplierId,
     this.accountId,
@@ -421,6 +436,7 @@ class FinanceDocDetail {
   final String? billDate;
   final String? receiptKind;
   final String? salesOrderId;
+  final String? partyName;
   final String? clientId;
   final String? supplierId;
   final String? accountId;
@@ -502,6 +518,7 @@ class FinanceDocDetail {
     billDate: json['billDate'] as String?,
     receiptKind: json['receiptKind'] as String?,
     salesOrderId: json['salesOrderId'] as String?,
+    partyName: (json['clientName'] ?? json['supplierName']) as String?,
     clientId: json['clientId'] as String?,
     supplierId: json['supplierId'] as String?,
     accountId: json['accountId'] as String?,

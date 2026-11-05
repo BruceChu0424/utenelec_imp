@@ -75,7 +75,14 @@ final class AggregateMaterialPreparationProjection {
             BigDecimal directAdoption=number(row.preparationAdoptedQty()).subtract(adoptionIntent.coveredByTarget()
                     .getOrDefault(row.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO)
                     .add(adoptionIntent.byOriginal().getOrDefault(row.materialLineId(),BigDecimal.ZERO));
-            if(delegation==null&&!shared)return row.withPreparationAdoptedQty(directAdoption);
+            // A fresh, fully stocked component has no delegated/shared action yet.
+            // Its physical gap stays zero, but the confirmed source still admits
+            // explicit public ordering through the same authoritative preparation contract.
+            boolean ordinaryCoveredSource=row.level()>0 && row.routeConfirmed()
+                    && number(row.requiredQty()).signum()>0
+                    && row.shortageQty()!=null && row.shortageQty().signum()==0
+                    && AggregateMaterialSourceEligibility.hasOrderingContext(row,byProduct,byAction);
+            if(delegation==null&&!shared&&!ordinaryCoveredSource)return row.withPreparationAdoptedQty(directAdoption);
             List<UUID> targets=delegation==null?List.of():delegation.targetMaterialLineIds();
             List<MaterialView> effective=new java.util.ArrayList<>();
             if(targets.isEmpty()||number(row.requiredQty()).signum()>0

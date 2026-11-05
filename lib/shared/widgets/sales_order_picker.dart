@@ -16,11 +16,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/inputs/uten_employee_picker.dart';
 import '../../components/inputs/uten_search_bar.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/layout/uten_adaptive_panel.dart';
 import '../../components/layout/uten_panel_header.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../../components/layout/uten_picker_footer_layout.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/api_client.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../models/department_node.dart';
@@ -38,6 +40,7 @@ Future<SalesDocListItem?> showSalesOrderPicker(
   BuildContext context,
   WidgetRef ref, {
   UtenEmployeePickerItem? initialSeller,
+  bool receiptSources = false,
 }) {
   return showUtenAdaptivePanel<SalesDocListItem>(
     context: context,
@@ -46,14 +49,21 @@ Future<SalesDocListItem?> showSalesOrderPicker(
     panelMargin: const EdgeInsetsDirectional.fromSTEB(0, 16, 16, 16),
     panelBorderRadius: BorderRadius.circular(UtenRadius.lg),
     panelElevation: 12,
-    builder: (_) => _SalesOrderPickerSheet(initialSeller: initialSeller),
+    builder: (_) => _SalesOrderPickerSheet(
+      initialSeller: initialSeller,
+      receiptSources: receiptSources,
+    ),
   );
 }
 
 class _SalesOrderPickerSheet extends ConsumerStatefulWidget {
-  const _SalesOrderPickerSheet({this.initialSeller});
+  const _SalesOrderPickerSheet({
+    this.initialSeller,
+    this.receiptSources = false,
+  });
 
   final UtenEmployeePickerItem? initialSeller;
+  final bool receiptSources;
 
   @override
   ConsumerState<_SalesOrderPickerSheet> createState() =>
@@ -108,7 +118,9 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
     _selectedSeller = widget.initialSeller;
     _selectedSellerId = widget.initialSeller?.id;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _resolveMarketingDept();
+      if (!widget.receiptSources) {
+        _resolveMarketingDept();
+      }
       _load(1);
     });
   }
@@ -150,6 +162,8 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
     final sort = _sortKey;
     final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
     Object pagingQuery() => [
+      widget.receiptSources,
+      if (widget.receiptSources) ref.read(apiClientProvider),
       ref.read(salesRepositoryProvider(SalesDocType.order)),
       _keyword,
       _selectedSellerId,
@@ -164,12 +178,35 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
-        fetchPage: (target) => repository.list(
-          page: target,
-          filter: filter,
-          sort: sort,
-          order: order,
-        ),
+        fetchPage: (target) async {
+          if (widget.receiptSources) {
+            final json = await ref
+                .read(apiClientProvider)
+                .get(
+                  '/finance/receipts/order-sources',
+                  query: {
+                    'page': target,
+                    'size': 20,
+                    if (filter.keyword?.trim().isNotEmpty == true)
+                      'keyword': filter.keyword,
+                    'sellerId': ?filter.sellerId,
+                    ...filter.columnSearch,
+                    'sort': ?sort,
+                    'order': ?order,
+                  },
+                );
+            return PagedResult.fromJsonResponsive(
+              json,
+              SalesDocListItem.fromJson,
+            );
+          }
+          return repository.list(
+            page: target,
+            filter: filter,
+            sort: sort,
+            order: order,
+          );
+        },
       );
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -219,116 +256,134 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            UtenPanelHeader(
-              title: '选择销售订单(来源单号)',
-              onClose: () => Navigator.of(context).pop(),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                UtenSpacing.s12,
-                UtenSpacing.s16,
-                UtenSpacing.s8,
-              ),
-              child: Column(
-                children: [
-                  // 生产视角：仅按单据号搜索；不暴露客户。
-                  UtenSearchBar(
-                    controller: _keywordCtl,
-                    hint: '搜索单据号',
-                    onChanged: _onKeyword,
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  // 销售员筛选：默认 MKT_CENTER 营销体系、搜索全公司、可清空。
-                  UtenEmployeePicker(
-                    presentation:
-                        UtenEmployeePickerPresentation.businessReference,
-                    cancelDepartmentTreeReadOnClose: true,
-                    departmentTreeLoader: () => ref
-                        .read(employeeReferenceRepositoryProvider)
-                        .departments(
-                          EmployeeReferencePurpose.salesOrderSellerFilter,
-                        ),
-                    label: '销售员',
-                    hint: '全部销售员',
-                    sheetTitle: '选择销售员',
-                    initial: _selectedSeller,
-                    allowClear: true,
-                    pagedLoader: (query) async {
-                      final kw = query.keyword;
-                      return await ref
-                          .read(employeeReferenceRepositoryProvider)
-                          .listPickerPage(
-                            query,
-                            purpose:
-                                EmployeeReferencePurpose.salesOrderSellerFilter,
-                            size: 30,
-                            departmentId: (kw == null || kw.isEmpty)
-                                ? _marketingDeptId
-                                : null,
-                            includeSubtree: true,
-                          );
-                    },
-                    onChanged: (item) {
-                      setState(() {
-                        _selectedSeller = item;
-                        _selectedSellerId = item?.id;
-                      });
-                      _load(1);
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: MasterDataTableView<SalesDocListItem>(
-                expensiveRowMounts: false,
-                rowsController: _pickerRows,
-                showPaginationControls: false,
-                tableKey:
-                    'shared.widgets.sales_order_picker.SalesOrderPickerSheetState.build.1',
-                columns: _columns(),
-                items: _page?.items ?? const [],
-                facets: const {},
-                nullCounts: const {},
-                serverColumnSearch: true,
-                filters: _columnSearches,
-                onFilterChanged: _onColumnSearch,
-                sortColumn: _sortKey,
-                sortAscending: _sortAsc,
-                onSortChange: _onSort,
-                onRowTap: (d) => setState(() => _picked = d),
-                isSelected: (d) => _picked?.id == d.id,
-                isLoading: _loading && _page == null,
-                loadingMore: _loading && _page != null,
-                error: _error,
-                onRetry: () =>
-                    _load(_pickerRows.visiblePage ?? _page?.page ?? 1),
-                emptyMessage: '暂无已审销售订单',
-                currentPage: _page?.page ?? 1,
-                totalPages: _page?.totalPages ?? 1,
-                paginationScope: (
-                  _keyword,
-                  _selectedSellerId,
-                  _columnSearches['search.billNo'],
+    return Stack(
+      children: [
+        Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                UtenPanelHeader(
+                  title: '选择销售订单(来源单号)',
+                  onClose: () => Navigator.of(context).pop(),
                 ),
-                onPageChange: (p) => _load(p, useCache: true),
-              ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    UtenSpacing.s16,
+                    UtenSpacing.s12,
+                    UtenSpacing.s16,
+                    UtenSpacing.s8,
+                  ),
+                  child: Column(
+                    children: [
+                      // 生产视角：仅按单据号搜索；不暴露客户。
+                      UtenSearchBar(
+                        controller: _keywordCtl,
+                        hint: widget.receiptSources ? '查订货单号/客户' : '搜索单据号',
+                        onChanged: _onKeyword,
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      // 销售员筛选：默认 MKT_CENTER 营销体系、搜索全公司、可清空。
+                      if (!widget.receiptSources)
+                        UtenEmployeePicker(
+                          presentation:
+                              UtenEmployeePickerPresentation.businessReference,
+                          cancelDepartmentTreeReadOnClose: true,
+                          departmentTreeLoader: () => ref
+                              .read(employeeReferenceRepositoryProvider)
+                              .departments(
+                                EmployeeReferencePurpose.salesOrderSellerFilter,
+                              ),
+                          label: '销售员',
+                          hint: '全部销售员',
+                          sheetTitle: '选择销售员',
+                          initial: _selectedSeller,
+                          allowClear: true,
+                          pagedLoader: (query) async {
+                            final kw = query.keyword;
+                            return await ref
+                                .read(employeeReferenceRepositoryProvider)
+                                .listPickerPage(
+                                  query,
+                                  purpose: EmployeeReferencePurpose
+                                      .salesOrderSellerFilter,
+                                  size: 30,
+                                  departmentId: (kw == null || kw.isEmpty)
+                                      ? _marketingDeptId
+                                      : null,
+                                  includeSubtree: true,
+                                );
+                          },
+                          onChanged: (item) {
+                            setState(() {
+                              _selectedSeller = item;
+                              _selectedSellerId = item?.id;
+                            });
+                            _load(1);
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: MasterDataTableView<SalesDocListItem>(
+                    expensiveRowMounts: false,
+                    singleTapRows: true,
+                    rowsController: _pickerRows,
+                    showPaginationControls: false,
+                    tableKey:
+                        'shared.widgets.sales_order_picker.SalesOrderPickerSheetState.build.1',
+                    columns: _columns(),
+                    items: _page?.items ?? const [],
+                    facets: const {},
+                    nullCounts: const {},
+                    serverColumnSearch: true,
+                    filters: _columnSearches,
+                    onFilterChanged: _onColumnSearch,
+                    sortColumn: _sortKey,
+                    sortAscending: _sortAsc,
+                    onSortChange: _onSort,
+                    onRowTap: (d) => setState(() => _picked = d),
+                    isSelected: (d) => _picked?.id == d.id,
+                    isLoading: _loading && _page == null,
+                    loadingMore: _loading && _page != null,
+                    error: _error,
+                    onRetry: () =>
+                        _load(_pickerRows.visiblePage ?? _page?.page ?? 1),
+                    emptyMessage: '暂无已审销售订单',
+                    currentPage: _page?.page ?? 1,
+                    totalPages: _page?.totalPages ?? 1,
+                    paginationScope: (
+                      _keyword,
+                      _selectedSellerId,
+                      _columnSearches['search.billNo'],
+                    ),
+                    onPageChange: (p) => _load(p, useCache: true),
+                  ),
+                ),
+                UtenPickerConfirmBar(
+                  pagination: UtenPickerPageControls(controller: _pickerRows),
+                  selectedCount: _picked == null ? 0 : 1,
+                  selectedLabel: _picked?.billNo,
+                  onConfirm: () => Navigator.of(context).pop(_picked),
+                ),
+              ],
             ),
-            UtenPickerConfirmBar(
-              pagination: UtenPickerPageControls(controller: _pickerRows),
-              selectedCount: _picked == null ? 0 : 1,
-              selectedLabel: _picked?.billNo,
-              onConfirm: () => Navigator.of(context).pop(_picked),
-            ),
-          ],
+          ),
         ),
-      ),
+        if (_loading)
+          UtenBusyOverlay(
+            title: '加载订货单',
+            cancelLabel: '取消加载',
+            showDoNotLeaveHint: false,
+            onCancel: () => setState(() {
+              invalidateScopedPageReads();
+              ++_loadGeneration;
+              _loading = false;
+              _error = '已取消加载，原搜索条件已保留';
+            }),
+          ),
+      ],
     );
   }
 

@@ -278,8 +278,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 "fn_preplan_aggregate_recorded_private_sources_scoped",
                 "fn_preplan_aggregate_recorded_private_sources");
         jdbc.execute("""
-                ALTER TABLE production_plans ADD COLUMN material_analysis_item_id uuid;
-                ALTER TABLE production_material_analysis_items ADD COLUMN id uuid, ADD COLUMN parent_analysis_material_id uuid;
+                ALTER TABLE production_plans ADD COLUMN IF NOT EXISTS material_analysis_item_id uuid;
+                ALTER TABLE production_material_analysis_items ADD COLUMN IF NOT EXISTS id uuid, ADD COLUMN IF NOT EXISTS parent_analysis_material_id uuid;
                 ALTER TABLE sales_order_items ADD COLUMN goods_id uuid, ADD COLUMN remark text;
                 ALTER TABLE sales_orders ADD COLUMN remark text;
                 """);

@@ -111,7 +111,13 @@ class MaterialAnalysisOneTableContractTest {
         // 以前空路线被 normalizeRoute 归成 BUY，于是同一行上同时写着
         // 「请先选供应方式」和「等待下发采购」。
         assertThat(stages).contains("case ROUTE_PENDING_INPUT -> result.put(lineId, ROUTE_PENDING);");
-        assertThat(service).contains("boolean routePending = row.depth() > 0");
+        int routeStart=service.indexOf("boolean routePending =");
+        int routeEnd=service.indexOf("routeByLine.put",routeStart);
+        assertThat(routeStart).isNotNegative();assertThat(routeEnd).isGreaterThan(routeStart);
+        String routePredicate=service.substring(routeStart,routeEnd).replaceAll("\\s+", "");
+        assertThat(routePredicate).contains("!row.deliveryContext()", "row.depth()>0", "row.confirmedRoute()==null",
+                "row.requiredQty()!=null", "row.requiredQty().signum()>0",
+                "row.shortageQty()!=null", "row.shortageQty().signum()>0");
         assertThat(service).contains("&& row.confirmedRoute() == null");
         // 根供给行另有根路线冻结机制，不进这个分支。
         assertThat(service).contains("MaterialAnalysisFlowStageService.ROUTE_PENDING_INPUT");

@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.chat;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +18,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Disposable PostgreSQL, full JWT/filter chain and real worker. No external model or business database. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiChatPostgresTest extends AiPlatformPostgresTestSupport {
     @BeforeEach void configureRuleOnlyChat() {
         jdbc.update("DELETE FROM ai_providers");

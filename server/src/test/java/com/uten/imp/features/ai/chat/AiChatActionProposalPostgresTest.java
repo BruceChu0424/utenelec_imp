@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.chat;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import com.uten.imp.features.ai.support.FakeAiProviderServer;
@@ -28,6 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * one-time consumption under concurrent clicks, receipt, cancel, expiry, identity change, the database
  * guard, snapshot validation and the step-up permission grant card.
  */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiChatActionProposalPostgresTest extends AiPlatformPostgresTestSupport {
     private static final String ROUTE = "/sales/orders/new";
     private static final String ACTION = """

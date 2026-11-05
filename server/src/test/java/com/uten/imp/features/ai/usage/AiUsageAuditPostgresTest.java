@@ -1,5 +1,7 @@
 package com.uten.imp.features.ai.usage;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class AiUsageAuditPostgresTest extends AiPlatformPostgresTestSupport {
     @Test void headerQueriesFilterAllPagesSummariesAndCurrencyCostsBeforePagination() throws Exception {
         Staff actor = aiUser(); UUID provider = provider();

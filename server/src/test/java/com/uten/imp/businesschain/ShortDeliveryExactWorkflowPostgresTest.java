@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.finance.BusinessPrecisionRequiredException;
 import com.uten.imp.common.time.BusinessTime;
@@ -19,6 +21,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Same private current-schema harness as the physical shipment tests. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ShortDeliveryExactWorkflowPostgresTest extends ShipmentExactQuantityPostgresTest {
  @Autowired SubcontractOrderService orders;
  @Autowired SubcontractShortDeliveryService shortDeliveries;

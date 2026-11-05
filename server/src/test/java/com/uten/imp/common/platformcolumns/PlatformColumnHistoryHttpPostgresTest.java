@@ -1,5 +1,7 @@
 package com.uten.imp.common.platformcolumns;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.features.ai.AiPlatformPostgresTestSupport;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 /** Native sales owner scope, immutable original-parent lookup, and price masking through real HTTP/PG. */
 @Import(PlatformColumnHistoryHttpPostgresTest.LegacyDataSource.class)
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSupport {
     private static final AtomicInteger NUMBER=new AtomicInteger(870000);
     private static final UUID LEGACY_ORDER=UUID.randomUUID(),LEGACY_ITEM=UUID.randomUUID();

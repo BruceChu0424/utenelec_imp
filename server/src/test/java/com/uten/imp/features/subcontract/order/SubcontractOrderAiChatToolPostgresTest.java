@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.order;
 
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+
 import com.uten.imp.application.port.AiDocumentStatusToolPostgresSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * (与申请详情接口一致), 委外订货单按制单人归属; 跨部门同样按查看权限和对象范围读取。查到一次写一条与对应详情页相同的
  * 查看审计, 查不到不写。
  */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SubcontractOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSupport {
 
     @Autowired

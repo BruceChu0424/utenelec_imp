@@ -707,7 +707,7 @@ List<UtenTotalEntry> stockLedgerSummaryEntries(
 
 String? _qty(double? v) {
   if (v == null || !v.isFinite) return null;
-  return formatExactQtyWithUnit(v.toString(), null);
+  return formatExactQtyWithUnit(v.toString(), null, groupThousands: true);
 }
 
 /// 2026-10-10 数量+单位口径：台账数量列内联单位（保留千分位分组），独立

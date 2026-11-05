@@ -100,7 +100,7 @@ void main() {
       expect(payload['id'], 'current-item-1');
       expect(payload['planItemId'], 'plan-item-1');
       expect(payload['qty'], '500');
-      expect(payload['weight'], 10);
+      expect(payload['weight'], '10');
       expect(jsonEncode(payload), isNot(contains('old-local-item')));
       expect(api.approvals, approve ? ['issue-1'] : isEmpty);
       expect(harness.container.read(formDraftsProvider), isEmpty);
@@ -149,7 +149,7 @@ void main() {
       'plan-item-2',
     ]);
     expect(rows.map((row) => row['qty']), ['500', '300']);
-    expect(rows.map((row) => row['weight']), [10, 6]);
+    expect(rows.map((row) => row['weight']), ['10', '6']);
     expect(tester.takeException(), isNull);
   });
 
@@ -264,7 +264,7 @@ Future<void> _expectBlockedThenReloadAndApprove(
       .cast<Map<String, dynamic>>();
   expect(savedRows.map((row) => row['id']), api.items.map((row) => row['id']));
   expect(savedRows.first['qty'], '1000');
-  expect(savedRows.first['weight'], 20);
+  expect(savedRows.first['weight'], '20');
   expect(harness.storage.records[harness.storageKey], originalRecord);
   expect(harness.container.read(formDraftsProvider).single.id, 'local-draft');
   expect(tester.takeException(), isNull);

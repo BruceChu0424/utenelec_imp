@@ -204,15 +204,25 @@ class AuditTriggerCoverageMigrationContractTest {
             "V1059__financial_subversion_audit_policy_registration.sql";
 
     record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
-                       String reason, String updateFn, String rowFn) {
+                       String reason, String updateFn, String rowFn, boolean redacted) {
         ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
                     String reason) {
-            this(table, category, insertDelete, columns, reason, null, null);
+            this(table, category, insertDelete, columns, reason, null, null, false);
         }
 
         ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
                     String reason, String updateFn) {
-            this(table, category, insertDelete, columns, reason, updateFn, null);
+            this(table, category, insertDelete, columns, reason, updateFn, null, false);
+        }
+
+        ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
+                    String reason, String updateFn, String rowFn) {
+            this(table, category, insertDelete, columns, reason, updateFn, rowFn, false);
+        }
+
+        ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
+                    String reason, boolean redacted) {
+            this(table, category, insertDelete, columns, reason, null, null, redacted);
         }
     }
 
@@ -567,7 +577,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     List.of("entry_id","batch_id","payroll_slip_id","employee_id","department_id",
                             "source_payroll_period","expense_style_id","amount_kind","source_payroll_item_id",
                             "deduction_allocation_id","created_by","created_at"),
-                    "V1006 工资计提行按登记列留分配身份与来源；金额与工资源数据不入通用审计"),
+                    "V1006 工资计提行按登记列留分配身份与来源；金额与工资源数据不入通用审计", true),
             new ScopedTable("goods_bom_material_cost_adoptions", "data_change", true,
                     List.of("id","goods_id","goods_version","source_action_id","actor_id","request_id",
                             "numeric_evidence_id","created_at"),
@@ -1385,7 +1395,8 @@ class AuditTriggerCoverageMigrationContractTest {
             // 基线调用只承载类别/列清单/插入删除开关; 专用 UPDATE 函数(V830 窄投影)只能由
             // 基线之后的再登记引入, 这里取清单当前值, 由"基线之后登记"用例独立钉住迁移里真写了。
             declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
-                    Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), expected.updateFn()));
+                    Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), expected.updateFn(),
+                    expected.rowFn(), Boolean.parseBoolean(scoped.group(3))));
         }
         // 基线之后新建的 COLUMN_SCOPED 表(如 V742 ai_providers)由各自建表迁移登记, 形状在下一个用例核对。
         // 基线之后新建的 COLUMN_SCOPED 表(如 V743 称重观测)由建表迁移登记, 形态见下一个用例。
@@ -1438,7 +1449,8 @@ class AuditTriggerCoverageMigrationContractTest {
                 ScopedTable expected = scopedTables().get(scoped.group(1));
                 registeredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
                         Boolean.parseBoolean(scoped.group(5)), columns,
-                        expected == null ? "" : expected.reason(), scoped.group(6), scoped.group(7)));
+                        expected == null ? "" : expected.reason(), scoped.group(6), scoped.group(7),
+                        Boolean.parseBoolean(scoped.group(3))));
             }
         }
         // 基线之后新建的 COLUMN_SCOPED 表: 建表迁移里的类别、列清单与插入/删除开关必须与清单逐项一致。
@@ -1486,7 +1498,8 @@ class AuditTriggerCoverageMigrationContractTest {
                     columns.add(column.group(1));
                 }
                 declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
-                        Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), scoped.group(6), scoped.group(7)));
+                        Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), scoped.group(6), scoped.group(7),
+                        Boolean.parseBoolean(scoped.group(3))));
             }
         }
         Map<String, ScopedTable> listed = new LinkedHashMap<>(scopedTables());

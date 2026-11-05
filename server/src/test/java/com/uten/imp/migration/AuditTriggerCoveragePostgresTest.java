@@ -258,7 +258,7 @@ class AuditTriggerCoveragePostgresTest {
             }
             var policy = scoped.get(table);
             String columns = String.join(",", policy.columns());
-            String genericArgs = policy.category()+"\\000plain\\000"
+            String genericArgs = policy.category()+"\\000"+(policy.redacted() ? "redacted" : "plain")+"\\000"
                     + policy.columns().stream().map(column -> column+"\\000").collect(java.util.stream.Collectors.joining());
             String updateFn = policy.updateFn()==null ? "public.fn_audit()" : policy.updateFn();
             String rowFn = policy.rowFn()==null ? "public.fn_audit()" : policy.rowFn();

@@ -8213,8 +8213,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Widget _buildHeaderGroupBand(ThemeData theme, List<int> indices, int level) {
     Widget band(List<int> visible, {bool trailing = false}) {
       final cells = <Widget>[];
-      if (_hasSelectionColumn)
+      if (_hasSelectionColumn) {
         cells.add(const SizedBox(width: _selectionColWidth));
+      }
       final paths = [for (final column in _columns) column.headerGroups];
       for (final span in buildUtenTableHeaderGroupBand(paths, visible, level)) {
         final width = span.columnIndices.fold<double>(
@@ -8250,8 +8251,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           ),
         );
       }
-      if (trailing && widget.showColumnChooser)
+      if (trailing && widget.showColumnChooser) {
         cells.add(const SizedBox(width: 48));
+      }
       return IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -202,7 +202,7 @@ void main() {
           await tester.pump();
           update(() {
             if (change == 'initial') initial = [second];
-            if (change == 'label hydration')
+            if (change == 'label hydration') {
               initial = [
                 const UtenEmployeePickerItem(
                   id: 'first',
@@ -210,6 +210,7 @@ void main() {
                   employeeCode: 'A2',
                 ),
               ];
+            }
             if (change == 'scope') scope = 'second-scope';
           });
           await tester.pump();

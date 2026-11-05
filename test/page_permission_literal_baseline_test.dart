@@ -41,7 +41,11 @@ import 'package:flutter_test/flutter_test.dart';
 // 2026-10-03 +3：AI 使用审计面板（管理页查看计价/审计入口）同口径预演。
 // 2026-10-04 -6：ADR-143 委外按工序领直属物料(委外申请进度弹窗、订货单进度区改由服务端
 // priceMasked 判金额可见、仓库委外领料拣货页等)退掉本地权限引用，净 683 -> 677。
-const _baseline = 677;
+// 2026-11-04 对账 +158 重钉 677 -> 835：财务忠实复现等整合批次(0aaffa3aa 起)给主档明细
+// (party_detail 32/客户分类 25/货品分类 24)、单据详情与审批中心等页补齐了本地权限门，
+// 未随批重钉棘轮；今日 CI 零红收口时逐项核对为真实权限门(非死引用)，并对
+// payment_style/expense_approval 补了精确登记。后续批次恢复「净增随批注明」口径。
+const _baseline = 835;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 final _fullPermReference = RegExp(r'\bPerm\.[a-zA-Z]\w*');
@@ -159,13 +163,16 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   ),
   'lib/features/basic_data/pages/payment_style_page.dart': (
     legacyCount: 5,
+    // 0aaffa3aa 财务忠实复现整合：新增草稿弹窗与工具条动作门
+    //（页面入口 Create||View、草稿保存 Create、状态切换 Status、
+    // 工具条 Create/Edit/Status/Move/Reorder、列表 View），计数随之复核。
     tokens: {
-      'Perm.paymentStyleCreate': 1,
+      'Perm.paymentStyleCreate': 3,
       'Perm.paymentStyleEdit': 1,
       'Perm.paymentStyleMove': 1,
       'Perm.paymentStyleReorder': 1,
-      'Perm.paymentStyleStatus': 1,
-      'Perm.paymentStyleView': 1,
+      'Perm.paymentStyleStatus': 2,
+      'Perm.paymentStyleView': 2,
     },
   ),
   'lib/features/basic_data/pages/settlement_method_page.dart': (
@@ -759,10 +766,11 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   // grant/revoke tests are recorded in the readonly participation governance receipt.
   'lib/features/expense/pages/expense_approval_list_page.dart': (
     legacyCount: 4,
+    // 2026-11-04 审批中心分类栏精简：嵌入态自带审批分段行退役（队列改由
+    // 状态表头筛选承载），原分段行上的 expenseApprove 判断随分段删除。
     tokens: {
       'Perm.attachmentDownload': 1,
       'Perm.attachmentView': 1,
-      'Perm.expenseApprove': 1,
       'Perm.expensePay': 1,
       'Perm.expenseView': 1,
     },
@@ -1022,7 +1030,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      303, // +34 exact source-reviewed references; retired guards stay removed.
+      306, // +37 exact source-reviewed references; retired guards stay removed.
     );
   });
 

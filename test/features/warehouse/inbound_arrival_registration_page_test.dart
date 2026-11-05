@@ -1724,8 +1724,12 @@ class _ArrivalSourceAmbiguityError extends ApiException {
     : super('CONFLICT', '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源', httpStatus: 409);
 }
 
+/// 直连 HttpClient：flutter_test 会装 `HttpOverrides.global` 假 client（一律 400），
+/// 这里必须经**实例**方法 new 真客户端绕过 global，才能打到本测试起的本地
+/// fixture server。override 本身不改行为，改的是调用路径——承重，勿删。
 class _ReceiverNativeHttp extends HttpOverrides {
   @override
+  // ignore: unnecessary_overrides
   HttpClient createHttpClient(SecurityContext? context) =>
       super.createHttpClient(context);
 }
@@ -1903,7 +1907,7 @@ void registerArrivalReceiverHttpCases() {
         expect(purposes, everyElement('WAREHOUSE_ARRIVAL_RECEIVER'));
         expect(tester.takeException(), isNull);
         // Only request shapes are reported; fixtures contain no real personnel.
-        print('receiver-http-request-paths: ${paths.join(',')}');
+        debugPrint('receiver-http-request-paths: ${paths.join(',')}');
         await tester.pumpWidget(const SizedBox());
         await _waitReceiverHttp(tester, () => readSafety.pendingReadCount == 0);
         dio.close(force: true);

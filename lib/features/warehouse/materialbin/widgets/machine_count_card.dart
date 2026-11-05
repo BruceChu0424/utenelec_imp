@@ -5,6 +5,7 @@
 // 每点一下即落库 (由页面逐行保存), 卡片只负责显示与回调; 保存中 / 保存失败逐容器显示。
 import 'package:flutter/material.dart';
 import '../../../../shared/formatters/financial_amount_validation.dart';
+import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../../components/layout/uten_segment_row.dart';
 
@@ -311,7 +312,7 @@ class _MachineCountCardState extends State<MachineCountCard> {
                   textInputAction: TextInputAction.done,
                   decoration: UtenInputDecoration(
                     InputDecoration(
-                      errorText: _inputErrors[id],
+                      error: utenFieldError(_inputErrors[id]),
                       isDense: true,
                       labelText: '称得 (${l10n.wmKg})',
                     ),

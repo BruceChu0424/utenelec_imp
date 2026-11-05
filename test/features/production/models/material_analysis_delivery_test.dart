@@ -8,10 +8,17 @@ Map<String, dynamic> plan() => {
   'packaging': 'BULK',
   'bomFingerprint': 'frozen-bom',
   'nodeModes': [
-    {'path': ['edge-a'], 'mode': 'CHILDREN'},
+    {
+      'path': ['edge-a'],
+      'mode': 'CHILDREN',
+    },
   ],
   'processes': [
-    {'path': ['edge-a', 'edge-b'], 'operation': 'LASER', 'required': true},
+    {
+      'path': ['edge-a', 'edge-b'],
+      'operation': 'LASER',
+      'required': true,
+    },
   ],
 };
 
@@ -40,22 +47,28 @@ void main() {
     expect(row.orderNo, 'XD-1');
   });
 
-  test('delivery parent is never a root production task even with stale readiness', () {
-    final root = ProductionMaterialAnalysisProduct.fromJson({
-      'analysisLineId': 'root',
-      'deliveryPlan': plan(),
-      'canSchedule': true,
-      'readyNowQty': 100,
-      'maxSchedulableQty': 100,
-    });
-    expect(root.isDeliveryContext, isTrue);
-    expect(root.canSchedule, isFalse);
-    expect(root.maxSchedulableQty, 0);
-    expect(ProductionMaterialAnalysisProduct.fromJson({
-      'analysisLineId': 'legacy',
-      'readyNowQty': 2,
-    }).canSchedule, isTrue);
-  });
+  test(
+    'delivery parent is never a root production task even with stale readiness',
+    () {
+      final root = ProductionMaterialAnalysisProduct.fromJson({
+        'analysisLineId': 'root',
+        'deliveryPlan': plan(),
+        'canSchedule': true,
+        'readyNowQty': 100,
+        'maxSchedulableQty': 100,
+      });
+      expect(root.isDeliveryContext, isTrue);
+      expect(root.canSchedule, isFalse);
+      expect(root.maxSchedulableQty, 0);
+      expect(
+        ProductionMaterialAnalysisProduct.fromJson({
+          'analysisLineId': 'legacy',
+          'readyNowQty': 2,
+        }).canSchedule,
+        isTrue,
+      );
+    },
+  );
 
   test('ownership refresh preserves frozen delivery facts and processing', () {
     final current = ProductionMaterialAnalysisView.fromJson({

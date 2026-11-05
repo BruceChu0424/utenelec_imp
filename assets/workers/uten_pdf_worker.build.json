@@ -22,7 +22,7 @@
     "lib/shared/print/procurement_order_print_document.dart": "cbcd30271cf93266898ab577c20678aac362bf0baa097219fecb364e200544a7",
     "lib/shared/export/document_batch_limits.dart": "12ab7f75d580df81c169c3752c8a9244a741b3d6845f600f0c3021d25fbf61a9",
     "lib/shared/formatters/exact_decimal.dart": "f7e21736fb4a8a331f0d91e7fdacba70500429ef88d1789b98eaaeedc0d4f05d",
-    "lib/core/formatters/exact_number_text.dart": "a263d69251da7539e9cb44bebdbdb84373c6302b865dcda7f8c1fc16836f0f17",
+    "lib/core/formatters/exact_number_text.dart": "2815fb63a32f0f5aea5c211d80e11f3f88034c5cc6d6421828e49be1f566945e",
     "lib/core/network/api_exception.dart": "2f924efcecfb3ea14e377b5682df9d9d7533b1921565138fd17e01159eac2872",
     "lib/core/network/api_error.dart": "02792e201676f0ad08eb6ef1d663db2895f95249cd44095ca3471c981ae18280",
     "lib/core/network/api_error_message.dart": "d7804713932d6c85e25f9abdcecafc7d159dccacc8a250f1ff1ec485518c5f3b",

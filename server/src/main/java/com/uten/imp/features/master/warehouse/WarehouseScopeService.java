@@ -115,6 +115,7 @@ public class WarehouseScopeService implements com.uten.imp.application.port.Ware
      * 新选一个仓(ADR-146): label(如「入库仓库」「调出仓」)对应的仓必须是启用中的记账子仓,
      * 且仓库用途(良品仓/不良品仓)符合 use。锁住它的祖先链直到本事务结束, 与停用/改用途互斥。
      */
+    @Override
     @Transactional
     public void require(UUID warehouseId, String label, WarehouseUse use) {
         requireSelection(warehouseId, label, use, true);

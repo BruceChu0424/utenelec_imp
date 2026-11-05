@@ -53,7 +53,15 @@ public class ReceiptLedgerSourceAccess {
                 COALESCE((SELECT sum(application.amount_original) FROM customer_open_item_offsets application
                   WHERE application.target_ledger_id=ledger.id AND application.status='APPLIED'),0),party.name
             """+where+" ORDER BY ledger.bill_date,ledger.id");
-        for(var query:List.of(count,data)){scope.bind(query);if(client!=null)query.setParameter("client",client);if(search)query.setParameter("keyword","%"+keyword.trim()+"%");}
+        for (var query : List.of(count, data)) {
+            scope.bind(query);
+            if (client != null) {
+                query.setParameter("client", client);
+            }
+            if (search) {
+                query.setParameter("keyword", "%" + keyword.trim() + "%");
+            }
+        }
         long total=((Number)count.getSingleResult()).longValue();
         var rows=NativeQueryResults.objectArrayRows(data.setFirstResult(Pageables.checkedOffset(pageable.getPageNumber()+1,pageable.getPageSize())).setMaxResults(pageable.getPageSize()));
         List<Map<String,Object>> items=new ArrayList<>();

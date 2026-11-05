@@ -207,7 +207,12 @@ public class SalesShipmentDeliveryService {
             if(!c.operations().isEmpty()&&c.processedQty().compareTo(c.quantity())!=0)throw conflict("必要加工尚未完成："+c.goodsName());
             if(!c.operations().isEmpty()&&c.processingReceivedAt()==null)throw conflict("加工实物尚未由仓库收回核对："+c.goodsName());
             Pick pick=picks.get(c.id());UUID warehouse=pick.warehouseId()==null?request.getWarehouseId():pick.warehouseId();
-            if(warehouse==null)warehouse=c.warehouseId();if(warehouse==null)warehouse=shipment.getWarehouseId();
+            if (warehouse == null) {
+                warehouse = c.warehouseId();
+            }
+            if (warehouse == null) {
+                warehouse = shipment.getWarehouseId();
+            }
             if(warehouse==null)throw conflict("请为全部散件选择实际发出仓");
             warehouseTaskScopes.current(warehouse);
             warehouses.require(warehouse,"散件实际发出仓",WarehouseUse.GOOD_OUT);

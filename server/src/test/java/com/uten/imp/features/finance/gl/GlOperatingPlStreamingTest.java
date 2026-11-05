@@ -32,7 +32,7 @@ class GlOperatingPlStreamingTest {
     private GlReportService service() {
         EntityManager em = mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call -> {
-            String sql = call.getArgument(0);var query = mock(Query.class);
+            var query = mock(Query.class);
             when(query.setParameter(anyString(), any())).thenAnswer(binding -> query);
             // to_regclass 预检查等标量查询返回非 TRUE 值：账套无接续基线，全部月份视为已知范围。
             when(query.getSingleResult()).thenReturn(new java.math.BigDecimal("1000"));

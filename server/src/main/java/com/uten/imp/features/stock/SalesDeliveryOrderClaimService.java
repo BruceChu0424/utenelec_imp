@@ -262,7 +262,14 @@ public class SalesDeliveryOrderClaimService implements SalesDeliveryOrderClaimPo
         var query=em.createNativeQuery(sql);values.forEach(query::setParameter);return NativeQueryResults.objectArrayRows(query);
     }
     private static Map<String,Object> parameters(Object... values) {
-        Map<String,Object> result=new LinkedHashMap<>();for(int i=0;i<values.length;i+=2)result.put(values[i].toString(),values[i+1]);return result;
+        if (values.length % 2 != 0) {
+            throw new IllegalArgumentException("Named query parameters require name/value pairs");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int index = 1; index < values.length; index += 2) {
+            result.put(values[index - 1].toString(), values[index]);
+        }
+        return result;
     }
     static BigDecimal availableClaim(BigDecimal effective,BigDecimal located,BigDecimal claimed,BigDecimal claimedHere) {
         return effective.subtract(claimed).min(located.subtract(claimedHere)).max(BigDecimal.ZERO);

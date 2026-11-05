@@ -1279,10 +1279,17 @@ public class SalesOrderService {
         return "(COALESCE("+item+".delivery_plan->>'mode','ASSEMBLED')='BOM' OR COALESCE("
                 +item+".delivery_plan @> '{\"processes\":[{\"required\":true}]}'::jsonb,false))";
     }
+    private SalesOrderDeliveryService requireDeliveryService() {
+        var service = deliveryService;
+        if (service == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "交付方案服务不可用，请重试");
+        }
+        return service;
+    }
+
     private com.uten.imp.common.delivery.DeliveryPlan parseDeliveryPlan(Object json) {
         if(json==null)return com.uten.imp.common.delivery.DeliveryPlan.assembled();
-        if(deliveryService==null)throw new ApiException(ErrorCode.CONFLICT,"交付方案服务不可用，请重试");
-        return deliveryService.parsePlan(json);
+        return requireDeliveryService().parsePlan(json);
     }
 
     /**
@@ -2076,8 +2083,7 @@ public class SalesOrderService {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "新数量必须大于 0");
             }
             if (!SalesOrderDeliveryService.effective(it.getDeliveryPlan()).equals(com.uten.imp.common.delivery.DeliveryPlan.assembled())) {
-                if (deliveryService == null) throw new ApiException(ErrorCode.CONFLICT,"交付方案服务不可用，请重试");
-                deliveryService.resolveOrderItem(it,l.getNewQty());
+                requireDeliveryService().resolveOrderItem(it, l.getNewQty());
             }
             BigDecimal floor = minimumOrderQty(
                     it.getShippedQty(), it.getReturnedQty(), it.getFlagQty());
@@ -2088,8 +2094,10 @@ public class SalesOrderService {
             if (l.getNewQty().compareTo(nz(it.getQty())) != 0) {
                 actualQtyChanged = true;
                 assertNoActiveShipmentWork(List.of(it.getId()), "修改订单数量");
-                if(l.getNewQty().compareTo(nz(it.getQty()))<0 && SalesOrderDeliveryService.effective(it.getDeliveryPlan()).requiresPhysicalFulfillment())
-                    deliveryService.requireUncommittedDecrease(it.getId());
+                if (l.getNewQty().compareTo(nz(it.getQty())) < 0
+                        && SalesOrderDeliveryService.effective(it.getDeliveryPlan()).requiresPhysicalFulfillment()) {
+                    requireDeliveryService().requireUncommittedDecrease(it.getId());
+                }
             }
             if (nz(it.getPlannedQty()).signum() > 0
                     || nz(it.getProducedQty()).signum() > 0

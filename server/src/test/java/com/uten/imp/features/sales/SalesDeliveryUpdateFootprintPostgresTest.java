@@ -20,7 +20,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -47,7 +49,12 @@ class SalesDeliveryUpdateFootprintPostgresTest {
         bean.setJpaProperties(properties);bean.afterPropertiesSet();factory=bean.getObject();em=SharedEntityManagerCreator.createSharedEntityManager(factory);
         transactions=new TransactionTemplate(new JpaTransactionManager(factory));inventory=new FulfillmentInventoryMutationAdapter(new InventoryMutationLock(em));
     }
-    @AfterAll static void stop(){if(factory!=null)factory.close();POSTGRES.stop();}
+    @AfterAll static void stop() {
+        if (factory != null) {
+            factory.close();
+        }
+        POSTGRES.stop();
+    }
     private record World(UUID order,UUID item,UUID root,UUID child,UUID edge) {}
     private World world() {
         UUID order=UUID.randomUUID(),item=UUID.randomUUID(),root=UUID.randomUUID(),child=UUID.randomUUID(),edge=UUID.randomUUID();
@@ -57,9 +64,36 @@ class SalesDeliveryUpdateFootprintPostgresTest {
         db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id) VALUES(?,?,?)",edge,root,child);
         return new World(order,item,root,child,edge);
     }
-    private SalesMutationFootprintService service(AtomicReference<Set<InventoryDimension>> taken,Runnable afterDiscovery) {
-        var locks=new FulfillmentMutationLocks(em,dimensions->{taken.set(Set.copyOf(dimensions));inventory.lockDimensions(dimensions);if(afterDiscovery!=null)afterDiscovery.run();},true);
-        var sales=new SalesMutationFootprintService(em,locks);ReflectionTestUtils.setField(sales,"masterReferences",mock(MasterReferenceValidationPort.class));return sales;
+    private SalesMutationFootprintService service(
+            AtomicReference<Set<InventoryDimension>> taken, DiscoveryBarrier afterDiscovery) {
+        var locks = new FulfillmentMutationLocks(em, dimensions -> {
+            taken.set(Set.copyOf(dimensions));
+            inventory.lockDimensions(dimensions);
+            if (afterDiscovery != null) {
+                afterDiscovery.pause();
+            }
+        }, true);
+        var sales = new SalesMutationFootprintService(em, locks);
+        ReflectionTestUtils.setField(sales, "masterReferences", mock(MasterReferenceValidationPort.class));
+        return sales;
+    }
+
+    private record DiscoveryBarrier(CountDownLatch discovered, CountDownLatch mutationComplete) {
+        private void pause() {
+            discovered.countDown();
+            await(mutationComplete);
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(30, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Concurrent fixture mutation did not reach its barrier");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(interrupted);
+        }
     }
     @Test void ordinaryIntentDoesNotAcquireItsUnrelatedBomInventory() {
         var w=world();var taken=new AtomicReference<Set<InventoryDimension>>();
@@ -116,17 +150,45 @@ class SalesDeliveryUpdateFootprintPostgresTest {
         assertThat(taken.get()).containsExactlyInAnyOrder(new InventoryDimension(w.root(),null),new InventoryDimension(w.child(),null),
                 new InventoryDimension(periodic,null),new InventoryDimension(descendant,null),new InventoryDimension(historical,null));
     }
-    @Test void changedAuthoritativeEdgeColorFailsTheOriginalPrewriteFingerprintAndCanRetryFresh() {
-        var w=world();UUID changedColor=UUID.randomUUID();var taken=new AtomicReference<Set<InventoryDimension>>();var once=new AtomicBoolean();
-        var sales=service(taken,()->{if(once.compareAndSet(false,true))try(var connection=dataSource.getConnection();var update=connection.prepareStatement("UPDATE goods_bom_items SET color_id=? WHERE id=?")){
-            update.setObject(1,changedColor);update.setObject(2,w.edge());update.executeUpdate();
-        }catch(java.sql.SQLException ex){throw new IllegalStateException(ex);}});
-        var failure=catchThrowable(()->transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,true)))));
-        assertThat(failure).isInstanceOfSatisfying(FulfillmentSourceConflictException.class,ex->{
-            assertThat(ex.retryable()).isTrue();assertThat(ex.reason()).isEqualTo(FulfillmentSourceConflictException.Reason.PRE_WRITE_SOURCE_CHANGED);
-        });
-        transactions.executeWithoutResult(tx->service(taken,null).lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,true))));
-        assertThat(taken.get()).contains(new InventoryDimension(w.child(),changedColor)).doesNotContain(new InventoryDimension(w.child(),null));
+    @Test void changedAuthoritativeEdgeColorFailsTheOriginalPrewriteFingerprintAndCanRetryFresh() throws Exception {
+        var w = world();
+        UUID changedColor = UUID.randomUUID();
+        var taken = new AtomicReference<Set<InventoryDimension>>();
+        var barrier = new DiscoveryBarrier(new CountDownLatch(1), new CountDownLatch(1));
+        // The lock port observes/blocks only. The competing transaction belongs
+        // to a separate fixture worker, never to the production lock call graph.
+        try (var writer = Executors.newSingleThreadExecutor()) {
+            var mutation = writer.submit(() -> {
+                try {
+                    await(barrier.discovered());
+                    try (var connection = dataSource.getConnection();
+                         var update = connection.prepareStatement("UPDATE goods_bom_items SET color_id=? WHERE id=?")) {
+                        update.setObject(1, changedColor);
+                        update.setObject(2, w.edge());
+                        update.executeUpdate();
+                    }
+                } catch (java.sql.SQLException failure) {
+                    throw new IllegalStateException(failure);
+                } finally {
+                    barrier.mutationComplete().countDown();
+                }
+            });
+            var sales = service(taken, barrier);
+            var failure = catchThrowable(() -> transactions.executeWithoutResult(tx ->
+                    sales.lockOrderUpdate(w.order(), List.of(
+                            new SalesMutationFootprintService.ProposedOrderLine(w.root(), null, true)))));
+            mutation.get(30, TimeUnit.SECONDS);
+            assertThat(failure).isInstanceOfSatisfying(FulfillmentSourceConflictException.class, ex -> {
+                assertThat(ex.retryable()).isTrue();
+                assertThat(ex.reason()).isEqualTo(FulfillmentSourceConflictException.Reason.PRE_WRITE_SOURCE_CHANGED);
+            });
+        } finally {
+            barrier.discovered().countDown();
+        }
+        transactions.executeWithoutResult(tx -> service(taken, null).lockOrderUpdate(w.order(), List.of(
+                new SalesMutationFootprintService.ProposedOrderLine(w.root(), null, true))));
+        assertThat(taken.get()).contains(new InventoryDimension(w.child(), changedColor))
+                .doesNotContain(new InventoryDimension(w.child(), null));
     }
     private static String snapshot(UUID root,UUID child){return "{\"root\":{\"goodsId\":\""+root+"\",\"children\":[{\"goodsId\":\""+child+"\"}]}}";}
 }

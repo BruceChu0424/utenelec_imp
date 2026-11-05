@@ -133,7 +133,13 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
     private static PGobject json(String value) throws Exception {var json=new PGobject();json.setType("jsonb");json.setValue(value);return json;}
     private static void row(String table,Object... values){
         var fields=new ArrayList<String>();var arguments=new ArrayList<Object>();
-        for(int index=0;index<values.length;index+=2){fields.add((String)values[index]);arguments.add(values[index+1]);}
+        if (values.length % 2 != 0) {
+            throw new IllegalArgumentException("Fixture rows require column/value pairs");
+        }
+        for (int index = 1; index < values.length; index += 2) {
+            fields.add((String) values[index - 1]);
+            arguments.add(values[index]);
+        }
         jdbc.update("INSERT INTO "+table+"("+String.join(",",fields)+") VALUES("+String.join(",",Collections.nCopies(fields.size(),"?"))+")",arguments.toArray());
     }
 }

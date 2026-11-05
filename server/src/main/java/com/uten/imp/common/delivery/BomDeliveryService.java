@@ -45,7 +45,10 @@ public class BomDeliveryService {
     }
     private boolean probeRequiredOperations(UUID goodsId,boolean requireVisibility) {
         if(goodsId==null)return false;
-        if(requireVisibility)references.requireVisibleGoods(goodsId); graphLock.acquire();
+        if (requireVisibility) {
+            references.requireVisibleGoods(goodsId);
+        }
+        graphLock.acquire();
         return Boolean.TRUE.equals(em.createNativeQuery("""
             WITH RECURSIVE reachable(id) AS (SELECT CAST(:id AS uuid) UNION
                 SELECT b.component_goods_id FROM goods_bom_items b JOIN reachable r ON r.id=b.goods_id WHERE NOT b.is_deleted)
@@ -147,7 +150,7 @@ public class BomDeliveryService {
         Snapshot snapshot = snapshot(goodsId);
         if (plan != null && plan.bomFingerprint() != null && !plan.bomFingerprint().equals(snapshot.bomFingerprint()))
             throw new ApiException(ErrorCode.CONFLICT, "产品BOM或交付约束已变化，请重新打开交付配置核对后确认");
-        BigDecimal baseQty = qty == null ? null : qty.multiply(unit.unitRate());
+        BigDecimal baseQty = qty.multiply(unit.unitRate());
         return DeliveryFrontier.resolve(snapshot, baseQty, plan);
     }
 

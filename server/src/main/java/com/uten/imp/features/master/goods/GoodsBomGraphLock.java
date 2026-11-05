@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 public class GoodsBomGraphLock implements com.uten.imp.application.port.BomGraphLockPort {
     private final JdbcTemplate db;
 
+    @Override
     public void acquire() {
         db.queryForObject("""
                 SELECT count(*) FROM (

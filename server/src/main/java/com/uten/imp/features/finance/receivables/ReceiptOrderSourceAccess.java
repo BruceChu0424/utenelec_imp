@@ -66,8 +66,16 @@ public class ReceiptOrderSourceAccess {
                 +"seller.full_name,orders.status,orders.client_id,orders.currency_id,orders.is_closed,orders.is_stopped"+where+" ORDER BY "+ordering
                 +("asc".equalsIgnoreCase(order)?" ASC":" DESC")+",orders.id");
         for(var query:java.util.List.of(count,data)){
-            scope.bind(query);if(search)query.setParameter("keyword","%"+keyword.trim()+"%");
-            if(bill)query.setParameter("billNo","%"+billNo.trim()+"%");if(sellerId!=null)query.setParameter("seller",sellerId);
+            scope.bind(query);
+            if (search) {
+                query.setParameter("keyword", "%" + keyword.trim() + "%");
+            }
+            if (bill) {
+                query.setParameter("billNo", "%" + billNo.trim() + "%");
+            }
+            if (sellerId != null) {
+                query.setParameter("seller", sellerId);
+            }
         }
         long total=((Number)count.getSingleResult()).longValue();
         var rows=NativeQueryResults.objectArrayRows(data.setFirstResult(Pageables.checkedOffset(pageable.getPageNumber()+1,pageable.getPageSize()))

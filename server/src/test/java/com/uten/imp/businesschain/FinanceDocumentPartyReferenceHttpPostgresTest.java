@@ -185,7 +185,12 @@ class FinanceDocumentPartyReferenceHttpPostgresTest {
     private JsonNode exchange(String method,String path,byte[] body,String token,int status)throws Exception{
         var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).timeout(Duration.ofSeconds(30))
                 .header("Accept","application/json").method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(body));
-        if(body!=null)request.header("Content-Type","application/json");if(token!=null)request.header("Authorization","Bearer "+token);
+        if (body != null) {
+            request.header("Content-Type", "application/json");
+        }
+        if (token != null) {
+            request.header("Authorization", "Bearer " + token);
+        }
         var response=http.send(request.build(),HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as(method+" "+path).isEqualTo(status);
         return response.body().length==0?json.nullNode():json.readTree(response.body());

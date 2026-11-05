@@ -46,7 +46,12 @@ class ProductionMaterialIncrementEndToEndTest {
         task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","increment-"+UUID.randomUUID(),false,"100");
         segment=ReflectionTestUtils.invokeMethod(task,"segment");plan=ReflectionTestUtils.invokeMethod(task,"plan");demand=ReflectionTestUtils.invokeMethod(task,"demand");
     }
-    @AfterEach void logout(){if(fixture!=null)fixture.logout();SecurityContextHolder.clearContext();}
+    @AfterEach void logout() {
+        if (fixture != null) {
+            fixture.logout();
+        }
+        SecurityContextHolder.clearContext();
+    }
 
     @Test void ordinary110OutputCanReallyConsume130AfterPlanningApprovesOnly30ExtraMaterial(){
         var context=increments.context(segment);assertEquals(1,context.demands().size());

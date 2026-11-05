@@ -257,7 +257,14 @@ public class DeliveryProcessingService {
         String planner=owners==null?"FALSE":"EXISTS(SELECT 1 FROM production_material_analysis_items source JOIN production_material_analyses analysis ON analysis.id=source.analysis_id WHERE source.sales_order_item_id=component.order_item_id AND NOT source.is_deleted AND NOT analysis.is_deleted AND analysis.status<>'CANCELLED' AND "+owners.predicate()+")";
         return new Scope("("+assigned+") OR ("+planner+")",true,owners);
     }
-    private void bindScope(Query query,Scope scope) {if(scope.employee())query.setParameter("employeeId",currentUser.employeeId().orElse(null));if(scope.owners()!=null)scope.owners().bind(query);}
+    private void bindScope(Query query, Scope scope) {
+        if (scope.employee()) {
+            query.setParameter("employeeId", currentUser.employeeId().orElse(null));
+        }
+        if (scope.owners() != null) {
+            scope.owners().bind(query);
+        }
+    }
     private Task view(Object[] r) {
         BigDecimal required=decimal(r[11]),done=decimal(r[12]);boolean assigned=membership.isWorkshopMember((UUID)r[16],(UUID)r[18],currentUser.employeeId().orElse(null));
         boolean open=((Number)r[25]).intValue()==0&&((Number)r[26]).intValue()==1&&!Boolean.TRUE.equals(r[27])&&!Boolean.TRUE.equals(r[28])&&!Boolean.TRUE.equals(r[29])&&r[30]==null;

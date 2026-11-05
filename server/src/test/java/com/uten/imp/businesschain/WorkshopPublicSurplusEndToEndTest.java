@@ -904,6 +904,10 @@ class WorkshopPublicSurplusEndToEndTest {
     }
 
     private Case createStartedTask(String tag, boolean mixed,String plannedQuantity) {
+        return createStartedTask(tag,mixed,plannedQuantity,false);
+    }
+
+    private Case createStartedTask(String tag, boolean mixed,String plannedQuantity,boolean secondMaterial) {
         var world = fixture.seedWorld(tag);
         fixture.loginAs(world.superAdminUserId());
         UUID product = UUID.randomUUID();
@@ -911,6 +915,11 @@ class WorkshopPublicSurplusEndToEndTest {
         fixture.insertGoods(product, "WPS-P-" + product, "持续生产公共备货成品", "自制", world.unitId(), world.unitLegacy());
         fixture.insertGoods(material, "WPS-M-" + material, "持续生产原料", "采购", world.unitId(), world.unitLegacy());
         fixture.insertBom(product, material, "1");
+        UUID extraMaterial=secondMaterial?UUID.randomUUID():null;
+        if(secondMaterial){
+            fixture.insertGoods(extraMaterial,"WPS-M-"+extraMaterial,"持续生产第二原料","采购",world.unitId(),world.unitLegacy());
+            fixture.insertBom(product,extraMaterial,"2");
+        }
         Object assignment = ReflectionTestUtils.invokeMethod(fixture, "productionAssignment", tag);
         UUID workshop = ReflectionTestUtils.invokeMethod(assignment, "workshopId");
         UUID worker = ReflectionTestUtils.invokeMethod(assignment, "workerId");
@@ -933,10 +942,11 @@ class WorkshopPublicSurplusEndToEndTest {
         }
         UUID segment = db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted", UUID.class, plan);
         UUID planItem = db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?", UUID.class, segment);
-        UUID demand = db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted", UUID.class, segment);
+        UUID demand = db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND goods_id=? AND NOT is_deleted", UUID.class, segment,material);
         Case c = new Case(world, product, material, order, orderItem, plan, planItem, segment, demand, workshop, worker);
         segments.confirmRoute(plan, segment, new SegmentRouteConfirmRequest(version(segment), "wps-route-" + segment, "CONTINUOUS"));
         receiveMaterial(c);
+        if(secondMaterial)receiveMaterial(c,extraMaterial);
         var tasks = List.of(new ProductionDrawRequest.Item(segment, version(segment)));
         var preview = drawRequests.preview(new ProductionDrawRequest.PreviewRequest(tasks));
         assertFalse(preview.lines().isEmpty());
@@ -969,10 +979,14 @@ class WorkshopPublicSurplusEndToEndTest {
     }
 
     private void receiveMaterial(Case c) {
+        receiveMaterial(c,c.material());
+    }
+
+    private void receiveMaterial(Case c,UUID material) {
         var request = new StockDocSaveRequest();
         request.setDocType("OTHER_IN"); request.setWarehouseId(c.world().warehouseId()); request.setBillDate(BusinessTime.today());
         var line = new StockDocItemLine();
-        line.setGoodsId(c.material()); line.setUnitId(c.world().unitId()); line.setUnitRate(BigDecimal.ONE);
+        line.setGoodsId(material); line.setUnitId(c.world().unitId()); line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("2000")); line.setPrice(BigDecimal.TEN);
         line.setAmountOriginal(new BigDecimal("20000")); line.setAmountLocal(new BigDecimal("20000"));
         request.setItems(List.of(line)); stock.approve(stock.create(request).getId());

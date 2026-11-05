@@ -66,7 +66,10 @@ public final class GoodsReferenceProjection {
         if (item.getDiscount() != null) row.put("discount", item.getDiscount());
         // BOM replacement previews used the original master list's stock quantity.
         // Business-only selectors must not gain this aggregate from a document grant.
-        if (includeMasterStock) row.put("stockQty", item.getStockQty());
+        if (includeMasterStock) {
+            row.put("stockQty", item.getStockQty());
+            row.put("stockQtyDisplayText", item.getStockQtyDisplayText());
+        }
         row.put("model", item.getModel());
         row.put("spec", item.getSpec());
         row.put("status", item.getStatus());

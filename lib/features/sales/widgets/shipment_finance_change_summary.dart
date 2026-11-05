@@ -240,6 +240,8 @@ class ShipmentFinanceChangeTable extends StatelessWidget {
     this.embedded = true,
     this.primary = false,
     this.bottomContentPadding = 0,
+    this.summaryBar,
+    this.scrollToEndRequest = 0,
     this.priceMasked = false,
   });
 
@@ -249,6 +251,8 @@ class ShipmentFinanceChangeTable extends StatelessWidget {
   final bool embedded;
   final bool primary;
   final double bottomContentPadding;
+  final Widget? summaryBar;
+  final int scrollToEndRequest;
   final bool priceMasked;
 
   static const _moneyKeys = {
@@ -316,6 +320,8 @@ class ShipmentFinanceChangeTable extends StatelessWidget {
       embedded: embedded,
       primary: primary,
       bottomContentPadding: bottomContentPadding,
+      summaryBar: summaryBar,
+      scrollToEndRequest: scrollToEndRequest,
       rows: rows,
       columns: [
         for (final key in keys)

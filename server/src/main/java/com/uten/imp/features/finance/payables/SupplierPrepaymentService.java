@@ -280,6 +280,8 @@ public class SupplierPrepaymentService implements SupplierPrepaymentPort {
         a=advance((UUID)r.get("payment_id"),true);r=db.queryForMap("SELECT * FROM finance_supplier_advance_refunds WHERE id=? FOR UPDATE",id);
         if(!"DRAFT".equals(r.get("status"))||!"OPEN".equals(a.get("status")))throw conflict("退款已处理或原预付已反审，请核对原结果");
         if(current.requireId().equals(r.get("created_by")))throw conflict("退款制单人与审核人不能相同");
+        com.uten.imp.common.finance.ActualBankBookingPolicy.requireOccurred(
+                offset(r.get("bank_booked_at")),"退款银行实际入账时间");
         var bankAccount=bank.lockActive((UUID)r.get("account_id"),"预付退款实际收款账户");
         if(!Objects.equals(bankAccount.currencyId(),r.get("account_currency_id"))||!Objects.equals(bankAccount.styleId(),r.get("bank_style_id")))throw conflict("收款账户币种或会计科目已变化，请重建退款草稿");
         BigDecimal original=decimal(r,"amount_original");var parts=db.queryForList("SELECT * FROM finance_supplier_advance_parts WHERE payment_id=? AND category=?",r.get("payment_id"),r.get("source_category"));

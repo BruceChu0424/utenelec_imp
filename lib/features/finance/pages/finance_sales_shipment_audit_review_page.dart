@@ -1,6 +1,13 @@
 import '../../sales/widgets/sales_shipment_print.dart';
 import '../config/finance_requirement_names.dart';
 import '../widgets/finance_actual_receipt_context.dart';
+import '../../../shared/widgets/sales_order_money_position_view.dart';
+import '../../../shared/widgets/shipment_receivable_position_view.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../core/network/data_write_revision.dart';
+import '../../../shared/models/customer_actual_receipt_context.dart';
+import '../../../core/router/page_resume_provider.dart';
 // 出货财务审核详情页（财务专用视图，与销售端出货详情分离；2026-09-12 拆分）。
 //
 // 对齐销售订单财务审核页 V300 / 订货审批审核详情页（ADR-027 §五）范式：
@@ -29,13 +36,13 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
-import '../../../components/feedback/uten_inline_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -46,7 +53,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/auth/read_owner_fence.dart';
+
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -84,8 +91,11 @@ class _FinanceSalesShipmentAuditReviewPageState
         ReviewAuthorityRefreshMixin<FinanceSalesShipmentAuditReviewPage> {
   SalesDocDetail? _detail;
   ShipmentFinanceAuditInfo? _info;
+  ShipmentReceivablePosition? _currentMoney;
+  int _moneyGeneration = 0;
   bool _loading = true;
-  bool _summaryExpanded = false;
+  bool _referencesExpanded = false;
+  int _referenceScrollRequest = 0;
   bool _busy = false;
   bool _authorityStale = false;
   @override
@@ -318,6 +328,89 @@ class _FinanceSalesShipmentAuditReviewPageState
     if (mounted) setState(() {});
   }
 
+  /// Cash changes must not replace the commercial review, its frozen evidence,
+  /// claims or typed review inputs. Only the current shipment debt is adopted.
+  Future<void> _refreshCurrentMoney() async {
+    if (!formDraftIdentityIsCurrent ||
+        !_hasReviewPermission(Perm.salesShipmentFinanceView)) {
+      return;
+    }
+    final owner = captureReadOwner(ref);
+    final request = ++_moneyGeneration, load = _loadGeneration;
+    final writeRevision = ref.read(dataWriteRevisionProvider);
+    try {
+      final repository = ref.read(
+        salesRepositoryProvider(SalesDocType.shipment),
+      );
+      final scope = await captureFormDraftRequestScope();
+      final info = await scope.run(
+        () => repository.financeAuditInfo(widget.id),
+      );
+      if (!mounted ||
+          !owner() ||
+          !formDraftIdentityIsCurrent ||
+          request != _moneyGeneration ||
+          load != _loadGeneration ||
+          writeRevision != ref.read(dataWriteRevisionProvider)) {
+        return;
+      }
+      if (info.shipmentId != widget.id) {
+        throw const FormatException('本批金额来源已变化');
+      }
+      setState(
+        () => _currentMoney =
+            info.receivablePosition ??
+            const ShipmentReceivablePosition(warnings: ['本批金额尚未读取完成，请刷新核对']),
+      );
+    } catch (_) {
+      if (mounted &&
+          owner() &&
+          formDraftIdentityIsCurrent &&
+          request == _moneyGeneration &&
+          load == _loadGeneration &&
+          writeRevision == ref.read(dataWriteRevisionProvider)) {
+        setState(
+          () => _currentMoney = const ShipmentReceivablePosition(
+            warnings: ['本批金额读取未完成，原审核输入已保留，请刷新核对'],
+          ),
+        );
+      }
+    }
+  }
+
+  Future<CustomerActualReceiptContext?> _readCustomerReceiptReference() async {
+    if (!formDraftIdentityIsCurrent ||
+        !_hasReviewPermission(Perm.salesShipmentFinanceView)) {
+      throw StateError('当前无权读取客户到账参考');
+    }
+    final owner = captureReadOwner(ref);
+    final load = _loadGeneration;
+    final sourceRevision = _info?.reviewRevision;
+    final sourceHash = _info?.contentHash;
+    final writeRevision = ref.read(dataWriteRevisionProvider);
+    final repository = ref.read(salesRepositoryProvider(SalesDocType.shipment));
+    final scope = await captureFormDraftRequestScope();
+    final info = await scope.run(() => repository.financeAuditInfo(widget.id));
+    if (!mounted ||
+        !owner() ||
+        !formDraftIdentityIsCurrent ||
+        !_hasReviewPermission(Perm.salesShipmentFinanceView) ||
+        load != _loadGeneration ||
+        writeRevision != ref.read(dataWriteRevisionProvider) ||
+        info.shipmentId != widget.id ||
+        info.reviewRevision != sourceRevision ||
+        info.contentHash != sourceHash) {
+      throw StateError('客户到账参考来源已变化，请重新读取');
+    }
+    return info.actualReceiptContext;
+  }
+
+  Future<void> _reloadFromButton() => UtenBusyOverlay.run(
+    context,
+    title: '正在刷新出货资料',
+    action: () => _load(authorityOnly: true),
+  );
+
   Future<void> _load({bool authorityOnly = false}) async {
     final previousInfo = _info;
     final preserveInputs = authorityOnly && previousInfo != null;
@@ -325,6 +418,7 @@ class _FinanceSalesShipmentAuditReviewPageState
     if (!preserveInputs) await prepareReviewReload();
     if (!mounted || !formDraftIdentityIsCurrent) return;
     final generation = ++_loadGeneration;
+    final moneyGeneration = _moneyGeneration;
     final container = ProviderScope.containerOf(context, listen: false);
     setState(() {
       _loading = true;
@@ -332,6 +426,7 @@ class _FinanceSalesShipmentAuditReviewPageState
       if (!preserveInputs) {
         _detail = null;
         _info = null;
+        _currentMoney = null;
         _settlementNames.clear();
         _authorityStale = false;
       }
@@ -386,6 +481,9 @@ class _FinanceSalesShipmentAuditReviewPageState
       setState(() {
         _detail = detail;
         _info = info;
+        if (moneyGeneration == _moneyGeneration) {
+          _currentMoney = info.receivablePosition ?? detail.receivablePosition;
+        }
         _authorityStale = false;
         _loading = false;
         // 预填记账汇率：已冻结的 > 本位币 1 > 主档参考汇率 > 空(主档没维护，要财务填)。
@@ -511,7 +609,11 @@ class _FinanceSalesShipmentAuditReviewPageState
     try {
       exchangeRate = _validatedExchangeRate();
     } on FormatException catch (e) {
-      setState(() => _rateError = e.message);
+      setState(() {
+        _rateError = e.message;
+        _referencesExpanded = true;
+        ++_referenceScrollRequest;
+      });
       context.appWarning(e.message);
       return;
     }
@@ -785,12 +887,18 @@ class _FinanceSalesShipmentAuditReviewPageState
   @override
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
+    ref.onPageResume(
+      currentLocationOr(context, '/finance/sales-shipment-audits/${widget.id}'),
+      _refreshCurrentMoney,
+      refreshKeys: const ['sales:shipment', 'sales:customerShipment'],
+    );
     scheduleReviewAuthorityRefresh();
     ref.listen(sessionProvider, (previous, next) {
       // 只有真实换身份才清空（换号/登出/模拟切换/业务重置）；token 静默刷新、
       // 同身份授权变化由独立监听刷新动作与认领，保留原审核输入。
       if (previous?.isSameIdentity(next) ?? false) return;
       ++_loadGeneration;
+      ++_moneyGeneration;
       _claim?.removeListener(_claimChanged);
       _claim?.releaseAll().ignore();
       _claim = null;
@@ -798,6 +906,7 @@ class _FinanceSalesShipmentAuditReviewPageState
         setState(() {
           _detail = null;
           _info = null;
+          _currentMoney = null;
           _loading = false;
           _error = '登录身份已变化，请重新加载并认领审核';
         });
@@ -829,7 +938,7 @@ class _FinanceSalesShipmentAuditReviewPageState
             UtenRefreshButton(
               enabled: !_busy,
               busy: _loading,
-              onRefresh: _load,
+              onRefresh: _reloadFromButton,
             ),
           ],
         ),
@@ -851,7 +960,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                         UtenButton(
                           type: UtenButtonType.secondary,
                           icon: Icons.refresh_rounded,
-                          onPressed: _load,
+                          onPressed: _reloadFromButton,
                           child: const Text('重试'),
                         ),
                       ],
@@ -883,25 +992,11 @@ class _FinanceSalesShipmentAuditReviewPageState
                                     _claim?.isReady != true) ...[
                                   FinanceReviewClaimNotice(
                                     claim: _claim,
-                                    onRetry: _busy ? null : _load,
+                                    onRetry: _busy ? null : _reloadFromButton,
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
                                 ],
                                 _shipmentCard(theme, _detail!),
-                                const SizedBox(height: UtenSpacing.s12),
-                                ShipmentFinanceChangeSummary(
-                                  previous: _info!.previousCommercialSnapshot,
-                                  current: _info!.commercialSnapshot,
-                                  describe: _describeSnapshotValue,
-                                ),
-                                const SizedBox(height: UtenSpacing.s12),
-                                _attachments(theme, _detail!),
-                                if (_detail!
-                                    .shipmentWorkflow
-                                    .financeRejected) ...[
-                                  const SizedBox(height: UtenSpacing.s12),
-                                  _rejectRecordCard(theme, _detail!),
-                                ],
                                 // 2026-09-25 用户口径：纯计数标题「出货明细(N)」退役；
                                 // 修订对比态标题保留（表体看不出这是对比视图）。
                                 if (_itemsTitle(_detail!)
@@ -948,19 +1043,12 @@ class _FinanceSalesShipmentAuditReviewPageState
   }
 
   /// 右下悬浮操作组：待审=退回销售(红)+确认放行；已退回=撤回退回；其余状态只留返回。
-  Widget _floatingActions(ThemeData theme) {
+  Widget? _floatingActions(ThemeData theme) {
     final claimReady = _claim?.isReady == true;
     final canDecide = _canDecide && _decisionReady && claimReady && !_busy;
     if (_canRejectReverse) {
       return UtenFloatingActionGroup(
         children: [
-          UtenButton(
-            key: const Key('finance-shipment-audit-back-secondary'),
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.large,
-            onPressed: _leave,
-            child: const Text('返回'),
-          ),
           UtenButton(
             key: const Key('finance-shipment-audit-reject-reverse-btn'),
             size: UtenButtonSize.large,
@@ -972,29 +1060,9 @@ class _FinanceSalesShipmentAuditReviewPageState
         ],
       );
     }
-    if (!canDecide) {
-      return UtenFloatingActionGroup(
-        children: [
-          UtenButton(
-            key: const Key('finance-shipment-audit-back'),
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.large,
-            icon: Icons.arrow_back_rounded,
-            onPressed: _leave,
-            child: const Text('返回'),
-          ),
-        ],
-      );
-    }
+    if (!canDecide) return null;
     return UtenFloatingActionGroup(
       children: [
-        UtenButton(
-          key: const Key('finance-shipment-audit-back-secondary'),
-          type: UtenButtonType.secondary,
-          size: UtenButtonSize.large,
-          onPressed: _leave,
-          child: const Text('返回'),
-        ),
         if (_canReject)
           UtenButton(
             key: const Key('finance-shipment-audit-reject'),
@@ -1066,56 +1134,173 @@ class _FinanceSalesShipmentAuditReviewPageState
         : !d.shipmentWorkflow.salesConfirmed
         ? (UtenStatusBadgeType.warning, Icons.hourglass_top_rounded, '待销售确认')
         : (UtenStatusBadgeType.warning, Icons.pending_actions_rounded, '待财务审核');
-    return UtenStatusBadge(label: text, type: type, icon: icon);
+    return Wrap(
+      spacing: UtenSpacing.s4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        UtenStatusBadge(label: text, type: type, icon: icon),
+        if (warehouseStarted)
+          const UtenFieldHintIcon(
+            key: ValueKey('shipment-outbound-review-hint'),
+            errorMessage: '仓库已确认出库，不能补做或撤销财务审核；纠错请走销售退货。',
+          ),
+      ],
+    );
   }
 
   /// 客户财务快照卡：审核必看的本单结账方式、应收、铺底与可用预收。
   /// ADR-128：应收与可用预收按本单币种显示(财务共用 FinancePartySnapshotCard)；
   /// 铺底额只和全部币种正式应收(折本币，不扣预收)比，超出时标红。
-  Widget _clientFinanceCard(ThemeData theme, ShipmentFinanceAuditInfo info) {
-    final names = ref.watch(salesMasterNameServiceProvider);
-    return FinancePartySnapshotCard(
-      embedded: true,
-      expanded: _summaryExpanded,
-      showTitle: false,
-      showLeading: false,
-      showBalances: false,
-      title: '客户财务快照 · ${info.clientName ?? names.client(_detail?.clientId)}',
-      balance: info.clientBalance,
-      leading: [
-        if (info.billingMode != null)
-          FinanceSnapshotMetric(
-            '本次发货',
-            info.billingMode == 'FREE' ? '不收费（货款 0）' : '收费',
-          ),
-        if (info.directPurpose != null)
-          FinanceSnapshotMetric('发货用途', switch (info.directPurpose) {
-            'SAMPLE' => '样品',
-            'GIFT' => '赠送',
-            _ => '其它客户发货',
-          }),
-        if (info.freeReason != null)
-          FinanceSnapshotMetric('不收费原因', info.freeReason),
-        FinanceSnapshotMetric('结账方式', info.settlementMethodName ?? '未设置'),
-        if (!_isFreeShipment)
-          FinanceSnapshotMetric(
-            '主档参考汇率${info.currencyName == null ? '' : '(${financeCurrencyText(name: info.currencyName)})'}',
-            _rateLocked
-                ? '1(本位币)'
-                : info.financeRateReady == false
-                ? '未维护'
-                : (info.financeRate ?? '—'),
-            danger: !_rateLocked && info.financeRateReady == false,
-          ),
-      ],
-      limitLabel: '铺底额',
-      footer: [
-        if (!_isFreeShipment) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          _exchangeRateSection(theme, info),
-          FinanceActualReceiptContext(value: info.actualReceiptContext),
+  Widget _clientFinanceCard(ThemeData theme, ShipmentFinanceAuditInfo info) =>
+      FinancePartySnapshotCard(
+        embedded: true,
+        showTitle: false,
+        showLeading: false,
+        title: '客户资金（辅助）',
+        balance: info.clientBalance,
+        limitLabel: '铺底额',
+      );
+
+  void _openAuditReferences() {
+    setState(() {
+      _referencesExpanded = true;
+      ++_referenceScrollRequest;
+    });
+  }
+
+  Widget _auditReferences(ThemeData theme, SalesDocDetail d) {
+    if (!_hasReviewPermission(Perm.salesShipmentFinanceView)) {
+      return const SizedBox.shrink();
+    }
+    final info = _info!;
+    final frozen = info.frozenReceivablePosition;
+    Widget groupTitle(String title, String hint) => Padding(
+      padding: const EdgeInsets.only(
+        top: UtenSpacing.s16,
+        bottom: UtenSpacing.s8,
+      ),
+      child: Row(
+        children: [
+          Expanded(child: Text(title, style: theme.textTheme.titleSmall)),
+          UtenFieldHintIcon(info: hint),
         ],
-      ],
+      ),
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: UtenCollapsibleSection(
+          key: const ValueKey('shipment-audit-reference-section'),
+          title: '审核资料与参考',
+          expanded: _referencesExpanded,
+          initiallyExpanded: false,
+          onExpandedChanged: (next) =>
+              setState(() => _referencesExpanded = next),
+          titleTrailing: const UtenFieldHintIcon(
+            info:
+                '审核记录、客户累计与订单资金仅供核对。当前本批货款、已收、还欠以上方主板为准。展开此区不会自动读取客户到账参考。${BusinessAttachmentSection.kReviewReadOnlyAttachmentNote}',
+          ),
+          child: !_referencesExpanded
+              ? const SizedBox.shrink()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!_isFreeShipment)
+                      UtenSummaryField(
+                        label:
+                            '主档参考汇率${info.currencyName == null ? '' : '(${financeCurrencyText(name: info.currencyName)})'}',
+                        value: _rateLocked
+                            ? '1(本位币)'
+                            : info.financeRateReady == false
+                            ? '未维护'
+                            : info.financeRate ?? '—',
+                        info: '主档仅作预填参考；本次审核按下方记账汇率核对，已放行单据保留审核时汇率。',
+                      ),
+                    if (!_isFreeShipment) _exchangeRateSection(theme, info),
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenSummaryFacts(
+                      inline: true,
+                      children: [
+                        if (frozen != null)
+                          UtenSummaryField(
+                            label: '当时审核记录',
+                            value: frozen.ready
+                                ? shipmentDebtLabel(frozen)
+                                : frozen.unavailableLabel,
+                            info: '财务放行当时冻结的本批依据；后续收款不改历史，当前还欠看上方主板。',
+                          ),
+                        if (d.financeAuditedAt != null)
+                          UtenSummaryField(
+                            label: '审核时间',
+                            value: d.financeAuditedAt,
+                          ),
+                        if (d.financeAudit == 1)
+                          UtenSummaryField(
+                            label: '审核人',
+                            value: d.financeAuditorName?.isNotEmpty == true
+                                ? d.financeAuditorName
+                                : '历史未留姓名快照',
+                          ),
+                        UtenSummaryField(
+                          label: '仓库',
+                          value: ref
+                              .read(salesMasterNameServiceProvider)
+                              .warehouse(d.warehouseId),
+                        ),
+                        UtenSummaryField(label: '制单员', value: d.makerName),
+                        if (d.createdAt != null)
+                          UtenSummaryField(
+                            label: '制单时间',
+                            value: utenFmtIsoTime(d.createdAt),
+                          ),
+                        if (d.logisticsNo?.isNotEmpty == true)
+                          UtenSummaryField(label: '物流单号', value: d.logisticsNo),
+                        if (d.shipAddr?.isNotEmpty == true)
+                          UtenSummaryField(label: '收货地址', value: d.shipAddr),
+                        if (d.remark?.isNotEmpty == true)
+                          UtenSummaryField(label: '备注', value: d.remark),
+                      ],
+                    ),
+                    ShipmentFinanceChangeSummary(
+                      previous: info.previousCommercialSnapshot,
+                      current: info.commercialSnapshot,
+                      describe: _describeSnapshotValue,
+                    ),
+                    if (info.clientBalance != null) ...[
+                      groupTitle(
+                        '客户资金（辅助）',
+                        '结款方式来自本单。客户应收与预收按本单币种原币核对，可用预收只算已审核到账的预收；客户累计不能冒充本批已收或还欠。',
+                      ),
+                      _clientFinanceCard(theme, info),
+                    ],
+                    if (info.orderMoneyPositions.isNotEmpty) ...[
+                      groupTitle('订单参考（辅助）', '订单含未发货计划与未抵定金，不能当作本批已收或催收依据。'),
+                      for (final position in info.orderMoneyPositions.values)
+                        SalesOrderMoneyPositionView(
+                          value: position,
+                          frozen: info.financeAudit == 1,
+                        ),
+                    ],
+                    if (!_isFreeShipment &&
+                        _hasReviewPermission(
+                          Perm.salesShipmentFinanceView,
+                        )) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      FinanceActualReceiptContext(
+                        key: ValueKey(
+                          'customer-receipt-reference-$_loadGeneration',
+                        ),
+                        onRead: _readCustomerReceiptReference,
+                      ),
+                    ],
+                    const SizedBox(height: UtenSpacing.s12),
+                    _attachments(theme, d),
+                    if (d.shipmentWorkflow.financeRejected)
+                      _rejectRecordCard(theme, d),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 
@@ -1127,14 +1312,13 @@ class _FinanceSalesShipmentAuditReviewPageState
         _detail?.shipmentWorkflow.financeRejected == true;
     if (decided) {
       final frozen = info.shipmentExchangeRate?.trim();
-      return Text(
-        frozen == null || frozen.isEmpty
-            ? '记账汇率：放行时未冻结(按币种主档参考汇率立账)'
-            : '已冻结记账汇率 $frozen(1 $currency = $frozen 本币)；仓库确认出库按此汇率折算本币立应收。',
+      return UtenSummaryField(
         key: const Key('finance-audit-rate-frozen'),
-        style: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
+        label: '审核时汇率',
+        value: frozen == null || frozen.isEmpty ? '未冻结' : frozen,
+        info: frozen == null || frozen.isEmpty
+            ? '原放行记录未冻结汇率，后续业务按原记录及记账依据核对，不在这里补造审时值。'
+            : '已冻结记账汇率 $frozen：1 $currency = $frozen 本币；仓库确认出库按此汇率折算本币立应收。',
       );
     }
     final hint = _rateLocked
@@ -1145,24 +1329,6 @@ class _FinanceSalesShipmentAuditReviewPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_masterRateMissing && !_rateLocked)
-          Container(
-            key: const Key('finance-audit-rate-block'),
-            margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.errorContainer.withValues(alpha: 0.6),
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Text(
-              '币种「$currency」的主档参考汇率未维护(当前 ${info.financeRate?.trim().isNotEmpty == true ? info.financeRate!.trim() : '空'})，'
-              '请在下方按放行当日汇率填写记账汇率再放行；仓库端不再为此报错。',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onErrorContainer,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
         UtenFormGrid(
           children: [
             ValueListenableBuilder<TextEditingValue>(
@@ -1203,24 +1369,12 @@ class _FinanceSalesShipmentAuditReviewPageState
   /// 出货信息卡：与销售端详情同规则的只读商业事实（币种红色加粗）。
   Widget _shipmentCard(ThemeData theme, SalesDocDetail d) {
     final names = ref.watch(salesMasterNameServiceProvider);
-    Widget kv(String label, String? value, {bool highlight = false}) =>
-        UtenSummaryField(
-          label: label,
-          value: value,
-          emphasis: highlight,
-          danger: highlight,
-        );
     final info = _info!;
-    final balance = info.clientBalance;
-    final currency = balance?.baseCurrency == true
-        ? (balance?.baseCurrencyName ?? '人民币')
-        : balance?.currencyName;
-    final net = financeExactDecimal(balance?.netOriginal);
-    final surplus = net?.startsWith('-') == true;
     final revised =
         readableShipmentReviewSnapshot(info.previousCommercialSnapshot) &&
         readableShipmentReviewSnapshot(info.commercialSnapshot);
     return UtenDetailSummaryCard(
+      key: const ValueKey('shipment-document-main-panel'),
       heading: Wrap(
         spacing: UtenSpacing.s12,
         runSpacing: UtenSpacing.s4,
@@ -1234,119 +1388,57 @@ class _FinanceSalesShipmentAuditReviewPageState
           ),
         ],
       ),
-      status: _statusStrip(theme, d, info),
-      expanded: _summaryExpanded,
-      onExpandedChanged: (value) => setState(() => _summaryExpanded = value),
+      status: Wrap(
+        spacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _statusStrip(theme, d, info),
+          TextButton.icon(
+            key: const ValueKey('detail-summary-toggle'),
+            onPressed: _openAuditReferences,
+            icon: const Icon(Icons.more_horiz_rounded, size: 18),
+            label: const Text('更多资料'),
+          ),
+        ],
+      ),
       primary: [
-        kv(
-          '本次货款',
-          d.shipmentWorkflow.isFree
-              ? '不收费（货款 0）'
-              : d.priceMasked
-              ? '***'
-              : financeMoneyWithUnitSuffix(
-                  d.exactDecimals['totalOriginal'] ??
-                      d.totalOriginal?.toString(),
-                  currencyName: names.currency(d.currencyId),
-                  fullCurrencyName: true,
-                ),
-          highlight: true,
-        ),
-        UtenSummaryField(
-          label: '应收未收',
-          info:
-              '结账方式来自本单。应收和可用预收按本单币种的原币余额相加，不用汇率换算；可用预收只算已审核到账的预收。铺底额只和全部币种应收(折本币，不扣预收)比。',
-          value: financeMoneyWithUnitSuffix(
-            balance?.openOriginal,
-            currencyName: currency,
-            fullCurrencyName: true,
+        if (_currentMoney == null)
+          UtenSummaryField(
+            label: '货款',
+            value: d.shipmentWorkflow.isFree
+                ? '不收费'
+                : d.priceMasked
+                ? '***'
+                : financeMoneyWithUnitSuffix(
+                    d.exactDecimals['totalOriginal'] ??
+                        d.totalOriginal?.toString(),
+                    currencyName: names.currency(d.currencyId),
+                    fullCurrencyName: true,
+                  ),
           ),
-          emphasis: true,
-        ),
-        UtenSummaryField(
-          label: '可用预收',
-          value: financeMoneyWithUnitSuffix(
-            balance?.creditOriginal,
-            currencyName: currency,
-            fullCurrencyName: true,
-          ),
-          emphasis: true,
-        ),
-        UtenSummaryField(
-          label: surplus ? '预收有余' : '还差多少',
-          value: financeMoneyWithUnitSuffix(
-            surplus ? net!.substring(1) : net,
-            currencyName: currency,
-            fullCurrencyName: true,
-          ),
-          emphasis: true,
-        ),
       ],
       facts: [
-        kv('结账方式', info.settlementMethodName ?? '未设置'),
-        if (info.billingMode != null)
-          kv('本次发货', info.billingMode == 'FREE' ? '不收费（货款 0）' : '收费'),
-        if (info.directPurpose != null)
-          kv('发货用途', switch (info.directPurpose) {
-            'SAMPLE' => '样品',
-            'GIFT' => '赠送',
-            _ => '其它客户发货',
-          }),
-        if (info.freeReason != null) kv('不收费原因', info.freeReason),
-        if (!_isFreeShipment)
-          kv(
-            '主档参考汇率${info.currencyName == null ? '' : '(${financeCurrencyText(name: info.currencyName)})'}',
-            _rateLocked
-                ? '1(本位币)'
-                : info.financeRateReady == false
-                ? '未维护'
-                : info.financeRate ?? '—',
-            highlight: !_rateLocked && info.financeRateReady == false,
-          ),
-        kv('出货日期', d.billDate),
-        if ((d.sourceDocNo?.isNotEmpty ?? false)) kv('来源订单', d.sourceDocNo),
-        kv('仓库作业', salesWarehouseWorkStatusLabel(d.warehouseWorkStatus)),
-      ],
-      notices: [
-        if (d.shipmentWorkflow.financeRejected)
-          UtenInlineNotice(
-            level: UtenInlineNoticeLevel.error,
-            message:
-                '${d.shipmentWorkflow.financeRejectionReason ?? '未注明原因'}${_canRejectReverse ? ' · 可撤回退回恢复审核' : ''}',
-          ),
-        if (!salesShipmentAllowsFinanceAudit(d.warehouseWorkStatus))
-          const UtenInlineNotice(
-            level: UtenInlineNoticeLevel.error,
-            message: '仓库已确认出库，不能补做或撤销财务审核；纠错请走销售退货。',
-          ),
-        if (!d.shipmentWorkflow.salesConfirmed &&
-            !d.shipmentWorkflow.financeRejected &&
-            d.financeAudit != 1)
-          const UtenInlineNotice(message: '销售尚未确认本单内容；确认提交后才进入财务审核。'),
-        _clientFinanceCard(theme, info),
-      ],
-      details: [
-        UtenSummaryFacts(
-          children: [
-            kv('仓库', names.warehouse(d.warehouseId)),
-            kv('业务员', names.employee(d.sellerId)),
-            kv('发货人', names.employee(d.senderId)),
-            kv('制单员', d.makerName),
-            kv('制单时间', utenFmtIsoTime(d.createdAt)),
-            if ((d.logisticsNo?.isNotEmpty ?? false)) kv('物流单号', d.logisticsNo),
-            if ((d.shipAddr?.isNotEmpty ?? false)) kv('收货地址', d.shipAddr),
-            if (d.parcelCount != null) kv('件数', d.parcelCount?.toString()),
-            if (d.remark?.isNotEmpty == true) kv('备注', d.remark),
-            if (d.financeAuditedAt != null) kv('放行时间', d.financeAuditedAt),
-            if (d.financeAudit == 1)
-              kv(
-                '审核人',
-                d.financeAuditorName?.isNotEmpty == true
-                    ? d.financeAuditorName
-                    : '历史未留姓名快照',
-              ),
-          ],
+        UtenSummaryField(label: '出货日期', value: d.billDate),
+        UtenSummaryField(
+          label: '结款方式',
+          value: info.settlementMethodName ?? '未设置',
         ),
+        UtenSummaryField(
+          label: '仓库作业',
+          value: salesWarehouseWorkStatusLabel(d.warehouseWorkStatus),
+        ),
+        if (d.sourceDocNo?.isNotEmpty == true)
+          UtenSummaryField(label: '来源订单', value: d.sourceDocNo),
+        if (info.billingMode != null)
+          UtenSummaryField(
+            label: '本次发货',
+            value: info.billingMode == 'FREE' ? '不收费' : '收费',
+          ),
+      ],
+      sections: [
+        if (_hasReviewPermission(Perm.salesShipmentFinanceView))
+          if (_currentMoney case final position?)
+            ShipmentReceivablePositionView(value: position),
       ],
     );
   }
@@ -1371,8 +1463,13 @@ class _FinanceSalesShipmentAuditReviewPageState
             primary: true,
             priceMasked: masked,
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+            summaryBar: _auditReferences(theme, d),
+            scrollToEndRequest: _referenceScrollRequest,
           )
         : MasterDataTableView<SalesDocItem>(
+            summaryBar: _auditReferences(theme, d),
+            summaryBarInline: d.items.isNotEmpty,
+            scrollToEndRequest: _referenceScrollRequest,
             expensiveRowMounts: false,
             tableKey:
                 'features.finance.pages.finance_sales_shipment_audit_review_page.FinanceSalesShipmentAuditReviewPageState._itemsCard.1',
@@ -1520,7 +1617,7 @@ class _FinanceSalesShipmentAuditReviewPageState
                       d.financeAudit == 1 ||
                       d.status == 1))),
       canManage: false,
-      readOnlyNote: BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+      showBusyOverlay: true,
       categories: const ['合同', '客户确认', '图片', '其他'],
     );
   }

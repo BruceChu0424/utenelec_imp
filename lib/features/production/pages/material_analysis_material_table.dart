@@ -2085,7 +2085,8 @@ abstract class _MaterialAnalysisMaterialTableState
       minimumWidthOf: (_) => 72,
       info:
           '这行物料现在走到哪一步（等待下单 → 下单 → 财务审批 → 收货 → 检验 → '
-          '入库)；点击状态可看全程明细。还没确认供应方式的行显示「待维护货品来源」。',
+          '入库)；点击状态可看全程明细。还没确认供应方式且仍有缺口的行显示'
+          '「待维护货品来源」；库存已覆盖的行显示「本层库存已齐」。',
       value: _materialTableStatusText,
       cellBuilderHandlesSemantics: true,
       cellColor: (context, row) {
@@ -5297,7 +5298,12 @@ abstract class _MaterialAnalysisMaterialTableState
       return '此来源已有未提交的汇总总量，请到「按物料汇总」修改、下达或撤销该草稿';
     }
     if (group.representative.confirmedRoute == null) {
-      return '请先在货品资料维护默认来源，再刷新物料分析';
+      final material = group.representative;
+      return material.shortageQty <= 0 && material.requiredQty > 0
+          ? material.sourceSuggestion == null
+                ? '本批库存已覆盖，无需补缺；额外备货前请维护货品默认来源并刷新'
+                : '本批库存已覆盖，无需补缺；额外备货前请刷新以确认货品默认来源'
+          : '请先在货品资料维护默认来源，再刷新物料分析';
     }
     // 路线草稿保存失败时 _routeDraft/_dirtyRouteGroups 会留在页面上，此时
     // _draftRoute 给的是还没落盘的路线：照它选下达通道会直接吃服务端 400，
@@ -5782,6 +5788,13 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
     if (group.representative.confirmedRoute == null) {
+      final material = group.representative;
+      if (material.shortageQty <= 0 && material.requiredQty > 0) {
+        return Tooltip(
+          message: _tableIssueBlockedReason(group)!,
+          child: Text('0', style: theme.textTheme.bodySmall),
+        );
+      }
       return Tooltip(
         message: '先确认供应方式，这一行才能填下单数量。',
         child: Text('—', style: theme.textTheme.bodySmall),
@@ -5796,7 +5809,8 @@ abstract class _MaterialAnalysisMaterialTableState
       _tableOrderQtyControllers[group.key]?.text.trim() ?? '',
     );
     if ((typedOrder == null || typedOrder <= 0) &&
-        _tableGroupResidual(group) < 0.00005) {
+        _tableGroupResidual(group) < 0.00005 &&
+        !_tableCanOrderCoveredPublicSupply(group)) {
       final route = _draftRoute(group);
       if (route != null && _hasRootStockToAllocate(group, route)) {
         return const Tooltip(
@@ -5820,8 +5834,11 @@ abstract class _MaterialAnalysisMaterialTableState
       }
       return Tooltip(
         message:
-            '这一行没有要下单的量：需要数量与还缺数量都是 0'
-            '（同物料的需求记在它的需求行上，缺口也已覆盖）。要额外备货请在有缺口的行上填数。',
+            group.representative.requiredQty > 0 &&
+                group.representative.shortageQty <= 0
+            ? '本批现货已覆盖，无需补缺；额外备货需要对应下达及超量权限。'
+            : '这一行没有要下单的量：需要数量与还缺数量都是 0'
+                  '（同物料的需求记在它的需求行上，缺口也已覆盖）。',
         child: Text(
           '0',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -5845,6 +5862,7 @@ abstract class _MaterialAnalysisMaterialTableState
       suffixText: group.representative.unitName?.trim(),
       // 带下层的行改量要带动子层：记下用户亲手填的数，去抖后向服务端要重算。
       onTyped: (text) => _onTableQtyTyped(group, text),
+      onFinished: _finishPreparationQuantityEditing,
       invalid: () => _tableOrderQtyInvalid(group),
     );
     final hint = [
@@ -6386,10 +6404,29 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 隐藏选择。新服务端的共享池同时覆盖现货、待办理、自制和外部在途。
   double _tableSharedAvailableBeforeEditing(_MaterialGroup group) {
     final material = group.representative;
-    return material.preparationSharedAvailableQty ??
+    final shared =
+        material.preparationSharedAvailableQty ??
         material.preparationAvailableQty ??
         (material.mainWarehousePublicAvailableQty +
             material.sharedFutureClaimableQty);
+    // 已绑定本需求的现货不是可再次认领的公共余额，但它也应触发说明，
+    // 避免填额外数量时误以为可以通过 skipAutoClaim 解除原现货绑定。
+    return shared + material.allocatedAvailableQty;
+  }
+
+  bool _tableCanOrderCoveredPublicSupply(_MaterialGroup group) {
+    final material = group.representative;
+    if (material.isRootSupply ||
+        material.requiredQty <= 0 ||
+        material.shortageQty > 0 ||
+        material.aggregatePreparation?.actionable != true ||
+        _aggregateTable.inactiveSourceContext(group)) {
+      return false;
+    }
+    final route = material.confirmedRoute;
+    return route == MaterialSupplyRoute.make
+        ? _canGenerate
+        : route != null && _canNotify && _canOverSupply;
   }
 
   bool _tableClaimChoiceMatters(_MaterialGroup group, double? typedQty) {
@@ -6490,17 +6527,6 @@ abstract class _MaterialAnalysisMaterialTableState
             children: [
               Row(
                 children: [
-                  Expanded(child: Text('所选物料有可用余量。本次是先使用这些余量，还是保留余量、继续下单备货？')),
-                  UtenFieldHintIcon(
-                    dense: true,
-                    info:
-                        '应用于本次所选行，可在表格上方切换。需求已满足的追加量按公共备货办理，不重复占用需求。正式可用量以下单结果为准，未入库的备货不能直接领用。',
-                  ),
-                ],
-              ),
-              SizedBox(height: 12),
-              Row(
-                children: [
                   Expanded(
                     child: RadioListTile<bool>(
                       value: true,
@@ -6509,7 +6535,8 @@ abstract class _MaterialAnalysisMaterialTableState
                   ),
                   UtenFieldHintIcon(
                     dense: true,
-                    info: '按本次需求使用可采用的余量，不足部分再下单；页面继续按选中数量预扣可用量。',
+                    info:
+                        '本批已分配现货继续覆盖原需求；尚未覆盖的需求优先采用公共余量，不足部分再下单。已齐套时填写的数量仍是额外公共备货，不重复占用需求。',
                   ),
                 ],
               ),
@@ -6523,7 +6550,8 @@ abstract class _MaterialAnalysisMaterialTableState
                   ),
                   UtenFieldHintIcon(
                     dense: true,
-                    info: '不预扣现有余量，按填写数量新增下单；超出需求的部分成为公共备货，增加计划可用量。',
+                    info:
+                        '保留尚未认领的公共余量，按填写数量新增下单；本批已绑定现货不释放、不重复抵扣。超出未覆盖需求的部分成为公共备货，未入库前不能直接领用。',
                   ),
                 ],
               ),

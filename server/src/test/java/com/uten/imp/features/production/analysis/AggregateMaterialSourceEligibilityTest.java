@@ -15,6 +15,42 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class AggregateMaterialSourceEligibilityTest {
+    @Test void freshCoveredComponentGetsAnOrderingProjectionWithoutAnySharedActionOrDelegation() {
+        MaterialView source=source("ACTIVE");
+        when(source.sourceConfirmed()).thenReturn("BUY");
+        when(source.requiredQty()).thenReturn(BigDecimal.TEN);
+        when(source.allocatedAvailableQty()).thenReturn(BigDecimal.TEN);
+        when(source.shortageQty()).thenReturn(BigDecimal.ZERO);
+        when(source.planningUncoveredQty()).thenReturn(BigDecimal.ZERO);
+        when(source.netShortageQty()).thenReturn(BigDecimal.ZERO);
+        AggregateMaterialPreparationProjection.apply(List.of(source),List.of(),List.of(),Map.of(),Map.of(),
+                new AggregateAdoptionIntentReader.Coverage(Map.of(),Map.of()),Map.of(),Map.of());
+        var result=ArgumentCaptor.forClass(AggregatePreparationView.class);
+        verify(source).withAggregatePreparation(result.capture());
+        assertThat(result.getValue().actionable()).isTrue();
+        assertThat(result.getValue().requiredQty()).isEqualByComparingTo("10");
+        assertThat(result.getValue().planningUncoveredQty()).isZero();
+        assertThat(result.getValue().orderedQty()).isZero();
+        assertThat(source.actionable()).isFalse();
+        assertThat(source.allocatedAvailableQty()).isEqualByComparingTo("10");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"10,1,true,START,1", "0,0,true,START,1", "10,0,false,START,1",
+            "10,0,true,SHIP,1", "10,0,true,REFERENCE,1", "10,0,true,START,0"})
+    void ordinaryUncoveredInactiveUnconfirmedAndNonProductionRowsKeepTheirExistingProjection(
+            String required,String shortage,boolean confirmed,String stage,int level) {
+        MaterialView source=source("ACTIVE");
+        when(source.requiredQty()).thenReturn(new BigDecimal(required));
+        when(source.shortageQty()).thenReturn(new BigDecimal(shortage));
+        when(source.routeConfirmed()).thenReturn(confirmed);
+        when(source.controlStage()).thenReturn(stage);
+        when(source.level()).thenReturn(level);
+        AggregateMaterialPreparationProjection.apply(List.of(source),List.of(),List.of(),Map.of(),Map.of(),
+                new AggregateAdoptionIntentReader.Coverage(Map.of(),Map.of()),Map.of(),Map.of());
+        verify(source,never()).withAggregatePreparation(any());
+    }
+
     @Test void delegatedStartMemberIsNotActionableMerelyBecauseItsControlStageWasRetained() {
         MaterialView source=source("DELEGATED_TO_MAKE_CHILD");
         assertThat(project(source,List.of()).actionable()).isFalse();

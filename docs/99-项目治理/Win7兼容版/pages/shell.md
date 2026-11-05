@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MainShellPage @62 (page-class)<br>_MainShellPageState @77 (state-class)<br>_KeepAlivePage @454 (page-class)<br>_KeepAlivePageState @463 (state-class) |
-| 真实路由绑定 | None；router @585；builder ['MainShellPage']；redirect None |
+| 真实路由绑定 | None；router @593；builder ['MainShellPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -57,6 +57,25 @@ void main() {
     'rd_task->basic_data',
     'report->basic_data',
     'sales->basic_data',
+    // 2026-11-04 审批中心分类栏聚合范式（用户验收批次）登记的 11 条边：
+    // approvals 作为统一聚合页嵌入各分类页（approvals->applications/expense/sales），
+    // 各分类页复用 basic_data 的 MasterDataTableView/MasterFacet 表格壳与状态表头
+    // 筛选契约（applications/expense/finance/sales/approvals->basic_data 同
+    // admin->basic_data 先例）；报销并入申请记录分类段（applications->expense、
+    // finance->expense/finance->applications 的申请-报销联动与详情原生单区、
+    // expense->finance 复用 finance_native_original_section、sales->finance 的
+    // 营销审批跳财务审批中心分类）。均为页面聚合/组件复用，无业务写口跨调。
+    'applications->basic_data',
+    'applications->expense',
+    'applications->finance',
+    'approvals->applications',
+    'approvals->basic_data',
+    'approvals->expense',
+    'approvals->sales',
+    'expense->finance',
+    'finance->applications',
+    'finance->expense',
+    'sales->finance',
     'sales->notice',
     'sales->report',
     // 2026-09-18：安全黑名单页复用 basic_data 的 MasterDataTableView 表格壳

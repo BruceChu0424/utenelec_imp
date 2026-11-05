@@ -2,13 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -25,10 +28,495 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/formatters/exact_decimal.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import '../../support/native_detail_reader_overrides.dart';
+import '../../support/document_scope_capability_overrides.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import '../../support/audit_screenshot_support.dart';
+import '../../support/uten_test_actions.dart';
+
+const _captureReceiptFlows = bool.fromEnvironment('UTEN_CAPTURE_RECEIPT_FLOW');
 
 void main() {
+  testWidgets(
+    'legacy receipt editor selects a physical batch, preserves its old source and saves a partial receipt',
+    (tester) async {
+      final env = await _open(tester, FinanceDocType.receipt, legacy: true);
+      expect(_table(tester).controller.rows.single.appliedLedgerId, 'old-ar');
+      final action = find.byKey(const ValueKey('receipt-import-ar'));
+      await tester.ensureVisible(action);
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      await _chooseShipmentBatch(tester, 'shared-ar', '200');
+      final rows = _table(tester).controller.rows;
+      expect(rows, hasLength(2));
+      expect(rows.first.appliedLedgerId, 'old-ar');
+      expect(rows.last.appliedLedgerId, 'shared-ar');
+      expect(rows.last.requestedSalesOrderId, isNull);
+      expect(
+        financeAmountUnits(rows.last.amount.text),
+        financeAmountUnits('200'),
+      );
+      final section = find.byKey(
+        const ValueKey('finance-receipt-settlement-fees'),
+      );
+      await tester.ensureVisible(section);
+      await tester.pumpAndSettle();
+      final value = tester.widget<UtenCollapsibleSection>(section);
+      if (!(value.expanded ?? value.initiallyExpanded)) {
+        await tester.tap(
+          find.descendant(of: section, matching: find.text(value.title)),
+        );
+        await tester.pumpAndSettle();
+      }
+      final actual = find.byKey(
+        const ValueKey('finance-receipt-account-amount'),
+      );
+      await tester.ensureVisible(actual);
+      await tester.pumpAndSettle();
+      await tester.enterText(actual, '300');
+      await tester.tap(find.text('保存').hitTestable());
+      await tester.pumpAndSettle();
+      expect(env.api.putBodies, hasLength(1));
+      final payload = env.api.putBodies.single;
+      expect(payload['bankReference'], 'LEGACY-BANK');
+      expect(payload['expectedVersion'], 0);
+      expect(
+        ((payload['items'] as List).last as Map)['appliedLedgerId'],
+        'shared-ar',
+      );
+      expect(
+        ((payload['items'] as List).last as Map).containsKey(
+          'requestedSalesOrderId',
+        ),
+        isFalse,
+      );
+      expect(find.text('已完成'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await env.close(tester);
+    },
+  );
+  testWidgets(
+    'ordinary receipt explicitly chooses one shipment batch and amount400 without consuming the same orders other batch',
+    (tester) async {
+      final capture = _captureReceiptFlows ? GlobalKey() : null;
+      final env = await _open(
+        tester,
+        FinanceDocType.receipt,
+        overlayCapture: capture,
+      );
+      expect(
+        _table(
+          tester,
+        ).columns.singleWhere((c) => c.key == 'entryMethod').required,
+        _captureReceiptFlows,
+      );
+      final row = _table(tester).controller.rows.single;
+      row.entry.accountId = 'account-cny';
+      row.entry.methodId = 'method';
+      await env.container.read(financeNameServiceProvider).loadClientNames([
+        '00000000-0000-0000-0000-0000000000aa',
+      ]);
+      row.entry.touch();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('按出货单收款').first);
+      await tester.pumpAndSettle();
+      await _chooseShipmentBatch(tester, 'shared-ar', '', capture: capture);
+      final imported = _table(tester).controller.rows.single;
+      expect(imported.appliedLedgerId, 'shared-ar');
+      expect(imported.entry.partyId, '00000000-0000-0000-0000-0000000000aa');
+      expect(imported.entry.partyName, '客户甲');
+      expect(imported.requestedSalesOrderId, isNull);
+      expect(imported.amount.text, isEmpty);
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(env.api.bodies, isEmpty);
+      final amountField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            identical(widget.controller, imported.amount),
+      );
+      final revealing = _table(
+        tester,
+      ).controller.revealError(imported, columnKey: 'amount');
+      await tester.pumpAndSettle();
+      await revealing;
+      await tester.enterText(amountField, '400');
+      await tester.pumpAndSettle();
+      expect(
+        financeAmountUnits(imported.amount.text),
+        financeAmountUnits('400'),
+      );
+      if (capture != null) {
+        await _secondCaptureRow(tester, deposit: false);
+        await _blurReceiptCapture(tester);
+        await saveAuditScreenshot(tester, capture, 'receipt-flow-partial-400');
+      }
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final doc = Map<String, dynamic>.from(
+        (env.api.bodies.single['documents'] as List).first as Map,
+      );
+      final line = Map<String, dynamic>.from(
+        (doc['items'] as List).single as Map,
+      );
+      expect(line['appliedLedgerId'], 'shared-ar');
+      expect(
+        financeAmountUnits(line['amountOriginal']?.toString()),
+        financeAmountUnits('400'),
+      );
+      expect(line.containsKey('requestedSalesOrderId'), isFalse);
+      expect(
+        financeAmountUnits(doc['accountAmount']?.toString()),
+        financeAmountUnits('400'),
+      );
+      expect(env.api.collectionReads, isEmpty);
+      expect(tester.takeException(), isNull);
+      await env.close(tester);
+    },
+  );
+  testWidgets(
+    'explicit order deposit accepts real1000 for order735 without silently routing through ordinary AR auto allocation',
+    (tester) async {
+      final capture = _captureReceiptFlows ? GlobalKey() : null;
+      final env = await _open(
+        tester,
+        FinanceDocType.receipt,
+        overlayCapture: capture,
+        extraPermissions: const {
+          Perm.financeViewAll,
+          Perm.customerPrepaymentView,
+        },
+      );
+      final row = _table(tester).controller.rows.single;
+      row.entry.accountId = 'account-cny';
+      row.entry.methodId = 'method';
+      row.amount.text = '1000';
+      row.entry.bankReference.text = 'BANK-DEPOSIT-1000';
+      row.entry.touch();
+      await tester.pumpAndSettle();
+      final revealing = _table(
+        tester,
+      ).controller.revealError(row, columnKey: 'entryKind');
+      await tester.pumpAndSettle();
+      await revealing;
+      await tester.tap(find.text('出货收款').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('订单预收（定金/多付）').last);
+      await tester.pumpAndSettle();
+      final source = _table(
+        tester,
+      ).controller.revealError(row, columnKey: 'entrySource');
+      await tester.pumpAndSettle();
+      await source;
+      await tester.tap(find.text('选订货单').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('XD-B').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确定').last);
+      await tester.pumpAndSettle();
+      expect(row.entry.salesOrderId, 'order-B');
+      expect(row.amount.text, '1000');
+      expect(row.appliedLedgerId, isNull);
+      expect(env.api.collectionReads, isEmpty);
+      if (capture != null) {
+        await _secondCaptureRow(tester, deposit: true);
+        final kindVisible = _table(
+          tester,
+        ).controller.revealError(row, columnKey: 'entryKind');
+        await tester.pumpAndSettle();
+        await kindVisible;
+        await _blurReceiptCapture(tester);
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'receipt-flow-order-prepayment-mode-full',
+        );
+        final visible = _table(
+          tester,
+        ).controller.revealError(row, columnKey: 'amount');
+        await tester.pumpAndSettle();
+        await visible;
+        await _blurReceiptCapture(tester);
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'receipt-flow-order-prepayment-1000',
+        );
+      }
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final doc = Map<String, dynamic>.from(
+        (env.api.bodies.single['documents'] as List).first as Map,
+      );
+      expect(doc['receiptKind'], 'CUSTOMER_PREPAYMENT');
+      expect(doc['salesOrderId'], 'order-B');
+      expect(doc['amountOriginal'], '1000');
+      expect(doc['items'], isEmpty);
+      expect(tester.takeException(), isNull);
+      await env.close(tester);
+    },
+  );
+  testWidgets('shipment receipt fee200-10-190 preserves actual bank facts', (
+    tester,
+  ) async {
+    final capture = _captureReceiptFlows ? GlobalKey() : null;
+    final env = await _open(
+      tester,
+      FinanceDocType.receipt,
+      overlayCapture: capture,
+    );
+    final row = _table(tester).controller.rows.single;
+    row.entry.accountId = 'account-cny';
+    row.entry.methodId = 'method';
+    row.entry.bankReference.text = 'BANK-200-10-190';
+    row.entry.touch();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('按出货单收款').first);
+    await tester.pumpAndSettle();
+    await _chooseShipmentBatch(tester, 'shared-ar', '200');
+    final imported = _table(tester).controller.rows.single;
+    if (capture != null) {
+      await _secondCaptureRow(tester, deposit: false);
+    }
+    final revealing = _table(
+      tester,
+    ).controller.revealError(imported, columnKey: 'entrySettings');
+    await tester.pumpAndSettle();
+    await revealing;
+    await tester.tap(find.text('设置').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-entry-settlement-fee')),
+      '10',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-entry-settlement-account-amount')),
+      '190',
+    );
+    await tester.pumpAndSettle();
+    if (capture != null) {
+      await saveAuditScreenshot(
+        tester,
+        capture,
+        'receipt-flow-bank-fee-200-10-190',
+      );
+    }
+    await tester.tap(find.text('保存设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    final doc = Map<String, dynamic>.from(
+      (env.api.bodies.single['documents'] as List).first as Map,
+    );
+    expect(
+      financeAmountUnits(doc['accountAmount']?.toString()),
+      financeAmountUnits('190'),
+    );
+    expect(
+      financeAmountUnits(doc['bankFeeAccountAmount']?.toString()),
+      financeAmountUnits('10'),
+    );
+    final item = (doc['items'] as List).single as Map;
+    expect(item['appliedLedgerId'], 'shared-ar');
+    expect(
+      financeAmountUnits(item['amountOriginal']?.toString()),
+      financeAmountUnits('200'),
+    );
+    expect(item.containsKey('requestedSalesOrderId'), isFalse);
+    expect(tester.takeException(), isNull);
+    await env.close(tester);
+  });
+  testWidgets(
+    'ordinary receipts keep two chosen batches in one document and preserve a verified independent opening source',
+    (tester) async {
+      final env = await _open(tester, FinanceDocType.receipt);
+      env.api.independentSource = true;
+      final row = _table(tester).controller.rows.single;
+      row.entry.accountId = 'account-cny';
+      row.entry.methodId = 'method';
+      row.entry.touch();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('按出货单收款').first);
+      await tester.pumpAndSettle();
+      await _chooseShipmentBatch(tester, 'shared-ar', '400');
+      await tester.tap(find.text('按出货单收款').first);
+      await tester.pumpAndSettle();
+      await _chooseShipmentBatch(tester, 'opening-ar', '125');
+      final rows = _table(tester).controller.rows;
+      expect(rows, hasLength(2));
+      expect(rows.map((r) => r.requestedSalesOrderId), everyElement(isNull));
+      final opening = rows.singleWhere(
+        (r) => r.appliedLedgerId == 'opening-ar',
+      );
+      expect(opening.sourceDocType, 'OPENING');
+      expect(opening.sourceDocNo, '期初-已核验');
+      opening.entry.accountId = 'account-cny';
+      opening.entry.methodId = 'method';
+      opening.entry.touch();
+      await tester.pumpAndSettle();
+      final draft =
+          (tester.state(find.byType(FinanceDocEditPage))
+                  as FormDraftMixin<FinanceDocEditPage>)
+              .captureFormDraftSnapshot();
+      expect(jsonEncode(draft), contains('期初-已核验'));
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final docs = env.api.bodies.single['documents'] as List;
+      final groups = docs
+          .cast<Map<String, dynamic>>()
+          .map(financeEntryGroupKey)
+          .toSet();
+      expect(groups, hasLength(1));
+      final items = docs
+          .expand((d) => (d as Map)['items'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(
+        items.map((i) => i['appliedLedgerId']),
+        unorderedEquals(['shared-ar', 'opening-ar']),
+      );
+      expect(
+        items.every((i) => !i.containsKey('requestedSalesOrderId')),
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+      await env.close(tester);
+    },
+  );
+  for (final width in [375.0, 1440.0]) {
+    testWidgets(
+      'receipt settlement compact panel keeps amount and cancel accessible at width$width',
+      (tester) async {
+        final capture = _captureReceiptFlows && width == 375
+            ? GlobalKey()
+            : null;
+        final env = await _open(
+          tester,
+          FinanceDocType.receipt,
+          size: Size(width, 960),
+          overlayCapture: capture,
+        );
+        final row = _table(tester).controller.rows.single;
+        _payment(
+          row,
+          '00000000-0000-0000-0000-0000000000aa',
+          'shared-ar',
+          '200',
+        );
+        row.sourceDocNo = 'XC-1000-A';
+        row.entry.fee.text = '10';
+        await tester.pumpAndSettle();
+        final revealing = _table(
+          tester,
+        ).controller.revealError(row, columnKey: 'entrySettings');
+        await tester.pumpAndSettle();
+        await revealing;
+        await tester.tap(find.text('设置').first);
+        await tester.pumpAndSettle();
+        final actual = find.byKey(
+          const ValueKey('finance-entry-settlement-account-amount'),
+        );
+        final fee = find.byKey(const ValueKey('finance-entry-settlement-fee'));
+        final a = tester.getRect(actual), f = tester.getRect(fee);
+        if (width == 375) {
+          expect(a.left, f.left);
+          expect(a.bottom, lessThan(f.top));
+        } else {
+          expect(a.top, f.top);
+          expect(a.left, greaterThan(width - 840));
+        }
+        expect(a.right, lessThanOrEqualTo(width));
+        expect(find.text('保存设置').hitTestable(), findsOneWidget);
+        await tester.enterText(actual, '190');
+        await tester.pumpAndSettle();
+        if (capture != null) {
+          await saveAuditScreenshot(
+            tester,
+            capture,
+            'receipt-flow-settings-375',
+          );
+        }
+        await tester.tap(find.text('取消').last);
+        await tester.pumpAndSettle();
+        expect(row.entry.accountAmount.text, isEmpty);
+        expect(row.entry.fee.text, '10');
+        expect(tester.takeException(), isNull);
+        await env.close(tester);
+      },
+    );
+  }
+  for (final width in [375.0, 1440.0]) {
+    testWidgets(
+      'shipment source full-width footer preserves cancel and explicit multi-selection at width$width',
+      (tester) async {
+        final env = await _open(
+          tester,
+          FinanceDocType.receipt,
+          size: Size(width, 960),
+        );
+        final original = _table(tester).controller.rows.single;
+        original.amount.text = '77';
+        original.entry.accountAmount.text = '70';
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('按出货单收款').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('ar-ap-select-shared-ar')));
+        await tester.pumpAndSettle();
+        final footer = tester.getRect(
+          find.byKey(const ValueKey('ar-ap-footer')),
+        );
+        final summary = tester.getRect(
+          find.byKey(const ValueKey('ar-ap-selection-summary')),
+        );
+        final confirm = tester.getRect(
+          find.byKey(const ValueKey('ar-ap-confirm')),
+        );
+        expect(footer.right, closeTo(width, 1));
+        expect(footer.width, greaterThan(width == 375 ? 370 : 1000));
+        expect(confirm.right, lessThanOrEqualTo(footer.right));
+        if (width == 1440) {
+          expect(confirm.left, greaterThan(summary.left));
+        }
+        expect(find.text('已选 1 行'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('ar-ap-cancel')));
+        await tester.pumpAndSettle();
+        expect(original.appliedLedgerId, isNull);
+        expect(original.amount.text, '77');
+        expect(original.entry.accountAmount.text, '70');
+        original.amount.clear();
+        original.entry.accountAmount.clear();
+        original.entry.touch();
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('按出货单收款').first);
+        await tester.pumpAndSettle();
+        for (final id in ['shared-ar', 'second-ar']) {
+          final select = find.byKey(ValueKey('ar-ap-select-$id'));
+          await tester.ensureVisible(select);
+          await tester.pumpAndSettle();
+          await tester.tap(select);
+          await tester.pumpAndSettle();
+        }
+        expect(find.text('已选 2 行'), findsOneWidget);
+        for (final entry in {'shared-ar': '400', 'second-ar': '200'}.entries) {
+          final field = find.byKey(ValueKey('ar-ap-amount-${entry.key}'));
+          await tester.ensureVisible(field);
+          await tester.pumpAndSettle();
+          await tester.enterText(field, entry.value);
+        }
+        await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
+        await tester.pumpAndSettle();
+        final rows = _table(tester).controller.rows;
+        expect(
+          rows.map((r) => r.appliedLedgerId),
+          unorderedEquals(['shared-ar', 'second-ar']),
+        );
+        expect(rows.map((r) => r.requestedSalesOrderId), everyElement(isNull));
+        expect(tester.takeException(), isNull);
+        await env.close(tester);
+      },
+    );
+  }
   test('client grouping preview uses the shared server contract', () {
     final contract =
         jsonDecode(
@@ -91,10 +579,28 @@ void main() {
     testWidgets(
       '${type.name} creation puts settlement terms in the common selectable grid',
       (tester) async {
-        final env = await _open(tester, type);
+        final env = await _open(tester, type, methodOptionsAvailable: true);
         final table = _table(tester);
         expect(table.selectable, isTrue);
-        expect(table.columns.last.key, 'remark');
+        if (type != FinanceDocType.bankTransfer) {
+          expect(
+            table.columns.singleWhere((c) => c.key == 'entryMethod').required,
+            isTrue,
+          );
+        } else {
+          expect(table.columns.where((c) => c.key == 'entryMethod'), isEmpty);
+        }
+        if (type == FinanceDocType.expense ||
+            type == FinanceDocType.otherIncome) {
+          expect(
+            table.columns.singleWhere((c) => c.key == 'style').required,
+            isTrue,
+          );
+        }
+        expect(
+          table.columns.last.key,
+          type == FinanceDocType.receipt ? 'entryBalance' : 'remark',
+        );
         expect(
           table.columns.map((column) => column.key),
           containsAll([
@@ -121,11 +627,11 @@ void main() {
             table.columns
                 .singleWhere((column) => column.key == 'entryBalance')
                 .label,
-            '未结金额',
+            type == FinanceDocType.receipt ? '还欠' : '未结金额',
           );
           expect(
             table.columns.singleWhere((column) => column.key == 'amount').label,
-            type == FinanceDocType.receipt ? '本次收款金额' : '本次付款金额',
+            type == FinanceDocType.receipt ? '本次收款' : '本次付款(原币)',
           );
           expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsNothing);
         }
@@ -162,6 +668,12 @@ void main() {
           const ValueKey('finance-entry-settlement-account-amount'),
         );
         expect(tester.widget<TextField>(feeField).controller!.text, '10');
+        expect(
+          tester.getRect(actualField).left,
+          lessThan(tester.getRect(feeField).left),
+        );
+        expect(tester.getRect(actualField).top, tester.getRect(feeField).top);
+        expect(find.text('取消'), findsAtLeastNWidgets(1));
         await tester.enterText(feeField, '999');
         await tester.tap(find.byTooltip('关闭').last);
         await tester.pumpAndSettle();
@@ -318,37 +830,52 @@ void main() {
     },
   );
 
-  testWidgets(
-    'unknown result keeps original command across hard close and replays exactly',
-    (tester) async {
-      final storage = MemoryFormDraftStorage();
-      var env = await _open(tester, FinanceDocType.payment, storage: storage);
-      _payment(
-        _table(tester).controller[0],
-        'supplier-A',
-        'ledger-1',
-        '0.000000000000000000000001',
-      );
-      env.api.timeout = true;
-      await tester.tap(find.text('保存'));
-      await tester.pumpAndSettle();
-      final original = jsonEncode(env.api.bodies.single);
-      final draft = env.container.read(formDraftsProvider).single;
-      expect(draft.hasUnknownSubmission, isTrue);
-      await env.close(tester);
-      env = await _open(
-        tester,
-        FinanceDocType.payment,
-        storage: storage,
-        location: draft.resumeLocation,
-      );
-      await tester.tap(find.text('保存'));
-      await tester.pumpAndSettle();
-      expect(jsonEncode(env.api.bodies.single), original);
-      expect(find.text('已完成'), findsOneWidget);
-      await env.close(tester);
-    },
-  );
+  for (final type in [FinanceDocType.payment, FinanceDocType.receipt]) {
+    testWidgets(
+      '${type.name} unknown result keeps original source command across hard close and replays exactly',
+      (tester) async {
+        final storage = MemoryFormDraftStorage();
+        var env = await _open(tester, type, storage: storage);
+        _payment(
+          _table(tester).controller[0],
+          'supplier-A',
+          'ledger-1',
+          '0.000000000000000000000001',
+        );
+        if (type == FinanceDocType.receipt) {
+          final row = _table(tester).controller[0];
+          row.requestedSalesOrderId = 'order-B';
+          row.entry.salesOrderId = 'order-B';
+          row.entry.salesOrderNo = 'XD-B';
+          row.sourceDocType = 'SALES_SHIPMENT';
+          row.sourceDocNo = 'XC-REAL-PARTIAL';
+        }
+        env.api.timeout = true;
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        final original = jsonEncode(env.api.bodies.single);
+        final draft = env.container.read(formDraftsProvider).single;
+        expect(draft.hasUnknownSubmission, isTrue);
+        await env.close(tester);
+        env = await _open(
+          tester,
+          type,
+          storage: storage,
+          location: draft.resumeLocation,
+        );
+        if (type == FinanceDocType.receipt) {
+          final restored = _table(tester).controller.rows.single;
+          expect(restored.sourceDocType, 'SALES_SHIPMENT');
+          expect(restored.sourceDocNo, 'XC-REAL-PARTIAL');
+        }
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        expect(jsonEncode(env.api.bodies.single), original);
+        expect(find.text('已完成'), findsOneWidget);
+        await env.close(tester);
+      },
+    );
+  }
 
   testWidgets(
     '1000 rapid edits preserve distinct currencies, selection and draft values',
@@ -476,6 +1003,71 @@ void main() {
   });
 }
 
+Future<void> _blurReceiptCapture(WidgetTester tester) async {
+  final gesture = await tester.startGesture(
+    tester.getCenter(find.text('新建销售收款单').first),
+    kind: PointerDeviceKind.mouse,
+  );
+  await gesture.up();
+  await tester.pumpAndSettle();
+}
+
+Future<void> _secondCaptureRow(
+  WidgetTester tester, {
+  required bool deposit,
+}) async {
+  final table = _table(tester);
+  final row = table.createBlankRow!();
+  row.entry.accountId = 'account-cny';
+  row.entry.methodId = 'method';
+  row.entry.bankReference.text = 'BANK-SECOND-BATCH';
+  if (deposit) {
+    row.entry.receiptKind = 'CUSTOMER_PREPAYMENT';
+    row.amount.text = '150';
+  }
+  table.controller.addRow(row);
+  await tester.pumpAndSettle();
+  final revealing = table.controller.revealError(row, columnKey: 'entrySource');
+  await tester.pumpAndSettle();
+  await revealing;
+  await tester.tap(find.text(deposit ? '选订货单' : '选出货单').last);
+  await tester.pumpAndSettle();
+  if (deposit) {
+    await tester.tap(find.text('XD-A').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定').last);
+    await tester.pumpAndSettle();
+  } else {
+    await _chooseShipmentBatch(tester, 'second-ar', '200');
+  }
+  final focus = table.controller.revealError(
+    table.controller.rows.first,
+    columnKey: 'amount',
+  );
+  await tester.pumpAndSettle();
+  await focus;
+}
+
+Future<void> _chooseShipmentBatch(
+  WidgetTester tester,
+  String ledger,
+  String amount, {
+  GlobalKey? capture,
+}) async {
+  await tester.tap(find.byKey(ValueKey('ar-ap-select-$ledger')));
+  await tester.pumpAndSettle();
+  if (capture != null) {
+    await saveAuditScreenshot(tester, capture, 'receipt-flow-select-batch');
+  }
+  final field = find.byKey(ValueKey('ar-ap-amount-$ledger'));
+  await tester.ensureVisible(field);
+  await tester.pumpAndSettle();
+  await tester.enterText(field, amount);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
+  await tester.pumpAndSettle();
+}
+
 void _payment(FinanceGridRow row, String party, String ledger, String amount) {
   row.entry.partyId = party;
   row.entry.accountId = 'account-cny';
@@ -511,25 +1103,49 @@ Future<_Environment> _open(
   MemoryFormDraftStorage? storage,
   String? location,
   GlobalKey? capture,
+  GlobalKey? overlayCapture,
   Size size = const Size(1800, 1100),
   double zoom = 1,
+  bool legacy = false,
+  bool methodOptionsAvailable = false,
+  Set<String> extraPermissions = const {},
 }) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  if (overlayCapture != null) {
+    await loadAuditScreenshotFonts(tester);
+  }
+  await setUtenTestSurfaceSize(
+    tester,
+    overlayCapture != null && size == const Size(1800, 1100)
+        ? const Size(1440, 960)
+        : size,
+  );
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
-  final api = _Api();
+  final api = _Api(
+    legacy: legacy,
+    captureMethods: overlayCapture != null || methodOptionsAvailable,
+  );
   final container = ProviderContainer(
     overrides: [
+      if (legacy)
+        ...nativeDetailReaderOverrides(
+          includeSession: false,
+          includeServer: false,
+        ),
+      if (legacy) financeWriteAllDocumentScope(),
       apiClientProvider.overrideWithValue(api),
       apiBaseUrlProvider.overrideWithValue('https://finance-batch.test/api'),
-      sessionProvider.overrideWith(_Session.new),
+      sessionProvider.overrideWith(legacy ? _LegacySession.new : _Session.new),
       authenticatedScopeProvider.overrideWithValue(
         const AuthenticatedScope(userId: 'fixture'),
       ),
       currentPermissionsProvider.overrideWithValue({
+        Perm.salesOrderView,
+        ...extraPermissions,
         for (final type in FinanceDocType.values) ...{
           FinanceDocConfig.by(type).createPerm!,
           FinanceDocConfig.by(type).listPerm,
+          ?FinanceDocConfig.by(type).editPerm,
         },
       }),
       sharedPreferencesProvider.overrideWithValue(
@@ -550,7 +1166,10 @@ Future<_Environment> _open(
           key: capture,
           child: UtenDisplayZoomBox(
             fontFactor: zoom,
-            child: FinanceDocEditPage(docType: type),
+            child: FinanceDocEditPage(
+              docType: type,
+              id: legacy ? 'legacy-receipt' : null,
+            ),
           ),
         ),
       ),
@@ -567,9 +1186,16 @@ Future<_Environment> _open(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(
-        theme: auditScreenshotTheme(buildLightTheme()),
-        routerConfig: router,
+      child: RepaintBoundary(
+        key: overlayCapture,
+        child: MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: auditScreenshotTheme(buildLightTheme()),
+          routerConfig: router,
+        ),
       ),
     ),
   );
@@ -582,17 +1208,141 @@ class _Session extends SessionNotifier {
   SessionState build() => const SessionState();
 }
 
+class _LegacySession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'fixture', code: 'fixture', name: '测试财务'),
+  );
+}
+
 class _Api extends ApiClient {
-  _Api() : super(Dio());
+  _Api({this.legacy = false, this.captureMethods = false}) : super(Dio());
+  final bool legacy;
+  final bool captureMethods;
+  final putBodies = <Map<String, dynamic>>[];
+  Map<String, dynamic> get legacyReceipt => {
+    'id': 'legacy-receipt',
+    'makerId': 'fixture',
+    'version': 0,
+    'status': 0,
+    'billNo': 'YS-LEGACY',
+    'billDate': '2026-11-04',
+    'receiptKind': 'AR_SETTLEMENT',
+    'clientId': '00000000-0000-0000-0000-0000000000aa',
+    'accountId': 'account-cny',
+    'currencyId': 'cny',
+    'exchangeRate': 1,
+    'amountOriginal': 100,
+    'amountLocal': 100,
+    'accountAmount': 100,
+    'accountAmountLocal': 100,
+    'settlementAuthorityVersion': 2,
+    'settlementChannel': 'DIRECT_ACCOUNT',
+    'exchangeRateSource': 'BANK_STATEMENT',
+    'exchangeRateEffectiveAt': '2026-11-04T01:00:00Z',
+    'bankBookedAt': '2026-11-04T02:00:00Z',
+    'bankReference': 'LEGACY-BANK',
+    'accountCurrencyId': 'cny',
+    'feeSettlementMode': 'NONE',
+    'feeBearer': 'NONE',
+    'items': [
+      {
+        'id': 'old-line',
+        'lineNo': 1,
+        'appliedLedgerId': 'old-ar',
+        'appliedBillNo': 'AR-OLD',
+        'clientId': '00000000-0000-0000-0000-0000000000aa',
+        'currencyId': 'cny',
+        'exchangeRate': 1,
+        'amountOriginal': 100,
+        'amountLocal': 100,
+        'balanceBeforeOriginal': 100,
+      },
+    ],
+  };
+  @override
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    putBodies.add(Map<String, dynamic>.from(body as Map));
+    return legacyReceipt;
+  }
+
   final bodies = <Map<String, dynamic>>[];
   final paths = <String>[];
+  bool independentSource = false;
   bool timeout = false;
   bool supplierSelectable = true;
+  int collectionParts = 1;
+  final collectionReads = <Map<String, dynamic>>[];
+  @override
+  Future<Map<String, dynamic>> postCancellable(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    CancelToken? cancelToken,
+  }) async {
+    if (path != '/finance/receipts/order-collection-preview') {
+      throw StateError('unexpected read $path');
+    }
+    final value = Map<String, dynamic>.from(body as Map);
+    collectionReads.add(value);
+    final amount = value['amountOriginal'].toString();
+    final piece = collectionParts == 1 ? amount : '100';
+    return {
+      'salesOrderId': value['salesOrderId'],
+      'orderBillNo': value['salesOrderId'] == 'order-A' ? 'XD-A' : 'XD-B',
+      'clientId': '00000000-0000-0000-0000-0000000000aa',
+      'currencyId': 'cny',
+      'receiptKind': 'AR_SETTLEMENT',
+      'amountOriginal': amount,
+      'items': [
+        for (var index = 0; index < collectionParts; index++)
+          {
+            'ledgerId': collectionParts == 1 ? 'shared-ar' : 'ar-$index',
+            'billNo': 'AR-$index',
+            'sourceDocNo': 'XC-$index',
+            'amountOriginal': piece,
+            'balanceOriginal': '1000',
+          },
+      ],
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (legacy && path == '/finance/receipts/legacy-receipt') {
+      return legacyReceipt;
+    }
+    if (path == '/sales/orders' || path == '/finance/receipts/order-sources') {
+      return {
+        'items': [
+          for (final id in ['A', 'B'])
+            {
+              'id': 'order-$id',
+              'billNo': 'XD-$id',
+              'billDate': '2026-11-04',
+              'clientId': '00000000-0000-0000-0000-0000000000aa',
+              'currencyId': 'cny',
+              'status': 1,
+              'totalOriginal': 735,
+              'closed': id == 'B',
+              'sellerName': '测试业务员',
+            },
+        ],
+        'page': 1,
+        'size': 20,
+        'total': 2,
+        'totalPages': 1,
+      };
+    }
     if (path.endsWith('/suppliers')) {
       return {
         'items': [
@@ -606,6 +1356,55 @@ class _Api extends ApiClient {
         'page': 1,
         'size': 100,
         'total': 1,
+        'totalPages': 1,
+      };
+    }
+    if (path == '/finance/receipts/shipment-sources') {
+      return {
+        'items': [
+          for (final id in [
+            'shared-ar',
+            'second-ar',
+            if (independentSource) 'opening-ar',
+          ])
+            {
+              'id': id,
+              'billNo': 'AR-$id',
+              'billDate': '2026-11-04',
+              'sourceDocType': id == 'opening-ar'
+                  ? 'OPENING'
+                  : 'SALES_SHIPMENT',
+              'sourceDocId': 'shipment-$id',
+              'sourceDocNo': id == 'opening-ar'
+                  ? '期初-已核验'
+                  : id == 'shared-ar'
+                  ? 'XC-1000-A'
+                  : 'XC-1000-B',
+              'direction': 'AR',
+              'openItemKind': 'RECEIVABLE',
+              'clientId': '00000000-0000-0000-0000-0000000000aa',
+              'clientName': '客户甲',
+              'currencyId': 'cny',
+              'currencyName': '人民币',
+              'exchangeRate': 1,
+              'exchangeRateExact': '1',
+              'amountOriginal': 1000,
+              'amountOriginalExact': '1000',
+              'amountReceivedOriginal': 0,
+              'amountReceivedOriginalExact': '0',
+              'amountBalanceOriginal': 1000,
+              'amountBalanceOriginalExact': '1000',
+              'prepaymentAppliedOriginal': '0',
+              'amountWriteOffOriginalExact': '0',
+              'status': 1,
+              'salesOrderIds': ['order-B'],
+              'authoritativeSalesOrderId': 'order-B',
+              'salesOrderNos': ['XD-B'],
+            },
+        ],
+        'total': 2,
+        'page': 1,
+        'size': 50,
         'totalPages': 1,
       };
     }
@@ -637,6 +1436,26 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.contains('/clients/') && path.contains('lookup')) {
+      final ids = query?['ids']?.toString().split(',').toSet() ?? <String>{};
+      return [
+        for (final row in <Map<String, dynamic>>[
+          {
+            'id': '00000000-0000-0000-0000-0000000000aa',
+            'name': '客户甲',
+            'status': '使用',
+            'selectable': true,
+          },
+          {
+            'id': 'supplier-A',
+            'name': '往来甲',
+            'status': '使用',
+            'selectable': true,
+          },
+        ])
+          if (ids.contains(row['id'])) row,
+      ];
+    }
     if (path.contains('suppliers') && path.contains('lookup')) {
       return [
         {
@@ -687,6 +1506,20 @@ class _Api extends ApiClient {
           'baseCurrency': false,
           'exchangeRate': '7.2',
         },
+      ];
+    }
+    if (path == '/platform-columns/scopes') {
+      return [
+        {
+          'scope': 'view_ar_ap_ledger',
+          'priceVisible': true,
+          'supportsValues': false,
+        },
+      ];
+    }
+    if (captureMethods && path == '/master/reference-methods/finance') {
+      return [
+        {'id': 'method', 'name': '银行转账', 'code': 'BANK', 'status': '使用'},
       ];
     }
     if (path.contains('payment-styles')) {

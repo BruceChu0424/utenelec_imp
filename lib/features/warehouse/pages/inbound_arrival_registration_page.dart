@@ -261,7 +261,12 @@ class _InboundArrivalRegistrationPageState
         draftText(row, 'series'),
         row['seriesAutofilled'] == true,
       );
-      restoreWeightEntryDraft(line.weight, row['weight'], qty: line.qty);
+      restoreWeightEntryDraft(
+        line.weight,
+        row['weight'],
+        qty: line.qty,
+        unitWeightQuantityText: line.physicalQtyText,
+      );
     }
     _ensureWeightParams();
   }
@@ -881,6 +886,7 @@ class _InboundArrivalRegistrationPageState
     // 明细整表扫完再报：原先首个违规就 return，批量几十行时用户补一行提交一次，
     // 观感像「怎么老是报错」。判定条件不变，只把问题按类别各汇总成一条。
     final badQty = <String>[];
+    final badWeight = <String>[];
     final missingWarehouse = <String>[];
     final missingPlace = <String>[];
     _BatchArrivalLine? firstInvalid;
@@ -897,6 +903,13 @@ class _InboundArrivalRegistrationPageState
       if (!submitted.contains(line)) continue;
       final label =
           '第 ${index + 1} 行(${line.prefill.orderBillNo} ${line.item.goodsName})';
+      if (_exactKg(line) == null && line.weight.hasError) {
+        badWeight.add(label);
+        rememberInvalid(
+          line,
+          line.weight.unitWeightError == null ? 'weight' : 'unitWeight',
+        );
+      }
       if (procurementQuantityError(
             line.qty.text,
             line.giftQty.text,
@@ -918,6 +931,8 @@ class _InboundArrivalRegistrationPageState
       }
     }
     final rowIssues = <String>[
+      if (badWeight.isNotEmpty)
+        inboundRowIssueMessage(badWeight, '的重量输入无效，原输入已保留', action: '请核对后再提交'),
       if (badQty.isNotEmpty)
         inboundRowIssueMessage(
           badQty,
@@ -1698,6 +1713,13 @@ class _InboundArrivalRegistrationPageState
           ),
         ),
       ),
+      shared.unitWeight(
+        quantityTextOf: (line) => line.physicalQtyText,
+        quantityListenableOf: (line) =>
+            Listenable.merge([line.qty, line.giftQty]),
+        enabled: editable,
+        exactKgOf: _exactKg,
+      ),
     ];
   }
 
@@ -1803,6 +1825,8 @@ class _BatchArrivalLine extends InboundRegistrationLine {
       ) {
     qty.addListener(onChanged);
     giftQty.addListener(onChanged);
+    qty.addListener(_syncUnitWeight);
+    giftQty.addListener(_syncUnitWeight);
     weight.addListener(onChanged);
   }
 
@@ -1813,6 +1837,7 @@ class _BatchArrivalLine extends InboundRegistrationLine {
   /// 本次实收(行单位)；按称重改过时黄框待核对。
   final UtenAutofillTextController qty;
   final TextEditingController giftQty;
+  void _syncUnitWeight() => weight.updateUnitWeightQuantity(physicalQtyText);
   String? get physicalQtyText => procurementPhysicalQuantityText(
     quantitySemantics: procurementChargedPlusGiftQuantity,
     chargedQty: qty.text,
@@ -1846,6 +1871,8 @@ class _BatchArrivalLine extends InboundRegistrationLine {
   void dispose() {
     qty.removeListener(onChanged);
     giftQty.removeListener(onChanged);
+    qty.removeListener(_syncUnitWeight);
+    giftQty.removeListener(_syncUnitWeight);
     giftQty.dispose();
     weight.removeListener(onChanged);
     qty.dispose();

@@ -40,6 +40,12 @@ public class FinanceReceiptLine extends BaseEntity {
     /** 核销的 AR 行（显式关联；为 null 表示直接收款不指定核销，但本表行通常用于指定核销）。 */
     @Column(name = "applied_ledger_id")
     private UUID appliedLedgerId;
+    /** Explicit order chosen for this collection; null preserves historical FIFO attribution. */
+    @Column(name = "requested_sales_order_id")
+    private UUID requestedSalesOrderId;
+    @Column(name="applied_source_doc_type") private String appliedSourceDocType;
+    @Column(name="applied_source_doc_id") private UUID appliedSourceDocId;
+    @Column(name="applied_source_doc_no") private String appliedSourceDocNo;
 
     /** 老库 SellID 核销立帐单号（XC*）。 */
     @Column(name = "applied_bill_no")

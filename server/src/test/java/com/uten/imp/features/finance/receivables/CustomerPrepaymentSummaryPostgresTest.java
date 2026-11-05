@@ -62,6 +62,19 @@ class CustomerPrepaymentSummaryPostgresTest {
 
     @Autowired
     private TransactionTemplate transactions;
+    @Autowired private jakarta.persistence.EntityManagerFactory entityManagers;
+
+    @Test void visiblePageUsesTheSameOrderAuthorityWithAFixedQueryBudget(){
+        UUID first=seedPosition("batchone","200","10","5","0","100","100","50","-50");
+        UUID second=seedPosition("batchtwo","300","10","5","0","150","150","0","0");
+        var statistics=entityManagers.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);long before=statistics.getPrepareStatementCount();
+        var batch=service.salesOrderSummaries(java.util.List.of(first,second,first));
+        assertThat(statistics.getPrepareStatementCount()-before).isEqualTo(8);
+        assertThat(batch).hasSize(2);
+        assertThat(batch.get(first)).isEqualTo(service.salesOrderSummary(first));
+        assertThat(batch.get(second)).isEqualTo(service.salesOrderSummary(second));
+    }
 
     @Test
     void summaryExecutesAllAggregatesAndReportsZeroMoneyForAnOrderWithoutActivity() {
@@ -212,7 +225,7 @@ class CustomerPrepaymentSummaryPostgresTest {
         jdbc.update("""
                 INSERT INTO sales_shipment_items(id,shipment_id,order_item_id,bill_no,bill_date,goods_id,
                     unit_id,unit_rate,qty,price,amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
-                VALUES(?,?,?,?,DATE '2026-09-07',?,?,?,?,1,?,10,?, ?,?,'Summary goods','MASTER_AT_APPROVAL',now())
+                VALUES(?,?,?,?,DATE '2026-09-07',?,?,1,?,10,?,?,?,'Summary goods','MASTER_AT_APPROVAL',now())
                 """,shipmentItem,shipment,orderItem,shipmentNo,goods,unitId,new BigDecimal(shippedQty),new BigDecimal(invoiceAmount),new BigDecimal(invoiceAmount),"SUM-G-"+suffix);
         confirmShipmentSource(shipment, actorUser, actor);
         ledger(invoice,"SALES_SHIPMENT",shipment,shipmentNo,client,currency,new BigDecimal(invoiceAmount),new BigDecimal(invoiceBalance));

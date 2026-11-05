@@ -21,82 +21,132 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
-  testWidgets('order list shows currency and original amount, not RMB total', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  for (final scope in [
+    (
+      name: 'ordinary sales',
+      permissions: const <String>{},
+      money: false,
+      global: false,
+    ),
+    (
+      name: 'shipment finance reviewer',
+      permissions: const {Perm.salesShipmentFinanceView},
+      money: true,
+      global: false,
+    ),
+    (
+      name: 'order finance reviewer',
+      permissions: const {Perm.salesOrderFinanceView},
+      money: true,
+      global: false,
+    ),
+    (
+      name: 'full finance and commercial price',
+      permissions: const {
+        Perm.financeViewAll,
+        Perm.customerPrepaymentView,
+        Perm.salesOrderPriceView,
+      },
+      money: true,
+      global: true,
+    ),
+  ]) {
+    testWidgets('order list money authority: ${scope.name}', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final api = _OrderListApi();
-    final router = GoRouter(
-      initialLocation: '/sales/orders',
-      routes: [
-        GoRoute(
-          path: '/sales/orders',
-          builder: (_, _) =>
-              const SalesDocListPage(docType: SalesDocType.order),
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          localServerReachableProvider.overrideWith(
-            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+      final api = _OrderListApi();
+      final router = GoRouter(
+        initialLocation: '/sales/orders',
+        routes: [
+          GoRoute(
+            path: '/sales/orders',
+            builder: (_, _) =>
+                const SalesDocListPage(docType: SalesDocType.order),
           ),
-          sharedPreferencesProvider.overrideWithValue(_preferences),
-          apiClientProvider.overrideWithValue(api),
-          salesMasterNameServiceProvider.overrideWithValue(
-            SalesMasterNameService(api),
-          ),
-          currentPermissionsProvider.overrideWithValue(const <String>{}),
         ],
-        child: MaterialApp.router(routerConfig: router),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      addTearDown(router.dispose);
 
-    // 分类分段范式（ADR-066）：大类默认不选不发请求（内容区是引导占位），
-    // 先点「待生产」大类段——大类选中即加载（小类默认不选=全部效果）。
-    await tester.tap(find.text('待生产'));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            apiClientProvider.overrideWithValue(api),
+            salesMasterNameServiceProvider.overrideWithValue(
+              SalesMasterNameService(api),
+            ),
+            currentPermissionsProvider.overrideWithValue(scope.permissions),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    // 草稿段经 FormDraftCategoryTable 渲染合并表，双形态 finder 同款口径。
-    final table = tester.widget<MasterDataTableView<dynamic>>(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is MasterDataTableView<SalesDocListItem> ||
-            widget
-                is MasterDataTableView<FormDraftCategoryRow<SalesDocListItem>>,
-      ),
-    );
-    final columns = {for (final column in table.columns) column.key: column};
-    // 合并表行可能是 FormDraftCategoryRow 包装（record 透传），也可能是原记录；
-    // 按行列实际类型取值。
-    String? valueOf(String key) {
-      final column = columns[key];
-      final rowItem = table.items.single;
-      if (column is MasterColumnDef<SalesDocListItem> &&
-          rowItem is SalesDocListItem) {
-        return column.value(rowItem);
+      // 分类分段范式（ADR-066）：大类默认不选不发请求（内容区是引导占位），
+      // 先点「待生产」大类段——大类选中即加载（小类默认不选=全部效果）。
+      await tester.tap(find.text('待生产'));
+      await tester.pumpAndSettle();
+
+      // 草稿段经 FormDraftCategoryTable 渲染合并表，双形态 finder 同款口径。
+      final table = tester.widget<MasterDataTableView<dynamic>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is MasterDataTableView<SalesDocListItem> ||
+              widget
+                  is MasterDataTableView<
+                    FormDraftCategoryRow<SalesDocListItem>
+                  >,
+        ),
+      );
+      final columns = {for (final column in table.columns) column.key: column};
+      // 合并表行可能是 FormDraftCategoryRow 包装（record 透传），也可能是原记录；
+      // 按行列实际类型取值。
+      String? valueOf(String key) {
+        final column = columns[key];
+        final rowItem = table.items.single;
+        if (column is MasterColumnDef<SalesDocListItem> &&
+            rowItem is SalesDocListItem) {
+          return column.value(rowItem);
+        }
+        if (column is MasterColumnDef<FormDraftCategoryRow<SalesDocListItem>> &&
+            rowItem is FormDraftCategoryRow<SalesDocListItem>) {
+          return column.value(rowItem);
+        }
+        return null;
       }
-      if (column is MasterColumnDef<FormDraftCategoryRow<SalesDocListItem>> &&
-          rowItem is FormDraftCategoryRow<SalesDocListItem>) {
-        return column.value(rowItem);
-      }
-      return null;
-    }
 
-    expect(columns['currency']?.label, '币种');
-    expect(valueOf('currency'), '美元');
-    expect(columns['total']?.label, '订单金额');
-    // 订单金额=原币合计，金额后带行币种（2026-10-10 口径）。
-    expect(valueOf('total'), '100.00 美元');
-    expect(columns['total']?.sortable, isFalse);
-    expect(valueOf('total'), isNot('720.00 元'));
-  });
+      expect(columns['currency']?.label, '币种');
+      expect(valueOf('currency'), '美元');
+      expect(columns['total']?.label, '订单金额');
+      // 订单金额=原币合计，金额后带行币种（2026-10-10 口径）。
+      expect(valueOf('total'), '100.00 美元');
+      expect(columns['total']?.sortable, isFalse);
+      expect(valueOf('total'), isNot('720.00 元'));
+      expect(columns.containsKey('orderCashReceived'), scope.money);
+      expect(columns.containsKey('orderMoneyRemaining'), scope.money);
+      expect(columns.containsKey('orderPendingReceipt'), scope.money);
+      expect(columns.containsKey('customerUnassignedPrepayment'), scope.global);
+      if (scope.money) {
+        final keys = table.columns.map((column) => column.key).toList();
+        expect(
+          keys.indexOf('orderCashReceived'),
+          greaterThan(keys.indexOf('deliver')),
+        );
+        expect(columns['orderMoneyRemaining']?.label, '未收计划(辅助)');
+        expect(valueOf('orderCashReceived'), '40.123456789012345678901234 美元');
+        expect(
+          valueOf('orderMoneyRemaining'),
+          '59.876543210987654321098766 美元',
+        );
+        expect(valueOf('orderPendingReceipt'), '10.00 美元');
+        expect(columns['orderCashReceived']?.supportsKeywordSearch, isFalse);
+      }
+    });
+  }
 
   testWidgets('shipment list exposes finance audit before warehouse status', (
     tester,
@@ -192,6 +242,14 @@ class _OrderListApi extends ApiClient {
             'billDate': '2026-08-09',
             'clientId': 'client-1',
             'currencyId': 'currency-usd',
+            'moneyPosition': {
+              'cashReceivedOriginal': '40.123456789012345678901234',
+              'plannedRemainingOriginal': '59.876543210987654321098766',
+              'pendingReceiptOriginal': '10',
+              'customerUnassignedPrepaymentOriginal': '80',
+              'positionComplete': true,
+              'hasUnallocated': false,
+            },
             'totalOriginal': 100,
             'totalLocal': 720,
             'status': 0,

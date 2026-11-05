@@ -41,6 +41,18 @@ final listRefreshTickProvider = StateProvider.family<int, String>(
 /// 同一帧里多处调用由汇总单飞合并成一个请求。
 void bumpListRefresh(WidgetRef ref, String key) {
   ref.read(listRefreshTickProvider(key).notifier).state++;
+  // Receipt save/approval/reversal and the existing prepayment-apply caller all
+  // publish finance:receipt. A sales return changes the same shipment AR debt.
+  // Metadata/report editing intentionally does not retire sales read caches.
+  if (key == 'finance:receipt' || key == 'sales:returnDoc') {
+    for (final dependent in const [
+      'sales:shipment',
+      'sales:customerShipment',
+      'sales:order',
+    ]) {
+      ref.read(listRefreshTickProvider(dependent).notifier).state++;
+    }
+  }
   ref.read(dataWriteRevisionProvider.notifier).state++;
   refreshBadges(ref);
 }

@@ -14,6 +14,11 @@ import java.util.UUID;
 public class ShipmentDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     @com.fasterxml.jackson.annotation.JsonUnwrapped
     private final ShipmentWorkflowView workflow=new ShipmentWorkflowView();
+    @Getter(lombok.AccessLevel.NONE) @com.fasterxml.jackson.annotation.JsonIgnore
+    private final ReceivableView receivableView=new ReceivableView();
+    public com.uten.imp.application.port.ShipmentReceivablePositionPort.Position getReceivablePosition(){return receivableView.position;}
+    public void setReceivablePosition(com.uten.imp.application.port.ShipmentReceivablePositionPort.Position value){receivableView.position=value;}
+    private static final class ReceivableView {private com.uten.imp.application.port.ShipmentReceivablePositionPort.Position position;}
     private UUID id;
     private Integer legacyId;
     private String billNo;

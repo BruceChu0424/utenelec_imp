@@ -45,6 +45,9 @@ public class FinancePaymentDetail extends com.uten.imp.common.history.DocumentHi
     private String createIdempotencyKey;
 
 
+    private String supplierName;
+    public FinancePaymentDetail withSupplierName(String name) { this.supplierName=name; return this; }
+
     /** Retains the existing DTO constructor for legacy callers. */
     public FinancePaymentDetail(UUID id, Integer legacyId, String billNo, LocalDate billDate, UUID supplierId, UUID accountId, UUID counterpartAccountId, UUID currencyId, BigDecimal exchangeRate, BigDecimal amountOriginal, BigDecimal amountLocal, UUID paymentMethodId, Integer paymentMethodLegacyId, String invoiceNo, OffsetDateTime cancelDate, String operatorName, UUID operatorId, UUID makerId, UUID approverId, String sourceRemark, String remark, Short status, boolean closed, List<FinancePaymentLineDto> items, String makerName, java.time.Instant createdAt, long version, String createIdempotencyKey) {
         this.id=id;

@@ -47,7 +47,7 @@ class MaterialAnalysisRouteGroupIndexTest {
     private static MaterialAnalysisService.MaterialRow row(String key, boolean actionable) {
         var row = mock(MaterialAnalysisService.MaterialRow.class);
         when(row.id()).thenReturn(UUID.randomUUID());
-        when(row.actionable()).thenReturn(actionable);
+        when(row.routeConfirmable()).thenReturn(actionable);
         if (actionable) when(row.actionGroupKey()).thenReturn(key);
         return row;
     }

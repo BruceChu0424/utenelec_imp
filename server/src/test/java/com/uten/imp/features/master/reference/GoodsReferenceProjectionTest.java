@@ -34,6 +34,7 @@ class GoodsReferenceProjectionTest {
             }
             when(item.getDiscount()).thenReturn(fixture.path("discountVisible").asBoolean() ? source.path("discount").decimalValue() : null);
             when(item.getStockQty()).thenReturn(source.path("stockQty").decimalValue());
+            when(item.getStockQtyDisplayText()).thenReturn("9007199254740993.123456");
             when(item.getStockPlace()).thenReturn(source.path("stockPlace").asText());
             when(item.getMinOrderQty()).thenReturn(source.path("minOrderQty").decimalValue());
             when(item.getOrderMultipleQty()).thenReturn(source.path("orderMultipleQty").decimalValue());
@@ -48,6 +49,8 @@ class GoodsReferenceProjectionTest {
                 assertThat(row.containsKey(key)).as(key).isEqualTo(fixture.path("priceVisible").asBoolean());
             assertThat(row.containsKey("discount")).isEqualTo(fixture.path("discountVisible").asBoolean());
             assertThat(row.containsKey("stockQty")).isEqualTo(fixture.path("stockVisible").asBoolean());
+            assertThat(row.containsKey("stockQtyDisplayText")).isEqualTo(fixture.path("stockVisible").asBoolean());
+            if (row.containsKey("stockQtyDisplayText")) assertThat(row.get("stockQtyDisplayText")).isEqualTo("9007199254740993.123456");
             if (row.containsKey("price")) assertThat((BigDecimal) row.get("price")).isEqualByComparingTo("39.13");
             if (row.containsKey("discount")) assertThat((BigDecimal) row.get("discount")).isEqualByComparingTo("0.2");
             assertThat(row).containsEntry("stockPlace", "A-01").containsEntry("issueMethod", "PERIODIC")

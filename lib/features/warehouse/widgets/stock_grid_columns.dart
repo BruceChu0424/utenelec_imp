@@ -24,6 +24,7 @@ import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
+import '../../../shared/measurement/widgets/unit_weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
@@ -37,6 +38,7 @@ import 'inbound_registration_widgets.dart' show WarehouseQtyInputField;
 ///   amountNotifier = 盘盈亏 = 实盘 - 账面(订阅两控制器自动重算)。
 class StockGridRow extends EditableGridRow with AmountRowMixin {
   StockGridRow({this.isCheck = false}) {
+    qty.addListener(_syncUnitWeight);
     // 仅盘点模式连线重算：非盘点无金额概念，amountNotifier 恒 0（不订阅省一次空更新）。
     if (isCheck) {
       bookQty.addListener(_recalc);
@@ -45,6 +47,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   }
 
   final bool isCheck;
+  void _syncUnitWeight() => weight.updateUnitWeightQuantity(qty.text);
   String? upstreamItemId;
   String? executionSegmentId;
   String? executionSegmentSalesAllocationId;
@@ -162,6 +165,13 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
       qtyFromWeight: weight.qtyFromWeight,
       userEdited: weight.userEdited,
     );
+    if (weight.unitWeightInput case final String input) {
+      c.weight.setUnitWeightInput(
+        input,
+        unit: weight.unitWeightInputUnit ?? WeightUnit.g,
+        quantityText: c.qty.text,
+      );
+    }
     c.bookQty.text = bookQty.text;
     c.checkQty.text = checkQty.text;
     c.countWeight.setKgText(
@@ -176,6 +186,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   @override
   void dispose() {
     goodsNotifier.dispose();
+    qty.removeListener(_syncUnitWeight);
     qty.dispose();
     place.dispose();
     warehouseNotifier.dispose();
@@ -559,6 +570,15 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         qtyAutofill: autofill(),
         onWeighCount: weight.onWeighCount,
       ),
+      if (weight.mode == WeightCaptureMode.inbound)
+        unitWeightGridColumn<StockGridRow>(
+          controllerOf: (row) => row.weight,
+          quantityTextOf: (row) => row.qty.text,
+          quantityListenableOf: (row) => row.qty,
+          enabledOf: (_) => true,
+          unitNameOf: (row) => row.unitName,
+          exactKgOf: weight.exactKgOf,
+        ),
     ],
   ];
 }

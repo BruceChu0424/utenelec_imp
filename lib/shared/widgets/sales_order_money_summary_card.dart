@@ -12,6 +12,8 @@ import '../formatters/exact_decimal.dart';
 import '../formatters/money_display.dart';
 import '../../features/finance/repositories/customer_prepayment_repository.dart';
 import '../auth/permissions.dart';
+import '../auth/read_owner_fence.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
 
 typedef SalesOrderMoneySummaryBuilder =
     Widget Function(
@@ -54,6 +56,20 @@ class _SalesOrderMoneySummaryCardState
   bool get _compact => widget.embedded || widget.summaryBuilder != null;
 
   @override
+  void initState() {
+    super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        ++_requestVersion;
+        _summary = null;
+        _requested = false;
+        _loading = false;
+        _error = null;
+      });
+    });
+  }
+
+  @override
   void didUpdateWidget(covariant SalesOrderMoneySummaryCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.salesOrderId != widget.salesOrderId) {
@@ -79,6 +95,8 @@ class _SalesOrderMoneySummaryCardState
 
   Future<void> _load() async {
     if (_loading) return;
+    if (!_canView(ref.read(currentPermissionsProvider))) return;
+    final ownerCurrent = captureReadOwner(ref);
     final requestVersion = ++_requestVersion;
     final orderId = widget.salesOrderId;
     setState(() {
@@ -90,22 +108,34 @@ class _SalesOrderMoneySummaryCardState
           .read(customerPrepaymentRepositoryProvider)
           .salesOrderSummary(orderId);
       if (!mounted ||
+          !ownerCurrent() ||
+          !_canView(ref.read(currentPermissionsProvider)) ||
           requestVersion != _requestVersion ||
           orderId != widget.salesOrderId) {
         return;
       }
       setState(() => _summary = summary);
     } on ApiException catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted || !ownerCurrent() || requestVersion != _requestVersion) {
+        return;
+      }
       setState(() => _error = error.message);
     } catch (_) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted || !ownerCurrent() || requestVersion != _requestVersion) {
+        return;
+      }
       setState(() => _error = '订单资金汇总加载失败');
     } finally {
       if (mounted && requestVersion == _requestVersion) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<void> _reloadFromAction() async {
+    if (_loading) return;
+    _requested = true;
+    await UtenBusyOverlay.run(context, title: '刷新订单资金', action: _load);
   }
 
   @override
@@ -197,7 +227,7 @@ class _SalesOrderMoneySummaryCardState
               ),
               IconButton(
                 tooltip: '刷新订单资金状态',
-                onPressed: _loading ? null : _load,
+                onPressed: _loading ? null : _reloadFromAction,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
               ),
             ],
@@ -249,7 +279,7 @@ class _SalesOrderMoneySummaryCardState
                   ),
                 IconButton(
                   tooltip: '刷新订单资金状态',
-                  onPressed: _loading ? null : _load,
+                  onPressed: _loading ? null : _reloadFromAction,
                   icon: const Icon(Icons.refresh_rounded, size: 20),
                 ),
               ],
@@ -284,10 +314,7 @@ class _SalesOrderMoneySummaryCardState
         ),
         const SizedBox(height: UtenSpacing.s4),
         TextButton.icon(
-          onPressed: () {
-            _requested = true;
-            _load();
-          },
+          onPressed: _loading ? null : _reloadFromAction,
           icon: const Icon(Icons.refresh_rounded),
           label: const Text('重试'),
         ),

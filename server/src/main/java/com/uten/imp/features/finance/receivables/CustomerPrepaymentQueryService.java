@@ -15,6 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.Collection;
+import java.util.Map;
+import java.util.LinkedHashMap;
 
 import static com.uten.imp.features.finance.receivables.CustomerPrepaymentContracts.*;
 
@@ -82,39 +85,35 @@ public class CustomerPrepaymentQueryService {
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public SalesOrderMoneySummary salesOrderSummary(UUID salesOrderId) {
+        var summary = salesOrderSummaries(List.of(salesOrderId)).get(salesOrderId);
+        if (summary == null) throw new ApiException(ErrorCode.NOT_FOUND, "销售单不存在");
+        return summary;
+    }
+
+    /** One bounded set of queries for a visible order page, sharing the detailed summary authority. */
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public Map<UUID, SalesOrderMoneySummary> salesOrderSummaries(Collection<UUID> orderIds) {
+        var ids = SalesOrderMoneyBatchReader.ids(orderIds);
+        if (ids.isEmpty()) return Map.of();
         @SuppressWarnings("unchecked")
         List<Object[]> orders = em.createNativeQuery("""
                 SELECT sales_order.id,sales_order.bill_no,sales_order.client_id,sales_order.currency_id,
                        currency.code,sales_order.total_original,sales_order.total_local,currency.name
                 FROM sales_orders sales_order
                 LEFT JOIN currencies currency ON currency.id=sales_order.currency_id
-                WHERE sales_order.id=:id AND COALESCE(sales_order.is_deleted,FALSE)=FALSE
-                """).setParameter("id", salesOrderId).getResultList();
-        if (orders.size() != 1) throw new ApiException(ErrorCode.NOT_FOUND, "销售单不存在");
-        Object[] order = orders.getFirst();
-        BigDecimal orderOriginal = decimal(order[5]);
-        BigDecimal orderLocal = decimal(order[6]);
-
-        var invoicePosition = positions.invoices(salesOrderId);
-        var returnPosition = positions.returns(salesOrderId);
-        var futurePosition = positions.future(salesOrderId);
-        BigDecimal formalOriginal = invoicePosition.grossOriginal();
-        BigDecimal formalLocal = invoicePosition.grossLocal();
-
-        Object[] receiptApplied = (Object[]) em.createNativeQuery("""
+                WHERE sales_order.id IN (:ids) AND COALESCE(sales_order.is_deleted,FALSE)=FALSE
+                """).setParameter("ids", ids).getResultList();
+        var invoicePositions = positions.invoices(ids);
+        var returnPositions = positions.returns(ids);
+        var futurePositions = positions.future(ids);
+        var receiptAppliedByOrder = SalesOrderMoneyBatchReader.rows(em, """
                 SELECT COALESCE(SUM(cash_original),0),COALESCE(SUM(cash_local),0),
                        COALESCE(SUM(write_off_original),0),COALESCE(SUM(write_off_local),0),
                        COALESCE(SUM(applied_book_local),0)
                 FROM finance_receipt_source_allocations
                 WHERE sales_order_id=:orderId AND status='APPLIED'
-                """).setParameter("orderId", salesOrderId).getSingleResult();
-        BigDecimal ordinaryCashOriginal = decimal(receiptApplied[0]);
-        BigDecimal ordinaryCashLocal = decimal(receiptApplied[1]);
-        BigDecimal writeOffOriginal = decimal(receiptApplied[2]);
-        BigDecimal writeOffLocal = decimal(receiptApplied[3]);
-        BigDecimal receiptBookLocal = decimal(receiptApplied[4]);
-
-        Object[] boundPrepayments = (Object[]) em.createNativeQuery("""
+                """, ids);
+        var boundPrepaymentsByOrder = SalesOrderMoneyBatchReader.rows(em, """
                 SELECT COALESCE(SUM(receipt.amount_original),0),COALESCE(SUM(receipt.amount_local),0),
                        COALESCE(SUM(ABS(ledger.amount_balance_original)),0),
                        COALESCE(SUM(ABS(ledger.amount_balance)),0)
@@ -124,13 +123,8 @@ public class CustomerPrepaymentQueryService {
                 WHERE receipt.sales_order_id=:orderId AND receipt.receipt_kind='CUSTOMER_PREPAYMENT'
                   AND receipt.status=1 AND COALESCE(receipt.is_deleted,FALSE)=FALSE
                   AND ledger.status=1 AND COALESCE(ledger.is_deleted,FALSE)=FALSE
-                """).setParameter("orderId", salesOrderId).getSingleResult();
-        BigDecimal prepaymentReceivedOriginal = decimal(boundPrepayments[0]);
-        BigDecimal prepaymentReceivedLocal = decimal(boundPrepayments[1]);
-        BigDecimal prepaymentAvailableOriginal = decimal(boundPrepayments[2]);
-        BigDecimal prepaymentAvailableLocal = decimal(boundPrepayments[3]);
-
-        Object[] offsets = (Object[]) em.createNativeQuery("""
+                """, ids);
+        var offsetsByOrder = SalesOrderMoneyBatchReader.rows(em, """
                 SELECT COALESCE(SUM(o.amount_original),0),
                        COALESCE(SUM(o.source_amount_local),0),
                        COALESCE(SUM(o.target_amount_local),0),
@@ -141,7 +135,37 @@ public class CustomerPrepaymentQueryService {
                 JOIN ar_ap_ledger source_ledger ON source_ledger.id=o.source_ledger_id
                 JOIN finance_receipts source_receipt ON source_receipt.id=source_ledger.source_doc_id
                 WHERE o.sales_order_id=:orderId AND o.status='APPLIED'
-                """).setParameter("orderId", salesOrderId).getSingleResult();
+                """, ids);
+        var unallocatedByOrder = unallocatedLines(ids);
+        Map<UUID, SalesOrderMoneySummary> result = new LinkedHashMap<>();
+        for (Object[] order : orders) {
+        UUID salesOrderId = (UUID) order[0];
+        if (!invoicePositions.containsKey(salesOrderId) || !returnPositions.containsKey(salesOrderId)
+                || !futurePositions.containsKey(salesOrderId) || !receiptAppliedByOrder.containsKey(salesOrderId)
+                || !boundPrepaymentsByOrder.containsKey(salesOrderId) || !offsetsByOrder.containsKey(salesOrderId)) continue;
+        BigDecimal orderOriginal = decimal(order[5]);
+        BigDecimal orderLocal = decimal(order[6]);
+
+        var invoicePosition = invoicePositions.get(salesOrderId);
+        var returnPosition = returnPositions.get(salesOrderId);
+        var futurePosition = futurePositions.get(salesOrderId);
+        BigDecimal formalOriginal = invoicePosition.grossOriginal();
+        BigDecimal formalLocal = invoicePosition.grossLocal();
+
+        Object[] receiptApplied = receiptAppliedByOrder.get(salesOrderId).getFirst();
+        BigDecimal ordinaryCashOriginal = decimal(receiptApplied[0]);
+        BigDecimal ordinaryCashLocal = decimal(receiptApplied[1]);
+        BigDecimal writeOffOriginal = decimal(receiptApplied[2]);
+        BigDecimal writeOffLocal = decimal(receiptApplied[3]);
+        BigDecimal receiptBookLocal = decimal(receiptApplied[4]);
+
+        Object[] boundPrepayments = boundPrepaymentsByOrder.get(salesOrderId).getFirst();
+        BigDecimal prepaymentReceivedOriginal = decimal(boundPrepayments[0]);
+        BigDecimal prepaymentReceivedLocal = decimal(boundPrepayments[1]);
+        BigDecimal prepaymentAvailableOriginal = decimal(boundPrepayments[2]);
+        BigDecimal prepaymentAvailableLocal = decimal(boundPrepayments[3]);
+
+        Object[] offsets = offsetsByOrder.get(salesOrderId).getFirst();
         BigDecimal prepaymentAppliedOriginal = decimal(offsets[0]);
         BigDecimal prepaymentAppliedSourceLocal = decimal(offsets[1]);
         BigDecimal prepaymentAppliedTargetLocal = decimal(offsets[2]);
@@ -149,7 +173,7 @@ public class CustomerPrepaymentQueryService {
         BigDecimal generalAppliedOriginal = decimal(offsets[4]);
         BigDecimal generalAppliedSourceLocal = decimal(offsets[5]);
 
-        List<UnallocatedReceiptLine> unallocated = unallocatedLines(salesOrderId);
+        List<UnallocatedReceiptLine> unallocated = unallocatedByOrder.getOrDefault(salesOrderId, List.of());
         boolean hasUnallocated = !unallocated.isEmpty() || invoicePosition.unresolvedCashCount()>0;
         List<String> warnings = new ArrayList<>();
         if (hasUnallocated) warnings.add(
@@ -166,8 +190,9 @@ public class CustomerPrepaymentQueryService {
                 .add(prepaymentAppliedOriginal);
         BigDecimal exactAppliedLocal = receiptBookLocal.add(prepaymentAppliedTargetLocal);
         if (formalOriginal.subtract(exactAppliedOriginal).signum() < 0 || formalLocal.subtract(exactAppliedLocal).signum() < 0) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "销售单的应收被核销的金额超过了应收金额，请财务核对来源分配");
+            hasUnallocated = true;
+            positionComplete = false;
+            warnings.add("销售单的应收被核销的金额超过了应收金额，请财务核对来源分配");
         }
         BigDecimal arOutstandingOriginal = invoicePosition.remainingOriginal();
         BigDecimal arOutstandingLocal = invoicePosition.remainingLocal();
@@ -182,7 +207,7 @@ public class CustomerPrepaymentQueryService {
         BigDecimal plannedRemaining = remainingAfterAvailableMoney.max(BigDecimal.ZERO);
         BigDecimal overpaid = remainingAfterAvailableMoney.negate().max(BigDecimal.ZERO);
 
-        return new SalesOrderMoneySummary((UUID) order[0], Objects.toString(order[1], null),
+        result.put(salesOrderId, new SalesOrderMoneySummary((UUID) order[0], Objects.toString(order[1], null),
                 (UUID) order[2], (UUID) order[3], Objects.toString(order[4], null),
                 Objects.toString(order[7], null),
                 money(orderOriginal), money(orderLocal), money(formalOriginal), money(formalLocal),
@@ -205,12 +230,14 @@ public class CustomerPrepaymentQueryService {
                 positionComplete ? money(signedNetLocal.negate().max(BigDecimal.ZERO)) : null,
                 positionComplete, invoicePosition.unresolvedCount()+returnPosition.unresolvedCount()
                         +futurePosition.unresolvedCount()
-                        +(futurePosition.itemCount()==0 && orderOriginal.signum()!=0 ? 1 : 0));
+                        +(futurePosition.itemCount()==0 && orderOriginal.signum()!=0 ? 1 : 0)));
+        }
+        return result;
     }
 
-    @SuppressWarnings("unchecked")
-    private List<UnallocatedReceiptLine> unallocatedLines(UUID salesOrderId) {
-        List<Object[]> rows = em.createNativeQuery("""
+    private Map<UUID, List<UnallocatedReceiptLine>> unallocatedLines(Collection<UUID> orderIds) {
+        Map<UUID, List<UnallocatedReceiptLine>> result = new LinkedHashMap<>();
+        SalesOrderMoneyBatchReader.rows(em, """
                 SELECT line.id,receipt.id,receipt.bill_no,receipt.bill_date,
                        line.amount_original,line.amount_local,
                        CASE WHEN (SELECT COUNT(*) FROM ar_ap_source_refs source_count
@@ -233,11 +260,13 @@ public class CustomerPrepaymentQueryService {
                     OR COALESCE(SUM(allocation.write_off_original),0)<>COALESCE(line.write_off_amount,0)
                     OR COALESCE(SUM(allocation.applied_book_local),0)<>COALESCE(line.applied_amount_local,line.amount_local)
                 ORDER BY receipt.bill_date,line.id
-                """).setParameter("orderId", salesOrderId).getResultList();
-        return rows.stream().map(row -> new UnallocatedReceiptLine(
+                """, orderIds).forEach((id, rows) -> {
+            result.put(id, rows.stream().map(row -> new UnallocatedReceiptLine(
                 (UUID) row[0], (UUID) row[1], Objects.toString(row[2], null),
                 NativeValueConverters.toLocalDate(row[3]), money(row[4]), money(row[5]),
-                Objects.toString(row[6], null))).toList();
+                Objects.toString(row[6], null))).toList());
+        });
+        return result;
     }
 
     private Query bind(Query query, UUID clientId, UUID currencyId, UUID salesOrderId) {

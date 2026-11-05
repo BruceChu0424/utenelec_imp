@@ -53,6 +53,30 @@ public class ProductionMaterialIncrementService {
                 eligible&&canRequest(segment),eligible?null:"当前任务没有可申请增量的原冻结物料，或任务已经结束",demands);
     }
 
+    /** Each material retains its own approval/issue authority; the command creates all or none. */
+    @Transactional public BatchSubmitResult submitBatch(BatchSubmitRequest command) {
+        tx.bind();requirePermission(REQUEST_PERMISSION);requirePermission("production_execution:view");
+        if(command==null||command.requests()==null||command.requests().isEmpty()||command.requests().size()>100)
+            throw validation("每次请选择1至100项工单材料");
+        List<SubmitRequest> requests=new ArrayList<>(command.requests());
+        UUID segment=null;Set<UUID> demands=new HashSet<>();Set<String> keys=new HashSet<>();
+        for(SubmitRequest request:requests){
+            if(request==null||request.originalDemandId()==null||request.targetSegmentId()==null
+                    ||request.expectedDemandVersion()==null||request.expectedDemandVersion()<0)
+                throw validation("补料申请缺少任务、原物料或版本");
+            if(segment==null)segment=request.targetSegmentId();
+            if(!segment.equals(request.targetSegmentId()))throw validation("一次追加申请只能包含同一工单的材料");
+            if(!demands.add(request.originalDemandId()))throw validation("同一工单材料不能重复，请合并追加数量");
+            if(!keys.add(key(request.idempotencyKey())))throw validation("每项材料须使用独立的防重复提交标识");
+            quantity(request.deltaQty());reason(request.reason(),true);
+        }
+        // Stable ordering also covers overlapping submissions from different operators.
+        requests.sort(Comparator.comparing(item->item.originalDemandId().toString()));
+        UUID actor=currentUser.requireId();
+        for(String commandKey:keys.stream().sorted().toList())commandLock("SUBMIT",actor,commandKey);
+        return new BatchSubmitResult(requests.stream().map(this::submit).toList());
+    }
+
     @Transactional public RequestView submit(SubmitRequest request) {
         tx.bind(); requirePermission(REQUEST_PERMISSION);requirePermission("production_execution:view");
         if(request==null||request.originalDemandId()==null||request.targetSegmentId()==null

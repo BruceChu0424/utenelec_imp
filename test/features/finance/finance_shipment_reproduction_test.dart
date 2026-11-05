@@ -3,6 +3,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/print/print_pdf_document.dart';
 import 'package:uten_imp/features/finance/widgets/finance_actual_receipt_context.dart';
@@ -146,18 +148,51 @@ void main() {
           },
         ],
       });
+      var reads = 0;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
-              child: FinanceActualReceiptContext(value: value),
+              child: FinanceActualReceiptContext(
+                onRead: () async {
+                  reads++;
+                  return value;
+                },
+              ),
             ),
           ),
         ),
       );
-      expect(find.textContaining('700.0001'), findsOneWidget);
+      expect(reads, 0);
+      expect(
+        find.byKey(const ValueKey('shipment-actual-receipt-total')),
+        findsNothing,
+      );
+      await tester.tap(find.text('客户到账参考（辅助）'));
+      await tester.pumpAndSettle();
+      expect(reads, 1);
+      expect(
+        tester
+            .widget<UtenSummaryField>(
+              find.byKey(const ValueKey('shipment-actual-receipt-total')),
+            )
+            .value,
+        '700.0001 元',
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is UtenSummaryField && w.label == '待核对' && w.value == '3笔',
+        ),
+        findsOneWidget,
+      );
+      final referenceHint = find.byWidgetPredicate(
+        (w) =>
+            w is UtenFieldHintIcon && w.info?.contains('累计到账不等于可用预收') == true,
+      );
+      await tester.tap(referenceHint);
+      await tester.pumpAndSettle();
       expect(find.textContaining('另有3笔'), findsOneWidget);
-      expect(find.text('累计到账不等于可用预收'), findsOneWidget);
+      expect(find.textContaining('累计到账不等于可用预收'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

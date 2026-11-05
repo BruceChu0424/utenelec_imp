@@ -60,82 +60,87 @@ final _liveArrivalScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
   registerArrivalReceiverHttpCases();
-  testWidgets('真实普通仓管52权限可选择收货人并按原数量登记，无HR请求', (tester) async {
-    tester.view.physicalSize = const Size(1800, 1600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
-    final api = _ReceiverApi();
-    final router = _router(ids: [_ids.first], route: InboundRoute.inspectFirst);
-    addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          apiClientProvider.overrideWithValue(api),
-          sharedPreferencesProvider.overrideWithValue(preferences),
-          sessionProvider.overrideWith(_TestSessionNotifier.new),
-          currentPermissionsProvider.overrideWithValue(
-            actualWarehouseReceiverPermissions,
-          ),
-          isSuperAdminProvider.overrideWithValue(false),
-          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-        ],
-        child: MaterialApp.router(routerConfig: router),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      actualWarehouseReceiverPermissions,
-      isNot(contains('employee:view')),
-    );
-    final receiver = find.byType(BusinessEmployeePicker);
-    expect(find.textContaining('仓管员'), findsOneWidget);
-    await tester.tap(
-      find
-          .descendant(of: receiver, matching: find.byType(InputDecorator))
-          .first,
-    );
-    await tester.pumpAndSettle();
-    final candidates = tester
-        .widget<MasterDataTableView<UtenEmployeePickerItem>>(
-          find.byKey(const Key('uten-employee-picker-candidates')),
-        );
-    expect(candidates.columns.map((column) => column.key), [
-      'employeeCode',
-      'name',
-      'department',
-    ]);
-    expect(find.text('职位'), findsNothing);
-    expect(find.text('账号状态'), findsNothing);
-    expect(find.text('在职状态'), findsNothing);
-    await tester.tap(
-      find.byKey(const ValueKey('employee-picker-item-emp-other')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确定').last);
-    await tester.pumpAndSettle();
-    final editor =
-        tester.state(find.byType(InboundArrivalRegistrationPage))
-            as FormDraftMixin<InboundArrivalRegistrationPage>;
-    expect(editor.captureFormDraft()['receiverId'], 'emp-other');
-    final expected = (editor.captureFormDraft()['rows'] as List)
-        .map((row) => (row as Map)['qty'])
-        .toList();
-    await tester.tap(find.byKey(InboundRoute.inspectFirst.submitKey));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('确认登记送检'));
-    await tester.pumpAndSettle();
-    final sent = api.arrivalPostBodies.single;
-    expect(sent['receiverEmployeeId'], 'emp-other');
-    expect(
-      (sent['lines'] as List).map((line) => (line as Map)['qty']),
-      expected,
-    );
-    expect(api.hrReads, 0);
-    expect(tester.takeException(), isNull);
-  });
+  for (final receiverPermissions in [
+    actualWarehouseReceiverPermissions,
+    const <String>{Perm.warehouseInboundView, Perm.warehouseInboundStockIn},
+  ]) {
+    testWidgets('收货人仅业务权限${receiverPermissions.length}项可选择并按原数量登记，无HR请求', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final api = _ReceiverApi();
+      final router = _router(
+        ids: [_ids.first],
+        route: InboundRoute.inspectFirst,
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            sessionProvider.overrideWith(_TestSessionNotifier.new),
+            currentPermissionsProvider.overrideWithValue(receiverPermissions),
+            isSuperAdminProvider.overrideWithValue(false),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(receiverPermissions, isNot(contains('employee:view')));
+      final receiver = find.byType(BusinessEmployeePicker);
+      expect(find.textContaining('仓管员'), findsOneWidget);
+      await tester.tap(
+        find
+            .descendant(of: receiver, matching: find.byType(InputDecorator))
+            .first,
+      );
+      await tester.pumpAndSettle();
+      final candidates = tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(
+            find.byKey(const Key('uten-employee-picker-candidates')),
+          );
+      expect(candidates.columns.map((column) => column.key), [
+        'employeeCode',
+        'name',
+        'department',
+      ]);
+      expect(find.text('职位'), findsNothing);
+      expect(find.text('账号状态'), findsNothing);
+      expect(find.text('在职状态'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('employee-picker-item-emp-other')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确定').last);
+      await tester.pumpAndSettle();
+      final editor =
+          tester.state(find.byType(InboundArrivalRegistrationPage))
+              as FormDraftMixin<InboundArrivalRegistrationPage>;
+      expect(editor.captureFormDraft()['receiverId'], 'emp-other');
+      final expected = (editor.captureFormDraft()['rows'] as List)
+          .map((row) => (row as Map)['qty'])
+          .toList();
+      await tester.tap(find.byKey(InboundRoute.inspectFirst.submitKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认登记送检'));
+      await tester.pumpAndSettle();
+      final sent = api.arrivalPostBodies.single;
+      expect(sent['receiverEmployeeId'], 'emp-other');
+      expect(
+        (sent['lines'] as List).map((line) => (line as Map)['qty']),
+        expected,
+      );
+      expect(api.hrReads, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets('无栈到货登记取消返回预计到货任务中心', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();

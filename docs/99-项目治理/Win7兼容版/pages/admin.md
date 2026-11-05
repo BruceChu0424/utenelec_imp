@@ -4,12 +4,12 @@
 
 ## W7-BIZ-001 · lib/features/admin/pages/admin_ai_settings_page.dart
 
-模块 `admin`；867 行；SHA256 `0ed93de0be0d5dfa9596efa1725da7e420bacfdc349311e1bbfacfdfce5b603c`。
+模块 `admin`；867 行；SHA256 `837310b1d73e6e56ac10b951c1e1c7c676ef10ce740c1601993ce5dea3e60422`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiSettingsPage @90 (page-class)<br>_AdminAiSettingsSession @113 (supporting-class)<br>_AdminAiSettingsPageState @121 (state-class)<br>_StatusHero @532 (supporting-class)<br>_TodayUsageCard @645 (supporting-class)<br>_EmptyProviders @767 (supporting-class)<br>_LoadingSkeleton @816 (supporting-class) |
-| 真实路由绑定 | /admin/ai-settings；router @2529；builder ['AdminAiSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/ai-settings；router @2606；builder ['AdminAiSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @84；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-002 · lib/features/admin/pages/admin_ai_usage_page.dart
 
-模块 `admin`；937 行；SHA256 `7386d703db992b56c8403de04b87732e9fb865dc3bbda437b213924dc595d3c7`。
+模块 `admin`；937 行；SHA256 `3f7c00e21acc9430b085bbb0c1f79ea8d4ece121e7fb5b8f3350e501206eb063`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsagePage @80 (page-class)<br>_AdminAiUsageSession @103 (supporting-class)<br>_AdminAiUsagePageState @110 (state-class)<br>_KpiRow @645 (supporting-class)<br>_TodayTokensCard @736 (supporting-class)<br>_MetricCard @825 (supporting-class)<br>_LoadingSkeleton @904 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage；router @2535；builder ['AdminAiUsagePage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage；router @2612；builder ['AdminAiUsagePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @74；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsagePersonPage @73 (page-class)<br>_AdminAiUsagePersonSession @101 (supporting-class)<br>_AdminAiUsagePersonPageState @111 (state-class)<br>_InfoLine @456 (supporting-class)<br>_DistributionCard @495 (supporting-class)<br>_RecentUsesCard @591 (supporting-class)<br>_LoadingSkeleton @695 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage/:userId；router @2540；builder ['AdminAiUsagePersonPage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage/:userId；router @2617；builder ['AdminAiUsagePersonPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @67；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -58,12 +58,12 @@
 
 ## W7-BIZ-004 · lib/features/admin/pages/admin_ai_usage_records_page.dart
 
-模块 `admin`；1471 行；SHA256 `0aeedcdb3aed881294a1dcf41a76eadffc4caa01be856d95ebecb5a276c9d2d8`。
+模块 `admin`；1471 行；SHA256 `684ee19a08104015e13d59eed0574cf3935a19d241b8d001926946a3d443e380`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsageRecordsPage @85 (page-class)<br>_AdminAiUsageRecordsSession @108 (supporting-class)<br>_AdminAiUsageRecordsPageState @116 (state-class)<br>_SummaryRow @1001 (supporting-class)<br>_SummaryCard @1090 (supporting-class)<br>_PlatformNote @1168 (supporting-class)<br>_CostCell @1199 (supporting-class)<br>_RecordDetailPanel @1243 (supporting-class)<br>_LoadingSkeleton @1345 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage-records；router @2548；builder ['AdminAiUsageRecordsPage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage-records；router @2625；builder ['AdminAiUsageRecordsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @77；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAuditLogPage @86 (page-class)<br>_AdminAuditLogPageState @95 (state-class) |
-| 真实路由绑定 | /admin/audit-logs；router @2478；builder ['AdminAuditLogPage']；redirect None |
+| 真实路由绑定 | /admin/audit-logs；router @2555；builder ['AdminAuditLogPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | audit_log:export @1739；定义 lib/shared/auth/permissions.dart:48 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -94,12 +94,12 @@
 
 ## W7-BIZ-006 · lib/features/admin/pages/admin_audit_session_detail_page.dart
 
-模块 `admin`；278 行；SHA256 `30bd4f3c487d56d4903e29c342607e404fa7180ed3ca1254afb78fdbf823f780`。
+模块 `admin`；278 行；SHA256 `bed5d35cfbcadd5db7b8bdd1b5a22dbce1a38c0b10f7f52b0fe59fa36edf32f9`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAuditSessionDetailPage @26 (page-class)<br>_AdminAuditSessionDetailPageState @47 (state-class)<br>_TimelineHeading @242 (supporting-class) |
-| 真实路由绑定 | /admin/audit-logs/sessions/:sessionId；router @2485；builder ['AdminAuditSessionDetailPage']；redirect None |
+| 真实路由绑定 | /admin/audit-logs/sessions/:sessionId；router @2562；builder ['AdminAuditSessionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminPermissionsPage @50 (page-class)<br>_AdminPermissionsPageState @65 (state-class)<br>_EmployeePermTab @274 (supporting-class)<br>_EmployeePermTabState @298 (state-class)<br>AccountStatusBadge @1091 (supporting-class) |
-| 真实路由绑定 | /admin/permissions；router @2470；builder ['AdminPermissionsPage']；redirect None |
+| 真实路由绑定 | /admin/permissions；router @2547；builder ['AdminPermissionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @133；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminPlatformSettingsPage @80 (page-class)<br>_PlatformSettingsEditor @96 (supporting-class)<br>_PlatformSettingsState @103 (state-class) |
-| 真实路由绑定 | /admin/platform-settings；router @2508；builder ['AdminPlatformSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/platform-settings；router @2585；builder ['AdminPlatformSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -153,7 +153,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminSmsSettingsPage @24 (page-class)<br>_SmsEditor @39 (supporting-class)<br>_SmsEditorState @45 (state-class) |
-| 真实路由绑定 | /admin/sms-settings；router @2503；builder ['AdminSmsSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/sms-settings；router @2580；builder ['AdminSmsSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -171,7 +171,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminSystemSettingsPage @51 (page-class)<br>_SystemSettingsSession @63 (supporting-class)<br>_AdminSystemSettingsPageState @70 (state-class)<br>_SettingGroupGrid @488 (supporting-class)<br>_SettingGroupCard @507 (supporting-class)<br>_AuditRetentionNotice @591 (supporting-class)<br>_SettingRow @691 (supporting-class)<br>_RetentionConfirmDialog @835 (supporting-class)<br>_ErrorState @865 (state-class) |
-| 真实路由绑定 | /admin/system-settings；router @2498；builder ['AdminSystemSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/system-settings；router @2575；builder ['AdminSystemSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -184,12 +184,12 @@
 
 ## W7-BIZ-012 · lib/features/admin/pages/server_operations_page.dart
 
-模块 `admin`；580 行；SHA256 `a93997f9ff6ce28be37b209c19fb12e52105f945c1ebe307c73ccbc849025a06`。
+模块 `admin`；580 行；SHA256 `a4a8dd88dc641604b7b3bfc91be33c96f9b46401987eae45e1353676e3a9c550`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerOperationsPage @34 (page-class)<br>_ServerOperationsSession @45 (supporting-class)<br>_ServerOperationsState @52 (state-class) |
-| 真实路由绑定 | /admin/server-operations；router @2518；builder ['ServerOperationsPage']；redirect None |
+| 真实路由绑定 | /admin/server-operations；router @2595；builder ['ServerOperationsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -207,7 +207,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerStatusPage @41 (page-class)<br>_ServerStatusSession @54 (supporting-class)<br>_ServerStatusPageState @61 (state-class)<br>_MetricCard @955 (supporting-class)<br>_BigNumber @1048 (supporting-class)<br>_StatusBadge @1089 (supporting-class) |
-| 真实路由绑定 | /admin/server-status；router @2513；builder ['ServerStatusPage']；redirect None |
+| 真实路由绑定 | /admin/server-status；router @2590；builder ['ServerStatusPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -220,12 +220,12 @@
 
 ## W7-BIZ-014 · lib/features/admin/pages/server_storage_page.dart
 
-模块 `admin`；702 行；SHA256 `627c75d16323599b2ceef4d487981392415460f21128d9d8f2d86fc225ee6b8c`。
+模块 `admin`；702 行；SHA256 `cc323451c9abe712c09925e780e25fe9d721e889968dcd0bc5c35b947eca35ec`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerStoragePage @29 (page-class)<br>_ServerStorageSession @40 (supporting-class)<br>_ServerStorageState @46 (state-class) |
-| 真实路由绑定 | /admin/server-storage；router @2523；builder ['ServerStoragePage']；redirect None |
+| 真实路由绑定 | /admin/server-storage；router @2600；builder ['ServerStoragePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

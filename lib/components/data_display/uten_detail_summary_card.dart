@@ -15,6 +15,7 @@ class UtenDetailSummaryCard extends StatefulWidget {
     this.status,
     this.primary = const [],
     this.facts = const [],
+    this.sections = const [],
     this.details = const [],
     this.notices = const [],
     this.expanded,
@@ -25,6 +26,9 @@ class UtenDetailSummaryCard extends StatefulWidget {
   final Widget? status;
   final List<Widget> primary;
   final List<Widget> facts;
+
+  /// Full-width document sections share this card's padding and identity.
+  final List<Widget> sections;
   final List<Widget> details;
   final List<Widget> notices;
   final bool? expanded;
@@ -163,6 +167,13 @@ class _UtenDetailSummaryCardState extends State<UtenDetailSummaryCard> {
               for (final notice in widget.notices) ...[
                 const SizedBox(height: UtenSpacing.s8),
                 notice,
+              ],
+              for (final section in widget.sections) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                  child: Divider(height: 1),
+                ),
+                section,
               ],
               if (expandable)
                 UtenCollapsibleContent(

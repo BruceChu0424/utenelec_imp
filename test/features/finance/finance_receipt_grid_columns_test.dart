@@ -61,7 +61,7 @@ void main() {
       await tester.tap(
         find.byWidgetPredicate(
           (widget) =>
-              widget is GridHeaderFilterCell && widget.label == '本次付款金额',
+              widget is GridHeaderFilterCell && widget.label == '本次付款(原币)',
         ),
       );
       await tester.pumpAndSettle();
@@ -105,7 +105,7 @@ void main() {
         (widget) =>
             widget is TextField && identical(widget.controller, row.amount),
       );
-      expect(tester.widget<TextField>(input).decoration?.hintText, '本次收款金额');
+      expect(tester.widget<TextField>(input).decoration?.hintText, '本次收款');
       expect(row.amount.text, isEmpty);
       await tester.enterText(input, '90071992547409.123456');
       await tester.pump();
@@ -374,7 +374,11 @@ void main() {
       expect(find.text('0.02'), findsOneWidget);
       expect(measured.last, '0.02');
 
-      for (final invalid in ['', 'abc', '1e3']) {
+      await tester.enterText(find.byKey(const Key('rate')), '1e3');
+      await tester.pump();
+      expect(row.localAmountExactNotifier.value, '100.0');
+      expect(local.textOf!(row), '100.00');
+      for (final invalid in ['', 'abc', '1e']) {
         await tester.enterText(find.byKey(const Key('rate')), invalid);
         await tester.pump();
         expect(row.localAmountExactNotifier.value, isNull);

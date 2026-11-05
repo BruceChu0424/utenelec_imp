@@ -21,7 +21,7 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
  * <p>一个操作组 (与 PUT /routes 按组生效同一粒度, 分组见 {@link MaterialAnalysisService.MaterialGroupIndex})
  * 会被自动确认, 当且仅当组里每一行都满足:
  * <ol>
- *   <li>还没有人确认过路线, 且当前有独立需求 ({@link MaterialAnalysisService.MaterialRow#actionable()});</li>
+ *   <li>还没有人确认过路线, 且本批仍有需求。库存覆盖只免除补缺，不阻止确认来源及显式公共备货;</li>
  *   <li>所属产品没有被计划闸挡住 (与 PUT /routes 同一份 planningBlockedReasons);</li>
  *   <li>路线是「定了的」: 顶层行若已有历史生产计划, 就是自制; 否则取货品档案推出的建议
  *       (采购/自制/委外). 档案空且没有下层 (建议为 REVIEW) 的不碰, 留给货品资料维护;</li>
@@ -50,6 +50,10 @@ final class MaterialAnalysisRouteAutoConfirm {
         String suggestion();
         String confirmedRoute();
         boolean actionable();
+        BigDecimal requiredQty();
+        default boolean routeConfirmable() {
+            return requiredQty() != null && requiredQty().signum() > 0;
+        }
         String actionGroupKey();
     }
 
@@ -124,7 +128,7 @@ final class MaterialAnalysisRouteAutoConfirm {
      * 纯内存预筛 (不查库): 有没有可能被自动确认的行. 为 false 时重算里连事实都不用读.
      */
     static boolean hasCandidates(List<? extends Candidate> rows, Map<UUID, String> planningBlocks) {
-        return rows.stream().anyMatch(row -> row.confirmedRoute() == null && row.actionable()
+        return rows.stream().anyMatch(row -> row.confirmedRoute() == null && row.routeConfirmable()
                 && !planningBlocks.containsKey(row.analysisItemId())
                 && (row.depth() == 0 || route(row.suggestion()) != null));
     }
@@ -140,7 +144,7 @@ final class MaterialAnalysisRouteAutoConfirm {
         // 分组与 MaterialGroupIndex.of 同式: 只按有独立需求的行、同一 actionGroupKey 归组。
         Map<String, List<Candidate>> byKey = new java.util.LinkedHashMap<>();
         for (Candidate row : rows) {
-            if (!row.actionable()) continue;
+            if (!row.routeConfirmable()) continue;
             byKey.computeIfAbsent(row.actionGroupKey(), ignored -> new ArrayList<>()).add(row);
         }
         for (var group : byKey.entrySet()) {

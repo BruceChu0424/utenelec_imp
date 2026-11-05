@@ -113,6 +113,8 @@ class MaterialAnalysisOneTableContractTest {
         assertThat(stages).contains("case ROUTE_PENDING_INPUT -> result.put(lineId, ROUTE_PENDING);");
         assertThat(service).contains("boolean routePending = row.depth() > 0");
         assertThat(service).contains("&& row.confirmedRoute() == null");
+        // 覆盖行按库存齐套显示；来源确认另按本批正需求办理，不再依赖物理缺口。
+        assertThat(service).contains("&& row.shortageQty().signum() > 0;");
         // 根供给行另有根路线冻结机制，不进这个分支。
         assertThat(service).contains("MaterialAnalysisFlowStageService.ROUTE_PENDING_INPUT");
     }

@@ -4715,10 +4715,13 @@ public class MaterialAnalysisService {
             // 以前这里回落 suggestion，主档来源为空时 suggestion 是 REVIEW，
             // 掉进采购分支后整行显示「等待下发采购」，与红框「请先选供应方式」
             // 自相矛盾。根供给行(depth=0)另有根路线冻结机制，不在此列。
+            // 来源确认与物理补缺分开：覆盖行仍可按主档确认来源以显式公共备货，
+            // 但未确认时不把已齐套状态画成缺料。真实缺口保留来源待维护提醒。
             boolean routePending = row.depth() > 0
                     && row.confirmedRoute() == null
                     && row.requiredQty() != null
-                    && row.requiredQty().signum() > 0;
+                    && row.requiredQty().signum() > 0
+                    && row.shortageQty().signum() > 0;
             routeByLine.put(row.id(), routePending
                     ? MaterialAnalysisFlowStageService.ROUTE_PENDING_INPUT
                     : (row.confirmedRoute() != null
@@ -8738,7 +8741,7 @@ public class MaterialAnalysisService {
             Map<String, List<MaterialRow>> groups = new LinkedHashMap<>();
             for (MaterialRow row : materials) {
                 byId.put(row.id(), row);
-                if (!row.actionable()) continue;
+                if (!row.routeConfirmable()) continue;
                 String key = row.actionGroupKey();
                 keys.put(row.id(), key);
                 groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(row);
@@ -8756,7 +8759,7 @@ public class MaterialAnalysisService {
             if (key == null) {
                 MaterialRow row = byId.get(decision.materialLineId());
                 if (row == null) throw validation("物料分析代表节点不存在");
-                if (!row.actionable()) throw validation("该节点当前没有独立需求，不能确认供应路线");
+                if (!row.routeConfirmable()) throw validation("该节点当前没有独立需求，不能确认供应路线");
                 key = keyById.get(row.id());
             }
             List<MaterialRow> group = byKey.getOrDefault(key, List.of());

@@ -89,7 +89,7 @@ class FinanceReceiptKindFilterTest {
                 access,
                 mock(GlPostingService.class),
                 mock(FinanceReceiptSourceAllocationService.class),
-                mock(AccountFlowLedgerService.class));
+                mock(AccountFlowLedgerService.class), mock(com.uten.imp.application.port.FinancePartyReferenceLabelsPort.class));
         // This fixture returns an empty native page; the real reader needs no
         // origin query or invented document identity in that case.
         return new ImportedDocumentFixture().wire(service, em);

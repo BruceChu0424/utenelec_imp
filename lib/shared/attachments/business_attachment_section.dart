@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
 import '../auth/permissions.dart';
 import '../providers/session_provider.dart';
 import 'attachment.dart';
@@ -38,6 +39,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
     this.categories,
     this.readOnlyNote,
     this.rowActionBuilder,
+    this.showBusyOverlay = false,
   }) : draftController = null,
        draftActionFor = null,
        draftHeaderExtra = null,
@@ -71,6 +73,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
        ownerId = '',
        canView = true,
        rowActionBuilder = null,
+       showBusyOverlay = false,
        // 新建暂存区没有「只读」形态：无权管理时整区不渲染。
        readOnlyNote = null;
 
@@ -108,6 +111,10 @@ class BusinessAttachmentSection extends ConsumerWidget {
 
   /// 见 [AttachmentSection.rowActionBuilder]（已保存单据的附件行附加动作）。
   final Widget? Function(Attachment attachment)? rowActionBuilder;
+
+  /// Explicitly opened read-only references keep waiting feedback scoped here.
+  /// Upload/edit consumers retain their existing progress presentation.
+  final bool showBusyOverlay;
 
   /// [canManage]=false 时在区块下方给一句「为什么改不了 / 去哪儿改」。
   /// 详情（审核）页统一用 [kReviewReadOnlyAttachmentNote]。
@@ -169,7 +176,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
       id: ownerId,
     ));
     final result = ref.watch(provider);
-    return Card(
+    final content = Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: result.when(
@@ -226,5 +233,17 @@ class BusinessAttachmentSection extends ConsumerWidget {
         ),
       ),
     );
+    return showBusyOverlay
+        ? Stack(
+            children: [
+              content,
+              if (result.isLoading)
+                const UtenBusyOverlay(
+                  title: '正在读取相关文件',
+                  showDoNotLeaveHint: false,
+                ),
+            ],
+          )
+        : content;
   }
 }

@@ -31,6 +31,22 @@ public class FinanceReceiptSourceAllocationService {
     /** Choose carrying value from each immutable order source, never from an aggregated display cache. */
     @Transactional(propagation = Propagation.MANDATORY)
     public BigDecimal plannedBookAmount(com.uten.imp.features.finance.arap.ArApLedger ledger,BigDecimal original) {
+        return plannedBookAmount(ledger, original, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public BigDecimal plannedBookAmount(com.uten.imp.features.finance.arap.ArApLedger ledger,BigDecimal original,UUID selectedOrder) {
+        if (selectedOrder != null) {
+            Number matching = (Number) em.createNativeQuery("""
+                    SELECT count(*) FROM sales_orders orders
+                    JOIN ar_ap_source_refs ref ON ref.source_id=orders.id AND ref.source_type='SALES_ORDER'
+                    WHERE ref.ledger_id=:ledger AND orders.id=:selectedOrder
+                      AND orders.client_id=:client AND orders.currency_id=:currency
+                      AND orders.status=1 AND NOT orders.is_deleted
+                    """).setParameter("ledger",ledger.getId()).setParameter("selectedOrder",selectedOrder)
+                    .setParameter("client",ledger.getClientId()).setParameter("currency",ledger.getCurrencyId()).getSingleResult();
+            if (matching.longValue() == 0) throw conflict("所选订货单不是该应收的有效来源，不能把收款分配给其他订单");
+        }
         if (ledger.getLegacySourceResolution()!=null) {
             Number opening=(Number)em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger WHERE id=:id AND fn_is_verified_legacy_opening_ar(id)")
                     .setParameter("id",ledger.getId()).getSingleResult();
@@ -48,11 +64,12 @@ public class FinanceReceiptSourceAllocationService {
                     ref.amount_local-COALESCE((SELECT sum(a.applied_book_local)
                     FROM finance_receipt_source_allocations a WHERE a.source_ref_id=ref.id AND a.status='APPLIED'),0)
                     -COALESCE((SELECT sum(o.target_amount_local) FROM customer_open_item_offsets o
-                        WHERE o.target_source_ref_id=ref.id AND o.status='APPLIED'),0)
+                        WHERE o.target_source_ref_id=ref.id AND o.status='APPLIED'),0),ref.source_id
                 FROM ar_ap_source_refs ref WHERE ref.ledger_id=:ledger AND ref.source_type='SALES_ORDER'
                 ORDER BY ref.source_sequence,ref.id FOR UPDATE
                 """).setParameter("ledger",ledger.getId()).getResultList();
         if(refs.isEmpty()) {
+            if (selectedOrder != null) throw conflict("所选订货单没有可核对的正式应收来源");
             Number verified=(Number)em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger WHERE id=:id AND (fn_is_direct_customer_shipment_ar(id) OR fn_is_verified_legacy_opening_ar(id))")
                     .setParameter("id",ledger.getId()).getSingleResult();
             if(verified.longValue()!=1)throw conflict("应收缺少可验证的发货或销售单账面来源");
@@ -60,6 +77,7 @@ public class FinanceReceiptSourceAllocationService {
         }
         BigDecimal remaining=original,book=BigDecimal.ZERO;
         for(Object[] ref:refs) {
+            if (selectedOrder != null && !selectedOrder.equals(ref[2])) continue;
             BigDecimal beforeA=NativeValueConverters.toBigDecimal(ref[0]),beforeB=NativeValueConverters.toBigDecimal(ref[1]);
             if(beforeA.signum()<0||beforeB.signum()<0)throw conflict("应收来源已超额使用");
             BigDecimal amount=remaining.min(beforeA);
@@ -86,6 +104,7 @@ public class FinanceReceiptSourceAllocationService {
             allocateLine(receipt, line);
         }
     }
+
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void reverseApprovedReceipt(FinanceReceipt receipt, List<FinanceReceiptLine> lines) {
@@ -155,7 +174,10 @@ public class FinanceReceiptSourceAllocationService {
         if (line.getAppliedLedgerId() == null || line.getId() == null) {
             throw validation("收款明细必须关联确定的应收台账记录，请重新选择核销的应收");
         }
-        if (hasIndependentLedgerAuthority(receipt,line)) return;
+        if (hasIndependentLedgerAuthority(receipt,line)) {
+            if (line.getRequestedSalesOrderId()!=null) throw conflict("独立发货或历史期初应收不能虚构订货单归属");
+            return;
+        }
         long existing = number(em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_receipt_source_allocations
                 WHERE receipt_line_id=:lineId
@@ -222,6 +244,7 @@ public class FinanceReceiptSourceAllocationService {
         BigDecimal bookLocalRemaining = money(line.getAppliedAmountLocal());
         int lineSequence = 1;
         for (Object[] row : refs) {
+            if (line.getRequestedSalesOrderId() != null && !line.getRequestedSalesOrderId().equals(row[1])) continue;
             BigDecimal refOriginalRemaining = money(NativeValueConverters.toBigDecimal(row[3]).subtract(NativeValueConverters.toBigDecimal(row[5])));
             BigDecimal refLocalRemaining = money(NativeValueConverters.toBigDecimal(row[4]).subtract(NativeValueConverters.toBigDecimal(row[6])));
             if (refOriginalRemaining.signum() < 0 || refLocalRemaining.signum() < 0) {

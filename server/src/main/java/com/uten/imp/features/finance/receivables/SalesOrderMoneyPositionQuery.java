@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.UUID;
+import java.util.*;
 
 /** Read-only order attribution of invoice balances, return credits and future shipment value. */
 @Service
@@ -15,7 +15,12 @@ public class SalesOrderMoneyPositionQuery {
     private final EntityManager em;
 
     public InvoicePosition invoices(UUID orderId) {
-        Object[] row = (Object[]) em.createNativeQuery("""
+        return invoices(List.of(orderId)).get(orderId);
+    }
+
+    public Map<UUID, InvoicePosition> invoices(Collection<UUID> orderIds) {
+        Map<UUID, InvoicePosition> result = new LinkedHashMap<>();
+        SalesOrderMoneyBatchReader.rows(em, """
                 WITH missing_sources AS (
                     SELECT DISTINCT ledger.id FROM sales_order_items ordered
                     JOIN sales_shipment_items shipped ON shipped.order_item_id=ordered.id
@@ -86,12 +91,20 @@ public class SalesOrderMoneyPositionQuery {
                          + (SELECT COUNT(*) FROM missing_sources),
                        COUNT(*) FILTER(WHERE cash_proven IS NOT TRUE)
                 FROM attributed
-                """).setParameter("orderId", orderId).getSingleResult();
-        return new InvoicePosition(decimal(row[0]), decimal(row[1]), decimal(row[2]), decimal(row[3]), count(row[4]), count(row[5]));
+                """, orderIds).forEach((id, rows) -> {
+            Object[] row = rows.getFirst();
+            result.put(id, new InvoicePosition(decimal(row[0]), decimal(row[1]), decimal(row[2]), decimal(row[3]), count(row[4]), count(row[5])));
+        });
+        return result;
     }
 
     public ReturnPosition returns(UUID orderId) {
-        Object[] row = (Object[]) em.createNativeQuery("""
+        return returns(List.of(orderId)).get(orderId);
+    }
+
+    public Map<UUID, ReturnPosition> returns(Collection<UUID> orderIds) {
+        Map<UUID, ReturnPosition> result = new LinkedHashMap<>();
+        SalesOrderMoneyBatchReader.rows(em, """
                 WITH related AS (
                     SELECT item.return_id FROM sales_order_items ordered
                     JOIN sales_return_items item ON item.order_item_id=ordered.id
@@ -163,12 +176,20 @@ public class SalesOrderMoneyPositionQuery {
                        COUNT(DISTINCT id) FILTER(WHERE proven IS NOT TRUE
                                  OR (target_count>0 AND balance_proven IS NOT TRUE))
                 FROM checked
-                """).setParameter("orderId", orderId).getSingleResult();
-        return new ReturnPosition(decimal(row[0]), decimal(row[1]), decimal(row[2]), decimal(row[3]), count(row[4]));
+                """, orderIds).forEach((id, rows) -> {
+            Object[] row = rows.getFirst();
+            result.put(id, new ReturnPosition(decimal(row[0]), decimal(row[1]), decimal(row[2]), decimal(row[3]), count(row[4])));
+        });
+        return result;
     }
 
     public FuturePosition future(UUID orderId) {
-        Object[] row = (Object[]) em.createNativeQuery("""
+        return future(List.of(orderId)).get(orderId);
+    }
+
+    public Map<UUID, FuturePosition> future(Collection<UUID> orderIds) {
+        Map<UUID, FuturePosition> result = new LinkedHashMap<>();
+        SalesOrderMoneyBatchReader.rows(em, """
                 SELECT COALESCE(SUM(CASE WHEN orders.is_stopped OR orders.status<>1 THEN 0
                      WHEN item.qty>0 THEN fn_business_exact_divide(item.amount_original
                        * GREATEST(item.qty-COALESCE(item.shipped_qty,0)+COALESCE(item.returned_qty,0)
@@ -180,8 +201,11 @@ public class SalesOrderMoneyPositionQuery {
                          OR item.flag_qty<0 OR COALESCE(item.returned_qty,0)>COALESCE(item.shipped_qty,0)), COUNT(*)
                 FROM sales_orders orders JOIN sales_order_items item ON item.order_id=orders.id
                 WHERE orders.id=:orderId AND NOT item.is_deleted
-                """).setParameter("orderId", orderId).getSingleResult();
-        return new FuturePosition(decimal(row[0]), count(row[1]), count(row[2]));
+                """, orderIds).forEach((id, rows) -> {
+            Object[] row = rows.getFirst();
+            result.put(id, new FuturePosition(decimal(row[0]), count(row[1]), count(row[2])));
+        });
+        return result;
     }
 
     private static BigDecimal decimal(Object value) { return NativeValueConverters.toBigDecimal(value); }

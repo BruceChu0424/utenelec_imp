@@ -595,9 +595,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
           facetSearchEnabled: true,
           label: _cfg.partyLabel,
           width: 200,
-          value: (it) => _cfg.isClient
-              ? names.client(it.partyId)
-              : names.supplier(it.partyId),
+          value: (it) =>
+              it.partyName ??
+              (_cfg.isClient
+                  ? names.client(it.partyId)
+                  : names.supplier(it.partyId)),
         ),
       MasterColumnDef(
         key: 'accountId',

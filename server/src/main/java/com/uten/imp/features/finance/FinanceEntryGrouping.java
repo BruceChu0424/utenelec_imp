@@ -28,6 +28,15 @@ public final class FinanceEntryGrouping {
                 header.put("feeBearer", "COMPANY");
             }
             String signature = FinanceBatchEntryService.canonical(header).toString();
+            var selectedOrders = new java.util.TreeSet<String>();
+            for(JsonNode line:entry.path("items")) {
+                String selected=line.path("requestedSalesOrderId").asText("").trim();
+                if(!selected.isEmpty())selectedOrders.add(selected.toLowerCase(java.util.Locale.ROOT));
+            }
+            if(!selectedOrders.isEmpty()) {
+                ArrayNode selected=header.arrayNode();selectedOrders.forEach(selected::add);
+                signature+="|order-sources:"+selected;
+            }
             ObjectNode target = groups.get(signature);
             if (target == null) {
                 target = entry.deepCopy();

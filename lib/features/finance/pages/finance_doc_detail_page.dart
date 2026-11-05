@@ -558,11 +558,13 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         !d.legacyImported &&
         (d.settlementAuthorityVersion ?? 0) >= 1;
     final isPayment = _cfg.type == FinanceDocType.payment;
-    final partyName = _cfg.isClient
-        ? names.client(d.clientId)
-        : _cfg.isSupplier
-        ? names.supplier(d.supplierId)
-        : null;
+    final partyName =
+        d.partyName ??
+        (_cfg.isClient
+            ? names.client(d.clientId)
+            : _cfg.isSupplier
+            ? names.supplier(d.supplierId)
+            : null);
     final accountName = names.account(d.accountId ?? d.outAccountId);
     final cnyReceiptAccount =
         names.accountIsBaseCurrency(d.accountId ?? d.outAccountId) == true;
@@ -913,7 +915,23 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           fontWeight: FontWeight.w700,
         ),
       ),
-      status: statusRow.badge,
+      status: isVersionedReceipt
+          ? Wrap(
+              spacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (statusRow.badge != null) statusRow.badge!,
+                Text(
+                  d.status == kFinanceStatusDraft
+                      ? '待审核金额'
+                      : d.status == kFinanceStatusApproved
+                      ? '已审核金额'
+                      : '历史金额',
+                  style: theme.textTheme.labelMedium,
+                ),
+              ],
+            )
+          : statusRow.badge,
       expanded: _summaryExpanded,
       onExpandedChanged: (value) => setState(() => _summaryExpanded = value),
       primary: [
@@ -1047,9 +1065,26 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         label = label.replaceAll('($currency)', '');
       }
     }
+    final receiptSettlementAmount =
+        _cfg.type == FinanceDocType.receipt &&
+        (const {
+              '本批客户支付/核销原币',
+              '本批客户已付(人民币)',
+              '本批结算毛额(人民币)',
+              '实际入账本位币(人民币)',
+            }.contains(r.label) ||
+            r.label.startsWith('真实账户实际入账('));
+    final receiptAmountState = d.status == kFinanceStatusDraft
+        ? '待审核：这是本收款单录入金额，尚未计入系统账户流水、应收核销或出货已收；审核后才确认。'
+        : d.status == kFinanceStatusApproved
+        ? '已审核：这是本收款单已核准金额。'
+        : '历史金额：保留原始收款记录；已反向的金额不代表当前有效收款，请以出货当前资金为准。';
     return UtenSummaryField(
       label: label,
       value: value,
+      info: receiptSettlementAmount
+          ? '$receiptAmountState 这里的本批是本收款单结算批次，可包含多张出货单。客户支付/已付是结算毛额，银行实际到账为账户金额；手续费、结算汇率与银行净到账分别保留，不能互相替代。'
+          : null,
       emphasis:
           r.label.contains('金额') ||
           r.label.contains('实际入账') ||
@@ -1141,9 +1176,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       if (_cfg.type == FinanceDocType.receipt) ...[
         MasterColumnDef(
           key: 'bill',
-          label: _cfg.isClient ? '应收单号' : '应付单号',
+          label: _cfg.isClient ? '出货单/原来源' : '应付单号',
+          info: '保存时从本批应收固定的原始来源；历史没有该快照时保留原应收编号，不推造出货单号。',
           width: 180,
-          value: (it) => it.appliedBillNo,
+          value: (it) => it.appliedSourceDocNo ?? it.appliedBillNo,
         ),
         MasterColumnDef(
           key: 'currency',
@@ -1327,6 +1363,17 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
       ],
     ];
+    if (_cfg.type == FinanceDocType.receipt) {
+      columns.add(
+        MasterColumnDef(
+          key: 'ledgerBill',
+          label: '应收编号',
+          width: 170,
+          info: '系统正式应收的原编号，用于高级核对；不替换前列真实出货或历史期初原来源。',
+          value: (it) => it.appliedBillNo,
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

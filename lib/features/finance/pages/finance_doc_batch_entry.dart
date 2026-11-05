@@ -124,32 +124,129 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
     await _pickEntrySource(added);
   }
 
-  Future<void> _pickEntrySource(FinanceGridRow target) async {
-    if (!_entryCurrent(target) || _preparingLedgerRows) return;
-    if (target.entry.receiptKind == _receiptKindCustomerPrepayment) {
-      final checkpoint = JsonValueSnapshot.capture(target.entry.toJson());
-      final order = await showSalesOrderPicker(context, ref);
-      if (order == null ||
-          !_entryCurrent(target) ||
-          !checkpoint.matches(target.entry.toJson())) {
-        return;
-      }
-      final permissions = ref.read(currentPermissionsProvider);
-      if (!permissions.contains(Perm.financeViewAll) ||
-          !permissions.contains(Perm.customerPrepaymentView)) {
-        return;
-      }
-      target.entry.salesOrderId = order.id;
-      target.entry.salesOrderNo = order.billNo;
-      target.entry.partyId = order.clientId;
-      _changeEntryCurrency(target, order.currencyId);
+  Future<void> _collectEntryByOrder([FinanceGridRow? target]) async {
+    if (_saving ||
+        _preparingLedgerRows ||
+        !formDraftIdentityIsCurrent ||
+        _createdBatchIds.isNotEmpty ||
+        _batchCommand != null) {
+      return;
+    }
+    final snapshot = JsonValueSnapshot.capture(captureFormDraftSnapshot());
+    final initialOrderId =
+        target?.requestedSalesOrderId ?? target?.entry.salesOrderId;
+    final result = await showReceiptOrderCollectionPanel(
+      context,
+      initialOrder: initialOrderId == null
+          ? null
+          : SalesDocListItem(
+              id: initialOrderId,
+              billNo: target?.entry.salesOrderNo,
+              clientId: target?.entry.partyId,
+              currencyId: target?.entry.currencyId,
+              status: kSalesStatusApproved,
+            ),
+      initialAmount: target?.amount.text,
+      appliedLedgerId: target?.appliedLedgerId,
+    );
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        result == null ||
+        !snapshot.matches(captureFormDraftSnapshot())) {
+      return;
+    }
+    if (target != null && !_entryCurrent(target)) return;
+    final order = result.order;
+    final terms = target?.entry.toJson();
+    final originalRate = target?.exchangeRate.text;
+    final items = result.prepayment ? <AppliedArAp>[] : result.items;
+    if (!result.prepayment && items.isEmpty) {
+      context.appError('本次收款没有可引用的正式应收');
+      return;
+    }
+    final existing = {
+      for (final row in _grid.rows.where((row) => row != target))
+        '${row.appliedLedgerId}/${row.requestedSalesOrderId}',
+    };
+    if (items.any(
+      (item) => existing.contains('${item.ledgerId}/${order.id}'),
+    )) {
+      context.appWarning('该订单的应收已在明细中，请修改已有行，原输入已保留');
+      return;
+    }
+    if (target != null &&
+        items.length > 1 &&
+        (target.entry.accountAmount.text.isNotEmpty ||
+            target.entry.fee.text.isNotEmpty)) {
+      context.appWarning('本行已有实际到账或费用，拆分多笔应收前请另用新增入口逐项核对；原输入已保留');
+      return;
+    }
+    final epoch = ++_rowPreparationEpoch;
+    final owner = _rowPreparationOwner(epoch, rowsRevision: _grid.rowsRevision);
+    _updateEntry(() => _preparingLedgerRows = true);
+    try {
       await ref
           .read(financeNameServiceProvider)
           .loadClientNames(partyReferenceIds([order.clientId]));
+      if (!owner() || !snapshot.matches(captureFormDraftSnapshot())) return;
+      await prepareEditableGridRows(
+        result.prepayment ? <AppliedArAp?>[null] : items.cast<AppliedArAp?>(),
+        create: (_) => _newEntryRow(),
+        initialize: (row, item) {
+          if (terms != null) row.entry.restore(terms);
+          if (terms?['currencyId'] == order.currencyId &&
+              originalRate != null) {
+            row.exchangeRate.text = originalRate;
+          }
+          row.entry.receiptKind = result.prepayment
+              ? _receiptKindCustomerPrepayment
+              : _receiptKindArSettlement;
+          row.entry.salesOrderId = order.id;
+          row.entry.salesOrderNo = order.billNo;
+          row.entry.partyId = order.clientId;
+          if (row.entry.currencyId != order.currencyId ||
+              row.exchangeRate.text.isEmpty) {
+            _changeEntryCurrency(row, order.currencyId);
+          }
+          if (item != null) {
+            row.applyLedger(item);
+          } else {
+            row.amount.text = result.amount;
+          }
+        },
+        isCurrent: owner,
+        canPublish: () => snapshot.matches(captureFormDraftSnapshot()),
+        publish: (rows) {
+          if (target != null) _grid.removeRows([target]);
+          _grid.addRows(rows);
+        },
+      );
+    } on UiWorkCancelled {
+      return;
+    } catch (error) {
+      if (mounted && owner()) {
+        context.appError(humanErrorMessage(error) ?? '订单收款来源加载失败，原输入已保留');
+      }
+    } finally {
+      if (mounted && epoch == _rowPreparationEpoch) {
+        _updateEntry(() => _preparingLedgerRows = false);
+      }
+    }
+  }
+
+  Future<void> _pickEntrySource(FinanceGridRow target) async {
+    if (!_entryCurrent(target) || _preparingLedgerRows) return;
+    if (_cfg.type == FinanceDocType.receipt &&
+        target.entry.receiptKind == _receiptKindCustomerPrepayment) {
+      await _pickExplicitEntryPrepayment(target);
       return;
     }
-    if (target.entry.partyId == null) await _pickEntryParty(target);
-    if (!mounted || !_entryCurrent(target) || target.entry.partyId == null) {
+    if (_cfg.type != FinanceDocType.receipt && target.entry.partyId == null) {
+      await _pickEntryParty(target);
+    }
+    if (!mounted ||
+        !_entryCurrent(target) ||
+        _cfg.type != FinanceDocType.receipt && target.entry.partyId == null) {
       return;
     }
     final snapshot = JsonValueSnapshot.capture(captureFormDraftSnapshot());
@@ -160,6 +257,11 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       ref,
       direction: _cfg.isClient ? 'AR' : 'AP',
       partyId: target.entry.partyId,
+      receiptBatches: _cfg.type == FinanceDocType.receipt,
+      initialAmounts: {
+        if (target.appliedLedgerId != null)
+          target.appliedLedgerId!: target.amount.text,
+      },
     );
     if (!mounted ||
         picked == null ||
@@ -170,6 +272,7 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       return;
     }
     final existing = _grid.rows
+        .where((row) => _cfg.type != FinanceDocType.receipt || row != target)
         .map((row) => row.appliedLedgerId)
         .whereType<String>()
         .toSet();
@@ -180,16 +283,22 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       context.appWarning('所选单据已在明细中');
       return;
     }
-    // A populated entry is never overwritten. New picks append with its terms.
-    final reuse = target.appliedLedgerId == null && target.amount.text.isEmpty;
+    // A confirmed receipt choice fills its own row; a multi-batch choice cannot clone bank facts.
+    final reuse =
+        _cfg.type == FinanceDocType.receipt ||
+        target.appliedLedgerId == null && target.amount.text.isEmpty;
     if (reuse &&
         additions.length > 1 &&
-        (target.entry.accountAmount.text.isNotEmpty ||
+        ((_cfg.type == FinanceDocType.receipt &&
+                target.amount.text.isNotEmpty) ||
+            target.entry.accountAmount.text.isNotEmpty ||
             target.entry.fee.text.isNotEmpty)) {
       context.appWarning('本行已有银行金额或费用，请一次引用一条；原输入已保留');
       return;
     }
     final terms = target.entry.toJson();
+    final originalRate = target.exchangeRate.text;
+    final originalAmount = target.amount.text;
     _updateEntry(() => _preparingLedgerRows = true);
     try {
       await prepareEditableGridRows(
@@ -203,7 +312,19 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
             'bankReference': terms['bankReference'],
           });
           row.applyLedger(item);
-          _changeEntryCurrency(row, item.currencyId);
+          if (_cfg.type == FinanceDocType.receipt &&
+              additions.length == 1 &&
+              item.receiptAmountText.isEmpty &&
+              originalAmount.isNotEmpty) {
+            row.amount.text = originalAmount;
+          }
+          if (_cfg.type == FinanceDocType.receipt &&
+              terms['currencyId'] == item.currencyId &&
+              originalRate.isNotEmpty) {
+            row.exchangeRate.text = originalRate;
+          } else {
+            _changeEntryCurrency(row, item.currencyId);
+          }
         },
         isCurrent: owner,
         canPublish: () => snapshot.matches(captureFormDraftSnapshot()),
@@ -214,6 +335,61 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       );
     } on UiWorkCancelled {
       return;
+    } finally {
+      if (mounted && epoch == _rowPreparationEpoch) {
+        _updateEntry(() => _preparingLedgerRows = false);
+      }
+    }
+  }
+
+  Future<void> _pickExplicitEntryPrepayment(FinanceGridRow target) async {
+    final permissions = ref.read(currentPermissionsProvider);
+    if (!permissions.contains(Perm.financeViewAll) ||
+        !permissions.contains(Perm.customerPrepaymentView)) {
+      context.appWarning('登记订单预收需要客户预收及全部财务查看权限');
+      return;
+    }
+    if (!_entryCurrent(target) || target.appliedLedgerId != null) return;
+    final snapshot = JsonValueSnapshot.capture(captureFormDraftSnapshot());
+    final order = await showSalesOrderPicker(
+      context,
+      ref,
+      receiptSources: true,
+    );
+    if (!mounted ||
+        order == null ||
+        !_entryCurrent(target) ||
+        !snapshot.matches(captureFormDraftSnapshot())) {
+      return;
+    }
+    if (order.status != kSalesStatusApproved ||
+        order.stopped ||
+        order.clientId == null ||
+        order.currencyId == null) {
+      context.appWarning('订单预收须引用已审核、未中止且客户币种完整的订货单');
+      return;
+    }
+    final epoch = ++_rowPreparationEpoch;
+    final owner = _rowPreparationOwner(epoch, rowsRevision: _grid.rowsRevision);
+    _updateEntry(() => _preparingLedgerRows = true);
+    try {
+      await ref
+          .read(financeNameServiceProvider)
+          .loadClientNames(partyReferenceIds([order.clientId]));
+      if (!owner() || !snapshot.matches(captureFormDraftSnapshot())) return;
+      target.entry.salesOrderId = order.id;
+      target.entry.salesOrderNo = order.billNo;
+      target.entry.partyId = order.clientId;
+      if (target.entry.currencyId != order.currencyId ||
+          target.exchangeRate.text.isEmpty) {
+        _changeEntryCurrency(target, order.currencyId);
+      }
+      target.requestedSalesOrderId = null;
+      target.entry.touch();
+    } catch (error) {
+      if (mounted && owner()) {
+        context.appError(humanErrorMessage(error) ?? '订单预收来源加载失败，原输入已保留');
+      }
     } finally {
       if (mounted && epoch == _rowPreparationEpoch) {
         _updateEntry(() => _preparingLedgerRows = false);
@@ -461,39 +637,26 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
     try {
       final confirmed = await showUtenAdaptivePanel<bool>(
         context: context,
-        drawerWidth: 600,
+        drawerWidth: 800,
+        widthFraction: UtenPanelWidth.none,
         builder: (panelContext) {
           panelRoute = ModalRoute.of(panelContext);
           return StatefulBuilder(
             builder: (panelContext, update) => SafeArea(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   UtenPanelHeader(
                     title: '结算设置',
                     onClose: () => Navigator.pop(panelContext),
                   ),
-                  Flexible(
+                  Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(UtenSpacing.s16),
                       child: UtenFormGrid(
+                        columns: 2,
+                        maxColumns: 2,
+                        minFieldWidth: 280,
                         children: [
-                          TextField(
-                            key: const ValueKey('finance-entry-settlement-fee'),
-                            controller: values.fee,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: UtenInputDecoration(
-                              InputDecoration(
-                                labelText:
-                                    '结算费用（${names.currency(names.accountCurrencyId(values.accountId))}）',
-                              ),
-                              info: _cfg.isClient
-                                  ? '收款产生的手续费等费用。同币种从到账扣除时，实际入账＝本次收款金额－结算费用；费用另付不扣减到账金额。跨币种按银行实际金额填写。'
-                                  : '付款产生的手续费等费用。同币种时，实际扣款＝本次付款金额＋结算费用；跨币种按银行实际金额填写。',
-                            ),
-                          ),
                           TextField(
                             key: const ValueKey(
                               'finance-entry-settlement-account-amount',
@@ -505,10 +668,26 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             decoration: UtenInputDecoration(
                               InputDecoration(
                                 labelText:
-                                    '${_cfg.isClient ? '实际入账' : '实际扣款'}（${names.currency(names.accountCurrencyId(values.accountId))}）',
+                                    '${_cfg.isClient ? '实际到账' : '实际扣款'}（${names.currency(names.accountCurrencyId(values.accountId))}）',
                               ),
                               info:
                                   '银行账户实际发生的金额。同币种留空时根据本次收付款金额和费用自动计算；跨币种须按银行实际金额填写。',
+                            ),
+                          ),
+                          TextField(
+                            key: const ValueKey('finance-entry-settlement-fee'),
+                            controller: values.fee,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                labelText:
+                                    '费用（${names.currency(names.accountCurrencyId(values.accountId))}）',
+                              ),
+                              info: _cfg.isClient
+                                  ? '收款产生的手续费等费用。同币种从到账扣除时，实际到账＝本次收款金额－费用；费用另付不扣减到账金额。跨币种按银行实际金额填写。'
+                                  : '付款产生的手续费等费用。同币种时，实际扣款＝本次付款金额＋费用；跨币种须按银行实际金额填写。',
                             ),
                           ),
                           if (_cfg.isClient) ...[
@@ -524,49 +703,8 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                                     value ?? _settlementChannelDirect,
                               ),
                             ),
-                            if (values.channel == _settlementChannelAgent) ...[
-                              UtenButton(
-                                type: UtenButtonType.secondary,
-                                onPressed: () async {
-                                  final supplier = await resolvePickedParty(
-                                    ref,
-                                    () => showUtenSupplierPicker(
-                                      panelContext,
-                                      ref,
-                                    ),
-                                    idOf: (party) => party.id,
-                                    loadNames: names.loadSupplierNames,
-                                    isResolved:
-                                        names.supplierReferenceSelectable,
-                                    isCurrent: () =>
-                                        panelContext.mounted &&
-                                        _entryCurrent(row),
-                                  );
-                                  if (supplier == null ||
-                                      !panelContext.mounted ||
-                                      !_entryCurrent(row)) {
-                                    return;
-                                  }
-                                  if (panelContext.mounted &&
-                                      _entryCurrent(row)) {
-                                    update(() => values.agentId = supplier.id);
-                                  }
-                                },
-                                child: Text(
-                                  values.agentId == null
-                                      ? '选择外贸代理'
-                                      : names.supplier(values.agentId),
-                                ),
-                              ),
-                              TextField(
-                                controller: values.agentStatement,
-                                decoration: const UtenInputDecoration(
-                                  InputDecoration(labelText: '代理结算单号'),
-                                ),
-                              ),
-                            ],
                             _entryDropdown(
-                              label: '费用结算',
+                              label: '费用方式',
                               value: values.feeMode == _feeModeNone
                                   ? _feeModeDeducted
                                   : values.feeMode,
@@ -579,14 +717,6 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                                     values.feeMode = value ?? _feeModeDeducted,
                               ),
                             ),
-                            if (values.feeMode == _feeModeSeparate)
-                              _entryDropdown(
-                                label: '费用付款账户',
-                                value: values.feeAccountId,
-                                entries: names.accountEntries,
-                                onChanged: (value) =>
-                                    update(() => values.feeAccountId = value),
-                              ),
                           ],
                           UtenButton(
                             type: UtenButtonType.secondary,
@@ -601,7 +731,7 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                               }
                             },
                             child: Text(
-                              '银行记账时间 ${_fmt(values.bookedAt)} ${values.bookedAt.hour.toString().padLeft(2, '0')}:${values.bookedAt.minute.toString().padLeft(2, '0')}',
+                              '实际发生时间 ${_fmt(values.bookedAt)} ${values.bookedAt.hour.toString().padLeft(2, '0')}:${values.bookedAt.minute.toString().padLeft(2, '0')}',
                             ),
                           ),
                           if (_cfg.isClient)
@@ -621,16 +751,68 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                                 '汇率生效时间 ${_fmt(values.rateEffectiveAt)}',
                               ),
                             ),
+                          if (_cfg.isClient &&
+                              values.channel == _settlementChannelAgent) ...[
+                            UtenButton(
+                              type: UtenButtonType.secondary,
+                              onPressed: () async {
+                                final supplier = await resolvePickedParty(
+                                  ref,
+                                  () =>
+                                      showUtenSupplierPicker(panelContext, ref),
+                                  idOf: (party) => party.id,
+                                  loadNames: names.loadSupplierNames,
+                                  isResolved: names.supplierReferenceSelectable,
+                                  isCurrent: () =>
+                                      panelContext.mounted &&
+                                      _entryCurrent(row),
+                                );
+                                if (supplier != null &&
+                                    panelContext.mounted &&
+                                    _entryCurrent(row)) {
+                                  update(() => values.agentId = supplier.id);
+                                }
+                              },
+                              child: Text(
+                                values.agentId == null
+                                    ? '选择外贸代理'
+                                    : names.supplier(values.agentId),
+                              ),
+                            ),
+                            TextField(
+                              controller: values.agentStatement,
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(labelText: '代理结算单号'),
+                              ),
+                            ),
+                          ],
+                          if (_cfg.isClient &&
+                              values.feeMode == _feeModeSeparate)
+                            _entryDropdown(
+                              label: '费用付款账户',
+                              value: values.feeAccountId,
+                              entries: names.accountEntries,
+                              onChanged: (value) =>
+                                  update(() => values.feeAccountId = value),
+                            ),
                         ],
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s16),
-                    child: UtenButton(
-                      onPressed: () => Navigator.pop(panelContext, true),
-                      child: const Text('保存设置'),
-                    ),
+                  UtenDialogActions(
+                    alignment: MainAxisAlignment.end,
+                    overflowAlignment: OverflowBarAlignment.end,
+                    children: [
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        onPressed: () => Navigator.pop(panelContext),
+                        child: const Text('取消'),
+                      ),
+                      UtenButton(
+                        onPressed: () => Navigator.pop(panelContext, true),
+                        child: const Text('保存设置'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -924,48 +1106,58 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                         _freezeEntry(
                           absorbing: frozen,
                           child: _entryCard(
-                            child: UtenFormGrid(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                UtenDateField(
-                                  label: '单据日期',
-                                  required: true,
-                                  value: _billDate,
-                                  onChanged: (value) =>
-                                      _updateEntry(() => _billDate = value),
-                                ),
-                                _employeePicker(
-                                  label: '经办人',
-                                  currentId: _operatorId,
-                                  onChanged: (value) =>
-                                      _updateEntry(() => _operatorId = value),
-                                ),
-                                if (_cfg.hasParty)
-                                  ListenableBuilder(
-                                    listenable: Listenable.merge([
-                                      _grid,
-                                      for (final row in _grid.rows) row.entry,
-                                    ]),
-                                    builder: (context, _) => InputDecorator(
-                                      decoration: UtenInputDecoration(
-                                        InputDecoration(
-                                          labelText: '本批${_cfg.partyLabel}',
-                                        ),
-                                      ),
-                                      child: UtenMultiValueCell(
-                                        title: '本批${_cfg.partyLabel}',
-                                        values: _grid.rows
-                                            .map((row) => row.entry.partyId)
-                                            .whereType<String>()
-                                            .toSet()
-                                            .map(
-                                              (id) => _cfg.isClient
-                                                  ? names.client(id)
-                                                  : names.supplier(id),
-                                            )
-                                            .toList(),
+                                UtenFormGrid(
+                                  columns: _cfg.hasParty ? 3 : 2,
+                                  maxColumns: _cfg.hasParty ? 3 : 2,
+                                  children: [
+                                    UtenDateField(
+                                      label: '单据日期',
+                                      required: true,
+                                      value: _billDate,
+                                      onChanged: (value) =>
+                                          _updateEntry(() => _billDate = value),
+                                    ),
+                                    _employeePicker(
+                                      label: '经办人',
+                                      currentId: _operatorId,
+                                      onChanged: (value) => _updateEntry(
+                                        () => _operatorId = value,
                                       ),
                                     ),
-                                  ),
+                                    if (_cfg.hasParty)
+                                      ListenableBuilder(
+                                        listenable: Listenable.merge([
+                                          _grid,
+                                          for (final row in _grid.rows)
+                                            row.entry,
+                                        ]),
+                                        builder: (context, _) => InputDecorator(
+                                          decoration: UtenInputDecoration(
+                                            InputDecoration(
+                                              labelText: '本批${_cfg.partyLabel}',
+                                            ),
+                                          ),
+                                          child: UtenMultiValueCell(
+                                            title: '本批${_cfg.partyLabel}',
+                                            values: _grid.rows
+                                                .map((row) => row.entry.partyId)
+                                                .whereType<String>()
+                                                .toSet()
+                                                .map(
+                                                  (id) => _cfg.isClient
+                                                      ? names.client(id)
+                                                      : names.supplier(id),
+                                                )
+                                                .toList(),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: UtenSpacing.s12),
                                 TextField(
                                   controller: _remark,
                                   decoration: const UtenInputDecoration(
@@ -1003,8 +1195,10 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             toolbarActions: [
                               if (_cfg.isSettle)
                                 UtenImportButton(
-                                  label: _cfg.isClient ? '引用应收' : '引用应付',
-                                  compactLabel: _cfg.isClient ? '引用应收' : '引用应付',
+                                  label: _cfg.isClient ? '按出货单收款' : '引用应付',
+                                  compactLabel: _cfg.isClient
+                                      ? '按出货单收款'
+                                      : '引用应付',
                                   onPressed: _importEntrySource,
                                 ),
                               UtenButton(
@@ -1017,7 +1211,7 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                                 UtenButton(
                                   type: UtenButtonType.secondary,
                                   onPressed: _applyEntryPrepayment,
-                                  child: const Text('预收抵扣'),
+                                  child: const Text('用定金抵款'),
                                 ),
                               if (_canUseIntake)
                                 UtenButton(
@@ -1027,6 +1221,15 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                                 ),
                             ],
                             rowMenuExtraBuilder: (_, selected) => [
+                              if (_cfg.type == FinanceDocType.receipt &&
+                                  selected.length == 1 &&
+                                  selected.single.appliedLedgerId != null)
+                                UtenMenuItem(
+                                  label: '指定本批的订单分配（可选）',
+                                  icon: Icons.link_rounded,
+                                  onTap: () =>
+                                      _collectEntryByOrder(selected.single),
+                                ),
                               UtenMenuItem(
                                 label: '批量填写 (${selected.length})',
                                 icon: Icons.edit_note_rounded,

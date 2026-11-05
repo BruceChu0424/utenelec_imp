@@ -47,6 +47,7 @@ class MaterialRouteAutoConfirmEndToEndTest {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired MaterialAnalysisService analyses;
+    @Autowired com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewService aggregatePreviews;
     @Autowired PlatformTransactionManager transactions;
     @Autowired jakarta.persistence.EntityManager em;
     private FullChainEndToEndTest fixture;
@@ -169,6 +170,54 @@ class MaterialRouteAutoConfirmEndToEndTest {
         assertEquals(0,detail.pendingAutoConfirmRouteCount());
         assertEquals(view.version(),detail.version(),"确认在换指纹之前, 版本只涨一次");
         assertEquals(view.fingerprint(),detail.fingerprint());
+    }
+
+    @Test void coveredStockStillConfirmsItsMasterSourceOnCreateRefreshAndExplicitConfirmation(){
+        Tree t=tree("covered-master-source");
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,1000)",t.world().warehouseId(),t.leaf());
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,1000)",t.world().warehouseId(),t.review());
+        fixture.loginAs(planner(t.world(),"covered-master-source",true));
+        long masterVersion=goodsVersion(t.leaf());
+
+        AnalysisView created=create(t,"covered-master-source");
+        MaterialView covered=byGoods(created,t.leaf());
+        assertEquals(0,new BigDecimal("100").compareTo(covered.requiredQty()));
+        assertEquals(0,new BigDecimal("100").compareTo(covered.allocatedAvailableQty()));
+        assertEquals(0,covered.shortageQty().signum());
+        assertEquals("BUY",covered.sourceConfirmed());
+        assertFalse(covered.actionable(),"物理补缺/让料资格不因来源确认而扩大");
+        assertNotEquals("ROUTE_PENDING",covered.flowStage());
+        assertTrue(covered.aggregatePreparation().actionable(),"显式公共备货仍有合法来源上下文");
+        MaterialView unknown=byGoods(created,t.review());
+        assertEquals(0,unknown.shortageQty().signum());
+        assertNull(unknown.sourceConfirmed(),"即使库存覆盖，也不能替空主档虚构来源");
+        assertNotEquals("ROUTE_PENDING",unknown.flowStage(),"库存已覆盖不能误报成来源待补缺");
+
+        clearConfirmation(covered.materialLineId());
+        AnalysisView refreshed=refresh(t,created.analysisId(),"covered-master-refresh");
+        assertEquals("BUY",byGoods(refreshed,t.leaf()).sourceConfirmed());
+        assertEquals(0,byGoods(refreshed,t.leaf()).shortageQty().signum());
+
+        clearConfirmation(covered.materialLineId());
+        AnalysisView before=analyses.detail(created.analysisId());
+        AnalysisView confirmed=analyses.saveRoutes(before.analysisId(),new RouteRequest(before.version(),before.fingerprint(),
+                "covered-explicit-confirm",List.of(new RouteDecision(covered.materialLineId(),covered.actionGroupKey(),"BUY",null))));
+        assertEquals("BUY",byGoods(confirmed,t.leaf()).sourceConfirmed());
+        assertEquals(0,new BigDecimal("100").compareTo(byGoods(confirmed,t.leaf()).allocatedAvailableQty()));
+        assertEquals(masterVersion,goodsVersion(t.leaf()),"计划确认只写快照，不修改货品主档");
+        fixture.loginAs(t.world().superAdminUserId());
+        var input=new com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.GroupInput(
+                "fresh-covered-public",List.of(covered.materialLineId()),"BUY",new BigDecimal("5"),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO);
+        var preview=aggregatePreviews.preview(confirmed.analysisId(),
+                new com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.PreviewRequest(
+                        confirmed.version(),confirmed.fingerprint(),"fresh-covered-public-preview",t.world().warehouseId(),
+                        BusinessTime.today(),BusinessTime.today().plusDays(10),false,List.of(input)));
+        var publicOrder=preview.groups().getFirst();
+        assertNull(publicOrder.blockedReason());
+        assertEquals(0,new BigDecimal("5").compareTo(publicOrder.publicExtraQty()));
+        assertTrue(publicOrder.sources().stream().allMatch(part->part.allocatedQty().signum()==0),
+                "本批已绑定现货覆盖的需求不能被额外公共备货再次占用");
     }
 
     /**

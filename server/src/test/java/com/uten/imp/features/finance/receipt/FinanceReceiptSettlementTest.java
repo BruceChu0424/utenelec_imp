@@ -63,6 +63,7 @@ class FinanceReceiptSettlementTest {
     private static final UUID ACCOUNT_STYLE_ID = UUID.fromString("90000000-0000-0000-0000-000000000009");
     private static final UUID FEE_ACCOUNT_STYLE_ID = UUID.fromString("a0000000-0000-0000-0000-00000000000a");
     private static final UUID COUNTER_STYLE_ID = UUID.fromString("b0000000-0000-0000-0000-00000000000b");
+    private static final UUID ORDER_ID = UUID.fromString("c0000000-0000-0000-0000-00000000000c");
 
     private FinanceReceiptRepository receiptRepo;
     private FinanceReceiptLineRepository lineRepo;
@@ -71,6 +72,8 @@ class FinanceReceiptSettlementTest {
     private SecurityContextCurrentUser currentUser;
     private EntityManager em;
     private com.uten.imp.application.port.MasterReferenceValidationPort references;
+    private com.uten.imp.features.finance.receivables.ReceiptOrderSourceAccess orderSourceAccess;
+    private com.uten.imp.features.finance.receivables.ReceiptLedgerSourceAccess ledgerSourceAccess;
     private Query postingCount;
     private Query accountLock;
     private AccountFlowLedgerService accountFlowLedger;
@@ -159,6 +162,9 @@ class FinanceReceiptSettlementTest {
         Query projectionIntegrity = query();
         Query postingRole = query();
         Query counterStyle = query();
+        Query orderLookup = query();
+        when(orderLookup.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[] {CLIENT_ID, CURRENCY_ID, (short) 1, false, false, false}));
         when(postingCount.getSingleResult()).thenAnswer(ignored ->
                 postingCounts.isEmpty() ? 0L : postingCounts.removeFirst());
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
@@ -194,6 +200,7 @@ class FinanceReceiptSettlementTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             nativeSql.add(sql);
+            if (sql.contains("FROM sales_orders WHERE id=:id")) return orderLookup;
             if (sql.contains("account_style_id(account.id)")) {
                 return ledgerLock;
             }
@@ -253,7 +260,13 @@ class FinanceReceiptSettlementTest {
         when(access.hasAuthority("customer_prepayment:view")).thenReturn(true);
         when(access.hasAuthority("finance:view:all")).thenReturn(true);
         var sourceAllocation=mock(com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationService.class);
+        orderSourceAccess=mock(com.uten.imp.features.finance.receivables.ReceiptOrderSourceAccess.class);
+        ledgerSourceAccess=mock(com.uten.imp.features.finance.receivables.ReceiptLedgerSourceAccess.class);
         when(sourceAllocation.plannedBookAmount(any(),any())).thenAnswer(invocation->{
+            ArApLedger ledger=invocation.getArgument(0);BigDecimal original=invocation.getArgument(1);
+            return com.uten.imp.common.finance.FinancialBookAllocation.part(original,ledger.getAmountBalanceOriginal(),ledger.getAmountBalance());
+        });
+        when(sourceAllocation.plannedBookAmount(any(),any(),any(UUID.class))).thenAnswer(invocation->{
             ArApLedger ledger=invocation.getArgument(0);BigDecimal original=invocation.getArgument(1);
             return com.uten.imp.common.finance.FinancialBookAllocation.part(original,ledger.getAmountBalanceOriginal(),ledger.getAmountBalance());
         });
@@ -264,7 +277,9 @@ class FinanceReceiptSettlementTest {
                 receiptRepo, lineRepo, ledgerRepo, arApService, tx,
                 currentUser, names, em, references, numbers, access, glPosting,
                 sourceAllocation,
-                accountFlowLedger);
+                accountFlowLedger, mock(com.uten.imp.application.port.FinancePartyReferenceLabelsPort.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"orderSourceAccess",orderSourceAccess);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"ledgerSourceAccess",ledgerSourceAccess);
         new ImportedDocumentFixture()
                 .documents("finance_receipts", receipts::values)
                 .wire(service, em);
@@ -295,11 +310,77 @@ class FinanceReceiptSettlementTest {
     void hiddenClientCannotStartAnUnboundAdvanceButItsExistingReceivableCanStillBeSettled() {
         org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"客户已从资料中删除"))
                 .when(references).requireSelectableClient(CLIENT_ID);
-        assertThatThrownBy(()->service.create(directRequest(CURRENCY_ID,"7.000000")))
+        var unbound = directRequest(CURRENCY_ID,"7.000000");
+        unbound.setSalesOrderId(null);
+        assertThatThrownBy(()->service.create(unbound))
                 .isInstanceOf(ApiException.class).hasMessageContaining("已从资料中删除");
         ArApLedger ledger=receivable("100.0000","7.000000");
         assertThat(service.create(request(ledger,"30.0000","7.200000","14.4000")).getId()).isNotNull();
         verify(references,times(1)).requireSelectableClient(CLIENT_ID);
+    }
+
+    @Test
+    void newAdvanceMustReferenceAnOrderAndBoundDraftCannotDropItsSource() {
+        var unbound = directRequest(CURRENCY_ID, "7.000000");
+        unbound.setSalesOrderId(null);
+        assertThatThrownBy(() -> service.create(unbound)).isInstanceOf(ApiException.class)
+                .hasMessageContaining("先引用销售订货单");
+        var bound = directRequest(CURRENCY_ID, "7.000000");
+        var detail = service.create(bound);
+        bound.setSalesOrderId(null);
+        bound.setExpectedVersion(0L);
+        assertThatThrownBy(() -> service.update(detail.getId(), bound)).isInstanceOf(ApiException.class)
+                .hasMessageContaining("不能移除销售订货单来源");
+    }
+
+    @Test void newSourceCannotBypassPreviewButAnAuthorizedFinancialHandoverMayKeepTheStoredOrderLedgerRelationship(){
+        UUID selected=UUID.randomUUID();ArApLedger ledger=receivable("100","7");
+        var request=request(ledger,"10","7","0");request.getItems().getFirst().setRequestedSalesOrderId(selected);
+        org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,"无权引用该收款来源"))
+                .when(orderSourceAccess).require(selected);
+        assertThatThrownBy(()->service.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("无权引用");
+        verify(receiptRepo,never()).save(any(FinanceReceipt.class));verify(accountUpdate,never()).executeUpdate();
+        org.mockito.Mockito.doReturn(null).when(orderSourceAccess).require(selected);
+        var draft=service.create(request);assertThat(draft.getItems().getFirst().getRequestedSalesOrderId()).isEqualTo(selected);
+        org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,"无权引用该收款来源"))
+                .when(orderSourceAccess).require(selected);
+        request.setExpectedVersion(draft.getVersion());
+        // Current financial document rights retain a server-stored source even after a sales handover.
+        service.update(draft.getId(),request);verify(orderSourceAccess,times(2)).require(selected);
+        ArApLedger replacement=receivable("100","7");request.getItems().getFirst().setAppliedLedgerId(replacement.getId());
+        assertThatThrownBy(()->service.update(draft.getId(),request)).hasMessageContaining("无权引用");
+        assertThat(receipts.get(draft.getId()).getStatus()).isEqualTo((short)0);
+        assertThat(onlyLine(draft.getId()).getAppliedLedgerId()).isEqualTo(ledger.getId());
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);postingCounts.addAll(List.of(0L,0L));
+        service.approve(draft.getId());verify(orderSourceAccess,times(3)).require(selected);
+        assertMoney(ledger.getAmountReceivedOriginal(),"10");
+    }
+    @Test void retainedFinancialSourceSurvivesHandoverButReplacingTheBatchMustPassTheCurrentShipmentScope(){
+        ArApLedger original=receivable("100","7"),replacement=receivable("100","7");
+        var request=request(original,"10","7","0");var draft=service.create(request);
+        org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.NOT_FOUND,"无权引用该出货应收批次"))
+                .when(ledgerSourceAccess).require(replacement.getId());
+        request.setExpectedVersion(draft.getVersion());service.update(draft.getId(),request);
+        request.getItems().getFirst().setAppliedLedgerId(replacement.getId());
+        assertThatThrownBy(()->service.update(draft.getId(),request)).hasMessageContaining("无权引用该出货应收批次");
+        assertThat(onlyLine(draft.getId()).getAppliedLedgerId()).isEqualTo(original.getId());
+        verify(orderSourceAccess,never()).require(any(UUID.class));verify(accountUpdate,never()).executeUpdate();
+        verify(ledgerSourceAccess,times(1)).require(original.getId());
+    }
+
+    @Test void inactiveReceivableCannotBePreparedOrApprovedAfterItsStateChanged(){
+        for(Short status:new Short[]{0,-1,null}){
+            ArApLedger ledger=receivable("100","7");ledger.setStatus(status);
+            assertThatThrownBy(()->service.create(request(ledger,"10","7","0")))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("有效已审核台账");
+        }
+        ArApLedger ledger=receivable("100","7");
+        var draft=service.create(request(ledger,"10","7","0"));ledger.setStatus((short)-1);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.add(0L);
+        assertThatThrownBy(()->service.approve(draft.getId())).isInstanceOf(ApiException.class).hasMessageContaining("有效已审核台账");
+        verify(accountUpdate,never()).executeUpdate();
+        assertMoney(ledger.getAmountReceivedOriginal(),"0");
     }
 
     @Test
@@ -810,11 +891,35 @@ class FinanceReceiptSettlementTest {
     void realPrepaymentKindCannotBeConsumedAsOrdinaryReceivable() {
         ArApLedger ledger=receivable("12.0000","1.000000");
         ledger.setSourceDocType("DIRECT_RECEIPT"); ledger.setOpenItemKind("CUSTOMER_PREPAYMENT");
-        FinanceReceiptDetail draft=service.create(request(ledger, "3.0000", "1.000000", "0"));
-        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
-        assertThatThrownBy(() -> service.approve(draft.getId())).isInstanceOf(ApiException.class)
+        assertThatThrownBy(() -> service.create(request(ledger, "3.0000", "1.000000", "0")))
+                .isInstanceOf(ApiException.class)
                 .hasMessageContaining("预收款不能作为普通应收引用");
+        assertMoney(ledger.getAmountBalanceOriginal(),"12.0000");
+        assertMoney(ledger.getAmountBalance(),"12.0000");
+        assertMoney(ledger.getAmountReceivedOriginal(),"0.0000");
+        verify(ledgerRepo,never()).save(any());
         verify(accountUpdate,never()).executeUpdate();
+        verify(reconciliationInsert,never()).executeUpdate();
+    }
+
+    @Test
+    void futureBankReceiptRemainsInDraftAndCannotChangeReceivableOrBankAtApproval() {
+        ArApLedger ledger=receivable("12","1");
+        var request=request(ledger,"3","1","0");
+        OffsetDateTime future=OffsetDateTime.now().plusDays(1);
+        request.setBankBookedAt(future);
+        var draft=service.create(request);
+        assertThat(receipts.get(draft.getId()).getBankBookedAt()).isEqualTo(future);
+        verify(accountUpdate,never()).executeUpdate();verify(reconciliationInsert,never()).executeUpdate();
+        clearInvocations(ledgerRepo,accountUpdate,reconciliationInsert,glPosting);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        assertThatThrownBy(()->service.approve(draft.getId())).isInstanceOf(ApiException.class).hasMessageContaining("尚未发生");
+        assertThat(receipts.get(draft.getId()).getStatus()).isZero();
+        assertThat(receipts.get(draft.getId()).getBankBookedAt()).isEqualTo(future);
+        assertMoney(ledger.getAmountBalanceOriginal(),"12");assertMoney(ledger.getAmountBalance(),"12");
+        assertMoney(ledger.getAmountReceivedOriginal(),"0");
+        verify(ledgerRepo,never()).save(any());verify(accountUpdate,never()).executeUpdate();
+        verify(reconciliationInsert,never()).executeUpdate();verify(glPosting,never()).postReceiptDoc(draft.getId());
     }
 
     private ArApLedger receivable(String original, String recognitionRate) {
@@ -1001,6 +1106,7 @@ class FinanceReceiptSettlementTest {
     private static FinanceReceiptSaveRequest directRequest(UUID currencyId, String exchangeRate) {
         FinanceReceiptSaveRequest request = new FinanceReceiptSaveRequest();
         request.setReceiptKind("CUSTOMER_PREPAYMENT");
+        request.setSalesOrderId(ORDER_ID);
         request.setBillDate(LocalDate.of(2026, 8, 8));
         request.setClientId(CLIENT_ID);
         request.setAccountId(ACCOUNT_ID);

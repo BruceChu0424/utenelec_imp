@@ -14,6 +14,7 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/shared/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
@@ -33,18 +34,26 @@ import 'arrival_weight_test_support.dart';
 import 'inbound_arrival_test_support.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import '../../helpers/warehouse_request_scope_fixture.dart';
+import '../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 
 const _goodsId = 'goods-screw';
+const _captureFeedback = bool.fromEnvironment('UTEN_CAPTURE_FEEDBACK');
+final _feedbackCaptureKey = GlobalKey();
 const _itemId = 'order-item-screw';
 
 ProcurementReceiptPrefill _prefill({
   String? unitId,
   String unitName = '个',
   num approvedRemainingQty = 5,
+  ProcurementInboundOrderType orderType =
+      ProcurementInboundOrderType.subcontract,
 }) => ProcurementReceiptPrefill(
   expectationId: 'expectation-weight',
-  orderType: ProcurementInboundOrderType.subcontract,
+  orderType: orderType,
+  purchaserId: orderType == ProcurementInboundOrderType.purchase
+      ? 'emp-me'
+      : null,
   orderBillNo: 'SC-PO-WEIGHT',
   supplierId: 'supplier-1',
   supplierName: '测试委外商',
@@ -74,6 +83,7 @@ Future<({_Api api, FakeWeightRepository weights})> _open(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  if (_captureFeedback) await loadAuditScreenshotFonts(tester);
   final api = _Api(prefill: prefill, failFirstArrival: failFirstArrival);
   final weights = FakeWeightRepository(
     api,
@@ -124,7 +134,15 @@ Future<({_Api api, FakeWeightRepository weights})> _open(
           (ref) async => <String, String>{},
         ),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: RepaintBoundary(
+        key: _feedbackCaptureKey,
+        child: MaterialApp.router(
+          routerConfig: router,
+          theme: _captureFeedback
+              ? auditScreenshotTheme(buildLightTheme())
+              : null,
+        ),
+      ),
     ),
   );
   router.push<void>('/receipt');
@@ -153,6 +171,118 @@ Map<String, dynamic> _item(Map<String, dynamic> body) =>
     (body['lines'] as List).cast<Map<String, dynamic>>().single;
 
 void main() {
+  testWidgets('采购到货快速改收费量和赠品仍按实物数量换算，恢复草稿保留单重原文', (tester) async {
+    await _open(
+      tester,
+      prefill: _prefill(orderType: ProcurementInboundOrderType.purchase),
+    );
+    final unitInput = find.byKey(const ValueKey('unit-weight-cell-input'));
+    await tester.enterText(unitInput, '2.125g');
+    final qtyInput = find.byKey(
+      const ValueKey('warehouse-arrival-qty-$_itemId'),
+    );
+    final giftInput = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == '赠品数量',
+    );
+    for (var i = 1; i <= 20; i++) {
+      await tester.enterText(qtyInput, i.toString());
+      await tester.enterText(giftInput, '1');
+    }
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(_weightInput()).controller!.text,
+      '0.044625',
+    );
+    final editor =
+        tester.state(find.byType(InboundArrivalRegistrationPage))
+            as FormDraftMixin<InboundArrivalRegistrationPage>;
+    final draft = editor.captureFormDraft();
+    await editor.restoreFormDraft(draft);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(unitInput).controller!.text, '2.125g');
+    expect(
+      tester.widget<TextField>(_weightInput()).controller!.text,
+      '0.044625',
+    );
+  });
+
+  testWidgets('单重逐字输入小数与单位后缀不丢原文或光标', (tester) async {
+    await _open(tester, prefill: _prefill());
+    final input = find.byKey(const ValueKey('unit-weight-cell-input'));
+    await tester.showKeyboard(input);
+    for (final raw in [
+      '-',
+      '1',
+      '1.',
+      '1.2',
+      '0',
+      '0.',
+      '0.5',
+      '0.5k',
+      '0.5kg',
+    ]) {
+      tester.testTextInput.enterText(raw);
+      await tester.pump();
+      final controller = tester.widget<TextField>(input).controller!;
+      expect(controller.text, raw);
+      expect(controller.selection.baseOffset, raw.length);
+    }
+    expect(tester.widget<TextField>(_weightInput()).controller!.text, '2.5');
+  });
+
+  testWidgets('到货个重与总重双向换算，数量变化及草稿恢复后提交同一精确总重', (tester) async {
+    final (:api, weights: _) = await _open(tester, prefill: _prefill());
+    final unitInput = find.byKey(const ValueKey('unit-weight-cell-input'));
+    await tester.enterText(unitInput, '2g');
+    await tester.pump();
+    expect(tester.widget<TextField>(_weightInput()).controller!.text, '0.01');
+    final qty = find.byKey(const ValueKey('warehouse-arrival-qty-$_itemId'));
+    await tester.enterText(qty, '4');
+    await tester.pump();
+    expect(tester.widget<TextField>(_weightInput()).controller!.text, '0.008');
+    final editor =
+        tester.state(find.byType(InboundArrivalRegistrationPage))
+            as FormDraftMixin<InboundArrivalRegistrationPage>;
+    final draft = editor.captureFormDraft();
+    await editor.restoreFormDraft(draft);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(unitInput).controller!.text, '2g');
+    await tester.enterText(_weightInput(), '12g');
+    await tester.pump();
+    expect(tester.widget<TextField>(unitInput).controller!.text, '3');
+    if (_captureFeedback) {
+      await saveAuditScreenshot(
+        tester,
+        _feedbackCaptureKey,
+        'internal-feedback-unit-weight',
+      );
+    }
+    await _submit(tester);
+    expect(_item(api.arrivalBodies.single)['weight'], '0.012');
+  });
+
+  testWidgets('个重错误输入不被当作没称而提交', (tester) async {
+    final (:api, weights: _) = await _open(tester, prefill: _prefill());
+    await tester.enterText(
+      find.byKey(const ValueKey('unit-weight-cell-input')),
+      'bad',
+    );
+    await tester.pump();
+    await tester.tap(find.text('先质检后入库'));
+    await tester.pumpAndSettle();
+    expect(api.arrivalBodies, isEmpty);
+    expect(find.text('确认登记送检'), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('unit-weight-cell-input')),
+          )
+          .controller!
+          .text,
+      'bad',
+    );
+  });
+
   testWidgets('旧中断草稿保留原请求形状与重试键，不补发独立资料写请求', (tester) async {
     final (:api, :weights) = await _open(
       tester,
@@ -269,6 +399,7 @@ void main() {
       '称重核对',
       '入库仓库',
     ]);
+    expect(labels.last, '单重(g)');
     expect(labels.contains('单位'), isFalse);
     // 只读数量列单位内联；录入列单位挂输入框尾部。
     expect(
@@ -372,6 +503,8 @@ void main() {
       prefill: _prefill(approvedRemainingQty: 10000),
     );
 
+    await tester.ensureVisible(find.byKey(const ValueKey('weight-cell-weigh')));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
         of: _grid(),

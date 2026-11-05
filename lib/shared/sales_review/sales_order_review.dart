@@ -10,6 +10,7 @@ import '../business_columns/business_column.dart';
 
 import '../formatters/money_display.dart';
 import '../models/party_open_balance.dart';
+import '../models/sales_order_money_position.dart';
 
 /// 订单的来源报价(ADR-134)：报价须财务核价确认后才能转订货单，
 /// 这里带出核价人/时间，列表与审核页据此显示「报价已核价」。
@@ -202,6 +203,7 @@ class SalesOrderFinanceReview {
   final bool managerReversible;
   final String? managerDecisionClaimId;
   const SalesOrderFinanceReview({
+    this.moneyPosition,
     this.managerDecisions = const [],
     this.managerHistory = const [],
     this.managerReversible = false,
@@ -250,6 +252,7 @@ class SalesOrderFinanceReview {
   });
 
   final String orderId;
+  final SalesOrderMoneyPosition? moneyPosition;
   final String billNo;
   final String? billDate;
   final String? clientId;
@@ -335,6 +338,11 @@ class SalesOrderFinanceReview {
     final rawItems = json['items'];
     final rawChanges = json['qtyChanges'];
     return SalesOrderFinanceReview(
+      moneyPosition: json['moneyPosition'] is Map
+          ? SalesOrderMoneyPosition.fromJson(
+              Map<String, dynamic>.from(json['moneyPosition'] as Map),
+            )
+          : null,
       managerDecisions: (json['managerDecisions'] as List? ?? [])
           .map(
             (row) => SalesManagerReviewDecision.fromJson(

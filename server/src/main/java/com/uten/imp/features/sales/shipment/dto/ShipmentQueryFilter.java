@@ -35,10 +35,19 @@ public record ShipmentQueryFilter(
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
         String billNo,
         boolean includeDeleted, boolean onlyDeleted,
-        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters,
+        String receivableState) {
     public ShipmentQueryFilter {
         headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
         warehouseScope = warehouseScope == null ? WarehouseTaskScope.ALL : warehouseScope;
+        receivableState=receivableState==null||receivableState.isBlank()?null:receivableState.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+    public ShipmentQueryFilter(String keyword,UUID clientId,UUID warehouseId,Short status,Boolean arPosted,
+            Short financeAudit,Boolean financeRejected,String warehouseWorkStatus,LocalDate dateFrom,LocalDate dateTo,
+            String shipmentKind,UUID currencyId,String stage,WarehouseTaskScope warehouseScope,String billNo,
+            boolean includeDeleted,boolean onlyDeleted,com.uten.imp.common.web.HeaderColumnFilter headerFilters){
+        this(keyword,clientId,warehouseId,status,arPosted,financeAudit,financeRejected,warehouseWorkStatus,dateFrom,dateTo,
+                shipmentKind,currencyId,stage,warehouseScope,billNo,includeDeleted,onlyDeleted,headerFilters,null);
     }
     public ShipmentQueryFilter(String keyword,
         UUID clientId,
@@ -60,7 +69,11 @@ public record ShipmentQueryFilter(
         this(keyword, clientId, warehouseId, status, arPosted, financeAudit, financeRejected, warehouseWorkStatus, dateFrom, dateTo, shipmentKind, currencyId, stage, warehouseScope, billNo, includeDeleted, onlyDeleted, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
     }
     public ShipmentQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
-        return new ShipmentQueryFilter(keyword, clientId, warehouseId, status, arPosted, financeAudit, financeRejected, warehouseWorkStatus, dateFrom, dateTo, shipmentKind, currencyId, stage, warehouseScope, billNo, includeDeleted, onlyDeleted, headers);
+        return new ShipmentQueryFilter(keyword, clientId, warehouseId, status, arPosted, financeAudit, financeRejected, warehouseWorkStatus, dateFrom, dateTo, shipmentKind, currencyId, stage, warehouseScope, billNo, includeDeleted, onlyDeleted, headers,receivableState);
+    }
+    public ShipmentQueryFilter withReceivableState(String state){
+        return new ShipmentQueryFilter(keyword,clientId,warehouseId,status,arPosted,financeAudit,financeRejected,warehouseWorkStatus,
+                dateFrom,dateTo,shipmentKind,currencyId,stage,warehouseScope,billNo,includeDeleted,onlyDeleted,headerFilters,state);
     }
 
     public ShipmentQueryFilter(
@@ -81,7 +94,7 @@ public record ShipmentQueryFilter(
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
         String billNo) { this(keyword, clientId, warehouseId, status, arPosted, financeAudit, financeRejected, warehouseWorkStatus, dateFrom, dateTo, shipmentKind, currencyId, stage, warehouseScope, billNo, false, false); }
     public ShipmentQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
-        return new ShipmentQueryFilter(keyword, clientId, warehouseId, status, arPosted, financeAudit, financeRejected, warehouseWorkStatus, dateFrom, dateTo, shipmentKind, currencyId, stage, warehouseScope, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters);
+        return new ShipmentQueryFilter(keyword, clientId, warehouseId, status, arPosted, financeAudit, financeRejected, warehouseWorkStatus, dateFrom, dateTo, shipmentKind, currencyId, stage, warehouseScope, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters,receivableState);
     }
 
 

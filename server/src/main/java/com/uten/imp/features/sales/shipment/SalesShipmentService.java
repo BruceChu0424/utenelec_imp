@@ -57,6 +57,7 @@ import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -136,6 +137,12 @@ public class SalesShipmentService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.application.port.CustomerActualReceiptContextPort actualReceipts;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.SalesOrderMoneyReadPort orderMoney;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ShipmentReceivablePositionPort shipmentReceivables;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ShipmentReceivableFilterPort shipmentReceivableFilter;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     // 客户收货地址簿学习（V300）：保存时记住本次地址+电话，ADR-017 全限定名内联。
     private final com.uten.imp.features.master.client.ClientShipAddressService clientShipAddressService;
@@ -209,7 +216,7 @@ public class SalesShipmentService {
         }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
     public PageResponse<ShipmentListItem> list(ShipmentQueryFilter originalFilter, int page, int size, String sort, String order) {
         final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
@@ -226,7 +233,8 @@ public class SalesShipmentService {
         var rejectScope = hasRejectAuthority ? accessPolicy.scope(REJECT_AUTHORITY) : null;
         var warehouseScope = hasWarehouseAuthority
                 ? accessPolicy.scope(WAREHOUSE_WORK_AUTHORITY) : null;
-        PageResponse<ShipmentListItem> result = new PageResponse<>(p.map(s -> toList(
+        var positions=shipmentReceivablePositions(p.getContent().stream().map(SalesShipment::getId).toList());
+        PageResponse<ShipmentListItem> result = new PageResponse<>(p.map(s -> withReceivable(toList(
                         s,
                         canEdit && accessPolicy.canWrite(s.getOwnerEmployeeId(), writeScope),
                         hasRejectAuthority && isRejectableState(s)
@@ -234,7 +242,7 @@ public class SalesShipmentService {
                         hasWarehouseAuthority
                                 && isWarehouseManageableState(s)
                                 && accessPolicy.canWrite(
-                                        s.getOwnerEmployeeId(), warehouseScope))).getContent(),
+                                        s.getOwnerEmployeeId(), warehouseScope)),positions.get(s.getId()))).getContent(),
                 p);
         return retainedRecords.page(result, "sales_shipments", p.getContent());
     }
@@ -251,11 +259,20 @@ public class SalesShipmentService {
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
     private Specification<SalesShipment> shipmentSpec(ShipmentQueryFilter originalFilter) {
         final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        if(f.receivableState()!=null){
+            if(!canViewShipmentReceivables())throw new ApiException(ErrorCode.FORBIDDEN,"当前无权按本批款项筛选出货单");
+            if(!Set.of("OPEN","OVERDUE").contains(f.receivableState()))throw new ApiException(ErrorCode.VALIDATION_FAILED,"本批款项筛选仅支持还欠或逾期");
+            if(shipmentReceivableFilter==null)throw new ApiException(ErrorCode.CONFLICT,"本批还欠筛选尚不可用，请刷新后重试");
+        }
         var readScope = accessPolicy.scope(
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         return (Root<SalesShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            if(f.receivableState()!=null){
+                ps.add(cb.equal(root.get("status"),STATUS_APPROVED));
+                ps.add(shipmentReceivableFilter.predicate(cb,q,root.get("id"),f.receivableState()));
+            }
             ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
@@ -476,12 +493,12 @@ public class SalesShipmentService {
         return counts;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
     public ShipmentDetail detail(UUID id) { return readDetail(id, false); }
 
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
     public ShipmentDetail detailHistory(UUID id) { return readDetail(id, true); }
 
@@ -496,7 +513,9 @@ public class SalesShipmentService {
                                 || readableOrderItems.contains(item.getOrderItemId())))
                 .toList();
         boolean headerSourceReadable = isOrderSourceReadable(s.getSourceOrderId());
-        return finishHistory(toDetail(s, items, headerSourceReadable), s, historyRead);
+        ShipmentDetail result=toDetail(s, items, headerSourceReadable);
+        result.setReceivablePosition(shipmentReceivablePositions(List.of(id)).get(id));
+        return finishHistory(result, s, historyRead);
     }
 
     @Transactional
@@ -865,13 +884,13 @@ public class SalesShipmentService {
     }
 
     /** 财务审核发货：所有客户逐张人工放行；标签不自动决定是否可发货。 */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
     public Map<String, Object> financeAudit(UUID id) {
         return financeAudit(id,null);
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
     public Map<String, Object> financeAudit(UUID id,
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
@@ -922,7 +941,7 @@ public class SalesShipmentService {
         return info;
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:reject')")
     public Map<String,Object> financeAuditReject(UUID id,
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
@@ -949,7 +968,7 @@ public class SalesShipmentService {
      * 失效或客户未分类即整体回滚——对齐订货审批批量口径。内部逐项复用单笔
      * [financeAudit] 的全部校验与副作用（事件、通知、认领释放）。
      */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
     public java.util.List<Map<String, Object>> financeAuditBatch(
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
@@ -965,7 +984,7 @@ public class SalesShipmentService {
     }
 
     /** 批量退回：整批共用一个原因；任一项失败即整体回滚。 */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:reject')")
     public java.util.List<Map<String, Object>> financeAuditRejectBatch(
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
@@ -988,7 +1007,7 @@ public class SalesShipmentService {
      * 自己误退）时，把单据收回财务待审队列，避免「财务找不到、销售改不了」的悬空态。
      * 仅作用于未放行且仓库未作业的退回单；销售确认事实保留，无需销售重走确认。
      */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:reverse')")
     public Map<String, Object> financeRejectReverse(UUID id) {
         tx.bind();
@@ -1028,7 +1047,7 @@ public class SalesShipmentService {
     }
 
     /** 财务反审：仅未审核出货（status=0）的单据可回退财务审核。 */
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:reverse')")
     public Map<String, Object> financeAuditReverse(UUID id) {
         tx.bind();
@@ -1059,7 +1078,7 @@ public class SalesShipmentService {
         return info;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_shipment_finance:view')")
     public Map<String, Object> financeAuditInfo(UUID id) {
         SalesShipment shipment = requireReadableShipment(id);
@@ -1132,6 +1151,9 @@ public class SalesShipmentService {
                 .forDocument(s.getClientId(), s.getCurrencyId(), creditFloor);
         return Map.ofEntries(
                 Map.entry("shipmentId", s.getId()),
+                Map.entry("orderMoneyPositions",orderMoneyPositions(s)),
+                Map.entry("receivablePosition",shipmentReceivableFact(s.getId())),
+                Map.entry("frozenReceivablePosition",frozenShipmentReceivable(s)),
                 Map.entry("shipmentKind",s.getShipmentKind()),
                 Map.entry("billingMode",s.getBillingMode()),
                 Map.entry("directPurpose",Objects.toString(s.getDirectPurpose(),"")),
@@ -1170,6 +1192,58 @@ public class SalesShipmentService {
                 // 财审页汇率框的预填值：已冻结的 > 本位币恒 1 > 主档参考汇率 > 空(要财务填)。
                 Map.entry("suggestedExchangeRate", suggestedFinanceReleaseRate(s, rateState)),
                 Map.entry(CLIENT_BALANCE, clientBalance));
+    }
+
+    private boolean canViewShipmentReceivables(){
+        return accessPolicy.hasAuthority(FINANCE_AUDIT_AUTHORITY)
+                ||accessPolicy.hasAuthority("sales_order_finance:view")
+                ||accessPolicy.hasAuthority("finance:view:all")
+                ||accessPolicy.hasAuthority(SalesPriceMasker.PERM);
+    }
+    private Map<UUID,com.uten.imp.application.port.ShipmentReceivablePositionPort.Position> shipmentReceivablePositions(Collection<UUID> ids){
+        if(shipmentReceivables==null||ids.isEmpty()||!canViewShipmentReceivables())return Map.of();
+        return shipmentReceivables.read(ids);
+    }
+    private Object shipmentReceivableFact(UUID id){
+        var value=shipmentReceivablePositions(List.of(id)).get(id);
+        return value==null?Map.of():value;
+    }
+    private Object frozenShipmentReceivable(SalesShipment shipment){
+        if(shipmentReceivables==null||shipment.getFinanceReleaseEventId()==null)return Map.of();
+        List<?> rows=em.createNativeQuery("SELECT (print_context->'frozenReceivablePosition')::text FROM sales_shipment_finance_release_events WHERE id=:event AND shipment_id=:shipment AND event_type='RELEASED'")
+                .setParameter("event",shipment.getFinanceReleaseEventId()).setParameter("shipment",shipment.getId()).getResultList();
+        if(rows.size()!=1||rows.getFirst()==null)return Map.of();
+        try{return new com.fasterxml.jackson.databind.ObjectMapper().readTree(rows.getFirst().toString());}
+        catch(com.fasterxml.jackson.core.JsonProcessingException invalid){throw new ApiException(ErrorCode.CONFLICT,"原审核的本批货款依据不完整，请核对原审核事件");}
+    }
+    private static ShipmentListItem withReceivable(ShipmentListItem row,com.uten.imp.application.port.ShipmentReceivablePositionPort.Position position){row.setReceivablePosition(position);return row;}
+
+    private Map<UUID,com.uten.imp.application.port.SalesOrderMoneyReadPort.Position> orderMoneyPositions(SalesShipment shipment) {
+        if(Short.valueOf((short)1).equals(shipment.getFinanceAudit()) && shipment.getFinanceReleaseEventId()!=null)
+            return frozenOrderMoneyPositions(em,shipment.getId(),shipment.getFinanceReleaseEventId());
+        if(orderMoney==null)return Map.of();
+        var ids=com.uten.imp.common.util.NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT ordered.order_id FROM sales_shipment_items shipped
+                JOIN sales_order_items ordered ON ordered.id=shipped.order_item_id
+                WHERE shipped.shipment_id=:id AND NOT shipped.is_deleted AND NOT ordered.is_deleted
+                """).setParameter("id",shipment.getId()),UUID.class);
+        return ids.isEmpty()?Map.of():orderMoney.read(ids,false);
+    }
+
+    static Map<UUID,com.uten.imp.application.port.SalesOrderMoneyReadPort.Position> frozenOrderMoneyPositions(
+            EntityManager em,UUID shipmentId,UUID eventId) {
+        List<?> rows=em.createNativeQuery("""
+                SELECT (print_context->'orderMoneyPositions')::text FROM sales_shipment_finance_release_events
+                WHERE id=:event AND shipment_id=:shipment AND event_type='RELEASED'
+                """).setParameter("event",eventId).setParameter("shipment",shipmentId).getResultList();
+        if(rows.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"原财务审核事件缺失，不能重算历史订单资金依据");
+        if(rows.getFirst()==null)return Map.of(); // Historical releases without this field stay unavailable.
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(rows.getFirst().toString(),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<UUID,com.uten.imp.application.port.SalesOrderMoneyReadPort.Position>>(){});
+        } catch(com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            throw new ApiException(ErrorCode.CONFLICT,"原审核订单资金快照无法读取，请核对原事件");
+        }
     }
 
     /** 财审信息里客户余额视图的键(页面与放行事件快照同读这一份)。 */
@@ -1218,6 +1292,8 @@ public class SalesShipmentService {
                 .setParameter("receiptContext",receiptContextJson(info.get("actualReceiptContext")))
                 .setParameter("printContext","RELEASED".equals(eventType)?receiptContextJson(Map.of(
                     "lines",SalesShipmentPrintFacts.capture(em,shipment.getId()),
+                    "orderMoneyPositions",info.getOrDefault("orderMoneyPositions",Map.of()),
+                    "frozenReceivablePosition",info.getOrDefault("receivablePosition",Map.of()),
                     "settlementName",Objects.toString(info.get("settlementMethodName"),""),
                     "makerName",Objects.toString(nameResolver.nameOf(shipment.getMakerId()),""))):null)
                 .setParameter("exchangeRate", rateFrozen ? shipment.getExchangeRate() : null)

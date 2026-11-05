@@ -36,11 +36,12 @@ class SupplierLegacyOpeningStatementPostgresTest {
                 "legacy_finance_import_sources",
                 "finance_payments",
                 "finance_payment_lines",
-                "supplier_open_item_offsets");
+                "supplier_open_item_offsets",
+                "finance_supplier_advance_applications");
     }
     @AfterAll static void stop() throws Exception { if(connection!=null){ connection.close(); } PG.stop(); }
     @BeforeEach void clean() {
-        db.getJdbcTemplate().execute("DELETE FROM finance_payment_lines; DELETE FROM finance_payments; DELETE FROM supplier_open_item_offsets; DELETE FROM legacy_finance_import_sources; DELETE FROM ar_ap_ledger");
+        db.getJdbcTemplate().execute("DELETE FROM finance_supplier_advance_applications; DELETE FROM finance_payment_lines; DELETE FROM finance_payments; DELETE FROM supplier_open_item_offsets; DELETE FROM legacy_finance_import_sources; DELETE FROM ar_ap_ledger");
         supplier=UUID.randomUUID(); currency=UUID.randomUUID(); ledger=UUID.randomUUID();
     }
 
@@ -142,6 +143,50 @@ class SupplierLegacyOpeningStatementPostgresTest {
         db.getJdbcTemplate().update("UPDATE finance_payments SET legacy_id=9101");
         // An old original cash row is not replayed against an opening which already includes it.
         assertMoney(values("2025-02-01").get(18),17);
+    }
+
+    @Test void nativeAdvanceApplicationUsesTargetBookAndReversalOnlyChangesItsOwnBusinessMonth() {
+        nativePayable();
+        UUID application=advanceApplication("2025-02-10");
+        var february=values("2025-02-01");
+        assertMoney(february.get(9),80);assertMoney(february.get(11),0);
+        assertMoney(february.get(12),20);assertMoney(february.get(13),60);
+        assertMoney(february.get(17),140);assertMoney(february.get(18),420);
+        // Source book is 150; only the target AP book of 140 belongs in this statement.
+        db.getJdbcTemplate().update("UPDATE finance_supplier_advance_applications SET status='REVERSED',reversed_at='2025-02-28T16:00:00Z',reversal_voucher_id=? WHERE id=?",UUID.randomUUID(),application);
+        assertThat(values("2025-02-01")).isEqualTo(february);
+        var march=values("2025-03-01");
+        assertMoney(march.get(9),60);assertMoney(march.get(12),-20);assertMoney(march.get(13),80);
+        assertMoney(march.get(14),420);assertMoney(march.get(17),-140);assertMoney(march.get(18),560);
+    }
+
+    @Test void sameMonthNativeAdvanceAndItsReversalDoNotCreateCashOrDuplicateTheOffset() {
+        nativePayable();UUID application=advanceApplication("2025-02-10");
+        db.getJdbcTemplate().update("UPDATE finance_supplier_advance_applications SET status='REVERSED',reversed_at='2025-02-20T04:00:00Z',reversal_voucher_id=? WHERE id=?",UUID.randomUUID(),application);
+        var february=values("2025-02-01");
+        assertMoney(february.get(11),0);assertMoney(february.get(12),0);assertMoney(february.get(13),80);
+        assertMoney(february.get(16),0);assertMoney(february.get(17),0);assertMoney(february.get(18),560);
+        assertThat(db.getJdbcTemplate().queryForObject("SELECT count(*) FROM finance_payment_lines",Integer.class)).isZero();
+        assertThat(db.getJdbcTemplate().queryForObject("SELECT count(*) FROM supplier_open_item_offsets",Integer.class)).isZero();
+    }
+
+    private void nativePayable() {
+        db.getJdbcTemplate().update("""
+            INSERT INTO ar_ap_ledger(id,supplier_id,currency_id,direction,status,bill_date,business_type,
+                open_item_kind,source_doc_type,source_doc_no,exchange_rate,amount_original,amount_original_local,
+                amount_balance_original,amount_balance)
+            VALUES(?,?,?,'AP',1,'2025-01-02','PURCHASE','PAYABLE','PURCHASE_RECEIPT','native-advance-target',7,80,560,60,420)
+            """,ledger,supplier,currency);
+    }
+    private UUID advanceApplication(String day) {
+        UUID id=UUID.randomUUID();
+        db.getJdbcTemplate().update("""
+            INSERT INTO finance_supplier_advance_applications(id,request_id,payload_hash,payment_id,target_ledger_id,
+              effective_date,source_reference,amount_original,source_local,target_local,source_category,target_category,
+              target_before_original,target_after_original,target_before_local,target_after_local,voucher_id,reservation_id,status,created_by)
+            VALUES(?,?, 'projection-only',?,?,?::date,'real-shape-source-book-differs',20,150,140,'MOULD','GOODS',80,60,560,420,?,?,'APPLIED',?)
+            """,id,UUID.randomUUID(),UUID.randomUUID(),ledger,day,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID());
+        return id;
     }
 
     private void imported(String cutoff,boolean knownOriginal) {

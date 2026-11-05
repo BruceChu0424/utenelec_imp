@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../config/finance_doc_config.dart';
+import '../models/finance_doc.dart' show FinanceDocType;
 import '../providers/finance_name_provider.dart';
 import 'finance_grid_columns.dart';
 
@@ -48,6 +50,26 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
     names: names,
     type: config.type,
   );
+  final balanceColumn = EditableGridColumn<FinanceGridRow>(
+    key: 'entryBalance',
+    label: config.type == FinanceDocType.receipt ? '还欠' : '未结金额',
+    headerInfo: config.type == FinanceDocType.receipt
+        ? '所选出货批次当前尚欠的货款；填入本次收款不会提前扣减，审核后刷新核对。金额须按真实到账填写。'
+        : '引用单据币种下尚未结清的金额。',
+    width: 160,
+    numeric: true,
+    textOf: (row) => row.balanceOriginalText ?? '',
+    listenableOf: (row) => row.entry,
+    cellBuilder: (_, row) => Text(
+      row.balanceOriginalText ?? '—',
+      style:
+          config.type == FinanceDocType.receipt &&
+              (financeAmountUnits(row.balanceOriginalText) ?? BigInt.zero) >
+                  BigInt.zero
+          ? TextStyle(color: Theme.of(context).colorScheme.error)
+          : null,
+    ),
+  );
   return [
     if (config.hasParty)
       picker(
@@ -55,9 +77,10 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
         config.partyLabel,
         (row) => row.entry.partyId == null
             ? '选择${config.partyLabel}'
-            : config.isClient
-            ? names.client(row.entry.partyId)
-            : names.supplier(row.entry.partyId),
+            : row.entry.partyName ??
+                  (config.isClient
+                      ? names.client(row.entry.partyId)
+                      : names.supplier(row.entry.partyId)),
         pickParty,
       ),
     picker(
@@ -71,6 +94,7 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
     if (!config.isTransfer)
       EditableGridColumn<FinanceGridRow>(
         key: 'entryMethod',
+        required: methods.isNotEmpty,
         label: config.isClient || config.type.name == 'otherIncome'
             ? '收款方式'
             : '付款方式',
@@ -144,9 +168,10 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
       EditableGridColumn<FinanceGridRow>(
         key: 'entryKind',
         label: '收款类型',
-        width: 170,
-        textOf: (row) =>
-            row.entry.receiptKind == 'CUSTOMER_PREPAYMENT' ? '订单预收' : '应收核销',
+        width: 220,
+        textOf: (row) => row.entry.receiptKind == 'CUSTOMER_PREPAYMENT'
+            ? '订单预收（定金/多付）'
+            : '出货收款',
         listenableOf: (row) => row.entry,
         cellBuilder: (_, row) => ListenableBuilder(
           listenable: row.entry,
@@ -157,8 +182,11 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
             enabled:
                 row.appliedLedgerId == null && row.entry.salesOrderId == null,
             items: const [
-              UtenDropdownItem(value: 'AR_SETTLEMENT', label: '应收核销'),
-              UtenDropdownItem(value: 'CUSTOMER_PREPAYMENT', label: '订单预收'),
+              UtenDropdownItem(value: 'AR_SETTLEMENT', label: '出货收款'),
+              UtenDropdownItem(
+                value: 'CUSTOMER_PREPAYMENT',
+                label: '订单预收（定金/多付）',
+              ),
             ],
             onChanged: (value) {
               row.entry.receiptKind = value ?? 'AR_SETTLEMENT';
@@ -171,26 +199,14 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
       picker(
         'entrySource',
         '引用单据',
-        (row) =>
-            row.entry.salesOrderNo ??
-            row.appliedBillNo ??
-            (row.entry.receiptKind == 'CUSTOMER_PREPAYMENT'
-                ? '选择销售订单'
-                : config.isClient
-                ? '引用应收'
-                : '引用应付'),
+        (row) => row.entry.receiptKind == 'CUSTOMER_PREPAYMENT'
+            ? row.entry.salesOrderNo ?? '选订货单'
+            : row.sourceDocNo ??
+                  row.appliedBillNo ??
+                  (config.isClient ? '选出货单' : '引用应付'),
         pickSource,
       ),
-      EditableGridColumn<FinanceGridRow>(
-        key: 'entryBalance',
-        label: '未结金额',
-        headerInfo: '引用单据币种下尚未结清的金额。',
-        width: 160,
-        numeric: true,
-        textOf: (row) => row.balanceOriginalText ?? '',
-        listenableOf: (row) => row.entry,
-        cellBuilder: (_, row) => Text(row.balanceOriginalText ?? '—'),
-      ),
+      if (config.type != FinanceDocType.receipt) balanceColumn,
     ],
     for (final column in details)
       if (column.key != 'remark' &&
@@ -230,10 +246,11 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
         ),
       ),
     ],
-    // Keep the same trailing remark column for all five document types.
+    // Preserve the original remark column before receipt-only appended money fields.
     if (details.any((column) => column.key == 'remark'))
       ...details.where((column) => column.key == 'remark')
     else
       financeRemarkColumn(),
+    if (config.type == FinanceDocType.receipt) balanceColumn,
   ];
 }

@@ -120,6 +120,8 @@ public class SalesOrderService {
     private final com.uten.imp.features.sales.quote.SalesQuoteRepository quoteRepo;
     private final com.uten.imp.features.sales.quote.SalesQuoteItemRepository quoteItemRepo;
     private final SalesPriceMasker priceMasker;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.SalesOrderMoneyReadPort orderMoney;
     private final SalesDocumentAccessPolicy accessPolicy;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
@@ -142,7 +144,7 @@ public class SalesOrderService {
     /** 看不到价格的人保存新行、文件单价又推算不出合理折扣时追加到行备注。 */
     private static final String MASKED_DISCOUNT_NOTE = "文件单价换算不出合理折扣, 暂按原价, 请有价格权限的同事核对";
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('sales_order:view')")
     public PageResponse<OrderListItem> list(OrderQueryFilter originalFilter, int page, int size, String sort, String order) {
         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
@@ -166,6 +168,16 @@ public class SalesOrderService {
                         o.getSellerId() == null ? null : sellerNames.get(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
                 p);
+        var moneyActor = currentUser==null ? java.util.Optional.<com.uten.imp.security.AuthUser>empty() : currentUser.get();
+        boolean canReadCustomerMoney = priceMasker.canView() && moneyActor
+                .map(actor -> actor.getPermissions().containsAll(java.util.Set.of("customer_prepayment:view", "finance:view:all")))
+                .orElse(false);
+        boolean canReadMoney = canReadCustomerMoney || moneyActor.map(actor -> actor.getPermissions().stream()
+                .anyMatch(java.util.Set.of("sales_order_finance:view","sales_shipment_finance:view")::contains)).orElse(false);
+        if (canReadMoney && orderMoney != null && !result.getItems().isEmpty()) {
+            var positions = orderMoney.read(result.getItems().stream().map(OrderListItem::getId).toList(), canReadCustomerMoney);
+            result.getItems().forEach(item -> item.setMoneyPosition(positions.get(item.getId())));
+        }
         return retainedRecords.page(result, "sales_orders", p.getContent());
     }
 
@@ -3305,7 +3317,7 @@ public class SalesOrderService {
                 null, o.getStatus(), o.isClosed(), o.isStopped(),
                 o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId(),
                 o.isFinanceConfirmed(), o.isFinanceRejected(), o.getRequotedToId(), o.getRequotedAt(),
-                o.getRequotedToId() == null ? null : REQUOTED_READ_ONLY_REASON);
+                o.getRequotedToId() == null ? null : REQUOTED_READ_ONLY_REASON, null);
         if (o.getRequotedToId() != null) result.setHistoryReadOnly(true);
         result.setManagerReview(o.getManagerReview());
         return result;

@@ -79,6 +79,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinanceReceiptService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.finance.receivables.ReceiptOrderSourceAccess orderSourceAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.finance.receivables.ReceiptLedgerSourceAccess ledgerSourceAccess;
     @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativePostingAccounts;
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
@@ -125,6 +129,8 @@ public class FinanceReceiptService {
     private final FinanceReceiptSourceAllocationService sourceAllocation;
     private final AccountFlowLedgerService accountFlowLedger;
 
+    private final com.uten.imp.application.port.FinancePartyReferenceLabelsPort partyLabels;
+
     @Transactional(readOnly = true)
     public PageResponse<FinanceReceiptListItem> list(FinanceReceiptQueryFilter originalFilter, int page, int size, String sort, String order) {
         final FinanceReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
@@ -133,7 +139,8 @@ public class FinanceReceiptService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         var searchPage = NameRefKeyword.page(spec,pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<FinanceReceipt> p = receiptRepo.findAll(searchPage.specification(), searchPage.pageable());
-        PageResponse<FinanceReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        var labels=partyLabels.clients(p.getContent().stream().map(FinanceReceipt::getClientId).filter(Objects::nonNull).distinct().toList());
+        PageResponse<FinanceReceiptListItem> result = new PageResponse<>(p.map(item->toList(item).withClientName(item.getClientId()==null?null:labels.get(item.getClientId()))).getContent(), p);
         return retainedRecords.page(result, "finance_receipts", p.getContent());
     }
 
@@ -237,6 +244,7 @@ public class FinanceReceiptService {
             }
             return detail(replay.getId());
         }
+        requireNewOrderSources(req,java.util.Set.of());
         PaymentStyleHierarchyLock.lock(em);
         assertBillNoFree(req.getBillNo(), null);
         FinanceReceipt r = new FinanceReceipt();
@@ -244,6 +252,8 @@ public class FinanceReceiptService {
         r.setCreateIdempotencyKey(idempotencyKey);
         r.setCreateRequestHash(requestHash);
         applyHeader(req, r);
+        r.setOrderSelectionVersion((short)("CUSTOMER_PREPAYMENT".equals(r.getReceiptKind())
+                || req.getItems()!=null && req.getItems().stream().anyMatch(line->line.getRequestedSalesOrderId()!=null)?1:0));
         r.setStatus(STATUS_DRAFT);
         applyMakerIdentity(r);
         receiptRepo.save(r);
@@ -252,6 +262,9 @@ public class FinanceReceiptService {
         finalizeSettlementAuthority(r, req.getAccountCurrencyId(),
                 req.getAccountAmount(), false);
         validateReceiptShape(r, items, false);
+        if ("CUSTOMER_PREPAYMENT".equals(r.getReceiptKind()) && r.getSalesOrderId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "新建客户预收必须先引用销售订货单，再填写本次收款金额");
+        }
         receiptRepo.flush();
         return toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList());
     }
@@ -286,6 +299,14 @@ public class FinanceReceiptService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "收款草稿已被其他操作更新，请刷新后重试");
         }
+        if (r.getSalesOrderId() != null && "CUSTOMER_PREPAYMENT".equalsIgnoreCase(req.getReceiptKind())
+                && req.getSalesOrderId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单预收不能移除销售订货单来源");
+        }
+        java.util.Set<ReceiptOrderSource> retainedSources=lineRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
+                .map(line->new ReceiptOrderSource(line.getRequestedSalesOrderId(),line.getAppliedLedgerId()))
+                .collect(java.util.stream.Collectors.toSet());
+        requireNewOrderSources(req,retainedSources);
         assertBillNoFree(req.getBillNo(), id);
         applyHeader(req, r);
         applyMakerIdentity(r);
@@ -342,6 +363,7 @@ public class FinanceReceiptService {
         if (r.getClientId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收款单需指定客户");
         }
+        if(r.getBankBookedAt()!=null)com.uten.imp.common.finance.ActualBankBookingPolicy.requireOccurred(r.getBankBookedAt(),"银行实际入账时间");
         // Global money lock order is period -> accounts -> AR/open items.
         // Account-balance adjustment already uses this order; taking account
         // locks first here would create a real deadlock cycle.
@@ -538,17 +560,12 @@ public class FinanceReceiptService {
 
         for (FinanceReceiptLine line : lines) {
             ArApLedger ledger = lockedLedgers.get(line.getAppliedLedgerId());
-            if (!"AR".equals(ledger.getDirection())) {
-                throw new ApiException(ErrorCode.BUSINESS, "销售收款只能引用应收记录");
-            }
+            requireActiveReceivable(ledger);
             if (receipt.getClientId() == null
                     || !Objects.equals(receipt.getClientId(), ledger.getClientId())
                     || (line.getClientId() != null
                     && !Objects.equals(receipt.getClientId(), line.getClientId()))) {
                 throw new ApiException(ErrorCode.CONFLICT, "收款客户与引用应收客户不一致");
-            }
-            if ("CUSTOMER_PREPAYMENT".equals(ledger.getOpenItemKind())) {
-                throw new ApiException(ErrorCode.CONFLICT, "客户预收款不能作为普通应收引用");
             }
             if (ledger.isSettled()) {
                 throw new ApiException(ErrorCode.CONFLICT, "引用的应收已经结清");
@@ -590,7 +607,7 @@ public class FinanceReceiptService {
             BigDecimal beforeBookLocal=nz(ledger.getAmountBalance());
             BigDecimal newSettledLocal = oldSettledLocal.add(
                     receipt.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V2
-                    ? sourceAllocation.plannedBookAmount(ledger,appliedOriginal)
+                    ? plannedReceiptBookAmount(ledger,appliedOriginal,line.getRequestedSalesOrderId())
                     : money(appliedOriginal.multiply(recognitionRate)));
             if (afterOriginal.signum() == 0) {
                 newSettledLocal = originalLocal.subtract(nz(ledger.getAmountOffsetLocal()));
@@ -1025,11 +1042,10 @@ public class FinanceReceiptService {
         if (rows.size() != 1 || ((Number) rows.getFirst()[2]).intValue() != STATUS_APPROVED
                 || Boolean.TRUE.equals(rows.getFirst()[3])
                 || Boolean.TRUE.equals(rows.getFirst()[4])
-                || Boolean.TRUE.equals(rows.getFirst()[5])
                 || !Objects.equals(receipt.getClientId(), rows.getFirst()[0])
                 || !Objects.equals(receipt.getCurrencyId(), rows.getFirst()[1])) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "绑定预收要求销售单已审核、未中止、未结案且客户、币别与收款完全一致");
+                    "绑定预收要求销售单已审核、未删除、未中止且客户、币别与收款完全一致；已完成订单的真实多付款保留为本单预收");
         }
     }
 
@@ -1441,9 +1457,7 @@ public class FinanceReceiptService {
             ArApLedger ledger = l.getAppliedLedgerId() == null ? null : ledgerRepo.findById(l.getAppliedLedgerId())
                     .filter(item -> !item.isDeleted())
                     .orElseThrow(() -> new ApiException(ErrorCode.BUSINESS, "引用的应收记录不存在或已删除"));
-            if (ledger != null && !"AR".equals(ledger.getDirection())) {
-                throw new ApiException(ErrorCode.BUSINESS, "销售收款只能引用应收记录");
-            }
+            requireActiveReceivable(ledger);
             if (ledger != null && r.getClientId() != null
                     && !Objects.equals(r.getClientId(), ledger.getClientId())) {
                 throw new ApiException(ErrorCode.CONFLICT, "收款客户与引用应收客户不一致");
@@ -1473,7 +1487,7 @@ public class FinanceReceiptService {
                     ? rate : positiveRate(ledger.getExchangeRate());
             BigDecimal appliedLocal = ledger==null
                     ? money(cashOriginal.add(writeOffOriginal).multiply(recognitionRate))
-                    : sourceAllocation.plannedBookAmount(ledger,cashOriginal.add(writeOffOriginal));
+                    : plannedReceiptBookAmount(ledger,cashOriginal.add(writeOffOriginal),l.getRequestedSalesOrderId());
             BigDecimal exchangeDiff = money(cashLocal.add(writeOffLocal).subtract(appliedLocal));
             FinanceReceiptLine ln = new FinanceReceiptLine();
             ln.setReceiptId(r.getId());
@@ -1481,7 +1495,10 @@ public class FinanceReceiptService {
             ln.setBillDate(r.getBillDate());
             ln.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             ln.setAppliedLedgerId(l.getAppliedLedgerId());
-            ln.setAppliedBillNo(NativeValueConverters.trimToNull(l.getAppliedBillNo()));
+            ln.setRequestedSalesOrderId(l.getRequestedSalesOrderId());
+            ln.setAppliedBillNo(ledger.getBillNo());
+            ln.setAppliedSourceDocType(ledger.getSourceDocType());ln.setAppliedSourceDocId(ledger.getSourceDocId());
+            ln.setAppliedSourceDocNo(ledger.getSourceDocNo());
             ln.setClientId(l.getClientId() != null ? l.getClientId() : r.getClientId());
             ln.setCurrencyId(currencyId);
             ln.setExchangeRate(rate);
@@ -1499,6 +1516,40 @@ public class FinanceReceiptService {
         return out;
     }
 
+    /** Recheck the same authority during draft preparation and after approval owns the ledger locks. */
+    private static void requireActiveReceivable(ArApLedger ledger) {
+        if (ledger == null || ledger.isDeleted() || ledger.getStatus() == null || ledger.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.CONFLICT, "引用的应收不是有效已审核台账，请重新选择应收记录");
+        }
+        if (!"AR".equals(ledger.getDirection())) {
+            throw new ApiException(ErrorCode.BUSINESS, "销售收款只能引用应收记录");
+        }
+        if ("CUSTOMER_PREPAYMENT".equals(ledger.getOpenItemKind())) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户预收款不能作为普通应收引用");
+        }
+    }
+
+    private BigDecimal plannedReceiptBookAmount(ArApLedger ledger, BigDecimal amount, UUID selectedOrder) {
+        return selectedOrder == null ? sourceAllocation.plannedBookAmount(ledger, amount)
+                : sourceAllocation.plannedBookAmount(ledger, amount, selectedOrder);
+    }
+
+    private record ReceiptOrderSource(UUID orderId,UUID ledgerId) { }
+    private void requireNewOrderSources(FinanceReceiptSaveRequest request,java.util.Set<ReceiptOrderSource> retained) {
+        if(request.getItems()==null)return;
+        java.util.Set<UUID> checked=new java.util.HashSet<>();
+        java.util.Set<UUID> retainedLedgers=retained.stream().map(ReceiptOrderSource::ledgerId).collect(java.util.stream.Collectors.toSet());
+        java.util.Set<UUID> checkedLedgers=new java.util.HashSet<>();
+        for(var line:request.getItems()) {
+            if(line==null)continue;
+            if(!retainedLedgers.contains(line.getAppliedLedgerId()) && checkedLedgers.add(line.getAppliedLedgerId()))
+                Objects.requireNonNull(ledgerSourceAccess,"Receipt shipment source authority is required").require(line.getAppliedLedgerId());
+            if(line.getRequestedSalesOrderId()==null || retained.contains(new ReceiptOrderSource(line.getRequestedSalesOrderId(),line.getAppliedLedgerId())))continue;
+            if(checked.add(line.getRequestedSalesOrderId()))
+                Objects.requireNonNull(orderSourceAccess,"Receipt order source authority is required").require(line.getRequestedSalesOrderId());
+        }
+    }
+
     private void assertBillNoFree(String billNo, UUID excludeId) {
         if (billNo == null || billNo.isBlank()) return;
         receiptRepo.findByBillNo(billNo).ifPresent(existing -> {
@@ -1513,7 +1564,7 @@ public class FinanceReceiptService {
                 ln.getAppliedBillNo(), ln.getClientId(), ln.getCurrencyId(), ln.getExchangeRate(),
                 ln.getAmountOriginal(), ln.getAmountLocal(), ln.getWriteOffAmount(), ln.getWriteOffLocal(),
                 ln.getAppliedAmountLocal(), ln.getBalanceBeforeOriginal(), ln.getBalanceAfterOriginal(),
-                ln.getExchangeDiff(), ln.getRemark());
+                ln.getExchangeDiff(), ln.getRemark(), ln.getRequestedSalesOrderId(),ln.getAppliedSourceDocType(),ln.getAppliedSourceDocId(),ln.getAppliedSourceDocNo());
     }
 
     private FinanceReceiptListItem toList(FinanceReceipt r) {
@@ -1542,7 +1593,8 @@ public class FinanceReceiptService {
                 r.getAccountAmountLocal(), r.getAmountLocal(),
                 r.getBankFeeAccountAmount(), r.getOtherFeeAccountAmount(),
                 r.getFeeSettlementMode(), r.getFeeBearer(), r.getFeePaymentAccountId(),
-                r.getFeeAccountCurrencyId(), r.getFeeAccountExchangeRate());
+                r.getFeeAccountCurrencyId(), r.getFeeAccountExchangeRate()).withClientName(
+                r.getClientId()==null?null:partyLabels.clients(List.of(r.getClientId())).get(r.getClientId()));
     }
 
     private FinanceReceipt require(UUID id) { return require(id, false); }
@@ -1651,6 +1703,11 @@ public class FinanceReceiptService {
             appendHash(value, item == null ? null : decimalText(item.getAmountOriginal()));
             appendHash(value, item == null ? null : decimalText(item.getWriteOffAmount()));
             appendHash(value, item == null ? null : item.getRemark());
+            // Preserve existing idempotency hashes when old clients omit this additive field.
+            if (item != null && item.getRequestedSalesOrderId() != null) {
+                appendHash(value, "REQUESTED_SALES_ORDER");
+                appendHash(value, item.getRequestedSalesOrderId());
+            }
         }
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")

@@ -209,6 +209,141 @@
       "accountAmounts": [
         "133"
       ]
+    },
+    {
+      "name": "explicit_different_orders_sharing_one_ar_stay_two_receipts",
+      "entries": [
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "20",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "appliedLedgerId": "SHARED-AR",
+              "amountOriginal": "20",
+              "requestedSalesOrderId": "ORDER-A"
+            }
+          ]
+        },
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "30",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "appliedLedgerId": "SHARED-AR",
+              "amountOriginal": "30",
+              "requestedSalesOrderId": "ORDER-B"
+            }
+          ]
+        }
+      ],
+      "groups": 2,
+      "lineCounts": [
+        1,
+        1
+      ],
+      "accountAmounts": [
+        "20",
+        "30"
+      ]
+    },
+    {
+      "name": "same_explicit_order_across_different_ar_keeps_one_receipt",
+      "entries": [
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "20",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "appliedLedgerId": "AR-1",
+              "amountOriginal": "20",
+              "requestedSalesOrderId": "ORDER-A"
+            }
+          ]
+        },
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "30",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "appliedLedgerId": "AR-2",
+              "amountOriginal": "30",
+              "requestedSalesOrderId": "ORDER-A"
+            }
+          ]
+        }
+      ],
+      "groups": 1,
+      "lineCounts": [
+        2
+      ],
+      "accountAmounts": [
+        "50"
+      ]
+    },
+    {
+      "name": "explicit_order_and_historical_null_do_not_merge",
+      "entries": [
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "20",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "appliedLedgerId": "AR-1",
+              "amountOriginal": "20",
+              "requestedSalesOrderId": "ORDER-A"
+            }
+          ]
+        },
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "30",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "appliedLedgerId": "AR-2",
+              "amountOriginal": "30"
+            }
+          ]
+        }
+      ],
+      "groups": 2,
+      "lineCounts": [
+        1,
+        1
+      ],
+      "accountAmounts": [
+        "20",
+        "30"
+      ]
     }
   ]
 }

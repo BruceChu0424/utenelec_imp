@@ -26,6 +26,10 @@ public class FinanceReceiptLineDto {
     private BigDecimal balanceAfterOriginal;
     private BigDecimal exchangeDiff;
     private String remark;
+    private UUID requestedSalesOrderId;
+    private String appliedSourceDocType;
+    private UUID appliedSourceDocId;
+    private String appliedSourceDocNo;
 
     // Additive exact text never passes through a binary floating-point value.
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }

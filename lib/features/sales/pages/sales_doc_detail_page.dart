@@ -7,6 +7,7 @@ import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
+import '../../../shared/widgets/shipment_receivable_position_view.dart';
 // 销售单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/反审/编辑/删除）。
 //
 // 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅反审；反审(-1)→只读。操作按 edit 权限。
@@ -34,6 +35,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/widgets/imported_document_status_badge.dart';
 import '../../../shared/widgets/sales_document_layout.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
@@ -120,6 +122,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   SalesDocDetail? _detail;
   bool _loading = false;
   bool _summaryExpanded = false;
+  bool _attachmentReferencesExpanded = false;
   bool _busy = false;
   String? _error;
   // 履约进度时间线（2026-10-18 进度详情整页并入本页，见表格上方折叠卡）：
@@ -168,6 +171,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     }
     ++_viewEpoch;
     _summaryExpanded = false;
+    _attachmentReferencesExpanded = false;
     _detail = null;
     _timeline = null;
     _timelineError = null;
@@ -698,6 +702,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
 
   @override
   void nativeReadOwnerChanged() => setState(() {
+    _attachmentReferencesExpanded = false;
     _detail = null;
     _loading = false;
     _busy = false;
@@ -707,6 +712,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   });
   @override
   void nativeReadPermissionChanged() => setState(() {
+    _attachmentReferencesExpanded = false;
     _busy = false;
   });
   @override
@@ -1398,7 +1404,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       await _load(background: true);
       final error = _error ?? nativeReadRefreshError;
       if (error != null) throw StateError(error);
-    });
+    }, refreshKeys: [_cfg.refreshKey]);
     final permissions = ref.watch(currentPermissionsProvider);
     final canViewMoneySummary =
         nativeReadAccessConfirmed &&
@@ -1436,11 +1442,17 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           UtenRefreshButton(
             busy: _loading,
             onRefresh: () async {
-              await Future.wait([
-                _load(),
-                // 审核并发认领等流程里面板可能未挂载，reload 已解绑时是空操作。
-                _shipmentActions.reload(),
-              ]);
+              await UtenBusyOverlay.run(
+                context,
+                title: '正在刷新${_cfg.label}',
+                action: () async {
+                  await Future.wait([
+                    _load(),
+                    // 审核并发认领等流程里面板可能未挂载，reload 已解绑时是空操作。
+                    _shipmentActions.reload(),
+                  ]);
+                },
+              );
             },
           ),
         ],
@@ -1484,11 +1496,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                           children: [
                             // 出货财审状态横幅（2026-09-12 拆分改版）：销售一眼
                             // 看清本单正卡在财审哪一步；财审操作本身在财务专页。
-                            if (!_detail!.historyReadOnly &&
-                                _cfg.type.isShipment) ...[
-                              _shipmentFinanceStatusStrip(theme),
-                              const SizedBox(height: UtenSpacing.s12),
-                            ],
                             // 报价财务核价横幅(ADR-134)：一句话说清现在卡在哪、下一步谁做。
                             if (!_detail!.historyReadOnly && _isQuote) ...[
                               _quoteStatusStrip(theme),
@@ -1556,31 +1563,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                               const SizedBox(height: UtenSpacing.s12),
                               _shipmentsCard(theme),
                             ],
-                            if (_cfg.attachmentOwnerType != null) ...[
+                            if (_cfg.attachmentOwnerType != null &&
+                                !_cfg.type.isShipment) ...[
                               const SizedBox(height: UtenSpacing.s12),
-                              BusinessAttachmentSection(
-                                ownerType: _cfg.attachmentOwnerType!,
-                                ownerId: _detail!.id,
-                                canView:
-                                    !_detail!.priceMasked &&
-                                    (permissions.contains(_cfg.listPerm) ||
-                                        (_cfg.type.isShipment &&
-                                            permissions.contains(
-                                              Perm.salesShipmentFinanceView,
-                                            ) &&
-                                            (_detail!
-                                                    .shipmentWorkflow
-                                                    .salesConfirmed ||
-                                                _detail!.financeRejected ||
-                                                _detail!.financeAudit == 1 ||
-                                                _detail!.status == 1))),
-                                // 详情=审核页：文件一律只读（2026-09-11 用户要求）。
-                                // 增删回编辑页做——审核者看到的永远是提交时那一份。
-                                canManage: false,
-                                readOnlyNote: BusinessAttachmentSection
-                                    .kReviewReadOnlyAttachmentNote,
-                                categories: const ['合同', '客户确认', '图片', '其他'],
-                              ),
+                              _readOnlyDocumentAttachments(),
                             ],
                             if (_isQuote &&
                                 _detail!
@@ -1650,74 +1636,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
 
   /// 出货财审状态横幅：待财审 / 财务退回 / 已放行 / 仓库作业中——只显示状态与
   /// 指引，不放财审操作（财审在 /finance/sales-shipment-audits/:id 办理）。
-  Widget _shipmentFinanceStatusStrip(ThemeData theme) {
-    final d = _detail!;
-    final rejected = d.shipmentWorkflow.financeRejected;
-    final audited = d.financeAudit == 1;
-    // V582：仓库不再有「作业中」的中间态——要么待出库，要么已出库。
-    final (color, icon, text) = d.status == kSalesStatusApproved
-        ? (
-            theme.colorScheme.primary,
-            Icons.local_shipping_outlined,
-            '已出库；数量与价款不能再改，真实退货走退货检验。',
-          )
-        : rejected
-        ? (
-            theme.colorScheme.error,
-            Icons.undo_rounded,
-            '财务已退回：${d.shipmentWorkflow.financeRejectionReason ?? '未注明原因'}。'
-                '可「编辑」改单后重新提交，或原因与内容无关时直接「重新提交财务审核」。',
-          )
-        : audited
-        ? (
-            theme.colorScheme.primary,
-            Icons.verified_rounded,
-            '财务已放行${d.financeAuditedAt != null ? '（${d.financeAuditedAt!.substring(0, 10)}）' : ''}，'
-                '等待仓库确认出库；修改须先由财务反审。',
-          )
-        : d.shipmentWorkflow.financeReviewPending
-        ? (
-            theme.colorScheme.tertiary,
-            Icons.hourglass_top_rounded,
-            '正在等待财务审核；财务放行后仓库才能确认出库。财审认领期间本单锁定编辑。',
-          )
-        : d.shipmentWorkflow.isDirect
-        ? (
-            theme.colorScheme.tertiary,
-            Icons.edit_outlined,
-            '草稿待销售确认；确认并提交财务后进入财审。',
-          )
-        : (
-            theme.colorScheme.tertiary,
-            Icons.edit_outlined,
-            '出货草稿；按订单发货生成，待进入财务审核。',
-          );
-    return Container(
-      key: const Key('shipment-finance-status-strip'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Text(
-              text,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 报价财务核价横幅(ADR-134)：草稿 / 待财务核价 / 财务退回(原因) / 已核价 /
   /// 已转订货单 / 作废，颜色 + 图标 + 一句话下一步。
   Widget _quoteStatusStrip(ThemeData theme) {
@@ -2195,10 +2113,34 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             Text(names.client(d.clientId), style: theme.textTheme.titleSmall),
         ],
       ),
-      status: statusRow.badge,
+      status: _cfg.type.isShipment
+          ? Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (statusRow.badge != null) statusRow.badge!,
+                if (rows.any(
+                  (r) => noticeLabels.contains(r.label) || r.highlight,
+                ))
+                  UtenFieldHintIcon(
+                    info: [
+                      for (final r in rows)
+                        if (noticeLabels.contains(r.label) || r.highlight)
+                          '${r.label}：${r.value ?? '请核对原单据'}',
+                    ].join('\n'),
+                  ),
+              ],
+            )
+          : statusRow.badge,
       primary: [
         for (final r in rows)
-          if (primaryLabels.contains(r.label)) _kvRow(theme, r),
+          if (primaryLabels.contains(r.label) &&
+              !(_cfg.type.isShipment &&
+                  d.receivablePosition != null &&
+                  canViewShipmentReceivableMoney(
+                    ref.read(currentPermissionsProvider),
+                    administrator: ref.read(isSuperAdminProvider),
+                  )))
+            _kvRow(theme, r),
         ...moneyMetrics,
         if (_cfg.type == SalesDocType.order)
           UtenSummaryField(label: '交货日', value: d.deliverDate, emphasis: true),
@@ -2213,8 +2155,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       notices: [
         for (final r in rows)
           if (noticeLabels.contains(r.label) || r.highlight)
-            _kvRow(theme, r, inline: true),
+            if (!_cfg.type.isShipment) _kvRow(theme, r, inline: true),
         ...moneyNotices,
+      ],
+      sections: [
+        if (_cfg.type.isShipment &&
+            nativeReadAccessConfirmed &&
+            canViewShipmentReceivableMoney(
+              ref.read(currentPermissionsProvider),
+              administrator: ref.read(isSuperAdminProvider),
+            ) &&
+            d.receivablePosition != null)
+          ShipmentReceivablePositionView(value: d.receivablePosition!),
       ],
       details: [
         UtenSummaryFacts(
@@ -2291,7 +2243,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       label: r.label,
       value: r.value,
       inline: inline,
-      danger: r.highlight || r.label == '订单金额' || r.label == '本次货款',
+      danger: r.highlight,
       emphasis:
           r.highlight ||
           r.label == '订单金额' ||
@@ -2380,6 +2332,62 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   /// 2026-09-11 起是折叠容器的 body：表格 primary:true 内滚；
   /// 2026-09-14 合计条收进表格 summaryBar 槽位；2026-09-15 改随表体滚动
   ///（summaryBarInline：表内脚注，跟在最后一行数据之下）。
+  bool get _canReadDocumentAttachments {
+    final d = _detail;
+    if (d == null || !nativeReadAccessConfirmed || d.priceMasked) return false;
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(_cfg.listPerm) ||
+        (_cfg.type.isShipment &&
+            permissions.contains(Perm.salesShipmentFinanceView) &&
+            (d.shipmentWorkflow.salesConfirmed ||
+                d.financeRejected ||
+                d.financeAudit == 1 ||
+                d.status == 1));
+  }
+
+  Widget _readOnlyDocumentAttachments() => BusinessAttachmentSection(
+    ownerType: _cfg.attachmentOwnerType!,
+    ownerId: _detail!.id,
+    canView: _canReadDocumentAttachments,
+    canManage: false,
+    showBusyOverlay: _cfg.type.isShipment,
+    readOnlyNote: _cfg.type.isShipment
+        ? null
+        : BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+    categories: const ['合同', '客户确认', '图片', '其他'],
+  );
+
+  Widget? _withShipmentAttachmentReferences(Widget? totals) {
+    if (!_cfg.type.isShipment ||
+        _cfg.attachmentOwnerType == null ||
+        !_canReadDocumentAttachments ||
+        !ref.read(currentPermissionsProvider).contains(Perm.attachmentView)) {
+      return totals;
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ?totals,
+        const SizedBox(height: UtenSpacing.s16),
+        UtenCollapsibleSection(
+          key: const ValueKey('shipment-attachments-reference'),
+          title: '资料与附件',
+          expanded: _attachmentReferencesExpanded,
+          initiallyExpanded: false,
+          titleTrailing: const UtenFieldHintIcon(
+            info: BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+          ),
+          onExpandedChanged: (next) =>
+              setState(() => _attachmentReferencesExpanded = next),
+          child: _attachmentReferencesExpanded
+              ? _readOnlyDocumentAttachments()
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
   Widget _itemsCard(ThemeData theme, SalesMasterNameService names) {
     final items = _detail!.items;
     final isOrder = _cfg.type == SalesDocType.order;
@@ -2652,64 +2660,70 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             emptyMessage: '(无明细)',
             // 明细下合计条（summaryBarInline 随表体滚动）：数量按单位分组；
             // 价格脱敏时不出金额项。
-            summaryBar: items.isNotEmpty
-                ? UtenTotalsSummaryBar(
-                    key: const Key('sales-detail-totals'),
-                    density: true,
-                    compact: true,
-                    rowCount: items.length,
-                    entries: [
-                      UtenTotalEntry(
-                        '合计数量',
-                        exactMeasurementTotalsText(
-                          items.map(
-                            (it) => ExactMeasuredAmount(
-                              value:
-                                  it.exactDecimals['qty'] ?? it.qty?.toString(),
-                              unitId: it.unitId,
-                              unitName: names.unit(it.unitId),
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (!masked) ...[
+            summaryBarInline: !_cfg.type.isShipment || items.isNotEmpty,
+            summaryBar: _withShipmentAttachmentReferences(
+              items.isNotEmpty
+                  ? UtenTotalsSummaryBar(
+                      key: const Key('sales-detail-totals'),
+                      density: true,
+                      compact: true,
+                      rowCount: items.length,
+                      entries: [
                         UtenTotalEntry(
-                          utenAmountTotalLabel(
-                            _cfg.hasCurrency
-                                ? financeCurrencyDisplayLabel(
-                                    name: names.currency(_detail!.currencyId),
-                                  )
-                                : null,
-                          ),
-                          financeExactMoneyDisplay(
-                            _detail!.exactDecimals['totalOriginal'] ??
-                                financeExactDecimal(_detail!.totalOriginal) ??
-                                financeExactSumTexts(
-                                  items.map(
-                                    (it) =>
-                                        it.exactDecimals['amountOriginal'] ??
-                                        financeExactDecimal(it.amountOriginal),
-                                  ),
-                                ),
-                          ),
-                          danger: true,
-                        ),
-                        // 销售订单阶段本币事实按设计为空（不落 totalLocal）；订单表头卡
-                        // 也只出「订单金额(订单币种)」。历史脏数据带 totalLocal 的订单
-                        // 会把本币合计漏出来，故显式按单据类型门控（非订单单据照常出
-                        // 本币合计）。
-                        if (!isOrder)
-                          UtenTotalEntry(
-                            '合计(本币)',
-                            financeExactMoneyDisplay(
-                              _detail!.exactDecimals['totalLocal'] ??
-                                  financeExactDecimal(_detail!.totalLocal),
+                          '合计数量',
+                          exactMeasurementTotalsText(
+                            items.map(
+                              (it) => ExactMeasuredAmount(
+                                value:
+                                    it.exactDecimals['qty'] ??
+                                    it.qty?.toString(),
+                                unitId: it.unitId,
+                                unitName: names.unit(it.unitId),
+                              ),
                             ),
                           ),
+                        ),
+                        if (!masked) ...[
+                          UtenTotalEntry(
+                            utenAmountTotalLabel(
+                              _cfg.hasCurrency
+                                  ? financeCurrencyDisplayLabel(
+                                      name: names.currency(_detail!.currencyId),
+                                    )
+                                  : null,
+                            ),
+                            financeExactMoneyDisplay(
+                              _detail!.exactDecimals['totalOriginal'] ??
+                                  financeExactDecimal(_detail!.totalOriginal) ??
+                                  financeExactSumTexts(
+                                    items.map(
+                                      (it) =>
+                                          it.exactDecimals['amountOriginal'] ??
+                                          financeExactDecimal(
+                                            it.amountOriginal,
+                                          ),
+                                    ),
+                                  ),
+                            ),
+                            danger: true,
+                          ),
+                          // 销售订单阶段本币事实按设计为空（不落 totalLocal）；订单表头卡
+                          // 也只出「订单金额(订单币种)」。历史脏数据带 totalLocal 的订单
+                          // 会把本币合计漏出来，故显式按单据类型门控（非订单单据照常出
+                          // 本币合计）。
+                          if (!isOrder)
+                            UtenTotalEntry(
+                              '合计(本币)',
+                              financeExactMoneyDisplay(
+                                _detail!.exactDecimals['totalLocal'] ??
+                                    financeExactDecimal(_detail!.totalLocal),
+                              ),
+                            ),
+                        ],
                       ],
-                    ],
-                  )
-                : null,
+                    )
+                  : null,
+            ),
             // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容末尾
             //（最后一行数据之下），不钉在区块底部/按钮上方。
           ),
@@ -3276,6 +3290,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           child: const Text('返回列表'),
         ),
       );
+    }
+    if (_cfg.type.isShipment) {
+      children.removeWhere(
+        (w) =>
+            w is UtenButton &&
+            w.child is Text &&
+            (w.child as Text).data == '返回列表',
+      );
+      if (children.isEmpty) return const SizedBox.shrink();
     }
     if (children.isEmpty) {
       children.add(

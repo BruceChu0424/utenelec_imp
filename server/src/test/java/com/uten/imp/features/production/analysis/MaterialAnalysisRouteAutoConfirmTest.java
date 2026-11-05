@@ -37,7 +37,7 @@ class MaterialAnalysisRouteAutoConfirmTest {
     }
 
     @Test
-    void confirmedCoveredBlockedAndDownstreamRowsAreNeverTouched() {
+    void stockCoverageDoesNotBlockSourceConfirmationWhileIssuedAndBlockedRowsStayLocked() {
         var confirmed = row(1, "a", "10", "BUY", "MAKE");
         var covered = row(1, "b", "0", "BUY", null);
         var blocked = row(1, "c", "10", "BUY", null, UUID.randomUUID());
@@ -51,8 +51,25 @@ class MaterialAnalysisRouteAutoConfirmTest {
         var plan = MaterialAnalysisRouteAutoConfirm.plan(List.of(confirmed, covered, blocked, withTask, liveGroup, issued),
                 Map.of(blocked.analysisItemId(), "销售订单已停止"), facts);
 
-        assertThat(plan.changes()).isEmpty();
-        assertThat(plan.groupCount()).isZero();
+        assertThat(plan.changes()).extracting(MaterialAnalysisRouteBatchWriter.Change::materialId)
+                .containsExactly(covered.id());
+        assertThat(plan.groupCount()).isEqualTo(1);
+        assertThat(covered.actionable()).isFalse();
+        assertThat(covered.routeConfirmable()).isTrue();
+    }
+
+    @Test
+    void firstSnapshotAndRefreshConfirmCoveredSourcesButNeverInventMissingMasterSources() {
+        UUID goods = UUID.randomUUID(), unit = UUID.randomUUID();
+        var first = new MaterialAnalysisService.SnapshotCandidate(UUID.randomUUID(), ITEM, "covered",
+                goods, null, unit, 1, "BUY", BigDecimal.TEN, BigDecimal.ZERO);
+        var missing = new MaterialAnalysisService.SnapshotCandidate(UUID.randomUUID(), ITEM, "missing",
+                UUID.randomUUID(), null, unit, 1, "REVIEW", BigDecimal.TEN, BigDecimal.ZERO);
+        var inactive = new MaterialAnalysisService.SnapshotCandidate(UUID.randomUUID(), ITEM, "inactive",
+                UUID.randomUUID(), null, unit, 1, "BUY", BigDecimal.ZERO, BigDecimal.ZERO);
+        assertThat(first.actionable()).isFalse();
+        assertThat(MaterialAnalysisRouteAutoConfirm.plan(List.of(first, missing, inactive), Map.of(), NO_FACTS).changes())
+                .extracting(MaterialAnalysisRouteBatchWriter.Change::materialId).containsExactly(first.id());
     }
 
     @Test

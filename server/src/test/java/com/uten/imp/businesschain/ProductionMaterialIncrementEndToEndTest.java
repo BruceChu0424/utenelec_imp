@@ -41,10 +41,12 @@ class ProductionMaterialIncrementEndToEndTest {
     Object task; UUID segment,plan,demand;
     @BeforeEach void prepare(){
         fixture=new WorkshopPublicSurplusEndToEndTest();beans.autowireBean(fixture);fixture.prepare();
+        // Borrow the fixture's explicit choices too: 130/110 BOM learning is recurring.
+        ReflectionTestUtils.invokeMethod(fixture,"bindDefaultPrecision");
         task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","increment-"+UUID.randomUUID(),false,"100");
         segment=ReflectionTestUtils.invokeMethod(task,"segment");plan=ReflectionTestUtils.invokeMethod(task,"plan");demand=ReflectionTestUtils.invokeMethod(task,"demand");
     }
-    @AfterEach void logout(){SecurityContextHolder.clearContext();}
+    @AfterEach void logout(){if(fixture!=null)fixture.logout();SecurityContextHolder.clearContext();}
 
     @Test void ordinary110OutputCanReallyConsume130AfterPlanningApprovesOnly30ExtraMaterial(){
         var context=increments.context(segment);assertEquals(1,context.demands().size());
@@ -73,6 +75,49 @@ class ProductionMaterialIncrementEndToEndTest {
         amount("30",db.queryForObject("SELECT confirmed_consumed_qty FROM v_production_material_clearance WHERE demand_id=?",BigDecimal.class,approved.authorizedDemandId()));
         assertEquals(1,db.queryForObject("SELECT count(*) FROM production_material_increment_decisions WHERE request_id=?",Integer.class,pending.id()));
         assertThrows(RuntimeException.class,()->db.update("UPDATE production_material_demands SET required_qty=31 WHERE id=?",approved.authorizedDemandId()));
+    }
+
+    @Test void multipleMaterialsKeepDifferentQuantitiesAndReplayTheWholeBatchWithoutCreatingAgain(){
+        task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","increment-multiple-"+UUID.randomUUID(),false,"100",true);
+        segment=ReflectionTestUtils.invokeMethod(task,"segment");plan=ReflectionTestUtils.invokeMethod(task,"plan");
+        var materials=increments.context(segment).demands();assertEquals(2,materials.size());
+        var commands=List.of(
+                new SubmitRequest(materials.get(0).originalDemandId(),segment,null,new BigDecimal("30.1250"),"多材料各自追加实际用量",materials.get(0).lockVersion(),"multi-first-"+UUID.randomUUID()),
+                new SubmitRequest(materials.get(1).originalDemandId(),segment,null,new BigDecimal("7.5000"),"多材料各自追加实际用量",materials.get(1).lockVersion(),"multi-second-"+UUID.randomUUID()));
+        var submitted=increments.submitBatch(new BatchSubmitRequest(commands)).requests();assertEquals(2,submitted.size());
+        assertEquals(submitted.stream().map(RequestView::id).toList(),increments.submitBatch(new BatchSubmitRequest(commands.reversed())).requests().stream().map(RequestView::id).toList());
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM production_material_increment_requests WHERE target_segment_id=?",Integer.class,segment));
+        for(var command:commands){
+            var pending=submitted.stream().filter(row->row.originalDemandId().equals(command.originalDemandId())).findFirst().orElseThrow();
+            amount(command.deltaQty().toPlainString(),pending.deltaQty());
+            var approved=increments.decide(pending.id(),new DecisionRequest(0L,"multi-approve-"+UUID.randomUUID(),null),true);
+            amount(command.deltaQty().toPlainString(),db.queryForObject("SELECT required_qty FROM production_material_demands WHERE id=?",BigDecimal.class,approved.authorizedDemandId()));
+        }
+        var replay=increments.submitBatch(new BatchSubmitRequest(commands));
+        assertTrue(replay.requests().stream().allMatch(row->"APPROVED".equals(row.status())));
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM production_material_increment_requests WHERE target_segment_id=?",Integer.class,segment));
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=? AND material_increment_request_id IS NOT NULL AND NOT is_deleted",Integer.class,segment));
+    }
+
+    @Test void aLaterInvalidMaterialRollsBackEveryEarlierMaterialInTheBatch(){
+        var original=increments.context(segment).demands().getFirst();
+        var valid=new SubmitRequest(demand,segment,null,new BigDecimal("30"),"整批补料事务回滚验证",original.lockVersion(),"rollback-valid-"+UUID.randomUUID());
+        var invalid=new SubmitRequest(UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff"),segment,null,new BigDecimal("7"),"整批补料事务回滚验证",0L,"rollback-invalid-"+UUID.randomUUID());
+        assertThrows(ApiException.class,()->increments.submitBatch(new BatchSubmitRequest(List.of(valid,invalid))));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_increment_requests WHERE target_segment_id=?",Integer.class,segment));
+        var accepted=increments.submitBatch(new BatchSubmitRequest(List.of(valid))).requests().getFirst();
+        assertEquals(accepted.id(),increments.submit(valid).id());
+        amount("100",originalQuantity());
+    }
+
+    @Test void duplicateMaterialsAndDifferentWorkOrdersAreRejectedBeforeCreatingAnyRequest(){
+        var original=increments.context(segment).demands().getFirst();
+        var first=new SubmitRequest(demand,segment,null,new BigDecimal("30"),"重复来源不可重复追加",original.lockVersion(),"duplicate-first-"+UUID.randomUUID());
+        var duplicate=new SubmitRequest(demand,segment,null,new BigDecimal("7"),"重复来源不可重复追加",original.lockVersion(),"duplicate-second-"+UUID.randomUUID());
+        assertThrows(ApiException.class,()->increments.submitBatch(new BatchSubmitRequest(List.of(first,duplicate))));
+        var other=new SubmitRequest(UUID.randomUUID(),UUID.randomUUID(),null,new BigDecimal("7"),"跨工单不可混为一批",0L,"different-segment-"+UUID.randomUUID());
+        assertThrows(ApiException.class,()->increments.submitBatch(new BatchSubmitRequest(List.of(first,other))));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_increment_requests WHERE target_segment_id=?",Integer.class,segment));
     }
 
     @Test void returnAndPermissionFailuresDoNotCreateMaterialSupply(){

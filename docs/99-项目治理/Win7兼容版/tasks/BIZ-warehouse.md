@@ -167,9 +167,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
 
-接续/限制：尚未迁移；2026-10-31修复权限/读取范围更新后名称服务重建造成空仓库快照；原生须按当前身份加载真实仓库标记，区分错误/空结果并支持重试；见2026-10-31仓库选仓与车间任务导出记录。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
+接续/限制：尚未迁移；2026-10-31修复权限/读取范围更新后名称服务重建造成空仓库快照；原生须按当前身份加载真实仓库标记，区分错误/空结果并支持重试；见2026-10-31仓库选仓与车间任务导出记录。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：采购/委外到货须共用单重与总重精确换算，按本行实物数含赠品与本行单位，包装换算不重复乘，循环比值只作近似显示不改原总重；单重末列/原重量位置及草稿保留。收货人候选/回显走WAREHOUSE_ARRIVAL_RECEIVER业务目的，不要求employee:view，姓名/工号晚回显不丢刚选人员，需回归取消/权限变化/未知提交。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。。
 
 ## W7-BIZ-223
 
@@ -240,9 +240,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：自制/塑胶成品到货须接同一单重/总重控制器与精确草稿契约，实物数量含赠品、本行单位与包装只换算一次，反算近似不覆盖权威总重，新增单重置末、原重量列保留。实际仓库入库/收货人业务权限与异步回显继续按源合同办理，不因共享后端假定原生入口已迁移。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。。
 
 ## W7-BIZ-181
 
@@ -383,9 +383,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`。
+证据：`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`；`clients/windows_legacy/progress/evidence/internal-feedback-20261104.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。；2026-11-05 内部测试反馈（E-INTERNAL-FEEDBACK-20261104）：其他入库/产成品进仓须迁移公共单重录入、精确总重联动及weightEntryDraft/restoreWeightEntryDraft，按实际数量与本行单位只换算一次，原值/近似标记/草稿和未知提交保留；出库、盘点保持自身语义，不机械扩展入库重量规则，新增列置原业务列之后。 WPF本项保持todo，原owner/DoD/依赖/nativeTargets保留，Flutter/后端检查不构成本项或Win7验收。。
 
 ## W7-BIZ-187
 

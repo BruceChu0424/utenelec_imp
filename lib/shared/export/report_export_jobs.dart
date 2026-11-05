@@ -220,15 +220,21 @@ class ReportExportJobsClient {
   static const base = '/report-export-jobs';
 
   Future<bool> available() async {
+    _selectionVersion = 0;
     try {
       final response = await scope.run(() => api.get('$base/capabilities'));
       await scope.verify();
+      final version = response['selectionVersion'];
+      _selectionVersion = version is int ? version : 0;
       return response['available'] == true;
     } on ApiException catch (error) {
       if (error.httpStatus == 404) return false; // Previous server version.
       rethrow;
     }
   }
+
+  int _selectionVersion = 0;
+  bool get supportsSelectedOutput => _selectionVersion >= 1;
 
   Future<ReportExportJob> create(ReportExportJobRequest request) async {
     final response = await scope.run(() => api.post(base, body: request.json));

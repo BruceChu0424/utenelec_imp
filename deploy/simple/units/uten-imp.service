@@ -1,6 +1,6 @@
 # Uten IMP 后端（简化链 ADR-060）
 # 安装为 /etc/systemd/system/uten-imp.service
-# 2026-10-06 加固 (ADR-157): 附件卷 + 日志之外全只读、无任何特权、不产生 core dump、
+# 2026-10-06 加固 (ADR-157): 附件卷、日志及独立导出状态目录之外全只读、无任何特权、不产生 core dump、
 # 新建文件 0600、反复崩溃时由 uten-alert@ 记录本机事件, 恢复后在平台内补送。
 # 旧 drop-in uten-v538-mounts.conf 的附件卷依赖已并入本文件, 安装本文件后删除该 drop-in。
 [Unit]
@@ -22,6 +22,11 @@ ExecStartPre=/bin/sh -c 'if [ "$${UTEN_ATTACHMENT_SCANNER_PROVIDER:-disabled}" =
 # current 是指向 releases/<version> 的原子 symlink，禁止原位覆盖
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+# systemd creates this persistent private namespace as uten-imp:uten-imp before
+# ExecStartPre and permits it under ProtectSystem=strict. Never current/web/media.
+StateDirectory=uten-imp-report-exports
+StateDirectoryMode=0700
+Environment=UTEN_REPORT_EXPORT_DIRECTORY=/var/lib/uten-imp-report-exports
 # Installer/update packages have their own persistent namespace. The existing
 # media-only write boundary below covers this child without opening program files.
 Environment=UTEN_CLIENT_RELEASES_DIR=/var/lib/uten-imp-media/attachments/client-releases
@@ -61,7 +66,7 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectHome=true
 ProtectSystem=strict
-# ProtectSystem=strict 下只放开两处: 附件卷 (staging/final/preview/scratch 都在它下面) + 日志。
+# ReadWritePaths 仅放开附件卷和日志；上方独立 StateDirectory 由 systemd 单独开放。
 # 旧本地目录 /data/uten-imp/attachments 不再放开写: internal 存储只会读旧 local 原件;
 # 旧 local 引用清零后该目录整个删除 (治理记录 C4)。
 ReadWritePaths=/var/lib/uten-imp-media/attachments /var/log/uten-imp

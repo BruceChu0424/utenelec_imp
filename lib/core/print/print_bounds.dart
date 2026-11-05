@@ -2,3 +2,6 @@
 const defaultReportPrintPreviewRows = 2000;
 const maximumCompleteOriginalPrintRows = 20000;
 const maximumOriginalPrintPayloadCharacters = 64 * 1024 * 1024;
+
+/// Full filtered table output; source originals keep their separate paper budget.
+const maximumTableOutputRows = 50000;

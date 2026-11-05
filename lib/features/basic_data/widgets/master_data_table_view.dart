@@ -22,6 +22,7 @@ import '../../../shared/platform_tables/platform_table_picker.dart';
 import '../../../shared/platform_tables/platform_column_header_actions.dart';
 import '../../../shared/platform_tables/platform_table_widgets.dart';
 import '../../../shared/platform_tables/table_column_projection.dart';
+import '../../../components/data_display/uten_table_output_scope.dart';
 import '../../../core/router/page_search_lifecycle.dart';
 // MasterDataTableView - 基础资料主档通用表格视图（货品/模具/客户/供应商 共用）。
 //
@@ -34,6 +35,7 @@ import '../../../core/router/page_search_lifecycle.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import '../../../shared/search/keyword_search.dart';
 import '../../../shared/search/column_keyword_policy.dart';
 
@@ -48,6 +50,8 @@ import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/data_display/master_data_table_rows_controller.dart';
 import '../../../components/layout/uten_prepend_scroll_anchor.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -547,6 +551,10 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.showSelectionColumn = true,
     this.singleSelection = false,
     this.idOf,
+    this.outputSelectorOf,
+    this.outputIdOf,
+    this.outputSelectionEnabled = false,
+    this.outputSelection,
     this.selectionReadScope,
     this.rowKeyOf,
     this.rowWidgetKeyOf,
@@ -766,6 +774,14 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// item 引用相等（列表每次 build 重建对象；_BomRow / InstantInventoryRow 无 id 都会踩坑）。
   /// 无 id 的行传复合键，如 `(r) => '${r.goodsId}|${r.colorId}'`。
   final String? Function(T)? idOf;
+
+  /// Restricts output using raw server facts when the row is a typed model.
+  final Map<String, String?> Function(T row)? outputSelectorOf;
+  final String? Function(T row)? outputIdOf;
+  final bool outputSelectionEnabled;
+
+  /// Explicit adaptation for grouped business checkboxes with several output occurrences.
+  final UtenTableOutputSelection Function()? outputSelection;
 
   /// Amortizes live eligibility context reads within one synchronous identity
   /// collection. Individual row callbacks remain live outside this scope.
@@ -1011,6 +1027,49 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _fsTick.value++;
   }
 
+  final Set<String> _localOutputIds = {};
+  bool get _ownsOutputSelection =>
+      !widget.selectable &&
+      (widget.outputSelectionEnabled ||
+          [...?widget.toolbarActions, ...?widget.toolbarLeadingActions].any(
+            (action) =>
+                action is UtenExportButton && action.showOutputScope ||
+                action is UtenPrintPreviewButton && action.showOutputScope,
+          ));
+  bool get _outputSelectable => widget.selectable || _ownsOutputSelection;
+  Set<String> get _outputSelectedIds =>
+      _ownsOutputSelection ? _localOutputIds : widget.selectedIds;
+  String? Function(T)? get _outputIdOf => _ownsOutputSelection
+      ? widget.outputIdOf ?? widget.idOf ?? _outputRowIdentity
+      : widget.idOf;
+  void Function(Set<String>)? get _outputSelectedChanged =>
+      _ownsOutputSelection ? _changeOutputIds : widget.onSelectedIdsChanged;
+  String? _outputRowIdentity(T row) {
+    if (row is Map) {
+      final lineId = row['__lineId'];
+      if (lineId is String && lineId.isNotEmpty) return 'report-line:$lineId';
+      final keys = row.keys.map((key) => key.toString()).toList()..sort();
+      // A local content token only; server output is restricted by raw selectors.
+      return sha256
+          .convert(
+            utf8.encode(jsonEncode({for (final key in keys) key: row[key]})),
+          )
+          .toString();
+    }
+    return widget.platformBinding?.recordIdOf(row);
+  }
+
+  void _changeOutputIds(Set<String> ids) {
+    setState(() {
+      _localOutputIds
+        ..clear()
+        ..addAll(ids);
+    });
+    _retainSelectedRows();
+    _publishProjection();
+    _fsTick.value++;
+  }
+
   final _pages = SplayTreeMap<int, List<T>>();
   final _readWindowOwner = Object();
   PagedReadWindowBinding<T>? _readWindowBinding;
@@ -1150,7 +1209,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.onPageChange != null && widget.onLoadMore == null;
 
   SplayTreeMap<int, List<T>> _withPage(int page, List<T> incoming) {
-    final identity = widget.rowKeyOf ?? widget.idOf;
+    final identity = widget.rowKeyOf ?? _outputIdOf;
     final updates = <String, T>{};
     if (identity != null) {
       for (final row in incoming) {
@@ -1237,11 +1296,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   void _retainSelectedRows() {
-    _selectedRows.removeWhere((id, _) => !widget.selectedIds.contains(id));
+    _selectedRows.removeWhere((id, _) => !_outputSelectedIds.contains(id));
     // idOf can be a live business eligibility predicate. No selected identity
     // needs retention when the selection is empty.
-    if (widget.selectedIds.isEmpty) return;
-    final identity = widget.idOf;
+    if (_outputSelectedIds.isEmpty) return;
+    final identity = _outputIdOf;
     if (identity == null) {
       _selectedRows.clear();
       return;
@@ -1249,7 +1308,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _withSelectionReadScope<void>(() {
       for (final row in _pages.values.expand((rows) => rows)) {
         final id = identity(row);
-        if (id != null && widget.selectedIds.contains(id)) {
+        if (id != null && _outputSelectedIds.contains(id)) {
           _selectedRows[id] = row;
         }
       }
@@ -1272,7 +1331,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         : widget.items;
     // Only an actual row identity is suitable for de-duplication. Equal cell
     // text does not imply the same business record.
-    final identity = widget.rowKeyOf ?? widget.idOf;
+    final identity = widget.rowKeyOf ?? _outputIdOf;
     final merged = <T>[];
     final indexes = <String, int>{};
     for (final row in [...widget.unpagedItems, ...rows]) {
@@ -1320,7 +1379,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         controller.update(_items);
       } else {
         final liveIds = _withSelectionReadScope(
-          () => _items.map((row) => widget.idOf?.call(row)).toSet(),
+          () => _items.map((row) => _outputIdOf?.call(row)).toSet(),
         );
         controller.update([
           ..._items,
@@ -2020,7 +2079,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   Object _paginationRowId(T row) =>
-      widget.rowKeyOf?.call(row) ?? widget.idOf?.call(row) ?? row as Object;
+      widget.rowKeyOf?.call(row) ?? _outputIdOf?.call(row) ?? row as Object;
 
   Widget _trackPaginationRow(Object id, bool paged, Widget child) =>
       !_automaticPagination
@@ -2561,8 +2620,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (!mounted) return;
     _lastTapRowKey = null;
     _textSelection.clear();
-    if (widget.selectable) {
-      if (widget.selectedIds.isEmpty &&
+    if (_outputSelectable) {
+      if (_outputSelectedIds.isEmpty &&
           (widget.selectionSummaryCount ?? 0) == 0) {
         return;
       }
@@ -2578,7 +2637,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (widget.onClearSelection case final clear?) {
       clear();
     } else {
-      widget.onSelectedIdsChanged?.call(<String>{});
+      _outputSelectedChanged?.call(<String>{});
     }
   }
 
@@ -2856,6 +2915,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         TableColumnProjection(
           tableKey: _platform.tableKey,
           scope: _platform.binding?.scope,
+          outputSelection: _outputSelection(),
           sourceKeys: {
             for (final column in _columns)
               _platform.canonicalKey(column.key): column.key,
@@ -2876,6 +2936,97 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         contextOwner: _projectionOwner ?? ModalRoute.of(context),
       );
     });
+  }
+
+  UtenTableOutputSelection _outputSelection() {
+    if (widget.outputSelection != null) return widget.outputSelection!();
+    final ids = Set<String>.unmodifiable(_outputSelectedIds);
+    return UtenTableOutputSelection(
+      ids: ids,
+      load: () => _captureOutputSelection(ids),
+    );
+  }
+
+  Future<UtenTableOutputSelection> _captureOutputSelection(
+    Set<String> ids,
+  ) async {
+    final work = UiWorkBudget(isCurrent: () => mounted);
+    final rows = <String, T>{};
+    for (final id in ids) {
+      if (_selectedRows[id] case final row?) rows[id] = row;
+      await work.checkpoint();
+    }
+    for (final row in [
+      ..._items,
+      ...?widget.leadingGroups?.expand((group) => group.items),
+    ]) {
+      final id = _outputIdOf?.call(row);
+      if (id != null && ids.contains(id)) rows[id] = row;
+      await work.checkpoint();
+    }
+    final raw = <Map<String, String?>>[], shown = <Map<String, String?>>[];
+    final useLineIds =
+        ids.isNotEmpty &&
+        ids.every((id) {
+          final row = rows[id];
+          return row is Map &&
+              row['__lineId'] is String &&
+              (row['__lineId'] as String).isNotEmpty;
+        });
+    final outputKeys = _columns
+        .where((column) => column.exportable)
+        .map((column) => column.key)
+        .toSet();
+    for (final id in ids) {
+      final row = rows[id];
+      if (row == null) continue;
+      if (widget.outputSelectorOf != null) {
+        raw.add(
+          Map<String, String?>.unmodifiable(widget.outputSelectorOf!(row)),
+        );
+      } else if (row is Map) {
+        final lineId = row['__lineId'];
+        if (useLineIds && lineId is String && lineId.isNotEmpty) {
+          raw.add({'__lineId': lineId});
+        } else {
+          raw.add({
+            for (final entry in row.entries)
+              if ((outputKeys.contains(entry.key) ||
+                      const {
+                        'id',
+                        'rowKey',
+                        '_platformRecordId',
+                        '__srcId',
+                      }.contains(entry.key) ||
+                      entry.key.toString().endsWith('Id')) &&
+                  (entry.value == null ||
+                      entry.value is String ||
+                      entry.value is num ||
+                      entry.value is bool))
+                entry.key.toString():
+                    entry.value != null && row['${entry.key}Exact'] is String
+                    ? row['${entry.key}Exact'] as String
+                    : entry.value?.toString(),
+          });
+        }
+      } else if (_platform.binding?.recordIdOf(row)
+          case final String recordId) {
+        raw.add({'@id': recordId});
+      } else {
+        raw.add({
+          for (final column in _columns.where((column) => column.exportable))
+            column.key: column.value(row),
+        });
+      }
+      shown.add({for (final column in _columns) column.key: column.value(row)});
+      await work.checkpoint();
+    }
+    work.ensureCurrent();
+    return UtenTableOutputSelection(
+      ids: ids,
+      rows: await rectangularUtenOutputRows(raw, isCurrent: () => mounted),
+      displayRows: shown,
+    );
   }
 
   // 表头/表体横滚同步（早期 Flutter 的 LinkedScrollControllerGroup 在 3.44 已移除，
@@ -3587,7 +3738,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 行 → 拖拽行键（与行 RepaintBoundary 同口径：rowKeyOf 优先、idOf 兜底；
   /// 两者都缺的行不参与拖拽槽，长按手势仍可挂但落点解析找不到它）。
   String? _dragKeyOf(T item) {
-    final key = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+    final key = widget.rowKeyOf?.call(item) ?? _outputIdOf?.call(item);
     return (key == null || key.isEmpty) ? null : key;
   }
 
@@ -4018,7 +4169,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _resetPages();
     _platform.addListener(_platformChanged);
     assert(
-      !widget.selectable || widget.idOf != null,
+      !_outputSelectable || _outputIdOf != null,
       'MasterDataTableView: selectable:true 需提供 idOf(行→业务 id 提取器)。',
     );
     assert(
@@ -4404,7 +4555,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (listEquals(previous, current)) return true;
       if (previous.length != current.length) return false;
       for (var i = 0; i < previous.length; i++) {
-        if (before.idOf?.call(previous[i]) != widget.idOf?.call(current[i]) ||
+        if (before.idOf?.call(previous[i]) != _outputIdOf?.call(current[i]) ||
             before.rowKeyOf?.call(previous[i]) !=
                 widget.rowKeyOf?.call(current[i])) {
           return false;
@@ -4440,6 +4591,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_ownsOutputSelection &&
+        (!const DeepCollectionEquality().equals(
+              oldWidget.paginationScope,
+              widget.paginationScope,
+            ) ||
+            !mapEquals(oldWidget.filters, widget.filters) ||
+            oldWidget.sortColumn != widget.sortColumn ||
+            oldWidget.sortAscending != widget.sortAscending)) {
+      _localOutputIds.clear();
+      _selectedRows.clear();
+    }
+
     if (oldWidget.appendRowsSource != widget.appendRowsSource) {
       oldWidget.appendRowsSource?.removeListener(_appendRowsChanged);
       widget.appendRowsSource?.addListener(_appendRowsChanged);
@@ -4499,7 +4662,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 包括 200 -> 0 / 移除悬浮动作：新布局不再启用覆盖层时也必须撤掉旧留白。
     if (oldWidget.bottomContentPadding != widget.bottomContentPadding ||
         oldWidget.primary != widget.primary ||
-        oldWidget.selectable != widget.selectable ||
+        oldWidget.selectable != _outputSelectable ||
         oldWidget.showSelectionColumn != widget.showSelectionColumn ||
         (oldWidget.batchActionsBuilder == null) !=
             (widget.batchActionsBuilder == null)) {
@@ -5256,7 +5419,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// [MasterDataTableView.showSelectionColumn]=false 的纯阅读勾选表不画列，
   /// 选中语义（单击切勾选/高亮/已选胶囊）不受影响。
   bool get _hasSelectionColumn =>
-      widget.selectable && widget.showSelectionColumn;
+      _outputSelectable && widget.showSelectionColumn;
 
   /// 多选模式下表头/表体行的交叉轴对齐：stretch 让所有单元格同高、网格竖线贯通，
   /// 文字垂直居中；非多选沿用默认 center（行为不变）。
@@ -5264,14 +5427,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// （表头在横向滚动视口内、表体行在竖向 ListView 内，二者高度均无界），
   /// 因此 selectable 的两处 Row 必须套 [IntrinsicHeight] 先按内容收紧高度
   /// （2026-08-11 采购/委外/仓库任务台表头+表体整片空白的根因）。
-  CrossAxisAlignment get _selectableCross => widget.selectable
+  CrossAxisAlignment get _selectableCross => _outputSelectable
       ? CrossAxisAlignment.stretch
       : CrossAxisAlignment.center;
 
   /// selectable 的 stretch 行在无界高度下的合法化包裹（见 [_selectableCross]）。
   /// 非 selectable 行用 center、不需要，保持原样零开销。
   Widget _boundStretchRow(Widget row, {double? knownHeight}) =>
-      widget.selectable
+      _outputSelectable
       ? knownHeight != null
             ? SizedBox(height: knownHeight, child: row)
             : IntrinsicHeight(
@@ -5301,7 +5464,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// minimum can be shared instead of walking every cell's intrinsic tree on
   /// every scroll frame. Rich controls retain their original measured path.
   double? _knownPlainRowHeight(ThemeData theme) {
-    if (!widget.selectable ||
+    if (!_outputSelectable ||
         widget.leadingOverlayBuilder != null ||
         widget.unselectableLeadingBuilder != null ||
         widget.rowDrag != null ||
@@ -5570,7 +5733,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Set<String> _collectPageSelectableIds() {
     final ids = <String>{};
     void add(T it) {
-      final id = widget.idOf?.call(it);
+      final id = _outputIdOf?.call(it);
       if (id != null && id.isNotEmpty) ids.add(id);
     }
 
@@ -5593,7 +5756,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 表头三态值：false=本页全未选 / true=本页全选 / null=部分选。
   bool? _headerCheckValue(Set<String> pageIds) {
     if (pageIds.isEmpty) return false;
-    final hit = pageIds.where(widget.selectedIds.contains).length;
+    final hit = pageIds.where(_outputSelectedIds.contains).length;
     if (hit == 0) return false;
     if (hit == pageIds.length) return true;
     return null;
@@ -5601,17 +5764,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 表头三态切换：Checkbox.onChanged 回传的是点击后的新值，不是旧值。
   /// true=全选本页；false/null=取消本页。
-  /// 拷贝调用方集合后回交，从不就地改 widget.selectedIds。
+  /// 拷贝调用方集合后回交，从不就地改 _outputSelectedIds。
   void _onToggleAllPage(bool? newValue) {
     final pageIds = _pageSelectableIds();
     if (pageIds.isEmpty) return;
-    final next = Set<String>.of(widget.selectedIds);
+    final next = Set<String>.of(_outputSelectedIds);
     if (newValue == true) {
       next.addAll(pageIds);
     } else {
       next.removeAll(pageIds);
     }
-    widget.onSelectedIdsChanged?.call(next);
+    _outputSelectedChanged?.call(next);
     _fsTick.value++; // 全屏路由随 selectedIds 重建（三态/勾选刷新）。
   }
 
@@ -5622,24 +5785,22 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _fsTick.value++;
       return;
     }
-    final id = widget.idOf?.call(item);
+    final id = _outputIdOf?.call(item);
     if (id == null || id.isEmpty) return;
     // 单选互斥（行单击与勾选框同走这里）：勾选=集合只留本行，取消=清空——
     // 点击另一行时上一行自然失选。
     if (widget.singleSelection) {
-      widget.onSelectedIdsChanged?.call(
-        checked ? <String>{id} : const <String>{},
-      );
+      _outputSelectedChanged?.call(checked ? <String>{id} : const <String>{});
       _fsTick.value++;
       return;
     }
-    final next = Set<String>.of(widget.selectedIds);
+    final next = Set<String>.of(_outputSelectedIds);
     if (checked) {
       next.add(id);
     } else {
       next.remove(id);
     }
-    widget.onSelectedIdsChanged?.call(next);
+    _outputSelectedChanged?.call(next);
     _fsTick.value++;
   }
 
@@ -5651,7 +5812,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
-    Widget cell = widget.selectable
+    Widget cell = _outputSelectable
         ? Align(alignment: Alignment.centerLeft, child: text)
         : text;
     if (widget.enableTextSelection && value.trim().isNotEmpty) {
@@ -5709,7 +5870,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
       ),
     );
-    final aligned = widget.selectable && !column.fillsCellHeight
+    final aligned = _outputSelectable && !column.fillsCellHeight
         ? Align(alignment: Alignment.centerLeft, child: custom)
         : custom;
     // 自定义格同口径：格里有文本内容（value 非空）且框选开启时，就近注入
@@ -5876,7 +6037,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (!_automaticPagination &&
           item != null &&
           widget.rowKeyOf?.call(item) == null &&
-          widget.idOf?.call(item) == null) {
+          _outputIdOf?.call(item) == null) {
         return ('slot', index);
       }
       return planId(index);
@@ -5897,7 +6058,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         : <ValueKey<String>, int>{
             for (var i = 0; i < plan.length; i++)
               if (plan[i].item case final rowItem?)
-                if (widget.rowKeyOf?.call(rowItem) ?? widget.idOf?.call(rowItem)
+                if (widget.rowKeyOf?.call(rowItem) ?? _outputIdOf?.call(rowItem)
                     case final dragKey?)
                   if (dragKey.isNotEmpty) ValueKey('row-drag-slot:$dragKey'): i,
           };
@@ -6010,7 +6171,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
       // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
       // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
-      final idKey = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+      final idKey = widget.rowKeyOf?.call(item) ?? _outputIdOf?.call(item);
       final rowWidget = RepaintBoundary(
         key:
             widget.rowWidgetKeyOf?.call(item) ??
@@ -6081,7 +6242,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         !_automaticPagination &&
         widget.onLoadMore == null &&
         widget.rowDrag == null &&
-        (widget.rowKeyOf != null || widget.idOf != null)) {
+        (widget.rowKeyOf != null || _outputIdOf != null)) {
       final ids = <Object>[
         for (var i = 0; i < plan.length; i++) planId(i),
         if (hasFooter) const ('footer',),
@@ -6110,11 +6271,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (window == null) {
       final orderedIds = [for (var i = 0; i < plan.length; i++) mountId(i)];
       final stableRowIds =
-          (widget.rowKeyOf != null || widget.idOf != null) &&
+          (widget.rowKeyOf != null || _outputIdOf != null) &&
           plan.every((row) {
             final item = row.item;
             if (item == null) return true;
-            final id = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+            final id = widget.rowKeyOf?.call(item) ?? _outputIdOf?.call(item);
             return id != null && id.isNotEmpty;
           });
       _trackFallbackInsertion(
@@ -6251,7 +6412,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   );
 
   bool get _hasFloatingBatchActions =>
-      widget.selectable && widget.batchActionsBuilder != null;
+      _outputSelectable && widget.batchActionsBuilder != null;
 
   bool get _usesBoundedFloatingBatchActions =>
       _hasFloatingBatchActions && (!widget.embedded || _fullscreen);
@@ -7026,7 +7187,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             // 选择摘要：有悬浮批量动作时随动作进右下悬浮组（见
             // [_buildFloatingBatchActions]）；无悬浮动作的表格仍驻表头上方；
             // 页面自管选择摘要（showSelectionSummary=false）时不驻留。
-            if (widget.selectable &&
+            if (_outputSelectable &&
                 widget.showSelectionSummary &&
                 !_hasFloatingBatchActions)
               _buildBatchBar(theme),
@@ -7967,7 +8128,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 选择摘要：已选 N 项 + 清除（升位公共组件 UtenSelectionSummaryPill）。
   /// 业务动作在右下悬浮区，不再塞进表头工具条。
   Widget _buildBatchBar(ThemeData theme) {
-    final ids = widget.selectedIds;
+    final ids = _outputSelectedIds;
     final count = widget.selectionSummaryCount ?? ids.length;
     final hasSelection = count > 0;
     return UtenSelectionSummaryPill(
@@ -7984,7 +8145,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _buildFloatingBatchActions(BuildContext context) {
     final theme = Theme.of(context);
-    final ids = widget.selectedIds;
+    final ids = _outputSelectedIds;
     final actions =
         widget.batchActionsBuilder?.call(context, ids) ?? const <Widget>[];
     // 动作列表可能运行态为空（如物料分析 FQC 补料视图没有可下单按钮）：
@@ -7998,7 +8159,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
     // 已选摘要与业务动作同框（悬浮组首位），选择数与按钮零距离——
     // 全站统一口径：有悬浮批量动作的表格，已选胶囊不再驻表头工具条。
-    final children = [if (widget.selectable) _buildBatchBar(theme), ...actions];
+    final children = [if (_outputSelectable) _buildBatchBar(theme), ...actions];
     // 2026-09-11 去掉 0 选中时的 Opacity(0.4)：叠在本就发灰的禁用按钮上会整组
     // 淡到「看不出这里能点」（物料分析、下达采购/委外/自制的用户反馈）。
     // 未选态的可辨识度改由控件自身承担——UtenButton 禁用态是实底+描边+可读灰字，
@@ -8601,7 +8762,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   String _textSelectionRowKey(T item) =>
       widget.rowKeyOf?.call(item) ??
-      widget.idOf?.call(item) ??
+      _outputIdOf?.call(item) ??
       _columns.map((column) => column.value(item)).join('\u0000');
 
   Widget _buildDataCell(
@@ -8772,13 +8933,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     bool showRightDivider(int index) => true;
     // selectable 多选：选中由 selectedIds（业务键）驱动，单选 _selectedItem 失效。
     // 否则沿用单选：外部 isSelected 谓词优先，回落内部 _selectedItem 引用相等。
-    final String? multiId = widget.selectable ? widget.idOf?.call(item) : null;
+    final String? multiId = _outputSelectable ? _outputIdOf?.call(item) : null;
     final bool selected;
-    if (widget.selectable) {
+    if (_outputSelectable) {
       selected =
           multiId != null &&
           multiId.isNotEmpty &&
-          widget.selectedIds.contains(multiId);
+          _outputSelectedIds.contains(multiId);
     } else if (widget.isSelected != null) {
       selected = widget.isSelected!(item);
     } else {
@@ -8931,7 +9092,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final rowCanOpen =
         configuredOnRowTap != null && (widget.canOpenRow?.call(item) ?? true);
     final onRowTap = rowCanOpen ? configuredOnRowTap : null;
-    final rowCanSelect = widget.selectable && multiId?.isNotEmpty == true;
+    final rowCanSelect = _outputSelectable && multiId?.isNotEmpty == true;
     final configuredRowMenuBuilder = widget.rowMenuBuilder;
     final rowMenuBuilder =
         configuredRowMenuBuilder != null &&
@@ -8953,8 +9114,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     /// - 多选模式：切换该行的勾选（单击 = 选中/取消选中，与点勾选框等价）；
     /// - 单选模式：内部高亮 + 通知调用方 onSelectionChanged。
     void selectRow() {
-      if (widget.selectable) {
-        final id = widget.idOf?.call(item);
+      if (_outputSelectable) {
+        final id = _outputIdOf?.call(item);
         if (id == null || id.isEmpty) return;
         _toggleRow(item, rowSelectionState != true);
         return;
@@ -8969,12 +9130,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     /// 多选模式下该行未勾选 → 选择集替换为仅该行（标准文件管理器行为）；
     /// 已勾选 → 保留多选（菜单操作作用于整个选择集的语义由调用方决定）。
     void selectRowForMenu() {
-      if (widget.selectable) {
+      if (_outputSelectable) {
         if (widget.preserveSelectionOnContextMenu) return;
-        final id = widget.idOf?.call(item);
+        final id = _outputIdOf?.call(item);
         if (id == null || id.isEmpty) return;
-        if (!widget.selectedIds.contains(id)) {
-          widget.onSelectedIdsChanged?.call(<String>{id});
+        if (!_outputSelectedIds.contains(id)) {
+          _outputSelectedChanged?.call(<String>{id});
           _fsTick.value++;
         }
         return;
@@ -8988,7 +9149,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     /// 原选择，避免用户已有多选被一次误触清空。
     void clearSelectionAfterMenuAction() {
       if (!mounted) return;
-      if (widget.selectable) {
+      if (_outputSelectable) {
         if (widget.preserveSelectionOnContextMenu) return;
         _clearMultiSelection();
         _fsTick.value++;
@@ -9004,9 +9165,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     /// 避免读取失败也丢失原操作对象。成功打开真实业务详情后，按页面或详情
     /// 弹窗的返回生命周期清除本次选择。
     void openRow() {
-      if (widget.selectable) {
-        final id = widget.idOf?.call(item);
-        if (id != null && id.isNotEmpty && !widget.selectedIds.contains(id)) {
+      if (_outputSelectable) {
+        final id = _outputIdOf?.call(item);
+        if (id != null && id.isNotEmpty && !_outputSelectedIds.contains(id)) {
           _toggleRow(item, true);
         }
       }
@@ -9030,7 +9191,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (widget.embedded || widget.singleTapRows) {
       final rowKey =
           widget.rowKeyOf?.call(item) ??
-          widget.idOf?.call(item) ??
+          _outputIdOf?.call(item) ??
           'cells:${_columns.map((c) => c.value(item) ?? '').join(' ')}';
       interactive = InkWell(
         onTap: () {
@@ -9049,10 +9210,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             _lastTapRowKey = doubleTap ? null : rowKey;
             _lastTapAt = now;
             if (doubleTap) {
-              final id = widget.idOf?.call(item);
-              if (widget.selectable &&
+              final id = _outputIdOf?.call(item);
+              if (_outputSelectable &&
                   id != null &&
-                  !widget.selectedIds.contains(id)) {
+                  !_outputSelectedIds.contains(id)) {
                 _toggleRow(item, true);
               }
               widget.onRowDoubleTap!(item);
@@ -9070,7 +9231,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // （BOM 的 _BomRow 每次 build 重建），内容键对同一逻辑行保持稳定。
       final rowKey =
           widget.rowKeyOf?.call(item) ??
-          widget.idOf?.call(item) ??
+          _outputIdOf?.call(item) ??
           'cells:${_columns.map((c) => c.value(item) ?? '').join(' ')}';
       interactive = InkWell(
         onTap: () {
@@ -9095,7 +9256,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         child: row,
       );
     }
-    if ((!widget.embedded || widget.selectable) && onRowTap != null) {
+    if ((!widget.embedded || _outputSelectable) && onRowTap != null) {
       interactive = Semantics(
         customSemanticsActions: {
           const CustomSemanticsAction(label: '打开详情'): openRow,
@@ -9104,7 +9265,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       );
     }
     if (rowCanSelect ||
-        (!widget.selectable && widget.onSelectionChanged != null)) {
+        (!_outputSelectable && widget.onSelectionChanged != null)) {
       interactive = Semantics(selected: selected, child: interactive);
     }
     if (rowMenuBuilder != null) {

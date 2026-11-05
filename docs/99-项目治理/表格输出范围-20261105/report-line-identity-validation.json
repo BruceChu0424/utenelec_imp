@@ -1,0 +1,338 @@
+{
+  "identityAndNumeric": {
+    "totals": {
+      "tests": 56,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "name": "CommercialReportLineIdentityTest",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ProductionSubcontractLineIdentityTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockFinanceReportLineIdentityTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ExportRowSelectionTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "affectedOwners": {
+    "totals": {
+      "tests": 105,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "name": "StockFinanceReportLineIdentityTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "SalesReportOwnerScopeTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "SalesReportPriceReadPlanTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "PurchaseReportUuidReferenceContractTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ProductionReportTotalsTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "SubcontractReportCommercialVisibilityTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ProcurementReportColumnSearchTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "RetainedListReportBoundaryTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockReportTotalsTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockReportCostVisibilityTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockReportWarehouseInventoryScopeTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceReportObjectScopeTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceReportTotalsTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceReportPartyStatementTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceProjectedReportTableQueryTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceCompanyReportAccessTest",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "AccountStatementAuthorizationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "unique": {
+    "totals": {
+      "tests": 142,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "name": "AccountStatementAuthorizationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "CommercialReportLineIdentityTest",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ExportRowSelectionTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceCompanyReportAccessTest",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceProjectedReportTableQueryTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceReportObjectScopeTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceReportPartyStatementTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "FinanceReportTotalsTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ProcurementReportColumnSearchTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ProductionReportTotalsTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "ProductionSubcontractLineIdentityTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "PurchaseReportUuidReferenceContractTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "RetainedListReportBoundaryTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "SalesReportOwnerScopeTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "SalesReportPriceReadPlanTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockFinanceReportLineIdentityTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockReportCostVisibilityTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockReportTotalsTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "StockReportWarehouseInventoryScopeTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "SubcontractReportCommercialVisibilityTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "sourceSha256": {
+    "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java": "8b71bb6838e97c67429c25127af09010b9905821833e910964644ec56ffc7ec1",
+    "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java": "64cafd56aca77328840ae894f84393249bbc481d6b214033824511fd9103d367",
+    "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java": "4c84166aa91db8326e8fb7fa28753a11f5ec68a719d88d8e81921acf9c6c2178",
+    "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java": "f0ec595e509b37b7066ef8ac1dd85b068e77318a10d0ee7cb090a03a7beb86fb",
+    "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java": "6b2ce305cab2a0934c75aca14f1289dbc18e1cc0085fd10b8217ef5c5c40d317",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java": "f42031bf4452990f2363649f21d17c21361a55edb661915a7986a3620509f8b5",
+    "server/src/main/java/com/uten/imp/common/export/ExportRowSelection.java": "2fdfa3de767cda53173a394c4c2ffb0c3dfec7fa1dda63161a1f402424f91132",
+    "test/features/report/report_output_selection_callers_test.dart": "865ed56c0a5dc58cb7143e7eef5cd952667cf4345d100c8698159e8194f0e97a"
+  },
+  "callerUi": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "log": "build/verification/report-output-real-line-identity-callers-20261105.log"
+  },
+  "partyFixtureRerun": "build/verification/report-line-identity-party-fixture-rerun-20261105.log",
+  "scope": "Actual owning SQL/native row mapping/export/selection, existing summary grains and monetary facts protected; no company data, no optional PostgreSQL/target-machine acceptance claimed."
+}

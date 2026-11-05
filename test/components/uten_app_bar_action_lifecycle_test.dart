@@ -434,6 +434,8 @@ void main() {
       await _openActions(tester);
       await tester.tap(find.bySemanticsLabel('预览打印'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      await tester.pumpAndSettle();
       expect(loadedValue, 7);
       expect(find.text('预览 · 当前表头'), findsOneWidget);
       expect(find.text('本次数量'), findsOneWidget);

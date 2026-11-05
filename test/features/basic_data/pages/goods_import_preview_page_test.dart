@@ -21,6 +21,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 
 import '../../../support/audit_screenshot_support.dart';
+import '../../../support/dialog_fixture_capture.dart';
 
 const _capture = bool.fromEnvironment('UTEN_IMPORT_PREVIEW_SCREENSHOT');
 final _captureKey = GlobalKey();
@@ -160,6 +161,7 @@ Future<void> _open(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   if (_capture) await loadAuditScreenshotFonts(tester);
+  if (dialogFixtureCaptureEnabled) await loadDialogFixtureFonts();
   final theme = (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
     platform: TargetPlatform.windows,
   );
@@ -175,7 +177,9 @@ Future<void> _open(
         ).copyWith(textScaler: TextScaler.linear(scale)),
         child: UtenDisplayZoomBox(
           fontFactor: zoom,
-          child: RepaintBoundary(key: _captureKey, child: child!),
+          child: dialogFixtureBoundary(
+            RepaintBoundary(key: _captureKey, child: child!),
+          ),
         ),
       ),
       home: Scaffold(
@@ -415,6 +419,58 @@ void main() {
       );
     },
   );
+  testWidgets(
+    'mould code and resolved name remain visible without editable identity cells',
+    (tester) async {
+      const source = [
+        GoodsImportProblemRow(
+          rowNum: 2,
+          code: '001',
+          name: '开关',
+          categoryPath: '成品',
+          cells: {
+            'mouldCode': 'M-001',
+            'mouldName': '',
+            'resolvedMouldName': '壳体模具',
+          },
+        ),
+      ];
+      await _open(
+        tester,
+        report: _report(source: source),
+        size: dialogFixtureCaptureEnabled
+            ? const Size(2200, 900)
+            : const Size(1440, 900),
+      );
+      final columns = _table(tester).columns;
+      final code = columns.firstWhere((column) => column.key == 'mouldCode');
+      final resolved = columns.firstWhere(
+        (column) => column.key == 'resolvedMouldName',
+      );
+      expect(code.defaultVisible, isTrue);
+      expect(resolved.defaultVisible, isTrue);
+      expect(resolved.label, '关联模具名称');
+      expect(code.value(source.single), 'M-001');
+      expect(resolved.value(source.single), '壳体模具');
+      expect(
+        find.byKey(const ValueKey('goods-import-mouldCode-2')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('goods-import-resolvedMouldName-2')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+      if (dialogFixtureCaptureEnabled) {
+        await captureDialogFixture(
+          tester,
+          'goods-import-mould-reference-light',
+          outputDirectory: 'output/table-output-import-trace-20261105',
+        );
+      }
+    },
+  );
+
   testWidgets(
     'resolved category names retain slashes and distinct hierarchy identities',
     (tester) async {

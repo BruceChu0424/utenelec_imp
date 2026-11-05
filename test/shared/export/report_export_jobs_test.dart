@@ -57,7 +57,7 @@ class _Api extends ApiClient {
   }) async {
     if (path.endsWith('/capabilities')) {
       if (capabilityError != null) throw capabilityError!;
-      return {'available': available};
+      return {'available': available, 'selectionVersion': 1};
     }
     if (path.endsWith('/download-authorization')) {
       authorizationChecks.add(path);
@@ -516,7 +516,11 @@ void main() {
     },
   );
 
-  Future<void> mountDialog(WidgetTester tester, _Api api) async {
+  Future<void> mountDialog(
+    WidgetTester tester,
+    _Api api, {
+    ReportExportJobRequest? request,
+  }) async {
     final client = await _client(api);
     final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
@@ -525,12 +529,12 @@ void main() {
           home: Scaffold(
             body: ReportExportJobDialog(
               client: client,
-              request: _request(),
+              request: request ?? _request(),
               store: ReportExportPendingStore(
                 preferences,
                 client.scope.identity,
-                'sales',
-                'order/detail',
+                request?.domain ?? 'sales',
+                request?.report ?? 'order/detail',
               ),
               stillCurrent: () => true,
               onDownload: (job) async => client.download(job.id, ''),
@@ -540,6 +544,56 @@ void main() {
       ),
     );
   }
+
+  testWidgets(
+    'a restored all-row task is explicit and cannot stand in for a selected export with an unknown new receipt',
+    (tester) async {
+      final api = _Api();
+      final client = await _client(api);
+      final preferences = await SharedPreferences.getInstance();
+      final old = ReportExportJobRequest.create(
+        domain: 'master',
+        report: 'mould',
+        parameters: {'filter': '{}'},
+      );
+      await client.create(old);
+      final store = ReportExportPendingStore(
+        preferences,
+        client.scope.identity,
+        'master',
+        'mould',
+      );
+      await store.save(old);
+      final selected = ReportExportJobRequest.create(
+        domain: 'master',
+        report: 'mould',
+        parameters: {'filter': '{}', 'selectedIds': '["mould-a","mould-b"]'},
+      );
+      await mountDialog(tester, api, request: selected);
+      await tester.pumpAndSettle();
+      expect(find.text('原导出任务'), findsOneWidget);
+      expect(api.creates, hasLength(1));
+      expect(api.reads.last, endsWith('/${old.id}'));
+      api.loseCreate = true;
+      await tester.tap(find.text('按当前筛选新建'));
+      await tester.pumpAndSettle();
+      expect(api.creates, hasLength(2));
+      final newRequest = api.creates.last;
+      expect(
+        newRequest['parameters'],
+        containsPair('selectedIds', '["mould-a","mould-b"]'),
+      );
+      expect(find.text('下载文件'), findsNothing);
+      expect(find.text('上次创建结果尚未确认，请先核查原任务。'), findsOneWidget);
+      expect(store.read()!.id, newRequest['id']);
+      await tester.tap(find.text('核查任务'));
+      await tester.pumpAndSettle();
+      expect(api.reads.last, endsWith('/${newRequest['id']}'));
+      expect(api.creates, hasLength(2));
+      expect(find.text('下载文件'), findsOneWidget);
+      expect(store.read(), isNull);
+    },
+  );
 
   testWidgets('unknown receipt is checked without creating another task', (
     tester,

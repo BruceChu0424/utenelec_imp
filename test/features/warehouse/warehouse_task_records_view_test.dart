@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_table_output_scope.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -485,6 +487,41 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets('完整打印超过2000行且输出身份保留物理行与业务选择资格', (tester) async {
+    final records = [
+      for (var i = 0; i < 2101; i++)
+        warehouseTestRecord(
+          source: 'SALES',
+          record: 'SHIPMENT',
+          id: 'shipment-$i',
+          billNo: '同名单据',
+        ),
+    ];
+    await _pump(tester, WarehouseTaskRecordsFakeGateway(records));
+    final table = _table(tester);
+    expect(table.idOf!(records.last), isNull);
+    expect(table.outputSelectorOf!(records.last), {
+      'rowKey': records.last.rowKey,
+    });
+    final print = table.toolbarActions!
+        .whereType<UtenPrintPreviewButton>()
+        .single;
+    final full = (await tester.runAsync(print.loader))!;
+    expect(full.rows, hasLength(2101));
+    final selected = (await tester.runAsync(
+      () => selectUtenPrintRows(
+        full,
+        UtenTableOutputSelection(
+          ids: {records.last.rowKey},
+          rows: [
+            {'rowKey': records.last.rowKey},
+          ],
+        ),
+      ),
+    ))!;
+    expect(selected.rows, hasLength(1));
+    expect(selected.factValues!.single['rowKey'], records.last.rowKey);
+  });
   testWidgets('任务日期默认近一月，卡片内清除不保留旧范围', (tester) async {
     final gateway = WarehouseTaskRecordsFakeGateway(const []);
     await _pump(tester, gateway);

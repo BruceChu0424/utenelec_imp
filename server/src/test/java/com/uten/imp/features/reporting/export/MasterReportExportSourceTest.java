@@ -126,4 +126,15 @@ class MasterReportExportSourceTest {
         assertThatThrownBy(()->source.read(request("client","{}"))).isInstanceOf(ApiException.class);
         verifyNoInteractions(clients);
     }
+    @Test void selectedMouldTaskRetainsAllIdentitiesAndRestoresScopeOnSourceFailure(){
+        exporter("mould"); UUID id=UUID.randomUUID();
+        var selected=new ReportExportRequest(UUID.randomUUID(),"master","mould",Map.of("filter","{}","selectedIds","[\""+id+"\"]"),null,null,null);
+        source.validate(selected);
+        doAnswer(call->{
+            assertThat(com.uten.imp.common.export.MasterExportSelection.current()).containsExactly(id);
+            throw new IllegalStateException("fixture cancellation");
+        }).when(moulds).export(any(),anyInt());
+        assertThatThrownBy(()->source.read(selected)).hasMessage("fixture cancellation");
+        assertThat(com.uten.imp.common.export.MasterExportSelection.current()).isNull();
+    }
 }

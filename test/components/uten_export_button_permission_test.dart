@@ -83,6 +83,13 @@ void main() {
         );
         await tester.tap(find.bySemanticsLabel('下载表格'));
         await tester.pumpAndSettle();
+        if (find
+            .byKey(const ValueKey('table-output-all'))
+            .evaluate()
+            .isNotEmpty) {
+          await tester.tap(find.byKey(const ValueKey('table-output-all')));
+        }
+        await tester.pumpAndSettle();
         await captureDialogFixture(
           tester,
           'actual-export-settings-${dark ? 'dark' : 'light'}',
@@ -123,6 +130,13 @@ void main() {
               ),
             );
             await tester.tap(find.bySemanticsLabel('下载表格'));
+            await tester.pumpAndSettle();
+            if (find
+                .byKey(const ValueKey('table-output-all'))
+                .evaluate()
+                .isNotEmpty) {
+              await tester.tap(find.byKey(const ValueKey('table-output-all')));
+            }
             await tester.pumpAndSettle();
             final cancel = find.ancestor(
               of: find.text('取消'),
@@ -189,6 +203,13 @@ void main() {
         );
         await tester.tap(find.bySemanticsLabel('下载表格'));
         await tester.pumpAndSettle();
+        if (find
+            .byKey(const ValueKey('table-output-all'))
+            .evaluate()
+            .isNotEmpty) {
+          await tester.tap(find.byKey(const ValueKey('table-output-all')));
+        }
+        await tester.pumpAndSettle();
         expect(find.text('.xlsx'), findsOneWidget);
         await tester.ensureVisible(find.text('设置密码'));
         await tester.tap(find.text('设置密码'));
@@ -232,6 +253,10 @@ void main() {
     );
     await tester.tap(find.bySemanticsLabel('下载表格'));
     await tester.pumpAndSettle();
+    if (find.byKey(const ValueKey('table-output-all')).evaluate().isNotEmpty) {
+      await tester.tap(find.byKey(const ValueKey('table-output-all')));
+    }
+    await tester.pumpAndSettle();
     expect(find.text('导出 PDF'), findsOneWidget);
     expect(find.text('导出 Excel'), findsNothing);
     await tester.tap(find.text('取消'));
@@ -267,6 +292,13 @@ void main() {
         ),
       );
       await tester.tap(find.bySemanticsLabel('下载表格'));
+      await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
       await tester.pumpAndSettle();
       storage.lineage = 'next-session';
       await tester.tap(find.text('直接下载'));
@@ -309,6 +341,13 @@ void main() {
         ),
       );
       await tester.tap(find.bySemanticsLabel('下载表格'));
+      await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
       await tester.pumpAndSettle();
       container.read(server.notifier).state = 'https://b.invalid';
       await tester.pump();
@@ -355,12 +394,26 @@ void main() {
       );
       await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
+      await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
       await tester.pump();
       expect(api.results, hasLength(1));
       container.read(server.notifier).state = 'https://b.invalid';
       await tester.pumpAndSettle();
       await tester.tap(find.bySemanticsLabel('下载表格'));
+      await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
       await tester.pump();
@@ -409,6 +462,13 @@ void main() {
         ),
       );
       await tester.tap(find.bySemanticsLabel('下载表格'));
+      await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
       await tester.pumpAndSettle();
       current = false;
       await tester.tap(find.text('直接下载'));
@@ -465,6 +525,13 @@ void main() {
       );
       await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
+      await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
       await tester.pump();
       expect(api.downloads, 1);
@@ -512,6 +579,13 @@ void main() {
         ),
       );
       await tester.tap(find.bySemanticsLabel('下载表格'));
+      await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
       await tester.pumpAndSettle();
       container.read(grants.notifier).state = {};
       await tester.pump();
@@ -574,6 +648,13 @@ void main() {
 
       await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
+      if (find
+          .byKey(const ValueKey('table-output-all'))
+          .evaluate()
+          .isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey('table-output-all')));
+      }
+      await tester.pumpAndSettle();
 
       // 2026-10-28 起弹窗先收文件名（必填）与保存位置，密码区在其后。
       expect(find.byKey(const Key('uten-export-filename')), findsOneWidget);
@@ -611,6 +692,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('加密下载'), findsOneWidget);
+      await tester.ensureVisible(find.text('取消密码'));
       await tester.tap(find.text('取消密码'));
       await tester.pumpAndSettle();
       expect(find.text('确认密码'), findsNothing);
@@ -634,6 +716,10 @@ void main() {
     );
 
     await tester.tap(find.bySemanticsLabel('下载表格'));
+    await tester.pumpAndSettle();
+    if (find.byKey(const ValueKey('table-output-all')).evaluate().isNotEmpty) {
+      await tester.tap(find.byKey(const ValueKey('table-output-all')));
+    }
     await tester.pumpAndSettle();
 
     // 2026-10-28 起弹窗先收文件名（必填，预填默认名）；清空后不能直接下载。
@@ -669,6 +755,8 @@ void main() {
       ),
     );
     await tester.tap(find.bySemanticsLabel('预览打印'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('table-output-all')));
     await tester.pumpAndSettle();
 
     expect(find.text('下载Excel'), findsNothing);
@@ -762,6 +850,10 @@ void main() {
     );
     await tester.tap(find.bySemanticsLabel('下载表格'));
     await tester.pumpAndSettle();
+    if (find.byKey(const ValueKey('table-output-all')).evaluate().isNotEmpty) {
+      await tester.tap(find.byKey(const ValueKey('table-output-all')));
+    }
+    await tester.pumpAndSettle();
     await tester.tap(find.text('直接下载'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
@@ -827,6 +919,10 @@ Future<Map<String, dynamic>> _runExportWithProjection(
   );
   await tester.pump();
   await tester.tap(find.bySemanticsLabel('下载表格'));
+  await tester.pumpAndSettle();
+  if (find.byKey(const ValueKey('table-output-all')).evaluate().isNotEmpty) {
+    await tester.tap(find.byKey(const ValueKey('table-output-all')));
+  }
   await tester.pumpAndSettle();
   await tester.tap(find.text('直接下载'));
   await tester.pumpAndSettle();

@@ -88,7 +88,8 @@ public class ReportExportService {
         if("master".equals(request.domain())) {
             if(master==null)throw new IllegalStateException("Master export adapter is unavailable");
             master.validate(request);
-        } else if(request.parameters().values().stream().anyMatch(value->value.length()>2000))
+        } else if(request.parameters().entrySet().stream().anyMatch(entry->entry.getValue().length()>
+                ("where_used".equals(request.domain()) && "f.selectedProductIds".equals(entry.getKey()) ? 2000002 : 2000)))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出筛选条件过长");
         if(Set.of("workbench_purchase", "workbench_subcontract").contains(request.domain())) {
             if(workbench==null)throw new IllegalStateException("Workbench export adapter is unavailable");
@@ -101,7 +102,10 @@ public class ReportExportService {
                 key.toLowerCase(Locale.ROOT).matches(".*(password|token|secret|authorization).*")))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出筛选不能包含密码或凭据");
         String serialized=serialize(request);
-        if(serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536)
+        var rowSelection=new com.uten.imp.common.export.ExportRowSelection(request.columnProjection());
+        boolean largeSelection = "master".equals(request.domain()) && request.parameters().containsKey("selectedIds")
+                || "where_used".equals(request.domain()) && request.parameters().containsKey("f.selectedProductIds");
+        if(serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>(rowSelection.active() ? 16*1024*1024 : largeSelection ? 2200000 : 65536))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出筛选条件过大");
         repository.lockQueue();
         var old=repository.find(request.id());

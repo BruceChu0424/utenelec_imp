@@ -407,7 +407,7 @@ public class SalesReportService {
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""),
                 ReportColumn.text("__unitName", ""), ReportColumn.text("__stockUnitName", ""),
-                ReportColumn.text("__currencyId", ""));  // 隐藏：行点击跳销售订货单编辑页
+                ReportColumn.text("__currencyId", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳销售订货单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", i.bill_date AS "billDate", c.name AS "clientName",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency") + """
@@ -425,7 +425,7 @@ public class SalesReportService {
                        (i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) AS "pendingQty",
                        COALESCE(sb.stock_qty, 0) AS "stockQty", i.in_no AS "inNo", i.out_no AS "outNo",
                        i.remark AS "remark", o.id AS "__srcId", un.name AS "__unitName", stock_unit.name AS "__stockUnitName",
-                       o.currency_id AS "__currencyId"
+                       o.currency_id AS "__currencyId", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM sales_order_items i
@@ -478,7 +478,7 @@ public class SalesReportService {
                 ReportColumn.money("amount", "金额").withUnitLabel("元"), ReportColumn.money("dealAmount", "成交金额").withUnitLabel("元"),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""),
-                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""));  // 隐藏：行点击跳销售出货单编辑页
+                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳销售出货单编辑页
         String dataSelect = """
                 SELECT i.bill_date AS "billDate", c.name AS "clientName", c.region AS "region",
                        o.payment_style_id AS "settlementStyle", (o.status = 1) AS "approved",
@@ -488,7 +488,7 @@ public class SalesReportService {
                        i.discount AS "discount", i.amount_local AS "amount",
                        """ + DEAL_EXPR + " AS \"dealAmount\", i.remark AS \"remark\", o.id AS \"__srcId\", "
                 + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
-                + " AS \"__currencyName\", unit.name AS \"__unitName\"";
+                + " AS \"__currencyName\", unit.name AS \"__unitName\", i.id AS \"__lineId\"";
         String fromJoin = """
                 FROM sales_shipment_items i
                 JOIN sales_shipments o ON o.id = i.shipment_id
@@ -524,7 +524,7 @@ public class SalesReportService {
                 ReportColumn.money("amount", "金额").withUnitLabel("元"), ReportColumn.number("discount", "折扣"),
                 ReportColumn.money("dealAmount", "成交金额").withUnitLabel("元"), ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""),
-                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""));  // 隐藏：行点击跳销售退货单编辑页
+                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳销售退货单编辑页
         String dataSelect = """
                 SELECT i.bill_no AS "billNo", i.bill_date AS "billDate", c.name AS "clientName",
                        em_sel.full_name AS "sellerName", c.region AS "region", d.director AS "director",
@@ -534,7 +534,7 @@ public class SalesReportService {
                        i.discount AS "discount",
                        """ + DEAL_EXPR + " AS \"dealAmount\", i.remark AS \"remark\", o.id AS \"__srcId\", "
                 + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
-                + " AS \"__currencyName\", unit.name AS \"__unitName\"";
+                + " AS \"__currencyName\", unit.name AS \"__unitName\", i.id AS \"__lineId\"";
         String fromJoin = """
                 FROM sales_return_items i
                 JOIN sales_returns o ON o.id = i.return_id
@@ -586,7 +586,7 @@ public class SalesReportService {
                 ReportColumn.money("actualAmount", "实际金额").withUnitLabel("元"),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""),
-                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""));  // 隐藏：行点击跳其它出货单编辑页
+                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳其它出货单编辑页
         String dataSelect = """
                 SELECT i.bill_no AS "billNo", i.bill_date AS "billDate", c.name AS "clientName", d.director AS "director",
                        c.region AS "region", wh.name AS "warehouseName", cc.name AS "categoryName",
@@ -603,7 +603,7 @@ public class SalesReportService {
                        (i.amount_local - COALESCE(i.returned_amount,0)) AS "actualAmount",
                        i.remark AS "remark", o.id AS "__srcId",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency") + """
-                       AS "__currencyName", unit.name AS "__unitName"
+                       AS "__currencyName", unit.name AS "__unitName", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM sales_other_shipment_items i

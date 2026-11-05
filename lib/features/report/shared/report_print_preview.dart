@@ -20,8 +20,8 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
   required String Function() endpointOf,
   required Map<String, dynamic> Function() queryOf,
   required bool Function() isCurrent,
-  int rowLimit = defaultReportPrintPreviewRows,
-  bool requireComplete = false,
+  int rowLimit = maximumTableOutputRows,
+  bool requireComplete = true,
   int pageSize = 500,
   bool useSuggestedWidths = false,
   bool includeValueUnits = true,
@@ -37,7 +37,7 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
   if (rowLimit < 1 ||
       rowLimit >
           (requireComplete
-              ? maximumCompleteOriginalPrintRows
+              ? maximumTableOutputRows
               : defaultReportPrintPreviewRows) ||
       pageSize < 1 ||
       pageSize > 500) {
@@ -144,10 +144,14 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
         knownPages = pages.toInt();
       }
       final original =
-          requireComplete ||
           documentMetadata['paperLayout'] is Map ||
           documentMetadata['reviewId'] != null;
-      if (original && knownTotal != null && knownTotal > rowLimit) {
+      if ((original || requireComplete) &&
+          knownTotal != null &&
+          knownTotal >
+              (original && rowLimit > maximumCompleteOriginalPrintRows
+                  ? maximumCompleteOriginalPrintRows
+                  : rowLimit)) {
         throw const FormatException('原件超过完整打印范围，请下载完整表格；不会用部分明细配完整合计出纸');
       }
       for (final row in data.rows) {
@@ -167,7 +171,10 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
         }
         final fact = <String, String?>{};
         for (final entry in row.entries) {
-          fact[entry.key] = entry.value?.toString();
+          fact[entry.key] =
+              entry.value != null && row['${entry.key}Exact'] is String
+              ? row['${entry.key}Exact'] as String
+              : entry.value?.toString();
           await work.checkpoint();
         }
         rows.add(List.unmodifiable(cells));
@@ -190,11 +197,15 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
     }
     work.ensureCurrent();
     await scope.verify();
-    if ((requireComplete ||
-            documentMetadata?['paperLayout'] is Map ||
+    if ((documentMetadata?['paperLayout'] is Map ||
             documentMetadata?['reviewId'] != null) &&
         (knownTotal == null || rows.length != knownTotal)) {
       throw const FormatException('本份原件未读取全部明细，请重试完整打印或下载完整表格');
+    }
+    if (requireComplete &&
+        ((knownTotal != null && rows.length != knownTotal) ||
+            (knownTotal == null && rows.length == rowLimit))) {
+      throw const FormatException('打印记录未完整返回，请缩小筛选后重试或下载完整表格');
     }
     final frozen = columns ?? const <ReportColumn>[];
     return UtenPrintTable(

@@ -18,6 +18,7 @@ namespace Uten.Legacy.Desktop.Features.Units
     {
         private readonly SessionCoordinator session;
         private readonly UnitQuery query;
+        private readonly IReadOnlyList<string> selectedIds;
         private readonly UnitReadOwner owner;
         private readonly UnitColumnsSnapshot columns;
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
@@ -32,9 +33,10 @@ namespace Uten.Legacy.Desktop.Features.Units
         private int page;
         public bool SubmittedToPrintQueue { get; private set; }
         public UnitPrintWindow(Window parent, SessionCoordinator session, UnitQuery query) : this(parent, session, query, null) { }
-        public UnitPrintWindow(Window parent, SessionCoordinator session, UnitQuery query, UnitColumnsSnapshot columns) : base(parent, "预览 · 单位资料", 1080)
+        public UnitPrintWindow(Window parent, SessionCoordinator session, UnitQuery query, UnitColumnsSnapshot columns, IReadOnlyList<string> selectedIds = null) : base(parent, "预览 · 单位资料", 1080)
         {
             this.session = session; this.query = query; owner = new UnitReadOwner(session); this.columns = columns;
+            this.selectedIds = selectedIds == null ? null : Array.AsReadOnly(selectedIds.ToArray());
             if (columns != null && !columns.IsCurrent(session)) throw new ApiException("READ_SCOPE_CHANGED", "打印的原表头范围已变化，请刷新后重试。");
             preview.Height = Math.Max(180, Math.Min(470, SystemParameters.WorkArea.Height - 290));
             preview.Content = paper; Body.Children.Add(preview);
@@ -60,7 +62,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             {
                 ShowStatus("正在完整读取当前筛选的单位资料…");
                 var progress = new Progress<long>(count => { if (Current) ShowStatus("正在完整读取，已读取 " + count + " 项…"); });
-                var snapshot = await UnitPrintSnapshot.LoadAsync(session, query, lifetime.Token, progress);
+                var snapshot = await UnitPrintSnapshot.LoadAsync(session, query, lifetime.Token, progress, selectedIds);
                 if (!Current || !snapshot.IsCurrent(session)) return;
                 var projected = columns?.Projection ?? UnitColumnProjection.Default;
                 var rows = new List<IReadOnlyList<string>>(snapshot.Rows.Count); long textBytes = 0;
@@ -102,7 +104,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     }
                 }
                 ShowStatus("正在分页…");
-                document = await NativeTableDocument.CreateAsync("单位资料", "当前筛选的完整结果",
+                document = await NativeTableDocument.CreateAsync("单位资料", selectedIds == null ? "当前筛选的完整结果" : "已选 " + selectedIds.Count + " 项",
                     projected.Columns.Select(column => column.Label).ToArray(), rows,
                     projected.Columns.Select(column => column.Width).ToArray(), () => Current, lifetime.Token);
                 if (!Current) return;

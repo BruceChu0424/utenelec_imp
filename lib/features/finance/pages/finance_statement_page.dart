@@ -668,8 +668,8 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         UtenPrintPreviewButton(
           title: '往来对帐单 · $_viewLabel',
           subtitle: _view == _StmtView.annual
-              ? '年度 $_year(最多前 2000 行)'
-              : '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
+              ? '年度 $_year（全部筛选结果）'
+              : '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（全部筛选结果）',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
           exportPermission: Perm.financeReportExport,

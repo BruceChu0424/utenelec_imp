@@ -93,12 +93,16 @@ public class WhereUsedExportService {
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ALL)) {
             ReportTableResponse response=read(material,source,from,to,1,sort,order,filters);
             long expected=response.total();
+            var selectedProducts=com.uten.imp.common.export.SelectedExportIds.parse(
+                    filters==null?null:filters.get("selectedProductIds"));
+            if (selectedProducts!=null && expected!=selectedProducts.size())
+                throw new ApiException(ErrorCode.CONFLICT,"部分选中产品已变化或不在当前筛选内，请刷新结果后重新勾选导出");
             int maximum=streaming?MAX_ROWS:SYNCHRONOUS_MAX_ROWS;
             if(expected<0)throw new IllegalStateException("The document source did not supply its primary row count");
             if(!streaming)LegacyExportBudget.requireRows(expected);
             if(expected>maximum)throw new ApiException(ErrorCode.VALIDATION_FAILED,streaming
                     ?"筛选结果超过 50000 行，请缩小范围后导出":"同步导出最多 500 行，请使用后台导出任务");
-            Prepared prepared=prepare(material,source,from,to,sort,order,response);
+            Prepared prepared=prepare(material,source,from,to,sort,order,response,filters);
             List<com.uten.imp.features.production.report.ReportColumn> columns=response.columns();
             String unit=prepared.unit();
             sink.begin(prepared.header());
@@ -123,7 +127,7 @@ public class WhereUsedExportService {
 
     private record Prepared(DocumentPageSink.Header header,String unit) {}
     private Prepared prepare(UUID materialId,String source,LocalDate from,LocalDate to,String sort,String order,
-                                     ReportTableResponse first) {
+                                     ReportTableResponse first,Map<String,String> filters) {
         List<?> material = em.createNativeQuery("""
                 SELECT g.code,g.name,u.name FROM goods g LEFT JOIN units u
                 ON u.id=g.unit_id OR (g.unit_id IS NULL AND u.legacy_id=g.unit_legacy_id)
@@ -149,7 +153,8 @@ public class WhereUsedExportService {
                 "排序：" + (sort == null ? "默认" : sort) + " / " + (order == null ? "asc" : order),
                 "操作员：" + operator,
                 "导出时间：" + OffsetDateTime.now(ZoneId.of("Asia/Shanghai")),
-                "共 " + first.total() + " 个产品；导出全部筛选结果，不限于当前页。",
+                "共 " + first.total() + " 个产品；" + (filters!=null&&filters.containsKey("selectedProductIds")
+                        ? "导出所选产品。" : "导出全部筛选结果，不限于当前页。"),
                 "当前 BOM 表示查询时有效的理论关系；日期仅筛选历史证据。",
                 "生产冻结需求、旧生产快照与委外证据各自列示，不相加、不代表实际耗用。",
                 "未归属到具体产品的旧需求：" + first.meta().getOrDefault("unattributedDemandCount", 0)

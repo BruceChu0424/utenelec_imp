@@ -48,6 +48,19 @@ class ShelfLabelExportPagingTest {
         assertThat(pages.getLast().rows().getFirst()).containsEntry("goodsCode", "C-1000")
                 .containsEntry("warehouseName", "实际仓库")
                 .containsEntry("qty", new BigDecimal("1.000000000000000001"));
+        assertThat(pages.getLast().rows().getFirst()).containsEntry("warehouseId",warehouse.toString())
+                .containsKey("goodsId").containsKey("colorId");
         verify(stock, never()).shelfLabelRows(any(), any(), any(), anyBoolean());
+    }
+
+    @Test void exportCarriesHeaderScopeIntoTheOwningPagedReader() {
+        var stock=mock(StockQueryService.class);var settings=mock(SystemSettingsService.class);
+        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(50_000);
+        var filters=Map.of("rack","A","level","2","status","启用");
+        when(stock.shelfLabelRowsPage(null,null,null,true,1,500,filters)).thenReturn(List.of());
+        var service=new StockReportService(mock(EntityManager.class),settings,stock,mock(StockCostMasker.class));
+        service.export("shelf-labels",Map.of("includeDisabled","true","f.rack","A","f.level","2","f.status","启用"),null,null);
+        verify(stock).shelfLabelRowsPage(null,null,null,true,1,500,filters);
+        verify(stock,never()).shelfLabelRowsPage(any(),any(),any(),anyBoolean(),anyInt(),anyInt());
     }
 }

@@ -798,6 +798,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
         ],
       ),
       body: MasterDataTableView<Map<String, dynamic>>(
+        outputSelectionEnabled: true,
         key: ValueKey('cost-actual-$_tab'),
         expensiveRowMounts: false,
         tableKey: 'master.goods.cost.actual.$_tab',

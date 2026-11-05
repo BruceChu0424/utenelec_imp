@@ -1,0 +1,117 @@
+{
+  "mainBefore": "4963476ed13a3f7d3eb06da7f683cf66425b4ec4",
+  "taskCommit": "d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c",
+  "mergeBase": "f6e0d8532",
+  "resolvedConflicts": [
+    "clients/windows_legacy/progress/business-inventory.json",
+    "clients/windows_legacy/progress/work-items.json",
+    "docs/99-项目治理/Win7兼容版/pages/finance.md",
+    "test/features/finance/finance_chart_dialog_test.dart"
+  ],
+  "resolution": "Semantic union of main metadata and task notes/evidence, canonical regeneration from combined source; finance test imports preserve both versions. Auto-merged functional files reviewed for both branches.",
+  "registryProtection": {
+    "head": "4963476ed13a3f7d3eb06da7f683cf66425b4ec4",
+    "task": "d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c",
+    "count": 372,
+    "done": 10,
+    "addedIds": [],
+    "removedIds": [],
+    "headProtectedDrift": [],
+    "headNotePrefixDrift": [],
+    "headEvidencePrefixDrift": [],
+    "syncProtectedDrift": [],
+    "inventoryHashMatches": true,
+    "commands": [
+      "business_inventory.py --write",
+      "progress_tracker.py sync",
+      "business_inventory.py --check",
+      "progress_tracker.py check"
+    ],
+    "exitCodes": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "frontend": {
+    "workspace": "D:\\Projects\\uten_imp",
+    "head": "4963476ed13a3f7d3eb06da7f683cf66425b4ec4",
+    "merging": "d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c",
+    "actualUi": {
+      "tests": 48,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "log": "output\\table-output-import-trace-20261105\\merge-verification\\finance-and-real-report-callers.log"
+    },
+    "staticAnalysis": {
+      "issues": 0,
+      "files": [
+        "lib/features/finance/pages/finance_report_table_page.dart",
+        "lib/features/finance/widgets/finance_chart_dialog.dart",
+        "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+        "test/features/finance/finance_chart_dialog_test.dart"
+      ],
+      "log": "output\\table-output-import-trace-20261105\\merge-verification\\finance-auto-merge-analyze.log"
+    },
+    "sha256": {
+      "lib/features/finance/pages/finance_report_table_page.dart": "0c4fd165cf151579b3eba275024251eefd355a2e75d3280f4a02de0b4009ee7c",
+      "lib/features/finance/widgets/finance_chart_dialog.dart": "fda94a3c67ba4c4781305b5cccb7f3d45e877cf67e2a105588ac9606e5491730",
+      "lib/features/finance/widgets/finance_statement_document_dialog.dart": "d723a01a57db75d6f99ea44c109cdbf58d1bd8b2fee72e2adec8f2e8c5b5f4d3",
+      "test/features/finance/finance_chart_dialog_test.dart": "9016dc489aef5b50fbfb557f9381dc6005e5eec7917c12998e979787a9e6e937",
+      "test/features/finance/finance_statement_document_dialog_test.dart": "88548cf27aa482c807cd50c09525b3a6fa7be4c9637cfdb21ffb73430b93aeb0",
+      "test/features/report/report_output_selection_callers_test.dart": "865ed56c0a5dc58cb7143e7eef5cd952667cf4345d100c8698159e8194f0e97a",
+      "test/features/report/report_metadata_pagination_test.dart": "82186dee28bcb2e2f4f3fc89d36b8d9db56080b346ae1b8fa09ea2e74a6c3193"
+    },
+    "resolution": "Union import conflict: retain HEAD UtenCloseButton and task SharedPreferences/export/search/table/projection; duplicate apiClient removed; unused old UtenButton replaced by HEAD close component. Three functional auto-merges audited without edits; HEAD window guards + task complete ordinary print, directory schema/selection/filter, frozen original rules preserved. Only the resolved test import file was git added by this agent."
+  },
+  "wireSmoke": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "purpose": "Actual cost/BOM caller through options/frozen preview, original single file dialog, capability version1, captured private downloadBytes; no real files delivered",
+    "log": "output/table-output-import-trace-20261105/merge-verification/cost-bom-selected-caller-wire.log"
+  },
+  "backend": {
+    "compiledProductionSources": 3199,
+    "compiledTestSources": 2568,
+    "passed": 248,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source": "Combined main HEAD plus task, independent fresh Maven build directory",
+    "target": "server/target-table-output-merged-20261105",
+    "log": "output/table-output-import-trace-20261105/merge-verification/backend-merged-maven.log",
+    "commandEvidence": "output/table-output-import-trace-20261105/merge-verification/backend-merged-run.json",
+    "fullBuildReceipt": "output/table-output-import-trace-20261105/merge-verification/backend-merged-result.json",
+    "historicalTestCompileWarnings": 7,
+    "warningOnlyTestDelta": {
+      "productionChanged": false,
+      "files": [
+        "server/src/test/java/com/uten/imp/common/export/MasterExportSelectionTest.java",
+        "server/src/test/java/com/uten/imp/features/production/report/WhereUsedExportAndReplacementSecurityTest.java"
+      ],
+      "correction": "Concrete typed Mockito interfaces/matchers, no suppression; stable status().is(422).",
+      "strictJavacFlags": [
+        "-Xlint:unchecked",
+        "-Xlint:deprecation",
+        "-Werror"
+      ],
+      "javacExit": 0,
+      "compilerLogBytes": 0,
+      "affectedTestsPassed": 12,
+      "failures": 0,
+      "javacEvidence": "output/table-output-import-trace-20261105/merge-verification/backend-warning-delta-javac.json",
+      "log": "output/table-output-import-trace-20261105/merge-verification/backend-warning-delta-surefire.log",
+      "history": "Original full-build warning log and unchanged 5768-input snapshot are retained; this delta does not recast that run as warning-free."
+    }
+  },
+  "notPerformed": [
+    "Remote push",
+    "Complete GitHub CI for the combined commit",
+    "Formal installation/update artifacts",
+    "Production deployment/activation",
+    "Company or Win7 real-machine UAT"
+  ]
+}

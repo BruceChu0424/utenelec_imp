@@ -93,7 +93,7 @@ public final class GoodsCostDocumentMapper {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (CostLine line : snapshot.calculation().lines()) {
             if (partial && !paths.contains(line.path())) continue;
-            Map<String, Object> row = row("goodsCode", line.goodsCode(), "goodsName", line.goodsName(),
+            Map<String, Object> row = row("rowKey", line.path(), "goodsCode", line.goodsCode(), "goodsName", line.goodsName(),
                     "colorName", line.colorName(), "unitName", line.unitName(), "designQty", decimal(line.designQty()),
                     "actualQty", decimal(line.actualQty()), "adoptedQty", decimal(line.adoptedQty()),
                     "usageBasis", "ACTUAL".equals(line.usageBasis()) ? "真实使用量" : "MANUAL".equals(line.usageBasis()) ? "本单覆盖" : "设计使用量",
@@ -136,7 +136,8 @@ public final class GoodsCostDocumentMapper {
         var rows = calc.fees().stream().filter(f -> !partial || f.targetPath() != null && paths.contains(f.targetPath()))
                 .map(f -> {
                     CostLine material = f.targetPath() == null ? null : materials.get(f.targetPath());
-                    return row("name", f.name(), "type", feeTypeLabel(f.type()), "category", categoryLabel(f.category()), "target", f.targetPath(),
+                    return row("rowKey", feeRowKey(f.key(), f.targetPath()),
+                        "name", f.name(), "type", feeTypeLabel(f.type()), "category", categoryLabel(f.category()), "target", f.targetPath(),
                         "goodsName", material == null ? "整单费用" : material.goodsName(),
                         "goodsCode", material == null ? null : material.goodsCode(), "unitName", material == null ? calc.unitName() : material.unitName(),
                         "value", decimal(f.value()), "quantity", decimal(f.quantity()), "baseAmount", decimal(f.baseAmount()),
@@ -178,6 +179,11 @@ public final class GoodsCostDocumentMapper {
         Map<String, Object> result = new LinkedHashMap<>();
         for (int i = 0; i + 1 < entries.length; i += 2) result.put((String) entries[i], entries[i + 1]);
         return result;
+    }
+    /** Same UTF-16 length encoding as GoodsCostFeeRow.outputRowKey; null != empty path. */
+    public static String feeRowKey(String key, String path) {
+        if (key == null || key.isEmpty()) return null;
+        return key.length() + ":" + key + (path == null ? "-" : path.length() + ":" + path);
     }
     public static ExportColumn textCol(String key, String label) { return new ExportColumn(key, label, ExportColumn.TEXT); }
     public static ExportColumn numberCol(String key, String label) { return new ExportColumn(key, label, ExportColumn.QTY); }

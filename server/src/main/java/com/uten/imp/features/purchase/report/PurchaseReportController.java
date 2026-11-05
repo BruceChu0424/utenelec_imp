@@ -221,6 +221,7 @@ public class PurchaseReportController {
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('purchase_report:export')")
     public ResponseEntity<byte[]> export(

@@ -62,6 +62,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private bool disposed, subscribed, loading, openingEditor, changingFilters, changingSelection;
         private long sequence;
         private int page = 1, totalPages;
+        private long totalElements;
         public bool CanCloseForUpdate { get { return !openingEditor && editor == null && inlineWorkspace == null; } }
 
         public UnitsWorkspaceView(SessionCoordinator session)
@@ -285,6 +286,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 currentRows = snapshot.Value.Items;
                 DisplayRows(snapshot.Value.Items);
                 page = snapshot.Value.Page; totalPages = snapshot.Value.TotalPages;
+                totalElements = snapshot.Value.TotalElements;
                 pager.Text = page.ToString(CultureInfo.InvariantCulture) + " / " + Math.Max(1, totalPages).ToString(CultureInfo.InvariantCulture);
                 status.Text = snapshot.Value.TotalElements == 0 ? "没有符合条件的单位。" : "共 " + snapshot.Value.TotalElements.ToString(CultureInfo.InvariantCulture) + " 项";
                 var previousColumns = columnSnapshot;
@@ -487,8 +489,11 @@ namespace Uten.Legacy.Desktop.Features.Units
             openingEditor = true; UpdateActions();
             try
             {
-                var window = new UnitPrintWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot);
-                ClearSelection(true); window.ShowDialog();
+                var chosen = TableOutputScopeDialog.Choose(Window.GetWindow(this), "打印", selection.Count, totalElements);
+                if (chosen == null || disposed || loading || loadedOwner?.IsCurrent(session) != true || columnSnapshot?.IsCurrent(session) != true) return;
+                var ids = chosen.Value ? selection.Values.Select(row => row.Id).ToArray() : null;
+                var window = new UnitPrintWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot, ids);
+                window.ShowDialog();
             }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
             catch (Exception) { if (!disposed) status.Text = "暂时无法打开打印预览，请刷新后重试。"; }
@@ -500,8 +505,10 @@ namespace Uten.Legacy.Desktop.Features.Units
             openingEditor = true; UpdateActions();
             try
             {
-                var window = new UnitExportWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot.Projection, loadedOwner);
-                ClearSelection(true); window.ShowDialog();
+                var ids = selection.Values.Select(row => row.Id).ToArray();
+                var window = new UnitExportWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot.Projection, loadedOwner,
+                    selectedIds: ids, totalCount: totalElements, selectedOnly: false);
+                window.ShowDialog();
             }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
             catch (Exception) { if (!disposed) status.Text = "暂时无法打开单位导出，请刷新表头后重试。"; }

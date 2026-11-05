@@ -40,6 +40,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         var payload=new FulfillmentWorkbenchQueryService(em,access).exportSubcontract("COMPLETED","轴套","",
                 LocalDate.of(2026,8,1),LocalDate.of(2026,8,31),table,500);
         assertEquals(1,payload.total());
+        assertEquals(value[1],payload.rows().getFirst().get("taskId"));
         assertEquals("轴套",payload.rows().getFirst().get("goods"));
         assertEquals(BigDecimal.TEN,payload.rows().getFirst().get("requiredQty"));
         assertEquals("件",payload.rows().getFirst().get("unitName"));
@@ -96,6 +97,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         var values=pages.stream().flatMap(p->p.rows().stream()).toList();
         assertEquals(1001,values.stream().map(v->v.get("planNo")).distinct().count());
         assertEquals("PP-1000",values.getLast().get("planNo"));
+        assertEquals(raw.getLast()[1],values.getLast().get("taskId"));
         assertTrue(values.stream().allMatch(v->BigDecimal.TEN.equals(v.get("requiredQty"))));
         verify(rows,org.mockito.Mockito.never()).getSingleResult();
         ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(em,times(3)).createNativeQuery(sql.capture());

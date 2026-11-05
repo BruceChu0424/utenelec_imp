@@ -48,6 +48,8 @@ class SalesQuoteTemplateDownloadButton extends ConsumerWidget {
     }
     final l10n = AppLocalizations.of(context);
     return UtenExportButton(
+      // A source template is a complete quotation document, not a row dataset.
+      showOutputScope: false,
       key: ValueKey('sales-quote-template-download:$quoteId:$reviewRevision'),
       endpoint: '/sales/quotes/$quoteId/templates/export',
       report: 'quote',

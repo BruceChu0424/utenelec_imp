@@ -115,6 +115,8 @@ Map<String, dynamic> masterExportJobParameters(
   if (searches.isNotEmpty) filter['columnSearch'] = searches;
   return {
     'filter': jsonEncode(filter),
+    if (body['selectedIds'] != null)
+      'selectedIds': jsonEncode(body['selectedIds']),
     if (query['sort'] != null) 'sort': query['sort'],
     if (query['order'] != null) 'order': query['order'],
   };

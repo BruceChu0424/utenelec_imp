@@ -56,6 +56,7 @@ public class ProductionWorkshopTaskExportService {
     static Map<String, Object> row(ProductionExecutionWorkbenchSegment t) {
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("__recordId", t.segmentId().toString());
+        r.put("segmentId", t.segmentId().toString());
         r.put("status", ProductionWorkshopTaskStage.label(t));
         String route = switch (Objects.toString(t.startRoute(), "")) {
             case "FULL_KIT" -> "齐套生产"; case "CONTINUOUS" -> "持续生产"; case "BATCH" -> "分批生产"; default -> "选择生产路线";

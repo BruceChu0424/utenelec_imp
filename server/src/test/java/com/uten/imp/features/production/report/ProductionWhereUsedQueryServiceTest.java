@@ -654,6 +654,38 @@ class ProductionWhereUsedQueryServiceTest {
         return new ProductionWhereUsedQueryService(em);
     }
 
+    @Test
+    void productSubtreeAndSelectedRowsApplyToBothPagingAndEmptyPageCounts() {
+        UUID category=UUID.randomUUID(), product=UUID.randomUUID();
+        Query query=chainableQuery();
+        when(query.getResultList()).thenReturn(List.of());
+        when(query.getSingleResult()).thenReturn(1L);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        var filters=java.util.Map.of("categoryId",category.toString(),
+                "selectedProductIds","[\""+product+"\"]");
+        var response=service().whereUsed(UUID.randomUUID(),"current",null,null,2,50,null,null,filters);
+        assertThat(response.total()).isEqualTo(1);
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);
+        verify(em,org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        for(String statement:sql.getAllValues()) {
+            assertThat(compact(statement)).contains("row.product_id IN (:selectedProductIds)",
+                    "row.category_id IN (WITH RECURSIVE product_categories(id)",
+                    "JOIN product_categories parent ON child.parent_id=parent.id WHERE NOT child.is_deleted");
+        }
+        verify(query,org.mockito.Mockito.times(2)).setParameter("selectedProductIds",List.of(product));
+        verify(query,org.mockito.Mockito.times(2)).setParameter("productCategoryId",category);
+        assertThat(ProductionWhereUsedQueryService.supportsHeaderParameter("f.categoryId")).isTrue();
+        assertThat(ProductionWhereUsedQueryService.supportsHeaderParameter("f.selectedProductIds")).isTrue();
+        assertThat(ProductionWhereUsedQueryService.supportsHeaderParameter(null)).isFalse();
+    }
+
+    @Test
+    void malformedSelectionNeverFallsBackToAllRows() {
+        assertThrows(ApiException.class,()->service().whereUsed(UUID.randomUUID(),"current",null,null,
+                1,50,null,null,java.util.Map.of("selectedProductIds","[]")));
+        verifyNoInteractions(em);
+    }
+
     /** Catalog metadata is loaded once, independently of paging/evidence SQL. */
     private List<String> materialSql() {
         verify(em).createNativeQuery(ProductionWhereUsedQueryService.MATERIAL_CATEGORY_CATALOG);

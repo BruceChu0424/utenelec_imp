@@ -101,6 +101,7 @@ public class ReferenceMethodController {
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /settlement-admin 一致；V717） ----------
 
+    @com.uten.imp.common.web.JsonBodyLimit(2_200_000)
     @PostMapping("/settlement-admin/export")
     @PreAuthorize("hasAuthority('settlement_method:export')")
     public ResponseEntity<byte[]> exportSettlementAdmin(

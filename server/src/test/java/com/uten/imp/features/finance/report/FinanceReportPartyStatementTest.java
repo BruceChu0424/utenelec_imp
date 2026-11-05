@@ -43,7 +43,8 @@ class FinanceReportPartyStatementTest {
         when(data.getResultList()).thenReturn(List.<Object[]>of(new Object[]{Date.valueOf("2026-02-10"),"SK-NEW","USD",
                 BigDecimal.ZERO,null,BigDecimal.ZERO,new BigDecimal("30"),new BigDecimal("7"),new BigDecimal("210"),
                 new BigDecimal("70"),new BigDecimal("7"),new BigDecimal("490"),"已核验",
-                UUID.nameUUIDFromBytes("USD".getBytes(java.nio.charset.StandardCharsets.UTF_8))}));
+                UUID.nameUUIDFromBytes("USD".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                "30:20000000-0000-4000-8000-000000000001"}));
         List<String> sql=new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
             String value=call.getArgument(0);sql.add(value);
@@ -57,6 +58,7 @@ class FinanceReportPartyStatementTest {
                 LocalDate.of(2026,2,1),LocalDate.of(2026,2,28),1,50);
         assertThat(result.rows()).hasSize(1);
         assertThat(result.rows().getFirst().get("refNo")).isEqualTo("SK-NEW");
+        assertThat(result.rows().getFirst().get("__lineId")).isEqualTo("30:20000000-0000-4000-8000-000000000001");
         assertThat(result.rows().getFirst().get("__currencyId")).isNotNull();
         assertThat(result.columns()).noneMatch(column -> column.key().startsWith("__"));
         assertThat((BigDecimal)result.rows().getFirst().get("balanceOriginal")).isEqualByComparingTo("70");

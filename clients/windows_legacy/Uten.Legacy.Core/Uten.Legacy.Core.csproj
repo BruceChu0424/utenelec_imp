@@ -88,6 +88,9 @@
     <Compile Include="Tests\ManagedHttp11Checks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\CoreContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\UserErrorMessageChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <EmbeddedResource Include="..\..\..\contracts\table-output-selection\v1.json" Condition=" '$(Configuration)' == 'Debug' ">
+      <LogicalName>Uten.Legacy.Core.TableOutputSelectionFixture.json</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="..\..\..\contracts\user-error-message\v1.json" Condition=" '$(Configuration)' == 'Debug' ">
       <LogicalName>Uten.Legacy.Core.UserErrorMessageFixture.json</LogicalName>
     </EmbeddedResource>

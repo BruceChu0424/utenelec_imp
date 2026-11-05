@@ -30,8 +30,8 @@ import static org.mockito.Mockito.when;
  *
  * <p>导出一直写「备注」列（goods.paper），GoodsSaveRequest 本就开放编辑，但导入
  * 表头别名表把它登记为 ignored ——「导出 → 在表里改 → 再导入」会把备注悄悄吃掉。
- * 「模具编号 / 归属车间 / 所属仓库」仅供预览原文，DTO 未开放编辑，
- * 仍遵守 UUID-only 契约，不按名称反查和写入关系。</p>
+ * 归属车间/所属仓库仅供预览；模具编号可从源文件唯一解析为 UUID，
+ * 编号与名称不可在预览里手改，不按名称猜测关系。</p>
  */
 class GoodsImportPaperTest {
 

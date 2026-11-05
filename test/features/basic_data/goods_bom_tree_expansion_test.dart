@@ -245,6 +245,31 @@ void _completePendingBranches(_TreeRepo repo) {
 }
 
 void main() {
+  testWidgets('已选一条业务关系完整输出两条出现路径且不带入同货品其他关系', (tester) async {
+    final repo = _TreeRepo();
+    await _pump(tester, repo);
+    await tester.tap(find.byKey(const Key('goods-bom-tree-expansion')));
+    await tester.pumpAndSettle();
+    MasterDataTableView<dynamic> table() => tester.widget(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<dynamic>,
+      ),
+    );
+    table().onSelectedIdsChanged!({'assembly-a|a-x'});
+    await tester.pumpAndSettle();
+    final snapshot = (await tester.runAsync(
+      () => table().outputSelection!().snapshot(),
+    ))!;
+    expect(table().selectedIds, {'assembly-a|a-x'});
+    expect(snapshot.count, 2);
+    expect(snapshot.rows, [
+      {'seq': '1.1', 'componentGoodsId': 'shared-x'},
+      {'seq': '3.1', 'componentGoodsId': 'shared-x'},
+    ]);
+    expect(snapshot.ids, {'root/root-a/a-x', 'root/root-c/a-x'});
+    expect(repo.writes, 0);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'numeric BOM header keeps visible ancestor paths without expanding or writing',
     (tester) async {

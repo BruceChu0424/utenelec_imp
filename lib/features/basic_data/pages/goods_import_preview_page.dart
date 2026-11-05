@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_picker_icon_button.dart';
@@ -125,6 +126,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
   int _revision = 0;
   int _categoryRevision = 0;
   bool _checking = false;
+  bool _showBusy = false;
   bool _confirmingMoves = false;
   late bool _dirty = widget.needsValidation;
   String? _message;
@@ -296,13 +298,14 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     _debounce = Timer(const Duration(milliseconds: 650), _validate);
   }
 
-  Future<bool> _validate({Set<int>? exclusions}) async {
+  Future<bool> _validate({Set<int>? exclusions, bool showBusy = false}) async {
     _debounce?.cancel();
     if (_checking || !mounted) return false;
     final revision = _revision;
     final excluded = Set<int>.unmodifiable(exclusions ?? _removed);
     setState(() {
       _checking = true;
+      _showBusy = showBusy;
       _message = null;
     });
     try {
@@ -340,7 +343,10 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       return false;
     } finally {
       if (mounted) {
-        setState(() => _checking = false);
+        setState(() {
+          _checking = false;
+          _showBusy = false;
+        });
         if (revision != _revision) {
           _debounce = Timer(const Duration(milliseconds: 300), _validate);
         }
@@ -391,7 +397,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       }
     });
     _publishDraft();
-    _validate();
+    _validate(showBusy: true);
   }
 
   Future<void> _confirm() async {
@@ -406,7 +412,10 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     if (remaining.isNotEmpty) {
       final revision = _revision;
       final previousChanges = _reviewFingerprint(_report, selected);
-      setState(() => _checking = true);
+      setState(() {
+        _checking = true;
+        _showBusy = true;
+      });
       try {
         confirmedReport = await widget.detect(
           freezeGoodsImportCorrections(_corrections),
@@ -421,7 +430,12 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
         }
         return;
       } finally {
-        if (mounted) setState(() => _checking = false);
+        if (mounted) {
+          setState(() {
+            _checking = false;
+            _showBusy = false;
+          });
+        }
       }
       if (!mounted || revision != _revision) {
         if (mounted) _validate();
@@ -432,7 +446,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
           previousChanges != _reviewFingerprint(confirmedReport, selected)) {
         // Keep every unselected source row in the editable preview. A selected
         // plan is only a commit receipt, never the full preview's new dataset.
-        await _validate();
+        await _validate(showBusy: true);
         if (!mounted) return;
         setState(() => _message = '货品资料已有变化，请重新核对后确认');
         return;
@@ -677,7 +691,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
                             controller: controller,
                             errorMessage: error,
                             onChanged: (value) => _edit(row, field, value),
-                            onFieldSubmitted: (_) => _validate(),
+                            onFieldSubmitted: (_) => _validate(showBusy: true),
                           ),
                         ),
                       ),
@@ -754,6 +768,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       'productionWorkshopName': '生产车间',
       'mouldCode': '模具编号',
       'mouldName': '模具名称',
+      'resolvedMouldName': '关联模具名称',
     };
     return [
       MasterColumnDef(
@@ -839,13 +854,25 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
             defaultVisible:
                 !_readOnlyFields.contains(entry.key) ||
                 entry.key == 'goodsId' ||
+                (const {
+                      'mouldCode',
+                      'mouldName',
+                      'resolvedMouldName',
+                    }.contains(entry.key) &&
+                    _rows.any((row) => _value(row, entry.key).isNotEmpty)) ||
                 (entry.key == 'bomRef' &&
                     _rows.any((row) => _value(row, entry.key).isNotEmpty)) ||
                 _rows.any(
                   (row) => _cellError(row, entry.key, entry.value) != null,
                 ),
             info: _readOnlyFields.contains(entry.key)
-                ? (const {'goodsId', 'bomRef'}.contains(entry.key)
+                ? (entry.key == 'mouldCode'
+                      ? '按唯一模具编号关联，提交时复核模具资料；留空保留已有关系'
+                      : entry.key == 'mouldName'
+                      ? '原文件的模具名称，用于核对编号；不按名称匹配'
+                      : entry.key == 'resolvedMouldName'
+                      ? '当前编号对应的模具资料名称'
+                      : const {'goodsId', 'bomRef'}.contains(entry.key)
                       ? '从文件核对，需改动时修改原文件'
                       : '仅供核对，导入不修改此字段')
                 : null,
@@ -880,6 +907,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     'productionWorkshopName',
     'mouldCode',
     'mouldName',
+    'resolvedMouldName',
   };
 
   String _rowStatus(GoodsImportProblemRow row) {
@@ -1120,7 +1148,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
                         type: UtenButtonType.secondary,
                         icon: Icons.refresh,
                         isLoading: _checking,
-                        onPressed: () => _validate(),
+                        onPressed: () => _validate(showBusy: true),
                         child: Text(_dirty ? '检查修改' : '重新检查'),
                       ),
                     ],
@@ -1160,7 +1188,13 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     );
     return ColoredBox(
       color: theme.scaffoldBackgroundColor,
-      child: UtenContentContainer.wide(selectable: false, child: page),
+      child: Stack(
+        children: [
+          UtenContentContainer.wide(selectable: false, child: page),
+          if (_checking && _showBusy)
+            const UtenBusyOverlay(title: '正在检查货品', showDoNotLeaveHint: false),
+        ],
+      ),
     );
   }
 }

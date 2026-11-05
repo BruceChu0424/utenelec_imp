@@ -7,6 +7,7 @@ import '../../../core/formatters/exact_number_text.dart';
 // 顶部工具条+货架图随上滑收起、表格置顶后表内滚动（UtenCollapsingHeaderScrollView）。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
@@ -20,9 +21,12 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/data_display/uten_rack_grid.dart';
+import '../../../components/data_display/uten_table_output_scope.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -31,6 +35,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
@@ -48,6 +53,8 @@ import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
+import '../../../shared/platform_tables/table_column_projection.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../stock/repositories/stock_query_repository.dart';
@@ -73,6 +80,10 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   /// 仓库只限定查询范围，所含实际仓库与颜色不合并。
   String? _warehouseId;
   bool _includeDisabled = false;
+  Set<String> _outputIds = {};
+  bool _preparingPrint = false;
+  Completer<void>? _printReadRetired;
+  int _printPreparation = 0;
 
   /// 货架图 ↔ 表格 的双向定位键（库位号）。
   String? _selectedPlace;
@@ -91,6 +102,10 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     super.initState();
     listenReadOwner(ref, () {
       _rowRequests.begin();
+      ++_printPreparation;
+      if (_printReadRetired?.isCompleted == false) {
+        _printReadRetired!.complete();
+      }
       setState(() {
         _rows = null;
         _loading = false;
@@ -100,12 +115,20 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         _warehouseId = null;
         _placeFilterActive = false;
         _filters.clear();
+        _outputIds = {};
+        _preparingPrint = false;
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_warmWarehouseNames());
       _load();
     });
+  }
+
+  @override
+  void dispose() {
+    if (_printReadRetired?.isCompleted == false) _printReadRetired!.complete();
+    super.dispose();
   }
 
   Future<void> _warmWarehouseNames() async {
@@ -147,6 +170,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     final query = (_keyword, _warehouseId, _includeDisabled);
     setState(() {
       if (_acceptedQuery != query) _rows = null;
+      if (_acceptedQuery != query) _outputIds = {};
       _loading = true;
       _error = null;
     });
@@ -318,7 +342,27 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
     if (_warehouseId != null) 'warehouseId': _warehouseId,
     'includeDisabled': _includeDisabled,
+    for (final entry in _filters.entries)
+      if (entry.value != null && entry.value!.isNotEmpty)
+        'f.${entry.key}': entry.value,
   };
+
+  static Map<String, String?> _outputSelector(ShelfLabelRow row) => {
+    'warehouseId': row.warehouseId,
+    'goodsId': row.goodsId,
+    'colorId': row.colorId,
+  };
+
+  void _onOutputSelectionChanged(Set<String> ids) {
+    final added = ids.difference(_outputIds);
+    setState(() => _outputIds = ids);
+    if (added.length == 1) {
+      final row = _tableRows
+          .where((row) => row.rowKey == added.single)
+          .firstOrNull;
+      if (row != null) _onRowSelected(row);
+    }
+  }
 
   // ---- 货架图 ↔ 表格 双向联动 --------------------------------------------
 
@@ -367,7 +411,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         ),
       ),
       MasterColumnDef(
-        key: 'warehouse',
+        key: 'warehouseName',
         label: l10n.shelfActualWarehouse,
         width: 150,
         value: (row) => row.warehouseName ?? l10n.shelfMasterOnly,
@@ -448,9 +492,11 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   ];
 
   /// 打印分组（按库行，未分层单独一组；用列头筛选后的行，与屏上所见一致）。
-  List<MapEntry<String, List<ShelfLabelRow>>> get _printGroups {
+  List<MapEntry<String, List<ShelfLabelRow>>> _printGroups(
+    List<ShelfLabelRow> rows,
+  ) {
     final map = <String, List<ShelfLabelRow>>{};
-    for (final r in _filteredRows) {
+    for (final r in rows) {
       map
           .putIfAbsent(
             '${r.warehouseId ?? 'master'}|${_rackLabel(r)}',
@@ -511,11 +557,17 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                 primary: true,
                 columns: _columns(),
                 rowKeyOf: (row) => row.rowKey,
+                selectable: true,
+                idOf: (row) => row.rowKey,
+                selectedIds: _outputIds,
+                onSelectedIdsChanged: _onOutputSelectionChanged,
+                outputSelectorOf: _outputSelector,
                 items: _tableRows,
                 facets: _facets,
                 nullCounts: const {},
                 filters: _filters,
                 onFilterChanged: (key, value) => setState(() {
+                  _outputIds = {};
                   if (value == null || value.isEmpty) {
                     _filters.remove(key);
                   } else {
@@ -533,15 +585,18 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                   _placeFilterActive = false;
                 }),
                 toolbarActions: [
-                  UtenButton(
-                    size: UtenButtonSize.large,
-                    // 工具条 large 档高度统一 44（与导出按钮一致，2026-09-25 口径）。
-                    height: UtenTableToolbar.controlHeight,
-                    icon: Icons.print_outlined,
-                    onPressed: (filtered.isEmpty || _loading)
-                        ? null
-                        : () => _showPrintPreview(context),
-                    child: const Text('预览打印'), // TODO(l10n): 补 arb
+                  Builder(
+                    builder: (actionContext) => UtenButton(
+                      size: UtenButtonSize.large,
+                      // 工具条 large 档高度统一 44（与导出按钮一致，2026-09-25 口径）。
+                      height: UtenTableToolbar.controlHeight,
+                      icon: Icons.print_outlined,
+                      onPressed:
+                          (filtered.isEmpty || _loading || _preparingPrint)
+                          ? null
+                          : () => _showPrintPreview(actionContext),
+                      child: const Text('预览打印'), // TODO(l10n): 补 arb
+                    ),
                   ),
                   UtenExportButton(
                     endpoint: '/stock/reports/export',
@@ -670,16 +725,88 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
 
   // ---- 预览打印（复刻挂牌版式：每库行独立 A4 横版页，末尾留白行供手写） ----
 
-  void _showPrintPreview(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => _ShelfLabelPrintDialog(
-        branding: ref.read(platformBrandingSnapshotProvider),
-        defaultTitle: _headerTitle,
-        groups: _printGroups,
-        exportQuery: _exportQuery,
-      ),
-    );
+  Future<void> _showPrintPreview(BuildContext actionContext) async {
+    if (_preparingPrint || _loading) return;
+    final ownerCurrent = captureReadOwner(ref);
+    final query = Map<String, dynamic>.unmodifiable(_exportQuery);
+    final selected = Set<String>.unmodifiable(_outputIds);
+    final title = _headerTitle;
+    final branding = ref.read(platformBrandingSnapshotProvider);
+    final repository = ref.read(stockQueryRepositoryProvider);
+    final projection = TableColumnProjectionScope.resolve(actionContext);
+    final generation = ++_printPreparation;
+    final retired = _printReadRetired = Completer<void>();
+    setState(() => _preparingPrint = true);
+    try {
+      final scope = await showUtenTableOutputScope(
+        context: actionContext,
+        action: '打印',
+        selectedCount: selected.length,
+      );
+      if (!ownerCurrent() || scope == null || !actionContext.mounted) return;
+      final rows = await UtenBusyOverlay.run(
+        actionContext,
+        title: '正在读取完整打印清单',
+        action: () => Future.any<List<ShelfLabelRow>?>([
+          repository.shelfLabelsForOutput(query: query),
+          retired.future.then((_) => null),
+        ]),
+      );
+      if (!mounted ||
+          !ownerCurrent() ||
+          !actionContext.mounted ||
+          rows == null) {
+        return;
+      }
+      final output = scope == UtenTableOutputScope.all
+          ? rows
+          : rows
+                .where((row) => selected.contains(row.rowKey))
+                .toList(growable: false);
+      if (scope == UtenTableOutputScope.selected &&
+          output.length != selected.length) {
+        context.appError('部分选中货架资料已变化，请刷新后重新勾选打印');
+        return;
+      }
+      final frozenProjection = TableColumnProjection(
+        tableKey: projection?.tableKey ?? 'warehouse.shelfLabels.output',
+        columns:
+            projection?.columns ??
+            [
+              for (final column in _columns())
+                TableProjectedColumn(
+                  key: column.key,
+                  label: column.label,
+                  width: column.width,
+                  type: column.type,
+                ),
+            ],
+        rowSelection: scope == UtenTableOutputScope.selected
+            ? output.map(_outputSelector).toList(growable: false)
+            : null,
+      );
+      if (!mounted) return;
+      await showReadOwnedDialog<void>(
+        ref: ref,
+        context: actionContext,
+        builder: (_) => _ShelfLabelPrintDialog(
+          branding: branding,
+          defaultTitle: title,
+          groups: _printGroups(output),
+          exportQuery: query,
+          projection: frozenProjection,
+          stillCurrent: ownerCurrent,
+        ),
+      );
+    } catch (error) {
+      if (mounted && ownerCurrent()) {
+        context.appApiError(error, fallback: '读取打印清单失败，请稍后重试');
+      }
+    } finally {
+      if (mounted && generation == _printPreparation) {
+        setState(() => _preparingPrint = false);
+      }
+    }
   }
 }
 
@@ -691,18 +818,56 @@ class _ShelfLabelPrintDialog extends StatefulWidget {
     required this.defaultTitle,
     required this.groups,
     required this.exportQuery,
+    required this.projection,
+    required this.stillCurrent,
   });
 
   final String defaultTitle;
   final PlatformBranding branding;
   final List<MapEntry<String, List<ShelfLabelRow>>> groups;
   final Map<String, dynamic> exportQuery;
+  final TableColumnProjection projection;
+  final bool Function() stillCurrent;
 
   @override
   State<_ShelfLabelPrintDialog> createState() => _ShelfLabelPrintDialogState();
 }
 
 class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
+  final _projection = TableColumnProjectionController();
+  bool _printing = false;
+  late final _previewPages = _paginatePreview();
+
+  List<({String rack, List<ShelfLabelRow> rows, int blanks})>
+  _paginatePreview() {
+    final pages = <({String rack, List<ShelfLabelRow> rows, int blanks})>[];
+    for (final group in widget.groups) {
+      if (group.value.isEmpty) {
+        pages.add((rack: group.key, rows: const [], blanks: _blankRows));
+      } else {
+        for (var start = 0; start < group.value.length; start += _rowsPerPage) {
+          final end = (start + _rowsPerPage).clamp(0, group.value.length);
+          pages.add((
+            rack: group.key,
+            rows: group.value.sublist(start, end),
+            blanks: end == group.value.length ? _blankRows : 0,
+          ));
+        }
+      }
+    }
+    return pages;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _projection.publish(
+      this,
+      widget.projection,
+      contextOwner: ModalRoute.of(context),
+    );
+  }
+
   PdfColor get _teal => widget.branding.usesDefaultColors
       ? const PdfColor.fromInt(0xFF1B7F8E)
       : PdfColor.fromInt(_paperPrimary.toARGB32());
@@ -722,6 +887,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
 
   @override
   void dispose() {
+    _projection.dispose();
     _title.dispose();
     super.dispose();
   }
@@ -732,47 +898,62 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
   }
 
   Future<void> _print() async {
+    if (_printing || !widget.stillCurrent()) return;
     final title = _effectiveTitle;
+    setState(() => _printing = true);
     try {
-      final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
-      final font = pw.Font.ttf(fontData);
-      final doc = pw.Document();
-      for (final g in widget.groups) {
-        final rows = g.value;
-        for (var i = 0; i < rows.length || i == 0; i += _rowsPerPage) {
-          final chunk = i < rows.length
-              ? rows.sublist(
-                  i,
-                  i + _rowsPerPage > rows.length
-                      ? rows.length
-                      : i + _rowsPerPage,
-                )
-              : const <ShelfLabelRow>[];
-          final isLastChunk = i + _rowsPerPage >= rows.length;
-          doc.addPage(
-            pw.Page(
-              pageFormat: PdfPageFormat.a4.landscape,
-              margin: const pw.EdgeInsets.all(24),
-              build: (_) => _pdfLabelPage(
-                font,
-                title,
-                g.key,
-                chunk,
-                padBlanks: isLastChunk ? _blankRows : 0,
-              ),
-            ),
-          );
-          if (rows.isEmpty) break;
-        }
-      }
-      await printPdfBytes(await doc.save(), '$title-货架目视化清单.pdf');
+      final bytes = await UtenBusyOverlay.run(
+        context,
+        title: '正在生成货架清单',
+        action: () => _buildPdf(title),
+      );
+      if (!mounted || !widget.stillCurrent()) return;
+      await printPdfBytes(bytes, '$title-货架目视化清单.pdf');
     } catch (caughtError) {
-      if (!mounted) return;
-      context.appApiError(
-        caughtError,
-        fallback: '生成打印件失败，请稍后重试',
-      ); // TODO(l10n): 补 arb
+      if (mounted && widget.stillCurrent()) {
+        context.appApiError(caughtError, fallback: '生成打印件失败，请稍后重试');
+      }
+    } finally {
+      if (mounted) setState(() => _printing = false);
     }
+  }
+
+  Future<Uint8List> _buildPdf(String title) async {
+    final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
+    final font = pw.Font.ttf(fontData);
+    final doc = pw.Document();
+    final budget = UiWorkBudget(
+      isCurrent: () => mounted && widget.stillCurrent(),
+      debugLabel: 'shelf-label-pdf',
+    );
+    for (final g in widget.groups) {
+      final rows = g.value;
+      for (var i = 0; i < rows.length || i == 0; i += _rowsPerPage) {
+        final chunk = i < rows.length
+            ? rows.sublist(
+                i,
+                i + _rowsPerPage > rows.length ? rows.length : i + _rowsPerPage,
+              )
+            : const <ShelfLabelRow>[];
+        final isLastChunk = i + _rowsPerPage >= rows.length;
+        await budget.checkpoint();
+        doc.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4.landscape,
+            margin: const pw.EdgeInsets.all(24),
+            build: (_) => _pdfLabelPage(
+              font,
+              title,
+              g.key,
+              chunk,
+              padBlanks: isLastChunk ? _blankRows : 0,
+            ),
+          ),
+        );
+        if (rows.isEmpty) break;
+      }
+    }
+    return doc.save();
   }
 
   /// PDF 单页：UTEN 头（左 logo 文案 / 中标题 / 右库行徽章）+ 五列斑马表 + 留白行。
@@ -934,75 +1115,88 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return UtenDialogFrame(
-      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 1080,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              UtenDialogHeader(
-                title: const Text('货架目视化清单'),
-                icon: Icons.view_list_outlined,
-                showCloseButton: true,
-                onClose: () => Navigator.of(context).pop(),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                child: UtenInput(
-                  label: '抬头标题',
-                  hint: '如：五金仓库物料库',
-                  controller: _title,
-                  onChanged: (_) => setState(() {}),
+    return TableColumnProjectionScope(
+      controller: _projection,
+      child: UtenDialogFrame(
+        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 1080,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UtenDialogHeader(
+                  title: const Text('货架目视化清单'),
+                  icon: Icons.view_list_outlined,
+                  showCloseButton: true,
+                  onClose: () => Navigator.of(context).pop(),
                 ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: Container(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(UtenSpacing.s16),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Center(
-                        child: SelectionArea(
-                          child: Column(
-                            children: [
-                              for (final g in widget.groups) ...[
-                                _paperLabel(theme, g.key, g.value),
-                                const SizedBox(height: UtenSpacing.s16),
-                              ],
-                            ],
-                          ),
-                        ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                  child: UtenInput(
+                    label: '抬头标题',
+                    hint: '如：五金仓库物料库',
+                    controller: _title,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: Container(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: SelectionArea(
+                      child: ListView.builder(
+                        key: const Key('shelf-label-print-pages'),
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        itemCount: _previewPages.length,
+                        itemBuilder: (context, index) {
+                          final page = _previewPages[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s16,
+                            ),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: _paperLabel(
+                                theme,
+                                page.rack,
+                                page.rows,
+                                blanks: page.blanks,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
                 ),
-              ),
-              UtenDialogActions(
-                children: [
-                  UtenButton(
-                    icon: Icons.print_outlined,
-                    onPressed: widget.groups.isEmpty ? null : _print,
-                    child: const Text('打印'), // TODO(l10n): 补 arb
-                  ),
-                  UtenExportButton(
-                    type: UtenButtonType.secondary,
-                    endpoint: '/stock/reports/export',
-                    report: 'shelf-labels',
-                    queryParams: widget.exportQuery,
-                    filename: '货架目视化清单',
-                    requiredPermission: Perm.stockReportExport,
-                    label: '下载Excel', // TODO(l10n): 补 arb
-                  ),
-                ],
-              ),
-            ],
+                UtenDialogActions(
+                  children: [
+                    UtenButton(
+                      icon: Icons.print_outlined,
+                      onPressed: widget.groups.isEmpty || _printing
+                          ? null
+                          : _print,
+                      isLoading: _printing,
+                      child: const Text('打印'), // TODO(l10n): 补 arb
+                    ),
+                    UtenExportButton(
+                      type: UtenButtonType.secondary,
+                      endpoint: '/stock/reports/export',
+                      report: 'shelf-labels',
+                      queryParams: widget.exportQuery,
+                      filename: '货架目视化清单',
+                      requiredPermission: Perm.stockReportExport,
+                      label: '下载Excel', // TODO(l10n): 补 arb
+                      showOutputScope: false,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1012,7 +1206,12 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
   /// 屏上纸面预览（与 PDF 同款版式；一个库行一张纸）。
   /// 这里刻意用 UtenColors 固定色而非 colorScheme：预览的是「打印出来的纸」，
   /// 纸永远是白的、抬头永远是品牌青绿，不随明暗主题变。
-  Widget _paperLabel(ThemeData theme, String rack, List<ShelfLabelRow> rows) {
+  Widget _paperLabel(
+    ThemeData theme,
+    String rack,
+    List<ShelfLabelRow> rows, {
+    required int blanks,
+  }) {
     return Container(
       width: 1000,
       decoration: BoxDecoration(
@@ -1024,7 +1223,15 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(AppLocalizations.of(context).shelfLocationQuantityHint),
+          Row(
+            children: [
+              const Text('库存参考'),
+              UtenFieldHintIcon(
+                info: AppLocalizations.of(context).shelfLocationQuantityHint,
+                dense: true,
+              ),
+            ],
+          ),
           Container(
             color: _paperPrimary,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1139,7 +1346,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                     _paperCell(rows[i].colorName),
                   ],
                 ),
-              for (var i = 0; i < 6; i++)
+              for (var i = 0; i < blanks; i++)
                 const TableRow(
                   children: [
                     _BlankCell(),
@@ -1155,7 +1362,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
           Align(
             alignment: Alignment.centerRight,
             child: Text(
-              '共 ${rows.length} 项 · 打印时每个库行自动分页', // TODO(l10n): 补 arb
+              '本页 ${rows.length} 项', // TODO(l10n): 补 arb
               style: theme.textTheme.labelSmall?.copyWith(
                 color: UtenColors.textSecondary,
               ),

@@ -114,7 +114,17 @@ final class ShelfLabelSql {
         return rows(warehouse, includeDisabled, hasRack, hasKw, true);
     }
 
+    static String rowsPage(boolean warehouse,boolean includeDisabled,boolean hasRack,boolean hasKw,
+                           java.util.Map<String,String> filters) {
+        return rows(warehouse,includeDisabled,hasRack,hasKw,true,filters);
+    }
+
     private static String rows(boolean warehouse, boolean includeDisabled, boolean hasRack, boolean hasKw, boolean paged) {
+        return rows(warehouse,includeDisabled,hasRack,hasKw,paged,java.util.Map.of());
+    }
+
+    private static String rows(boolean warehouse,boolean includeDisabled,boolean hasRack,boolean hasKw,
+                               boolean paged,java.util.Map<String,String> filters) {
         StringBuilder sql = new StringBuilder(shelfCte(warehouse, includeDisabled));
         sql.append("SELECT r.goods_id, r.place, r.code, r.series, r.name,\n")
            .append("       r.color_name, r.unit_name, r.qty, r.disabled, r.parsed,\n")
@@ -127,6 +137,12 @@ final class ShelfLabelSql {
         if (hasKw) {
             sql.append("   AND ").append(TaskKeywordSearch.conditionParameter("kw", "r.name", "r.code", "r.series", "r.place")).append('\n');
         }
+        if(filters.containsKey("rack")) {
+            sql.append("未分层".equals(filters.get("rack"))?" AND NOT r.parsed\n"
+                    :" AND r.parsed AND split_part(r.place,'-',1)=:headerRack\n");
+        }
+        if(filters.containsKey("level")) sql.append(" AND CASE WHEN r.parsed THEN split_part(r.place,'-',2)::int END=:headerLevel\n");
+        if(filters.containsKey("status")) sql.append(" AND r.disabled=:headerDisabled\n");
         sql.append(" ORDER BY r.parsed DESC,\n")
            .append("          split_part(r.place, '-', 1),\n")
            .append("          CASE WHEN r.parsed THEN split_part(r.place, '-', 2)::int END,\n")

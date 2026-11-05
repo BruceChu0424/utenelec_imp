@@ -18,6 +18,8 @@ namespace Uten.Legacy.Core.Tests
         private const string Filter = " { \"keyword\":\"kg\", \"nullFields\":[\"code\"] } ";
         public static void Run()
         {
+            RunSharedSelectionFixture();
+            RunSharedCapabilityFixture();
             ExactSubmitAndCredentialBoundary().GetAwaiter().GetResult();
             CancelNoBodyAndActualJobState().GetAwaiter().GetResult();
             KnownJobAcceptanceIsNotFileDelivery().GetAwaiter().GetResult();
@@ -29,6 +31,67 @@ namespace Uten.Legacy.Core.Tests
             LateReceiptCannotEnterNewOwner().GetAwaiter().GetResult();
             CorruptReceiptMetadataFailsClosed().GetAwaiter().GetResult();
             PureMetadataParserDoesNotTreatPresenceAsProof();
+            SelectedProofCannotExpandToAll().GetAwaiter().GetResult();
+        }
+        public static int RunSharedSelectionFixture()
+        {
+            var json = new System.Web.Script.Serialization.JavaScriptSerializer();
+            using (var stream = typeof(SessionCoordinator).Assembly.GetManifestResourceStream("Uten.Legacy.Core.TableOutputSelectionFixture.json"))
+            using (var reader = new StreamReader(stream ?? throw new InvalidOperationException("Missing shared table output fixture."), Encoding.UTF8))
+            {
+                var fixture = (Dictionary<string, object>)json.DeserializeObject(reader.ReadToEnd()); int count = 0;
+                foreach (Dictionary<string, object> sample in (object[])fixture["cases"])
+                {
+                    string raw = sample["raw"] as string;
+                    string body = raw == null ? SubmitBody() : SubmitBody().Replace("\"parameters\":{", "\"parameters\":{\"selectedIds\":" + json.Serialize(raw) + ",");
+                    bool valid = true;
+                    try { UnitExportMutationContract.SubmitObject(MutationJsonTree.Parse(body, 65536, false, 4096, false, true).Object); }
+                    catch (FormatException) { valid = false; }
+                    True(valid == (bool)sample["valid"], "shared selection fixture " + sample["name"]); count++;
+                }
+                string projection = "{\"tableKey\":\"master.unit\",\"scope\":\"master_unit\",\"columns\":[{\"key\":\"code\",\"label\":\"Code\",\"type\":\"text\"},{\"key\":\"name\",\"label\":\"Name\",\"type\":\"text\"},{\"key\":\"status\",\"label\":\"Status\",\"type\":\"text\"}]}";
+                var original = MutationJsonTree.Parse(projection,65536,false,4096,false,true);
+                var serverNull = MutationJsonTree.Parse(projection.Insert(1,"\"rowSelection\":null,"),65536,false,4096,false,true);
+                True(UnitColumnProjectionContract.Equivalent(original,serverNull), "optional server null rowSelection cannot block original native GET proof");
+                ThrowsFormat(()=>UnitColumnProjectionContract.Validate(MutationJsonTree.Parse(projection.Insert(1,"\"rowSelection\":[],"),65536,false,4096,false,true)));
+                return count;
+            }
+        }
+        public static int RunSharedCapabilityFixture()
+        {
+            var json=new System.Web.Script.Serialization.JavaScriptSerializer();
+            using(var stream=typeof(SessionCoordinator).Assembly.GetManifestResourceStream("Uten.Legacy.Core.TableOutputSelectionFixture.json"))
+            using(var reader=new StreamReader(stream??throw new InvalidOperationException("Missing shared table output fixture."),Encoding.UTF8))
+            {
+                var fixture=(Dictionary<string,object>)json.DeserializeObject(reader.ReadToEnd());int count=0;
+                foreach(Dictionary<string,object> sample in (object[])fixture["handshakeCases"])
+                {
+                    var value=(int)sample["status"]==404?new UnitExportCapabilities(false,0):SessionCoordinator.ParseUnitExportCapabilities(json.Serialize(sample["body"]));
+                    True(value.Available==(bool)sample["available"],"shared capability availability "+sample["name"]);
+                    True(value.SupportsSelection==(bool)sample["selectionAllowed"],"shared selected output gate "+sample["name"]);count++;
+                }
+                return count;
+            }
+        }
+        private static async Task SelectedProofCannotExpandToAll()
+        {
+            using (var f = new Fixture())
+            {
+                await f.Login();
+                var body = SubmitBody().Replace("\"parameters\":{", "\"parameters\":{\"selectedIds\":\"[\\\"" + Other + "\\\"]\",");
+                var original = f.Submit(body);
+                f.Post = (message, ct) => { throw new HttpRequestException("fixture lost selected submit"); };
+                await f.Session.MutateAsync(original, CancellationToken.None);
+                f.Get = (message, ct) => Ready(Json(View(SubmitBody())));
+                try { await f.Session.ReconcileUnitExportAsync(original.RequestId, f.Owner(), CancellationToken.None); }
+                catch (ApiException) { }
+                Equal(MutationJournalState.Unknown, (await f.Session.LoadMutationJournalAsync(original.RequestId, f.Owner(), CancellationToken.None)).State,
+                    "all-row proof cannot settle the original selected export");
+                f.Get = (message, ct) => Ready(Json(View(body)));
+                Equal(MutationOutcome.Confirmed, (await f.Session.ReconcileUnitExportAsync(original.RequestId, f.Owner(), CancellationToken.None)).Outcome,
+                    "exact frozen selected UUID proof settles only that original job");
+                Equal(1, f.Posts, "selection reconciliation never replays job submission");
+            }
         }
         private static async Task ExactSubmitAndCredentialBoundary()
         {

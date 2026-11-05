@@ -323,7 +323,7 @@ void main() {
             .selected,
         isTrue,
       );
-      expect(find.text('同时处理新增和修改'), findsOneWidget);
+      expect(find.byTooltip('同时处理新增和修改'), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(find.text('选择导入方式'), findsNothing);

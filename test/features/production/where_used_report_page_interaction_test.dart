@@ -11,6 +11,9 @@ import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +23,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -41,6 +45,7 @@ import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/stock_ledger/widgets/goods_production_trace_view.dart';
 import '../../support/filter_segment_tap.dart';
 import '../../support/audit_screenshot_support.dart';
+import '../../support/dialog_fixture_capture.dart';
 
 const _materialId = '11111111-1111-4111-8111-111111111111';
 const _alternateMaterialId = '33333333-3333-4333-8333-333333333333';
@@ -89,12 +94,14 @@ class _WhereUsedApi extends ApiClient {
     this.traceError,
     this.richActual = false,
     this.includeAlternativeMaterial = false,
+    this.currentBom = true,
   }) : super(Dio());
 
   Object? reportError;
   final Object? traceError;
   final bool richActual;
   final bool includeAlternativeMaterial;
+  final bool currentBom;
   final replacementRequests = <({String path, Map<String, dynamic> body})>[];
   int exportCalls = 0;
   Completer<void>? replacementPreviewGate;
@@ -367,7 +374,7 @@ class _WhereUsedApi extends ApiClient {
       'rows': [
         {
           '__productId': _productId,
-          '__currentBom': true,
+          '__currentBom': currentBom,
           '__currentDirect': true,
           '__currentDirectQty': 2.5,
           '__goodsStatus': '启用',
@@ -620,26 +627,28 @@ Future<void> _pumpSimplePage(
         ),
         isSuperAdminProvider.overrideWithValue(superAdmin),
       ],
-      child: RepaintBoundary(
-        key: _captureBoundary,
-        child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: theme,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('zh'),
-          builder: textScale == 1
-              ? null
-              : (context, child) {
-                  final media = MediaQuery.of(context);
-                  return MediaQuery(
-                    data: media.copyWith(
-                      textScaler: TextScaler.linear(textScale),
-                    ),
-                    child: child!,
-                  );
-                },
-          home: const WhereUsedReportPage(),
+      child: dialogFixtureBoundary(
+        RepaintBoundary(
+          key: _captureBoundary,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: theme,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+            builder: textScale == 1
+                ? null
+                : (context, child) {
+                    final media = MediaQuery.of(context);
+                    return MediaQuery(
+                      data: media.copyWith(
+                        textScaler: TextScaler.linear(textScale),
+                      ),
+                      child: child!,
+                    );
+                  },
+            home: const WhereUsedReportPage(),
+          ),
         ),
       ),
     ),
@@ -727,6 +736,139 @@ Finder _suggestion(String type, String id) =>
     find.byKey(ValueKey(('where-used-suggestion', type, id)));
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+  for (final size in [const Size(1440, 900), const Size(390, 844)]) {
+    testWidgets(
+      'capture output scope where-used ${size.width.toInt()}',
+      (tester) async {
+        await tester.runAsync(loadDialogFixtureFonts);
+        await _pumpSimplePage(
+          tester,
+          _WhereUsedApi(),
+          size: size,
+          theme: auditScreenshotTheme(buildLightTheme()),
+        );
+        await _selectMaterial(tester);
+        if (size.width < 760) {
+          final open = find.byKey(const Key('where-used-open-categories'));
+          await tester.ensureVisible(open);
+          await tester.tap(open);
+          await tester.pumpAndSettle();
+        }
+        await captureDialogFixture(
+          tester,
+          'where-used-${size.width.toInt()}',
+          outputDirectory: 'output/table-output-import-trace-20261105',
+        );
+        expect(tester.takeException(), isNull);
+      },
+      skip: !dialogFixtureCaptureEnabled,
+    );
+  }
+  testWidgets(
+    'product categories share list and export criteria while the current subject stays visible',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        permissions: {
+          Perm.productionWhereUsedView,
+          Perm.productionWhereUsedExport,
+        },
+      );
+      await _selectMaterial(tester);
+      expect(
+        find.byKey(const Key('where-used-current-subject')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const Key('where-used-current-subject')))
+            .data,
+        'A 螺丝 · MAT-001',
+      );
+      final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+        find.byKey(const Key('where-used-product-categories')),
+      );
+      tree.onNodeTap!(tree.nodes.single);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery, containsPair('f.categoryId', _materialCategoryId));
+      final export = tester.widget<UtenExportButton>(
+        find.byKey(const Key('where-used-export')),
+      );
+      expect(
+        export.queryParams,
+        containsPair('f.categoryId', _materialCategoryId),
+      );
+      await tester.tap(find.byKey(const Key('where-used-all-categories')));
+      await tester.pumpAndSettle();
+      expect(api.lastQuery!.containsKey('f.categoryId'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'cancelled relationship read preserves its subject and discards late rows',
+    (tester) async {
+      final api = _WhereUsedApi()..reportGate = Completer<void>();
+      await _pumpSimplePage(tester, api, size: const Size(1440, 900));
+      await _selectMaterial(tester, settleReport: false);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      tester.widget<UtenBusyOverlay>(find.byType(UtenBusyOverlay)).onCancel!();
+      await tester.pumpAndSettle();
+      expect(_subjectText(tester), 'A 螺丝 · MAT-001');
+      api.reportGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('墙壁插座成品'), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'history rows may be selected for output but cannot be replaced',
+    (tester) async {
+      final api = _WhereUsedApi(currentBom: false);
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        permissions: {
+          Perm.productionWhereUsedView,
+          Perm.productionWhereUsedExport,
+          Perm.goodsBomEdit,
+        },
+      );
+      await _selectMaterial(tester);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(table.idOf!(table.items.single), _productId);
+      table.onSelectedIdsChanged!({_productId});
+      await tester.pumpAndSettle();
+      final export = tester.widget<UtenExportButton>(
+        find.byKey(const Key('where-used-export')),
+      );
+      expect(export.selectedIds, {_productId});
+      expect(
+        export.queryForSelection!({_productId})['f.selectedProductIds'],
+        contains(_productId),
+      );
+      await tester.tap(find.byKey(const Key('where-used-replace')));
+      await tester.pumpAndSettle();
+      final owner = ProviderScope.containerOf(
+        tester.element(find.byType(WhereUsedReportPage)),
+      );
+      expect(
+        owner.read(appNotificationProvider).map((notice) => notice.message),
+        contains('已选项目包含仅有历史关系的产品，请取消这些勾选后再一键替换。'),
+      );
+      expect(api.replacementRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'initial material search guidance stays beside the existing heading',
     (tester) async {
@@ -952,10 +1094,20 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Excel'), findsOneWidget);
       expect(find.text('PDF'), findsOneWidget);
+      final description = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('组件、筛选条件、操作员、导出时间') ?? false),
+      );
+      await tester.tap(description);
+      await tester.pumpAndSettle();
       expect(find.textContaining('组件、筛选条件、操作员、导出时间'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
       await tester.tap(find.text('PDF'));
       await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNWidgets(2));
+      expect(find.byKey(const Key('uten-export-filename')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('table-output-all')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(api.exportCalls, 0);
@@ -1021,7 +1173,7 @@ void main() {
       );
       expect(
         table.idOf!({'__productId': 'history', '__currentBom': false}),
-        isNull,
+        'history',
       );
       await tester.tap(find.text('墙壁插座成品'));
       await tester.pumpAndSettle();

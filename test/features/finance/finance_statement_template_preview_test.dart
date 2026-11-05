@@ -63,6 +63,7 @@ void main() {
                   builder: (context) => Scaffold(
                     body: TextButton(
                       onPressed: () => showUtenPrintPreview(
+                        showOutputScope: false,
                         context: context,
                         title: kind == 'balance' ? '资产负债表' : '利润表',
                         subtitle: '编制单位：本地回归样例  单位：元',

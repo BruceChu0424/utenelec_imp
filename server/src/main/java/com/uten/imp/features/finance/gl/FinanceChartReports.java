@@ -7,6 +7,31 @@ import java.util.*;
 /** Both chart exports use the existing protected, snapshot-bound finance export pipeline. */
 public final class FinanceChartReports {
     private FinanceChartReports() { }
+
+    /** The directory keeps its displayed category and ordered mapping captions, rather than the audit-code schema. */
+    public static ReportTableResponse directory(EntityManager em,int page,int size,FinanceReportColumnOptions options,String keyword) {
+        var columns=List.of(ReportColumn.text("code","科目编码"),ReportColumn.text("name","科目名称"),
+                ReportColumn.text("currencyName","外币名称"),ReportColumn.text("classification","类别"),
+                ReportColumn.text("targets","对应科目"));
+        var classification=new StringBuilder("CASE c.classification ");
+        for(var group:FinanceTemplateContract.template("chartCodes").path("classifications")) {
+            classification.append("WHEN '").append(group.path("id").asText().replace("'","''"))
+                    .append("' THEN '").append(group.path("label").asText().replace("'","''")).append("' ");
+        }
+        classification.append("ELSE '待维护' END");
+        boolean searched=keyword!=null&&!keyword.isBlank();
+        String source="SELECT c.code,c.name,NULLIF(c.currency_name,'') AS \"currencyName\","
+                +classification+" AS classification,"
+                +" string_agg(s.code||' '||s.name,'；' ORDER BY s.path,s.id) FILTER (WHERE s.id IS NOT NULL) AS targets,c.sort_order"
+                +" FROM finance_chart_codes c LEFT JOIN finance_chart_code_styles m ON m.code=c.code"
+                +" LEFT JOIN payment_styles s ON s.id=m.style_id"
+                +(searched?" WHERE "+com.uten.imp.common.util.TaskKeywordSearch.conditionParameter("directoryKeyword","c.code","c.name"):"")
+                +" GROUP BY c.code,c.name,c.currency_name,c.classification,c.sort_order";
+        return FinanceProjectedReportTable.query(em,columns,source,
+                query->{if(searched)query.setParameter("directoryKeyword",com.uten.imp.common.util.KeywordSearch.phrase(keyword));},
+                "report.sort_order,report.code",options.filters(),Set.of("code","name","currencyName","classification","targets"),
+                page,size,options.sort(),options.order(),false,List.of());
+    }
     public static ReportTableResponse read(EntityManager em,boolean template,int page,int size,FinanceReportColumnOptions options) {
         if(template) {
             var columns=List.of(ReportColumn.text("code","科目编码"),ReportColumn.text("name","科目名称"),

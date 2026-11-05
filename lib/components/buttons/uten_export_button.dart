@@ -30,6 +30,9 @@ import 'uten_button.dart';
 import '../feedback/uten_dialog.dart';
 import '../feedback/uten_dialog_modules.dart';
 import '../feedback/uten_task_progress_dialog.dart';
+import '../data_display/uten_table_output_scope.dart';
+import '../inputs/uten_field_hint_icon.dart';
+import '../feedback/uten_busy_overlay.dart';
 
 /// A business export may select a template or a group of files before the
 /// shared password dialog. Cancellation never starts an export request.
@@ -39,6 +42,7 @@ class UtenExportSelection {
     this.filename,
     this.extension = 'xlsx',
     this.stillCurrent,
+    this.bodyForSelection,
   });
 
   final Map<String, dynamic> bodyParams;
@@ -47,6 +51,8 @@ class UtenExportSelection {
 
   /// Optional business context fence across preparation, password entry and file delivery.
   final bool Function()? stillCurrent;
+  final Map<String, dynamic> Function(List<Map<String, String?>> selectedRows)?
+  bodyForSelection;
 }
 
 /// 统一 Excel 导出入口，可选择普通下载或密码加密下载。
@@ -73,6 +79,11 @@ class UtenExportButton extends ConsumerStatefulWidget {
     this.icon = Icons.download_rounded,
     this.prepareExport,
     this.tableKey,
+    this.selectedIds,
+    this.queryForSelection,
+    this.showOutputScope = true,
+    this.frozenProjection,
+    this.legacyPrivateQuery = const {},
   });
 
   final String endpoint;
@@ -104,6 +115,13 @@ class UtenExportButton extends ConsumerStatefulWidget {
 
   final Future<UtenExportSelection?> Function()? prepareExport;
   final String? tableKey;
+  final Set<String>? selectedIds;
+  final Map<String, dynamic> Function(Set<String> ids)? queryForSelection;
+  final bool showOutputScope;
+  final TableColumnProjection? frozenProjection;
+
+  /// Durable adapters keep their named parameters; old direct endpoints receive these in the private body.
+  final Map<String, String> legacyPrivateQuery;
 
   @override
   ConsumerState<UtenExportButton> createState() => _UtenExportButtonState();
@@ -153,6 +171,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   Future<void> _onTap() async {
     if (!widget.enabled || !_authorized || _loading || _preparing) return;
     final operation = ++_operation;
+    final progressOwner = Object();
     final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final epoch = ref.read(exportContextEpochProvider);
     final api = ref.read(apiClientProvider);
@@ -167,6 +186,14 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     setState(() => _preparing = true);
     try {
       final scope = await api.captureRequestScope(isCurrent: current);
+      if (!mounted || !actionContext.mounted || !current()) return;
+      final table = TableColumnProjectionScope.resolve(
+        actionContext,
+        widget.tableKey,
+      );
+      final selected = Set<String>.unmodifiable(
+        widget.selectedIds ?? table?.outputSelection.ids ?? const <String>{},
+      );
       selection = widget.prepareExport == null
           ? const UtenExportSelection()
           : await widget.prepareExport!();
@@ -180,15 +207,65 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         context: actionContext,
         builder: (_) => _ExportFileDialog(
           format: selection!.extension,
+          selectedCount: selected.length,
+          showScope: widget.showOutputScope,
           defaultStem:
               selection.filename ??
               widget.filename ??
               'export_${widget.report}',
         ),
       );
-      if (choice == null || !mounted || !current()) return;
-      await _doExport(choice, selection, current, api, scope);
+      if (choice == null || !mounted || !actionContext.mounted || !current()) {
+        return;
+      }
+      final UtenExportSelection preparedSelection = selection;
+      await runUtenBlockingTask<void>(
+        context: actionContext,
+        title: AppLocalizations.of(context).exportPreparingFile,
+        isCurrent: current,
+        invalidation: _progressInvalidation,
+        owner: progressOwner,
+        task: () async {
+          final selectedOnly = choice.scope == UtenTableOutputScope.selected;
+          final selectedSnapshot =
+              selectedOnly &&
+                  widget.queryForSelection == null &&
+                  masterExportJobReport(widget.endpoint) == null &&
+                  table != null
+              ? await runUtenBlockingTask<UtenTableOutputSelection>(
+                  context: actionContext,
+                  title: '正在读取选中记录',
+                  isCurrent: current,
+                  invalidation: _progressInvalidation,
+                  owner: progressOwner,
+                  task: table.outputSelection.snapshot,
+                )
+              : null;
+          if (!mounted || !actionContext.mounted || !current()) return;
+          final selectedRows = selectedSnapshot?.rows;
+          if (selectedOnly &&
+              widget.queryForSelection == null &&
+              masterExportJobReport(widget.endpoint) == null &&
+              (selectedRows == null ||
+                  selectedRows.length != selected.length)) {
+            context.appError('选中记录缺少完整输出身份，请刷新后重试');
+            return;
+          }
+          await _doExport(
+            choice,
+            preparedSelection,
+            current,
+            api,
+            scope,
+            selectedOnly ? selected : null,
+            selectedRows,
+            progressOwner,
+          );
+        },
+      );
     } on ApiException catch (error) {
+      if (mounted && current()) context.appError(error.message);
+    } on FormatException catch (error) {
       if (mounted && current()) context.appError(error.message);
     } catch (_) {
       if (mounted && current()) {
@@ -210,14 +287,16 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
     bool Function() current,
     ApiClient api,
     AuthenticatedRequestScope scope,
+    Set<String>? selectedIds,
+    List<Map<String, String?>>? selectedRows,
+    Object progressOwner,
   ) async {
     if (!mounted || !widget.enabled || !current()) return;
     setState(() => _loading = true);
     final actionContext = UtenAppBarActionScope.actionContextOf(context);
-    final projection = TableColumnProjectionScope.resolve(
-      actionContext,
-      widget.tableKey,
-    );
+    final projection =
+        widget.frozenProjection ??
+        TableColumnProjectionScope.resolve(actionContext, widget.tableKey);
     final host = TableColumnProjectionScope.read(actionContext);
     if (host != null &&
         projection == null &&
@@ -235,6 +314,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
             tableKey: projection.tableKey,
             scope: projection.scope,
             sourceKeys: projection.sourceKeys,
+            rowSelection: selectedRows ?? projection.rowSelection,
             columns: projection.columns
                 .where((column) => column.exportable)
                 .toList(growable: false),
@@ -249,7 +329,19 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         (domain == 'audit' || domain == 'goods_actual_cost'
             ? supplementalExportJobReport(domain!, exportProjection?.tableKey)
             : widget.report);
-    final documentBody = {...widget.bodyParams, ...selection.bodyParams};
+    final query = {
+      ...widget.queryParams,
+      if (selectedIds != null && widget.queryForSelection != null)
+        ...widget.queryForSelection!(selectedIds),
+    };
+    final documentBody = {
+      ...widget.bodyParams,
+      ...selection.bodyParams,
+      if (selectedRows != null && selection.bodyForSelection != null)
+        ...selection.bodyForSelection!(selectedRows),
+      if (selectedIds != null && domain == 'master')
+        'selectedIds': selectedIds.toList(growable: false),
+    };
     if (domain == 'finance' &&
         ReportContactQuery.hasContactUrlValues(widget.queryParams)) {
       throw const FormatException('敏感列检索必须通过私有请求体提供');
@@ -259,7 +351,10 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         : domain == 'master'
         ? selection.extension == 'xlsx' &&
               documentBody.keys.every(
-                (key) => key == 'format' || key == 'sensitiveFilter',
+                (key) =>
+                    key == 'format' ||
+                    key == 'sensitiveFilter' ||
+                    key == 'selectedIds',
               )
         : domain == 'where_used'
         ? {'xlsx', 'pdf'}.contains(selection.extension) &&
@@ -270,39 +365,43 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
                 (key) => key == 'format' || key == 'sensitiveFilter',
               )
         : selection.extension == 'xlsx' && documentBody.isEmpty;
-    if (domain != null && supportsTask) {
-      final jobs = ReportExportJobsClient(api, scope);
-      final available = await runUtenBlockingTask(
+    final selectedOutput =
+        selectedIds != null ||
+        exportProjection?.rowSelection != null ||
+        documentBody['selectedIds'] != null ||
+        widget.legacyPrivateQuery.keys.any(query.containsKey);
+    final jobs = ReportExportJobsClient(api, scope);
+    var available = false;
+    if (selectedOutput || (domain != null && supportsTask)) {
+      available = await runUtenBlockingTask(
         context: actionContext,
         title: AppLocalizations.of(context).exportPreparingFile,
         isCurrent: current,
         invalidation: _progressInvalidation,
+        owner: progressOwner,
         task: jobs.available,
       );
       if (!mounted || !current() || !actionContext.mounted) return;
+      if (selectedOutput && !jobs.supportsSelectedOutput) {
+        throw ApiException(
+          'OUTPUT_SELECTION_UNSUPPORTED',
+          '当前服务端尚未支持选中范围输出，请更新服务端后重试；本次未生成文件',
+        );
+      }
+    }
+    if (domain != null && supportsTask) {
       if (available) {
         final request = ReportExportJobRequest.create(
           domain: domain,
           report: taskReport,
           format: selection.extension,
           parameters: domain == 'audit' || domain == 'goods_actual_cost'
-              ? supplementalExportJobParameters(
-                  domain,
-                  widget.queryParams,
-                  documentBody,
-                )
+              ? supplementalExportJobParameters(domain, query, documentBody)
               : domain == 'master'
-              ? masterExportJobParameters(
-                  taskReport,
-                  widget.queryParams,
-                  documentBody,
-                )
+              ? masterExportJobParameters(taskReport, query, documentBody)
               : domain == 'finance'
-              ? reportContactExportJobParameters(
-                  widget.queryParams,
-                  documentBody,
-                )
-              : widget.queryParams,
+              ? reportContactExportJobParameters(query, documentBody)
+              : query,
           columnProjection:
               domain != 'where_used' &&
                   exportProjection != null &&
@@ -313,47 +412,56 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
         // The task dialog owns progress now; keep the underlying action gated
         // by _preparing without spinning an obscured button indefinitely.
         setState(() => _loading = false);
-        await showDialog<void>(
-          context: actionContext,
-          barrierDismissible: false,
-          builder: (_) => ReportExportJobDialog(
-            client: jobs,
-            request: request,
-            store: ReportExportPendingStore(
-              ref.read(sharedPreferencesProvider),
-              scope.identity,
-              domain,
-              taskReport,
-              format: selection.extension,
-            ),
-            stillCurrent: current,
-            onDownload: (job) async {
-              final filename = _exportFilename(selection, choice);
-              final saved = await jobs.downloadToFile(
-                job.id,
-                choice.password,
-                filename,
-                directory: choice.directory,
-                stillCurrent: current,
-              );
-              if (!mounted || !current()) return;
-              if (saved != null) {
-                _announceSaved(saved, filename);
-                return;
-              }
-              if (job.bytes > 32 * 1024 * 1024) {
-                throw ApiException(
-                  'STREAMING_UNAVAILABLE',
-                  '当前浏览器不支持大文件保存，请使用桌面版下载原任务',
+        await UtenBusyOverlay.yieldWhile(
+          () => showDialog<void>(
+            context: actionContext,
+            barrierDismissible: false,
+            builder: (_) => ReportExportJobDialog(
+              client: jobs,
+              request: request,
+              store: ReportExportPendingStore(
+                ref.read(sharedPreferencesProvider),
+                scope.identity,
+                domain,
+                taskReport,
+                format: selection.extension,
+              ),
+              stillCurrent: current,
+              onDownload: (job) async {
+                final filename = _exportFilename(selection, choice);
+                final saved = await jobs.downloadToFile(
+                  job.id,
+                  choice.password,
+                  filename,
+                  directory: choice.directory,
+                  stillCurrent: current,
                 );
-              }
-              final bytes = await jobs.download(job.id, choice.password);
-              if (!mounted || !current()) return;
-              await _saveExport(bytes, selection, current, choice);
-            },
+                if (!mounted || !current()) return;
+                if (saved != null) {
+                  _announceSaved(saved, filename);
+                  return;
+                }
+                if (job.bytes > 32 * 1024 * 1024) {
+                  throw ApiException(
+                    'STREAMING_UNAVAILABLE',
+                    '当前浏览器不支持大文件保存，请使用桌面版下载原任务',
+                  );
+                }
+                final bytes = await jobs.download(job.id, choice.password);
+                if (!mounted || !current()) return;
+                await _saveExport(bytes, selection, current, choice);
+              },
+            ),
           ),
         );
         return;
+      }
+    }
+    final legacyQuery = Map<String, dynamic>.of(query);
+    final legacyBody = Map<String, dynamic>.of(documentBody);
+    for (final entry in widget.legacyPrivateQuery.entries) {
+      if (legacyQuery.containsKey(entry.key)) {
+        legacyBody[entry.value] = legacyQuery.remove(entry.key);
       }
     }
     await runUtenBlockingTask(
@@ -361,18 +469,18 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       title: AppLocalizations.of(context).exportPreparingFile,
       isCurrent: current,
       invalidation: _progressInvalidation,
+      owner: progressOwner,
       task: () async {
         final Uint8List bytes = await scope.run(
           () => api.downloadBytes(
             widget.endpoint,
             body: {
-              ...widget.bodyParams,
-              ...selection.bodyParams,
+              ...legacyBody,
               if (exportProjection != null)
                 'columnProjection': exportProjection.toJson(),
               'password': choice.password,
             },
-            query: {'report': widget.report, ...widget.queryParams},
+            query: {'report': widget.report, ...legacyQuery},
           ),
         );
         await scope.verify();
@@ -455,10 +563,12 @@ class _ExportFileChoice {
     required this.filename,
     required this.password,
     this.directory,
+    this.scope = UtenTableOutputScope.all,
   });
   final String filename;
   final String password;
   final String? directory;
+  final UtenTableOutputScope scope;
 }
 
 bool get _supportsDirectoryPicker =>
@@ -473,16 +583,25 @@ bool get _supportsDirectoryPicker =>
 /// 导出前置设置（全站统一）：文件名（必填）+ 保存位置（桌面版，默认桌面）+
 /// 可选密码，一个弹窗收齐，不再先密码后文件两个弹窗。取消返回 null。
 class _ExportFileDialog extends StatefulWidget {
-  const _ExportFileDialog({required this.format, required this.defaultStem});
+  const _ExportFileDialog({
+    required this.format,
+    required this.defaultStem,
+    this.selectedCount = 0,
+    this.showScope = true,
+  });
 
   final String format;
   final String defaultStem;
+  final int selectedCount;
+  final bool showScope;
 
   @override
   State<_ExportFileDialog> createState() => _ExportFileDialogState();
 }
 
 class _ExportFileDialogState extends State<_ExportFileDialog> {
+  UtenTableOutputScope _scope = UtenTableOutputScope.all;
+
   late final TextEditingController _name = TextEditingController(
     text: widget.defaultStem,
   );
@@ -491,6 +610,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
   final _dir = TextEditingController();
   String? _error;
   bool _passwordExpanded = false;
+  bool _choosingDirectory = false;
 
   @override
   void initState() {
@@ -514,15 +634,26 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
   }
 
   Future<void> _pickDirectory() async {
+    if (_choosingDirectory) return;
     final initial = _dir.text.trim().isNotEmpty ? _dir.text.trim() : null;
-    final picked = await FilePicker.platform.getDirectoryPath(
-      initialDirectory: initial,
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        _dir.text = picked;
-        _error = null;
-      });
+    setState(() => _choosingDirectory = true);
+    try {
+      final picked = await UtenBusyOverlay.run(
+        context,
+        title: '正在选择保存位置',
+        action: () =>
+            FilePicker.platform.getDirectoryPath(initialDirectory: initial),
+      );
+      if (picked != null && mounted) {
+        setState(() {
+          _dir.text = picked;
+          _error = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = '未能打开保存位置，请重试');
+    } finally {
+      if (mounted) setState(() => _choosingDirectory = false);
     }
   }
 
@@ -539,6 +670,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
   }
 
   void _submit() {
+    if (_choosingDirectory) return;
     final invalid = _validate();
     if (invalid != null) {
       setState(() => _error = invalid);
@@ -566,6 +698,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
       _ExportFileChoice(
         filename: stem,
         password: p,
+        scope: _scope,
         directory: _supportsDirectoryPicker && _dir.text.trim().isNotEmpty
             ? _dir.text.trim()
             : null,
@@ -578,8 +711,23 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final hasPassword = _pwd.text.isNotEmpty;
+    final media = MediaQuery.of(context);
+    final freeHeight =
+        media.size.height -
+        media.viewInsets.bottom -
+        media.padding.vertical -
+        48;
+    final scale = media.textScaler.scale(14) / 14;
+    final expandedHeight =
+        (_passwordExpanded ? (hasPassword ? 900 : 820) : 640) * scale +
+        (_error == null ? 0 : 48);
+    final adaptiveWidth = media.size.width < 1100
+        ? 520.0
+        : (media.size.width * 0.44).clamp(520.0, 680.0);
+
     return UtenAlertDialog(
-      maxWidth: 520,
+      maxWidth: adaptiveWidth,
+      scrollable: freeHeight < expandedHeight,
       showCloseButton: true,
       title: UtenDialogHeading(
         icon: Icons.file_download_outlined,
@@ -594,6 +742,25 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.showScope) ...[
+            UtenDialogField(
+              label: const Row(
+                children: [
+                  Text('导出范围'),
+                  UtenFieldHintIcon(
+                    info: '全部结果包含当前分类、搜索和表头筛选下的全部分页；仅已选保留当前勾选的记录。',
+                    dense: true,
+                  ),
+                ],
+              ),
+              child: UtenTableOutputScopeField(
+                value: _scope,
+                selectedCount: widget.selectedCount,
+                onChanged: (value) => setState(() => _scope = value),
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s16),
+          ],
           UtenDialogField(
             label: Text(l10n.exportFileNameLabel),
             child: Semantics(
@@ -655,7 +822,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton(
-                  onPressed: _pickDirectory,
+                  onPressed: _choosingDirectory ? null : _pickDirectory,
                   child: Text(l10n.exportBrowse),
                 ),
               ],

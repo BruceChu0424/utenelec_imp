@@ -31,9 +31,10 @@ public class ReportExportController {
     public ReportExportController(ReportExportService service,WorkbookDownloadService workbooks,AuditService audit,SecurityContextCurrentUser users) {
         this(service,workbooks,new TabularPdfExportService(),audit,users);
     }
+    @JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping public ReportExportService.View submit(@Valid @RequestBody ReportExportRequest request) { return service.submit(request); }
     @GetMapping public java.util.List<ReportExportService.View> recent() { return service.recent(); }
-    @GetMapping("/capabilities") public java.util.Map<String,Boolean> capabilities() { return java.util.Map.of("available",service.available()); }
+    @GetMapping("/capabilities") public java.util.Map<String,Object> capabilities() { return OutputSelectionProtocol.capabilities(service.available()); }
     @GetMapping("/{id}") public ReportExportService.View get(@PathVariable UUID id) { return service.get(id); }
     @GetMapping("/{id}/download-authorization")
     public java.util.Map<String,Boolean> downloadAuthorization(@PathVariable UUID id) {

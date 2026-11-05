@@ -13,6 +13,76 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 class GoodsCostDocumentMapperTest {
+    @Test void selectedSameNameFeesUseFrozenIdentityAndBothFilesKeepExactAmount() throws Exception {
+        var mapper = new ObjectMapper().findAndRegisterModules();
+        com.fasterxml.jackson.databind.node.ObjectNode root = mapper.valueToTree(snapshot());
+        var fees = root.withObject("/calculation").putArray("fees");
+        fees.addObject().put("key","same").put("targetPath","root/edge").put("name","同名费用")
+                .put("type","FIXED_BATCH").put("category","PROCESS").put("source","MANUAL")
+                .put("amount","1.111111111111111111111111");
+        fees.addObject().put("key","same").put("targetPath","root/other").put("name","同名费用")
+                .put("type","FIXED_BATCH").put("category","PROCESS").put("source","PRICE_COLUMN")
+                .put("amount","2.123456789012345678901234");
+        fees.addObject().put("key","global").putNull("targetPath").put("name","同名费用")
+                .put("type","FIXED_BATCH").put("category","PROCESS").put("source","MANUAL").put("amount","99");
+        var snapshot = mapper.treeToValue(root,GoodsCostContracts.Snapshot.class);
+        var projection = new TableColumnProjection("master.goods.cost.fees","view_goods_cost",List.of(
+                new TableColumnProjection.Column("name","伪造费用名称",180d,"text",null),
+                new TableColumnProjection.Column("amount","伪造金额",240d,"number",null),
+                new TableColumnProjection.Column("source","伪造来源",120d,"text",null)),
+                List.of(Map.of("rowKey",GoodsCostDocumentMapper.feeRowKey("same","root/other"))));
+        var service = new ExportDocumentProjectionService(new ExportTableProjectionService(mock(PlatformColumnService.class)));
+        var document = service.project(GoodsCostDocumentMapper.map(snapshot,"FEES",null,null),projection,"工序与费用","view_goods_cost");
+        assertThat(document.sections()).hasSize(1);
+        var section = document.sections().getFirst();
+        assertThat(section.rows()).hasSize(1);
+        assertThat(section.rows().getFirst()).containsEntry("source","PRICE_COLUMN");
+        assertThat((BigDecimal)section.rows().getFirst().get("amount")).isEqualByComparingTo("2.123456789012345678901234");
+        assertThat(section.columns()).extracting(c->c.label()).containsExactly("费用名称","测算金额","来源");
+        assertThat(section.columns()).noneMatch(c->c.key().equals("rowKey"));
+        byte[] xlsx = new com.uten.imp.common.export.XlsxExportService().buildDocument(document);
+        try(var book = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx))) {
+            assertThat(java.util.stream.IntStream.range(0,book.getNumberOfSheets()).mapToObj(book::getSheetName).toList())
+                    .containsExactlyInAnyOrder("说明","工序与费用");
+            var values = new java.util.ArrayList<String>();
+            for(var row:book.getSheet("工序与费用"))for(var cell:row)values.add(new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(cell));
+            assertThat(values).contains("2.123456789012345678901234").doesNotContain("1.111111111111111111111111");
+        }
+        byte[] pdf = new com.uten.imp.common.export.TabularPdfExportService().build(document,null);
+        try(var read = org.apache.pdfbox.Loader.loadPDF(pdf)) {
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(read).replaceAll("\\s+","");
+            assertThat(text).contains("2.123456789012345678901234").doesNotContain("1.111111111111111111111111");
+        }
+        var unknown = new TableColumnProjection(projection.tableKey(),projection.scope(),projection.columns(),List.of(Map.of("rowKey","missing")));
+        assertThatThrownBy(()->service.project(GoodsCostDocumentMapper.map(snapshot,"FEES",null,null),unknown,"工序与费用","view_goods_cost"))
+                .hasMessageContaining("选中记录");
+    }
+
+    @Test void feeIdentityUsesTheSameUtf16LengthsAndKeepsNullPathsDistinct() throws Exception {
+        var shared = new ObjectMapper().readTree(java.nio.file.Path.of("../contracts/table-output-cost-identities.json").toFile());
+        for(var sample:shared.path("fees")) {
+            String path=sample.path("targetPath").isNull()?null:sample.path("targetPath").textValue();
+            assertThat(GoodsCostDocumentMapper.feeRowKey(sample.path("feeKey").textValue(),path)).isEqualTo(sample.path("rowKey").textValue());
+        }
+    }
+
+    @Test void materialSelectionRetainsTheOriginalBomPathEvenWhenGoodsLabelsRepeat() throws Exception {
+        var mapper=new ObjectMapper().findAndRegisterModules();
+        com.fasterxml.jackson.databind.node.ObjectNode root=mapper.valueToTree(snapshot());
+        var lines=(com.fasterxml.jackson.databind.node.ArrayNode)root.path("calculation").path("lines");
+        var second=lines.get(0).deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)second).put("path","root/other").put("amount","22.123456789012345678901234");
+        lines.add(second);
+        var snapshot=mapper.treeToValue(root,GoodsCostContracts.Snapshot.class);
+        var projection=new TableColumnProjection("master.goods.cost.material","view_goods_cost",List.of(
+                new TableColumnProjection.Column("goodsName","名称",180d,"text",null),
+                new TableColumnProjection.Column("amount","金额",240d,"number",null)),List.of(Map.of("rowKey","root/other")));
+        var service=new ExportDocumentProjectionService(new ExportTableProjectionService(mock(PlatformColumnService.class)));
+        var document=service.project(GoodsCostDocumentMapper.map(snapshot,"MATERIAL",List.of("root/other"),null),projection,"选中物料","view_goods_cost");
+        assertThat(document.sections()).hasSize(1);
+        assertThat(document.sections().getFirst().rows()).hasSize(1);
+        assertThat((BigDecimal)document.sections().getFirst().rows().getFirst().get("amount")).isEqualByComparingTo("22.123456789012345678901234");
+    }
     @Test void frozenPricesQuantitiesAndAmountsAreDistinctAndClientLabelsDoNotBecomeAuthority() throws Exception {
         var snapshot = snapshot();
         var projection = new TableColumnProjection("cost", "view_goods_cost", List.of(

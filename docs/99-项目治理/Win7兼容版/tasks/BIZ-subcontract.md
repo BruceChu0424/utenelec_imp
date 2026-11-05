@@ -47,9 +47,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
+证据：`docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`；`clients/windows_legacy/progress/evidence/table-output-selection-20261105.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01公共商业字段权限合同更新：本模块实际存在的价格/金额/报表字段按对应价格码，finance:view:all只扩数据范围；历史/草稿/分析不得替代字段授权。本页不具商业事实的入口保持无价格字段。原生迁移状态/DoD不变，接入时复用后端权威及共享样例。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01公共商业字段权限合同更新：本模块实际存在的价格/金额/报表字段按对应价格码，finance:view:all只扩数据范围；历史/草稿/分析不得替代字段授权。本页不具商业事实的入口保持无价格字段。原生迁移状态/DoD不变，接入时复用后端权威及共享样例。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。；2026-11-05: Flutter subcontract task export uses raw taskId selection; original business action selection is preserved. Native subcontract task business/output remains unported. See E-TABLE-OUTPUT-SELECTION-20261105.。
 
 ## W7-BIZ-155
 

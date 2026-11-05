@@ -32,6 +32,7 @@ public class GoodsActualCostExportController {
             @Pattern(regexp="xlsx|pdf") String format, @Size(max=128) String password,
             @Valid TableColumnProjection columnProjection) {}
 
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/api/master/goods/cost-sheets/actual/export")
     @PreAuthorize("hasAuthority('goods:view') and hasAuthority('goods:cost:view') and hasAuthority('goods:cost:export')")
     public ResponseEntity<byte[]> export(@Valid @RequestBody Request request) {

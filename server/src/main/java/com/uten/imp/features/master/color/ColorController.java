@@ -74,6 +74,7 @@ public class ColorController {
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致；V717） ----------
 
+    @com.uten.imp.common.web.JsonBodyLimit(2_200_000)
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('color:export')")
     public ResponseEntity<byte[]> export(

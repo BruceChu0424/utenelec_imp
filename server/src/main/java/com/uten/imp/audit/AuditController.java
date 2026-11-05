@@ -152,6 +152,7 @@ public class AuditController {
      * Password-encrypted Excel export of the current online filters.
      * Raw before/after snapshots remain detail-only and are not bulk exported.
      */
+    @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/export")
     @StepUpExempt("只读导出; 已要求个人点名授予的 audit_log:export、导出限流与导出审计")
     @PreAuthorize("hasAuthority('audit_log:view')"

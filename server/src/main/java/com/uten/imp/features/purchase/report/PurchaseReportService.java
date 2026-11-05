@@ -327,7 +327,7 @@ public class PurchaseReportService {
                 ReportColumn.number("unreceivedQty", "未收数量").withUnitKey("__unitName"),
                 ReportColumn.number("stockQty", "库存数量").withUnitKey("__baseUnitName"),
                 ReportColumn.number("safeStock", "安全库存").withUnitKey("__baseUnitName"),
-                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳采购订货单编辑页
+                ReportColumn.text("__srcId", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳采购订货单编辑页
         String differenceQuantity = com.uten.imp.common.finance.ProcurementDeliveryDifference.sql(
                 "i.qty", "i.received_qty", "i.returned_qty");
         String unreceivedQuantity = "(-" + differenceQuantity + ")";
@@ -341,7 +341,7 @@ public class PurchaseReportService {
                        %s AS "differenceQty",
                        %s AS "unreceivedQty",
                        COALESCE(sb.stock_qty,0) AS "stockQty", g.min_qty AS "safeStock",
-                       o.id AS "__srcId"
+                       o.id AS "__srcId", i.id AS "__lineId"
                 """.formatted(differenceQuantity, unreceivedQuantity);
         String fromJoin = """
                 FROM purchase_order_items i
@@ -395,7 +395,7 @@ public class PurchaseReportService {
                 ReportColumn.text("purchaseOrderNo", "采购订货单号", 130),
                 ReportColumn.text("salesOrderNo", "销售订货单号", 130), ReportColumn.text("productionPlanNo", "生产计划单号", 130),
                 ReportColumn.money("laborCost", "人工费").withUnitLabel("元"), ReportColumn.text("purchaseReply", "采购回复", 140),
-                ReportColumn.text("__srcId", ""));
+                ReportColumn.text("__srcId", ""), ReportColumn.text("__lineId", ""));
         String differenceQuantity = com.uten.imp.common.finance.ProcurementDeliveryDifference.balanceSql(
                 "(i.qty+CASE WHEN i.quantity_semantics='CHARGED_PLUS_GIFT_V1' THEN i.gift_qty ELSE 0 END)",
                 "(i.ordered_qty+i.gift_ordered_qty)");
@@ -411,7 +411,7 @@ public class PurchaseReportService {
                        i.ordered_qty AS "orderedQty", %s AS "differenceQty", i.purchase_order_no AS "purchaseOrderNo",
                        i.sales_order_no AS "salesOrderNo", i.production_plan_no AS "productionPlanNo",
                        g.work_e AS "laborCost", i.purchase_reply AS "purchaseReply",
-                       o.id AS "__srcId"
+                       o.id AS "__srcId", i.id AS "__lineId"
                 """.formatted(differenceQuantity);
         String fromJoin = """
                 FROM purchase_request_items i
@@ -502,7 +502,7 @@ public class PurchaseReportService {
                 ReportColumn.money("amount", "金额").withUnitKey("__currencyName"), ReportColumn.number("receivedQty", "收货数量").withUnitKey("__unitName"),
                 ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName"),
                 ReportColumn.number("differenceQty", "差异数").withUnitKey("__unitName"),
-                ReportColumn.text("__srcId", ""));
+                ReportColumn.text("__srcId", ""), ReportColumn.text("__lineId", ""));
         String differenceQuantity = com.uten.imp.common.finance.ProcurementDeliveryDifference.sql(
                 "i.qty", "i.received_qty", "i.returned_qty");
         String dataSelect = """
@@ -515,7 +515,7 @@ public class PurchaseReportService {
                        i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        i.received_qty AS "receivedQty", i.returned_qty AS "returnedQty",
                        %s AS "differenceQty",
-                       o.id AS "__srcId"
+                       o.id AS "__srcId", i.id AS "__lineId"
                 """.formatted(differenceQuantity);
         String fromJoin = """
                 FROM purchase_order_items i
@@ -604,7 +604,7 @@ public class PurchaseReportService {
                 ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
                 ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
                 ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
-                ReportColumn.text("__srcId", ""));
+                ReportColumn.text("__srcId", ""), ReportColumn.text("__lineId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        em_rec.full_name AS "receiverName",
@@ -617,7 +617,7 @@ public class PurchaseReportService {
                        i.weight AS "weight", oi.qty AS "orderQty", i.qty AS "qty", i.gift_qty AS "giftQty", i.price AS "price",
                        source_order_difference.qty AS "sourceOrderDifferenceQty",
                        source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
-                       o.id AS "__srcId"
+                       o.id AS "__srcId", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM purchase_receipt_items i
@@ -712,7 +712,7 @@ public class PurchaseReportService {
                 ReportColumn.money("price", "单价").withUnitKey("__currencyName"), ReportColumn.money("amount", "金额").withUnitKey("__currencyName"),
                 ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
                 ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
-                ReportColumn.text("__srcId", ""));
+                ReportColumn.text("__srcId", ""), ReportColumn.text("__lineId", ""));
         String dataSelect = """
                 SELECT (o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD')) AS "billNo",
                        sup.name AS "supplierName", wh.name AS "warehouseName",
@@ -724,7 +724,7 @@ public class PurchaseReportService {
                        i.weight AS "weight", i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        source_order_difference.qty AS "sourceOrderDifferenceQty",
                        source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
-                       o.id AS "__srcId"
+                       o.id AS "__srcId", i.id AS "__lineId"
                 """;
         String fromJoin = """
                 FROM purchase_return_items i

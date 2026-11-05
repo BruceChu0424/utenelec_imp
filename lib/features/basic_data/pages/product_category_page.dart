@@ -84,6 +84,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     with CategoryPageShell<ProductCategoryPage> {
   int _detailEpoch = 0;
   bool _bomBatchDialogOpen = false;
+  bool _goodsImportOpen = false;
   bool _includeRelated = false;
 
   @override
@@ -177,16 +178,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       if (ref.watch(currentPermissionsProvider).contains(Perm.goodsImport))
         TextButton(
           key: const ValueKey('goods-import-app-bar'),
-          onPressed: () async {
-            if (!await confirmMasterInlineLeave(context) || !context.mounted) {
-              return;
-            }
-            await showGoodsImportWithModePicker(
-              context,
-              ref,
-              onImported: _reloadAll,
-            );
-          },
+          onPressed: () => _openGoodsImport(onImported: _reloadAll),
           child: const Text('导入货品'), // TODO(l10n): 补 arb
         ),
     ];
@@ -225,6 +217,17 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         child: Text(l10n.goodsHistoryRedo),
       ),
     ];
+  }
+
+  Future<void> _openGoodsImport({required VoidCallback onImported}) async {
+    if (_goodsImportOpen || !_perms.contains(Perm.goodsImport)) return;
+    _goodsImportOpen = true;
+    try {
+      if (!await confirmMasterInlineLeave(context) || !mounted) return;
+      await showGoodsImportWithModePicker(context, ref, onImported: onImported);
+    } finally {
+      _goodsImportOpen = false;
+    }
   }
 
   @override
@@ -828,9 +831,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
             // 在内部把 large 档钉到 controlHeight，裸 UtenButton 必须显式带上，
             // 2026-09-25 平台统一口径）。
             height: UtenTableToolbar.controlHeight,
-            onPressed: () => showGoodsImportWithModePicker(
-              context,
-              ref,
+            onPressed: () => _openGoodsImport(
               onImported: () {
                 pane.reload(page: 1);
                 shellReload();

@@ -145,7 +145,7 @@ class PartyMonthlySnapshotPostgresTest {
         heal("AR",party);assertThat(dirtyCount("AR")).isZero();
         assertThat(db.queryForObject("SELECT net_local FROM party_monthly_summaries WHERE side='AR' AND party_id=?",BigDecimal.class,party)).isEqualByComparingTo("120");
     }
-    @Test void dirtyDeleteWaitsForAProducerThenRechecksXminInsteadOfDeletingItsNewVersion() throws Exception {
+    @Test void dirtyDeleteSkipsALockedProducerWithoutDeletingItsNewVersion() throws Exception {
         ledger("AR","100","2025-01-02");
         var aggregateReady=new CountDownLatch(1);var consumerPid=new AtomicInteger();var executor=Executors.newSingleThreadExecutor();
         try(var writer=db.getDataSource().getConnection()) {
@@ -156,10 +156,9 @@ class PartyMonthlySnapshotPostgresTest {
                 new PartyMonthlySummaryService(afterAggregation(session,aggregateReady::countDown)).reconcileNow("AR",party);tx.commit();
             }});
             assertThat(aggregateReady.await(15,TimeUnit.SECONDS)).isTrue();
-            long deadline=System.nanoTime()+Duration.ofSeconds(10).toNanos();boolean blocked=false;
-            while(System.nanoTime()<deadline) {if(Boolean.TRUE.equals(db.queryForObject("SELECT cardinality(pg_blocking_pids(?))>0",Boolean.class,consumerPid.get()))){blocked=true;break;}Thread.sleep(10);}
-            assertThat(blocked).as("consumer DELETE must really wait on the producer's marker tuple").isTrue();
-            writer.commit();future.get(15,TimeUnit.SECONDS);
+            future.get(2,TimeUnit.SECONDS);
+            assertThat(dirtyCount("AR")).as("the locked old marker remains while its producer is uncommitted").isEqualTo(1);
+            writer.commit();
             assertThat(dirtyCount("AR")).isEqualTo(1);heal("AR",party);assertThat(dirtyCount("AR")).isZero();
             assertThat(db.queryForObject("SELECT net_local FROM party_monthly_summaries WHERE side='AR' AND party_id=?",BigDecimal.class,party)).isEqualByComparingTo("120");
         } finally {executor.shutdownNow();}

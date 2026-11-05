@@ -44,7 +44,8 @@ class ProcurementApprovalHistoryQueryTest {
             assertTrue(statement.contains("c.status = 'APPROVED'"));
             assertFalse(statement.contains("WHERE c.status = 'PENDING'"));
             assertTrue(statement.contains("c.bill_no_snapshot = ?"));
-            assertTrue(statement.contains("LOWER(COALESCE(c.display_snapshot ->> 'supplierName'"));
+            assertTrue(statement.contains("COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '')"));
+            assertTrue(statement.contains(" ILIKE ? ESCAPE "));
         }
         assertTrue(listSql.getValue().contains("COALESCE(c.finance_exchange_rate"));
     }

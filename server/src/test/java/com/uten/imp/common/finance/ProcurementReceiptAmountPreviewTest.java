@@ -5,6 +5,9 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProcurementReceiptAmountPreviewTest {
+    private AutoCloseable selected;
+    @org.junit.jupiter.api.BeforeEach void selectOriginalExampleGrid(){selected=BusinessPrecisionContext.use(java.util.Map.of("money.cumulative-share",new BusinessPrecisionContext.Choice(4,"HALF_UP")));}
+    @org.junit.jupiter.api.AfterEach void clearSelection()throws Exception{selected.close();}
     private static BigDecimal n(String value) { return new BigDecimal(value); }
 
     @Test void multipleRowsForOneSourceWithinADraftShareTheRemainder() {

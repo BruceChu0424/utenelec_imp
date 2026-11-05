@@ -1,0 +1,35 @@
+{
+  "source": "D:\\Projects\\uten_imp_worktrees\\finance-full-chain-audit-20261104\\build\\finance-final-audit\\output-qa\\actual-web-2026-01-balance-sheet.xlsx",
+  "sourceSha256": "58b3864466c0d2142189dba0dbf9d8057177ed76c08bf4e4d0a7bfc74ea7cdfe",
+  "checks": {
+    "eightOriginalHeaders": true,
+    "all53OriginalLineNumbersExactlyOnce": true,
+    "all53LabelsExactAfterIndent": true,
+    "paperBodyRows": 32,
+    "periodEnd595": true,
+    "yearStart500": true,
+    "retainedProfit95": true,
+    "periodDate": true,
+    "statementCode": true,
+    "unit": true
+  },
+  "labelErrors": [],
+  "render": {
+    "engine": "LibreOffice 26.8 isolated profile",
+    "derivedFromActualXlsx": true,
+    "actualApplicationPdf": false,
+    "pages": 1,
+    "screenshot": "bs-xlsx-render-1.png",
+    "status": "VISUAL_DEFECT",
+    "clippedLabelCells": [
+      "A26",
+      "E35",
+      "E36"
+    ],
+    "amountClippingObserved": false,
+    "paperSizeInXlsx": null,
+    "renderedDefaultPaper": "Letter"
+  },
+  "actualApplicationPdfReceived": false,
+  "businessData": "Task-owned synthetic January book fixture only; no original Desktop business amounts"
+}

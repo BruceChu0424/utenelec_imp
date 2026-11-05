@@ -15,7 +15,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** The case balance chain must use the same ordering as the database guard. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class ProcurementCaseBookAllocationPostgresTest {
+    @SuppressWarnings("try")
     @Test void bothUuidSignBoundariesMatchDatabaseAndConserveTheFinalRemainder() throws Exception {
+        try(var choice=BusinessPrecisionContext.use(java.util.Map.of("money.book-share",new BusinessPrecisionContext.Choice(30,"DOWN")))){
         List<UUID> ids=List.of(
                 UUID.fromString("80000000-0000-0000-0000-000000000000"),
                 UUID.fromString("00000000-0000-0000-8000-000000000000"),
@@ -45,5 +47,6 @@ class ProcurementCaseBookAllocationPostgresTest {
         assertThat(allocated.getLast().amountLocal()).isGreaterThan(allocated.getFirst().amountLocal());
         assertThat(ProcurementReceiptConsiderationService.caseBookAllocations(
                 new BigDecimal("3"),new BigDecimal("100"),inputs.reversed())).isEqualTo(allocated);
+        }
     }
 }

@@ -204,6 +204,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail update(UUID id, FinanceBankTransferSaveRequest req) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeBankTransfer",id,"UPDATE");
 
         access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_bank_transfers",t);
@@ -225,6 +226,7 @@ public class FinanceBankTransferService {
     public void delete(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeBankTransfer",id,"DELETE");
 
         access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_bank_transfers",t);
@@ -243,6 +245,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeBankTransfer",id,"APPROVE");
 
         access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
                 "finance_bank_transfer:approve");
@@ -272,6 +275,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeBankTransfer",id,"UNAPPROVE");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_bank_transfers",t);
         requireUnapprovalHeader(t);
         glPosting.removeAutoProjection("BANK_TRANSFER", t.getId(), t.getBillNo(), t.getBillDate());

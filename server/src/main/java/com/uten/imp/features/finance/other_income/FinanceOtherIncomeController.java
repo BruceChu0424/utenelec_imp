@@ -47,6 +47,14 @@ public class FinanceOtherIncomeController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceDocumentActions documentActions;
+
+    @GetMapping("/{id}/review-operations/{requestId}")
+    @PreAuthorize("hasAuthority('finance_other_income:view')")
+    public java.util.Map<String,Object> reviewReceipt(@PathVariable UUID id,@PathVariable UUID requestId){return documentActions.receipt("financeOtherIncome",id,requestId);}
+    @PostMapping("/{id}/review-operations/{requestId}/cancel")
+    @PreAuthorize("hasAuthority('finance_other_income:view')")
+    public java.util.Map<String,Object> cancelReview(@PathVariable UUID id,@PathVariable UUID requestId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation request){return documentActions.cancel("financeOtherIncome",id,requestId,request);}
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_other_income:view')")
@@ -87,7 +95,7 @@ public class FinanceOtherIncomeController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_other_income:view')")
     public FinanceOtherIncomeDetail detail(@PathVariable UUID id) {
-        FinanceOtherIncomeDetail result = service.detail(id);
+        FinanceOtherIncomeDetail result = documentActions.reviewedDetail("financeOtherIncome",id,false);
         detailViewAudit.record(
                 "view_finance_other_income_detail",
                 "finance_other_incomes",
@@ -101,7 +109,7 @@ public class FinanceOtherIncomeController {
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('finance_other_income:view')")
     public FinanceOtherIncomeDetail history(@PathVariable UUID id) {
-        FinanceOtherIncomeDetail result = service.detailHistory(id);
+        FinanceOtherIncomeDetail result = documentActions.reviewedDetail("financeOtherIncome",id,true);
         detailViewAudit.recordHistory(
                 "view_finance_other_income_detail",
                 "finance_other_incomes",
@@ -120,34 +128,26 @@ public class FinanceOtherIncomeController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_other_income:edit')")
-    public FinanceOtherIncomeDetail update(@PathVariable UUID id, @Valid @RequestBody FinanceOtherIncomeSaveRequest req) {
-        return service.update(id, req);
+    public java.util.Map<String,Object> update(@PathVariable UUID id, @Valid @RequestBody com.uten.imp.features.finance.FinanceDocumentActions.UpdateCommand req) {
+        return documentActions.update("financeOtherIncome",id,req);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_other_income:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
+    public java.util.Map<String,Object> delete(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.delete("financeOtherIncome",id,command);
     }
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_other_income:approve')")
-    public FinanceOtherIncomeDetail approve(@PathVariable UUID id) {
-        FinanceOtherIncomeDetail result = service.approve(id);
-        // 审计：显式记录"谁审核了这张其它收入单"（触发器只记 update，业务语义在这里补）。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_other_income_approve", "finance_other_income", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> approve(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.approve("financeOtherIncome",id,command);
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('finance_other_income:reverse')")
-    public FinanceOtherIncomeDetail reverse(@PathVariable UUID id) {
-        FinanceOtherIncomeDetail result = service.reverse(id);
-        // 审计：显式记录"谁红冲了这张其它收入单"。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_other_income_reverse", "finance_other_income", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> reverse(@PathVariable UUID id,@RequestBody com.uten.imp.application.port.FinancialDocumentUnapprovalCommandPort.Command command) {
+        return documentActions.unapprove("financeOtherIncome",id,command);
     }
 
     @GetMapping("/{id}/history/rows")

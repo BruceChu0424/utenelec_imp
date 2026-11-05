@@ -86,6 +86,7 @@ mixin MasterInlinePageMixin<W extends ConsumerStatefulWidget, T>
               fields: config.fields,
               defaults: config.defaults,
               emptyRows: config.emptyRows,
+              showMissingFieldsAction: config.showMissingFieldsAction,
               columnFields: config.columnFields,
               canCreate: config.canCreate,
               onCreate: (key, values) async {

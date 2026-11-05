@@ -111,8 +111,8 @@ class ProcurementIqcReplacementAllocationBehaviorTest {
                 "insert into procurement_iqc_replacement_allocations");
         assertThat(allocation.parameters().get("qty"))
                 .isEqualTo(new BigDecimal("2"));
-        assertThat(allocation.parameters().get("baseQty"))
-                .isEqualTo(new BigDecimal("4.0000"));
+        assertThat((BigDecimal)allocation.parameters().get("baseQty"))
+                .isEqualByComparingTo("4.0000");
         assertThat((BigDecimal) allocation.parameters().get("original"))
                 .isEqualByComparingTo("0.0000");
         assertThat((BigDecimal) allocation.parameters().get("local"))

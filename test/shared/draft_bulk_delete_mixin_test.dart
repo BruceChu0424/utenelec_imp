@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
@@ -111,9 +112,15 @@ Future<void> _openConfirmation(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _confirm(WidgetTester tester) async {
+Future<void> _confirm(WidgetTester tester, {bool waitForIdle = true}) async {
   await tester.tap(find.text('确认删除'));
-  await tester.pumpAndSettle();
+  if (waitForIdle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+  }
 }
 
 void main() {
@@ -159,6 +166,23 @@ void main() {
     expect(fixture.notifications.single.kind, AppNotificationKind.warning);
     expect(fixture.notifications.single.message, contains('已删除 2 张'));
     expect(fixture.notifications.single.message, contains('1 张未删除：单据已提交财务'));
+    expect(fixture.state.draftDeleteBusy, isFalse);
+  });
+
+  testWidgets('逐单复核停止不计成功并停止后续条目', (tester) async {
+    final fixture = await _mount(tester);
+    fixture.operations.deleteHandler = (id) async {
+      if (id == 'b') {
+        throw ApiException('DRAFT_DELETE_STOPPED', '原请求仍待核对');
+      }
+    };
+    await _openConfirmation(tester);
+    await _confirm(tester);
+    expect(fixture.operations.deleted, ['a', 'b']);
+    expect(fixture.state.selectedDraftIds, {'b', 'c'});
+    expect(fixture.notifications.single.message, contains('已删除 1 张'));
+    expect(fixture.notifications.single.message, contains('原请求仍待核对'));
+    expect(fixture.notifications.single.message, isNot(contains('选择范围已变化')));
     expect(fixture.state.draftDeleteBusy, isFalse);
   });
 
@@ -241,7 +265,7 @@ void main() {
     final first = Completer<void>();
     fixture.operations.deleteHandler = (_) => first.future;
     await _openConfirmation(tester);
-    await _confirm(tester);
+    await _confirm(tester, waitForIdle: false);
     expect(fixture.operations.deleted, ['a']);
 
     fixture.state.clearDraftSelection();
@@ -261,7 +285,7 @@ void main() {
     final first = Completer<void>();
     fixture.operations.deleteHandler = (_) => first.future;
     await _openConfirmation(tester);
-    await _confirm(tester);
+    await _confirm(tester, waitForIdle: false);
     expect(fixture.operations.deleted, ['a']);
 
     fixture.changeIdentity();
@@ -292,7 +316,7 @@ void main() {
     start();
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
-    await _confirm(tester);
+    await _confirm(tester, waitForIdle: false);
     start();
     await tester.pump();
     expect(fixture.operations.deleted, ['a']);

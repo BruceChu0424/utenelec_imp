@@ -192,6 +192,7 @@ public class FinanceOtherIncomeService {
             PaymentStyleHierarchyLock.lock(em);
         }
         FinanceOtherIncome o = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeOtherIncome",id,"UPDATE");
 
         access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
@@ -214,6 +215,7 @@ public class FinanceOtherIncomeService {
     public void delete(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeOtherIncome",id,"DELETE");
 
         access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_other_incomes",o);
@@ -232,6 +234,7 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail approve(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeOtherIncome",id,"APPROVE");
 
         access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
                 "finance_other_income:approve");
@@ -280,6 +283,7 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeOtherIncome",id,"UNAPPROVE");
         requireUnapprovalHeader(o);
         glPosting.removeAutoProjection(RECON_SOURCE, o.getId(), o.getBillNo(), o.getBillDate());
         // 账户余额与流水由账本按原始流水一并冲回。

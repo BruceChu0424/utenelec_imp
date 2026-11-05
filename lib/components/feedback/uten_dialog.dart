@@ -117,6 +117,72 @@ class UtenAlertDialog extends AlertDialog {
             : null,
         padding: titlePadding?.resolve(Directionality.of(context)),
       );
+      Widget actionGroup() => UtenDialogActions(
+        padding: actionsPadding,
+        alignment: actionsAlignment ?? MainAxisAlignment.center,
+        overflowAlignment:
+            actionsOverflowAlignment ?? OverflowBarAlignment.center,
+        overflowDirection: actionsOverflowDirection ?? VerticalDirection.down,
+        overflowSpacing: actionsOverflowButtonSpacing ?? 8,
+        spacing: (buttonPadding?.horizontal ?? 16) / 2,
+        children: actions ?? const [],
+      );
+      final bodyPadding =
+          contentPadding ??
+          EdgeInsets.fromLTRB(
+            compact ? 12 : 24,
+            title == null && !showCloseButton ? 24 : 0,
+            compact ? 12 : 24,
+            24,
+          );
+      final bodyStyle =
+          contentTextStyle ??
+          Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            height: 1.55,
+          );
+      if (context
+              .dependOnInheritedWidgetOfExactType<UtenEmbeddedDialogScope>() !=
+          null) {
+        final actionCount = actions?.length ?? 0;
+        final minimumCanvas =
+            context.scaled(240) +
+            actionCount * context.scaled(48) +
+            (actionCount > 0 ? actionCount - 1 : 0) * 8 +
+            24;
+        Widget workspace = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (title != null || showCloseButton) header(),
+            Expanded(
+              child: body == null
+                  ? const SizedBox.shrink()
+                  : DefaultTextStyle.merge(
+                      style: bodyStyle,
+                      child: Padding(
+                        padding: bodyPadding,
+                        child: scrollable
+                            ? SingleChildScrollView(child: body)
+                            : body,
+                      ),
+                    ),
+            ),
+            if (actions?.isNotEmpty == true) actionGroup(),
+          ],
+        );
+        // A keyboard or short landscape canvas can leave less room than the
+        // fixed header/actions. Keep a bounded body and scroll the workspace
+        // in that exceptional case rather than clipping an action.
+        if (available.maxHeight < minimumCanvas) {
+          workspace = SingleChildScrollView(
+            child: SizedBox(height: minimumCanvas, child: workspace),
+          );
+        }
+        return UtenDialogSurface(
+          backgroundColor: backgroundColor,
+          child: workspace,
+        );
+      }
       AlertDialog alert(
         BoxConstraints box, {
         bool? canScroll,
@@ -141,38 +207,11 @@ class UtenAlertDialog extends AlertDialog {
               height: 1.3,
             ),
         content: body,
-        contentPadding:
-            contentPadding ??
-            EdgeInsets.fromLTRB(
-              compact ? 12 : 24,
-              title == null && !showCloseButton ? 24 : 0,
-              compact ? 12 : 24,
-              24,
-            ),
-        contentTextStyle:
-            contentTextStyle ??
-            Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              height: 1.55,
-            ),
+        contentPadding: bodyPadding,
+        contentTextStyle: bodyStyle,
         actions: actions == null || actions!.isEmpty
             ? null
-            : [
-                SizedBox(
-                  width: box.maxWidth,
-                  child: UtenDialogActions(
-                    padding: actionsPadding,
-                    alignment: actionsAlignment ?? MainAxisAlignment.center,
-                    overflowAlignment:
-                        actionsOverflowAlignment ?? OverflowBarAlignment.center,
-                    overflowDirection:
-                        actionsOverflowDirection ?? VerticalDirection.down,
-                    overflowSpacing: actionsOverflowButtonSpacing ?? 8,
-                    spacing: (buttonPadding?.horizontal ?? 16) / 2,
-                    children: actions!,
-                  ),
-                ),
-              ],
+            : [SizedBox(width: box.maxWidth, child: actionGroup())],
         actionsPadding: EdgeInsets.zero,
         actionsAlignment: actionsAlignment ?? MainAxisAlignment.center,
         actionsOverflowAlignment:
@@ -292,6 +331,14 @@ class _UtenDialogScrollBehavior extends UtenScrollBehavior {
 
 /// Larger business workspaces keep their own bounded body and fixed actions.
 /// Their width and height always fit the current canvas, keyboard and safe area.
+/// An adaptive panel can reuse the same body without nesting a second dialog.
+class UtenEmbeddedDialogScope extends InheritedWidget {
+  const UtenEmbeddedDialogScope({super.key, required super.child});
+
+  @override
+  bool updateShouldNotify(UtenEmbeddedDialogScope oldWidget) => false;
+}
+
 class UtenDialogFrame extends Dialog {
   const UtenDialogFrame({
     super.key,
@@ -318,6 +365,16 @@ class UtenDialogFrame extends Dialog {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, available) {
+      if (context
+              .dependOnInheritedWidgetOfExactType<UtenEmbeddedDialogScope>() !=
+          null) {
+        return SizedBox.expand(
+          child: UtenDialogSurface(
+            backgroundColor: backgroundColor,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      }
       final inset = insetPadding ?? utenDialogInsetPadding(context);
       return Dialog(
         backgroundColor: backgroundColor,

@@ -17,19 +17,22 @@ class SupplierSettlementAndClaimContractTest {
         String guards=Files.readString(MIGRATIONS.resolve("V362__supplier_settlement_snapshot_guards.sql"));
         String service=Files.readString(MAIN.resolve("SupplierSettlementService.java"))
                 +Files.readString(MAIN.resolve("SupplierSettlementSnapshotSql.java"));
+        String replay=Files.readString(Path.of("src/main/java/com/uten/imp/features/finance/SupplierAdvanceReplaySql.java"));
         assertThat(schema).contains("opening_balance_local","period_posted_local",
                 "period_paid_local","period_offset_local","closing_balance_local","snapshot_hash");
         assertThat(guards).contains("financial snapshot is immutable",
                 "snapshot lines are append-only","header totals do not equal frozen lines");
         assertThat(service)
                 .contains("paymentTermService.resolveDueDate",
-                "COALESCE(payment.reversed_at, payment.updated_at)",
+                "SupplierAdvanceReplaySql.reversalDate(\"payment\")",
                 " AT TIME ZONE 'Asia/Shanghai')::DATE",
                 "(reversed_at AT TIME ZONE 'Asia/Shanghai')::DATE",
                 "(ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::DATE",
                 "reversal_date","offset_event",
                 "当前月份尚未结束");
         assertThat(service).doesNotContain("updated_at::DATE", "reversed_at::DATE", "deleted_at::DATE");
+        assertThat(replay).contains("legacyReversalProof(payment)","legacyPostingProof(payment)",
+                "legacy.deleted_at",".reversed_at").doesNotContain("updated_at");
     }
 
     @Test

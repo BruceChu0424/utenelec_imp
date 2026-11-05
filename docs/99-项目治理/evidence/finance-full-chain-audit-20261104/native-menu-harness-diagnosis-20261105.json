@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "status": "read-only mechanism diagnosis plus integration-harness observation update; real foreground rerun owned by root",
+  "observedFailure": {
+    "log": "build/finance-closeout-20261104/native-actual-v9-recover.log",
+    "sha256": "00a5f991781b230a996a3dd92e5b00d4128878604ae58bf93cc332ba8d152052",
+    "fact": "old helper could not find the receipt menu action; no lifecycle/view focus/route/ticker state was logged, so the exact native foreground state at failure is not proven"
+  },
+  "confirmedMechanism": [
+    "ContextMenu inserts then immediately attaches UtenOverlayLifecycle; unavailable owner dismisses/removes the entry before the next paint",
+    "Transient availability requires current route chain, enabled ticker, focused view and null/resumed application lifecycle; inactive is intentionally unavailable",
+    "appVisibility permits inactive for polling; it is not the transient-menu availability policy",
+    "IntegrationTest binding inherits LiveTest binding; real lifecycle/view-focus callbacks remain observable",
+    "WidgetTester.tap sends pointer events to the binding; it does not itself establish Win32 OS foreground activation",
+    "8 second menu waiting and650ms no-busy stability do not reopen an entry already dismissed due to blur"
+  ],
+  "newHarness": {
+    "sha256": "81b4d64ec02343dc9c4ce06777567624f6fa6cf6932e5c7224a50a6aa759a064",
+    "marker": "AWAITING_OWNED_WINDOW_FOREGROUND",
+    "foregroundWaitSeconds": 90,
+    "menuWaitSeconds": 8,
+    "quietNoBusyMilliseconds": 650,
+    "observesOnly": [
+      "WidgetsBinding lifecycle",
+      "last observed per-view focus events",
+      "owner mounted/readable",
+      "route class/current/active chain without route names or arguments",
+      "ticker enabled",
+      "scheduled-frame state"
+    ],
+    "ready": "positively observed resumed and no recorded unfocused event for that view; unknown lifecycle is not claimed as a proven foreground run",
+    "activation": "root CUA must activate only its owned app window; harness does not activate OS or call lifecycle/focus test setters",
+    "capture": "pump before capture without recursively waiting for busy/foreground; unavailable capture is explicit and normal screenshot scenes assert it succeeded",
+    "privacy": "no credentials, account/provider data, document body, input values or route arguments in these diagnostics",
+    "observedFocusBoundary": "last binding-observed focus is diagnostic evidence, not a synchronous Win32 foreground-handle query"
+  },
+  "verification": {
+    "analysis": "build/finance-final-audit/native-window-harness-analyze-v2.log: No issues found",
+    "format": "1 file,0 changed",
+    "actualNativeRerun": "not claimed by this owner; root runs from fresh harness snapshot and real CUA activation"
+  },
+  "productDartChanged": false,
+  "menuLifecycleBypassed": false,
+  "foregroundMocked": false,
+  "sourceSha256": {
+    "integration_test/finance_actual_application_test.dart": "81b4d64ec02343dc9c4ce06777567624f6fa6cf6932e5c7224a50a6aa759a064",
+    "integration_test/finance_manual_acceptance.dart": "839892a32bf25bbcb973bd16e73b0d26daf9cbf1069e719413a89dac4c7701c6",
+    "lib/components/feedback/uten_overlay_lifecycle.dart": "44083c8e73a5ecde1831ffb3082ad9385c8a0e248cf52f2f3be24c06c82383bf",
+    "lib/components/feedback/uten_context_menu.dart": "4c7c22daea478fda3942b0aa3be933007988d91f889709dcae3008f94a02fb90",
+    "lib/shared/providers/app_visibility_provider.dart": "c662b8c3e2a1f266fbf7ff967911c4f12a0ebfa538ef8643f68e6b194c93a940"
+  }
+}

@@ -569,6 +569,45 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     _load();
   }
 
+  String? _columnInfo(String key) {
+    final notes = <String>[];
+    if (_side == 'AP') {
+      if (const {
+        'salesOriginal',
+        'salesRate',
+        'salesLocal',
+        'posted',
+      }.contains(key)) {
+        notes.add('原页面名为“采购金额”或“收货金额”。此列按往来账实际立账，包含退货、贷项和原账内的历史预付，不等同于本期采购总额。');
+      } else if (const {
+        'receiptOriginal',
+        'receiptRate',
+        'receiptLocal',
+        'settled',
+      }.contains(key)) {
+        notes.add(
+          '原页面名为“付款金额”。此列反映往来账面冲减，包含应付核销、预付及其抵扣、撤回和汇兑差额；实际银行付款另列，不把抵扣视为再次付款。',
+        );
+      } else if (key == 'actualCashLocal') {
+        notes.add(
+          '按银行实际净流出计：付款含银行手续费，退款取银行实际到账净额；付出为正、收回为负，预付抵扣为零。按原财务发生或反审的会计日期归集。',
+        );
+      } else if (key == 'type') {
+        notes.add('预付抵扣分别列示应付核销和预付资产减少；两笔均来自原业务事实，不能相加当作现金付款。');
+      } else if (key.startsWith('balance') || key == 'prevBalance') {
+        notes.add('供应商净往来余额＝应付账面余额－单列的未用预付资产；原已记入应付的历史预付不再扣一次，各自保留原入账汇率。');
+      }
+    }
+    if (key == 'returned') {
+      notes.add('退货已计入立账发生额，此列不单独取数；空白不表示没有退货');
+    } else if (_originalAmounts.contains(key) && !_hasCurrency) {
+      notes.add('请先在币别列选择一个币种，再比较或排序原币金额');
+    } else if (key.startsWith('balance')) {
+      notes.add('余额按原始日期和入账顺序完整累计，再筛选或排序；不对余额求和');
+    }
+    return notes.isEmpty ? null : notes.join('\n');
+  }
+
   Widget _buildTable() {
     if (_partyId == null) {
       return const Center(child: Text('请先选择往来单位'));
@@ -609,13 +648,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
                       ? null
                       : (row['${c.key}Exact'] ?? row[c.key]).toString()
                 : null,
-            info: c.key == 'returned'
-                ? '退货已计入立账发生额，此列不单独取数；空白不表示没有退货'
-                : _originalAmounts.contains(c.key) && !_hasCurrency
-                ? '请先在币别列选择一个币种，再比较或排序原币金额'
-                : c.key.startsWith('balance')
-                ? '余额按原始日期和入账顺序完整累计，再筛选或排序；不对余额求和'
-                : null,
+            info: _columnInfo(c.key),
             value: (row) => formatReportCell(c, row),
           ),
         )

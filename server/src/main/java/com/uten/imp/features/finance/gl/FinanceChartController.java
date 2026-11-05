@@ -20,6 +20,14 @@ public class FinanceChartController {
     @PostMapping
     @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public CreateAccountResult createAccount(@RequestBody CreateAccount request){return service.createAccount(request);}
+    @PutMapping("/{code}/metadata")
+    @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
+    public UpdateAccountResult updateAccount(@PathVariable String code,@RequestBody UpdateAccount request){return service.updateAccount(code,request);}
+    @GetMapping("/{code}/metadata/operations/{requestId}")
+    public Map<String,Object> metadataReceipt(@PathVariable String code,@PathVariable UUID requestId){return service.metadataReceipt(code,requestId);}
+    @GetMapping("/{code}/metadata") public Map<String,Object> metadata(@PathVariable String code){return service.metadata(code);}
+    @PostMapping("/{code}/metadata/operations/{requestId}/cancel")
+    public Map<String,Object> cancelMetadata(@PathVariable String code,@PathVariable UUID requestId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation request){return service.cancelMetadata(code,requestId,request);}
     @GetMapping("/imports") public Map<String,Object> recent(){return Map.of("items",service.recent());}
     @PostMapping(value="/import-preview",consumes="multipart/form-data")
     @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")

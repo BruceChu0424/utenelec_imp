@@ -193,10 +193,19 @@ public class PartyMonthlySummaryService {
                     .setParameter("nullOriginalCount", ((Number) row[7]).longValue())
                     .executeUpdate();
         }
+        // Producers may touch current-month then original-month markers, while
+        // this consumer visits them chronologically. Claim only the unchanged
+        // old tuple at deletion time, without waiting on a producer's other
+        // marker or holding its rows throughout aggregation.
         em.createNativeQuery("""
-                        DELETE FROM party_month_dirty
-                        WHERE side=:side AND party_id=:pid AND month_start=:month
-                          AND xmin::text=:dirtyVersion
+                        WITH claimed_dirty AS MATERIALIZED (
+                            SELECT ctid FROM party_month_dirty
+                            WHERE side=:side AND party_id=:pid AND month_start=:month
+                              AND xmin::text=:dirtyVersion
+                            FOR UPDATE SKIP LOCKED
+                        )
+                        DELETE FROM party_month_dirty marker USING claimed_dirty
+                        WHERE marker.ctid=claimed_dirty.ctid
                         """)
                 .setParameter("side", side).setParameter("pid", partyId)
                 .setParameter("month", month)

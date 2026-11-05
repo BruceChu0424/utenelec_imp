@@ -32,9 +32,9 @@ class FixedAssetSchedulePagingTest {
                 assertThat(response.rows()).isEmpty();
             }
             assertThat(sql).hasSize(1);
-            assertThat(sql.getFirst()).contains("ORDER BY report.\"code\"", "LIMIT :__limit OFFSET :__offset",
-                    "LEFT JOIN LATERAL", "COUNT(*) AS posted_months", "COALESCE(SUM(l.amount),0)",
-                    "l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false");
+            assertThat(sql.getFirst()).contains("ORDER BY report.\"assetName\",report.\"__assetId\"", "LIMIT :__limit OFFSET :__offset",
+                    "LEFT JOIN LATERAL", "v_finance_asset_report_facts", "v_finance_asset_posting_facts",
+                    "WHERE NOT a.is_deleted", "f.business_date<=:cutoff");
             verify(query).setParameter("__limit", 500);
             verify(query).setParameter("__offset", 1_073_741_823_000L);
             verify(query, never()).getSingleResult();
@@ -55,7 +55,7 @@ class FixedAssetSchedulePagingTest {
             assertThat(response.totalPages()).isEqualTo(26);
         }
         assertThat(sql).hasSize(2);
-        assertThat(sql.getLast()).contains("SELECT COUNT(*) FROM (SELECT report.*", "book.accum_dep", "WHERE a.is_deleted=false");
+        assertThat(sql.getLast()).contains("SELECT COUNT(*) FROM (SELECT report.*", "v_finance_asset_posting_facts", "WHERE NOT a.is_deleted");
         verify(query).setParameter("__offset", 40L);
     }
 }

@@ -87,9 +87,10 @@ public class GlController {
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse profitAnnual(
             @RequestParam(required = false) Integer year,
-            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String layout) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return reports.profitAnnual(yearOf(year,dateTo),throughMonth(year,dateTo),options);
+        return FinancialStatementPresentation.apply("ANNUAL",layout,reports.profitAnnual(yearOf(year,dateTo),throughMonth(year,dateTo),options));
     }
 
     /** 附 11 月度利润表（本月+本年累计）。year/month 缺省取 dateTo 年/月。 */
@@ -158,21 +159,24 @@ public class GlController {
     /** 整行替换某报表行的绑定(人工行传部门, 其余传费用科目); 空列表即清空。 */
     @PutMapping("/api/finance/reports/gl/line-bindings/{lineKey}")
     @PreAuthorize("hasAuthority('payment_style:edit')")
-    public GlReportLineBindingService.LineBinding replaceLineBinding(
-            @PathVariable String lineKey, @RequestBody LineBindingRequest request) {
-        return lineBindings.replace(lineKey, request == null ? null : request.targetIds(),request!=null&&request.confirmedZero());
+    public java.util.Map<String,Object> replaceLineBinding(
+            @PathVariable String lineKey, @RequestBody com.uten.imp.features.finance.FinanceOperationJournal.WireCommand request) {
+        return lineBindings.replaceWireCommand(lineKey,request);
     }
 
     /** 按默认科目名单为还没有任何绑定的行补齐绑定(已有绑定的行不动)。 */
     @PostMapping("/api/finance/reports/gl/line-bindings/defaults")
     @PreAuthorize("hasAuthority('payment_style:edit')")
-    public java.util.List<GlReportLineBindingService.LineBinding> seedDefaultLineBindings() {
-        return lineBindings.seedDefaults();
+    public java.util.Map<String,Object> seedDefaultLineBindings(@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.WireCommand request) {
+        return lineBindings.seedDefaultsWireCommand(request);
     }
+    @GetMapping("/api/finance/reports/gl/line-bindings/operations/{requestId}")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public java.util.Map<String,Object> lineBindingReceipt(@PathVariable java.util.UUID requestId){return lineBindings.operationReceipt(requestId);}
+    @PostMapping("/api/finance/reports/gl/line-bindings/operations/{requestId}/cancel")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public java.util.Map<String,Object> cancelLineBinding(@PathVariable java.util.UUID requestId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation request){return lineBindings.cancelCommand(requestId,request);}
 
-    /** 报表行绑定请求。 */
-    public record LineBindingRequest(java.util.List<java.util.UUID> targetIds, boolean confirmedZero) {
-    }
 
     private static int yearOf(Integer year, LocalDate dateTo) {
         if (year != null) return year;

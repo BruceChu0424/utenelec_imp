@@ -1,0 +1,116 @@
+{
+  "status": "FROZEN",
+  "utc": "2026-11-05T15:14:03.2437534Z",
+  "owner": "source_chain_review",
+  "scope": "Eight supplier cash/report Main sources and new V1063; no company data, deploy or Win7",
+  "sources": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/SupplierAdvanceReplaySql.java",
+      "sha256": "2c47359626fb8204f757a2c902eebd36250977a8e9c5f1e50521f57c7e29ae38"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementService.java",
+      "sha256": "193702d2503ec9cf121fc9598a2ba27fb9d7dd8853f5d169f03b3ff9617fd596"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementSnapshotSql.java",
+      "sha256": "00419a600127256e4310647b5f7e534e9c8bdfe3e2fffd2d61de085dfa308fbe"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceCashEventSql.java",
+      "sha256": "d4e92f66698dd94c7208e507850b677518c33366a6d19ff071a8db732ff39cf1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinancePartyStatementSql.java",
+      "sha256": "ee844ba0089e9504fb54de6fe3f436a5a1cf02c5a24faf204bb6a24c8a198ca9"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+      "sha256": "0b5d102d7b5bdd96533d35f6f95b794f7c2eac5434d57b802cd27be4449bc112"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/PartyStatementHeaderQuery.java",
+      "sha256": "29be1b09e90c79122753bb78320b46c02cdcd28710707e2776300c18da074754"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceClassifiedPayableSummary.java",
+      "sha256": "b236e5ccfb6a5b3eb5ee7b2563c7ade1147b240e4d455874fd2f5150842c55c3"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1063__supplier_advance_statement_replay.sql",
+      "sha256": "df2b29e1db79ef03011475ae663f77b3f4ff586e47a2bfebd8c9bccb18884a55"
+    }
+  ],
+  "logs": [
+    {
+      "path": "build/finance-closeout-20261104/source-advance-v3/red-v3.log",
+      "sha256": "ef3d25a022b2204ffeae6c82dcd62bf7ac8d4faceb5bec970a6d291dbbd66832"
+    },
+    {
+      "path": "build/finance-closeout-20261104/source-advance-v8/green.log",
+      "sha256": "62eef56329853874b3aaba1e5daccdebbadc2972340cd3625e0f0ea74a5bc3cb"
+    },
+    {
+      "path": "build/finance-closeout-20261104/source-advance-v9/green.log",
+      "sha256": "3e658d760e0ed44c7e6d3f5b60e54bac861e807beb283e9bb2686ad403d045f3"
+    },
+    {
+      "path": "build/finance-closeout-20261104/source-advance-label-final/unit.log",
+      "sha256": "0e9e7c42a463c5ac666e07f4fee2947fcbec711aff6b726cd02e7e7355111bcc"
+    }
+  ],
+  "verification": [
+    {
+      "meaning": "Modern advance falsely counted as AP book settlement; real cross-year native reversal rejected by monthly freeze",
+      "failed": 2,
+      "passed": 0,
+      "skipped": 0,
+      "found": 2,
+      "round": "old-real-red"
+    },
+    {
+      "meaning": "Actual modern bank/GL/AP/application/refund/reversals; same-RR retained legacy read models; exact source roles; labels/cash/type/filter/totals; PaymentSettlement concurrent locks",
+      "failed": 0,
+      "passed": 15,
+      "skipped": 0,
+      "found": 15,
+      "round": "v8"
+    },
+    {
+      "meaning": "Current V1063 real migration and compiled forward backfill over an old clean legacy cache; original/partial/full legacy sources; strict source/currency/supplier/amount/date and modern missing proof; public report service read paths",
+      "failed": 0,
+      "passed": 10,
+      "skipped": 0,
+      "found": 10,
+      "round": "v9"
+    },
+    {
+      "meaning": "Only final approved AP posted-side labels changed after v9; actual public flow/detail/annual columns verified, AR labels and keys preserved",
+      "failed": 0,
+      "passed": 3,
+      "skipped": 0,
+      "found": 3,
+      "round": "final-label"
+    }
+  ],
+  "coverage": [
+    "Modern V2 advance never creates an AP source ledger",
+    "Formal AP and unapplied modern advance asset remain distinct; public net preserves AP ledger compatibility",
+    "Independent frozen source/target FX and actual refund principal incl supplier-paid fee, without duplicate cash",
+    "Cross-year original and actual reverse periods; complete GL/bank/account/currency/auxiliary/amount/date proof",
+    "11 modern read-only shadow proof corruption cases, current default role change cannot relabel originals",
+    "Retained legacy no-lines full advance represented once by proved cash; partial lines retain exact residual negative AP; full lines must conserve header facts",
+    "Legacy approved/reversed v0/v1 missing, mismatched or null evidence fails closed; no updated_at reversal guesses",
+    "Non-DIRECT source ledger is preserved in the real read-model check; source predicates keep imported snapshots outside native cash deduplication, with dedicated imported projection regressions still pending",
+    "Real public basic/classified/party same-snapshot fallback over rollback-only historical read model; no actual immutable fact/guard changed",
+    "Legacy-only and modern advance parties both invalidated by V1063 forward full-rebuild marker",
+    "AP book movement labels and separately visible local cash/type; original 21 workbook templates untouched"
+  ],
+  "limitations": [
+    "Separate scoped rounds do not establish a single whole-suite pass",
+    "v8 used current full migrated schema through 1061 plus V1063; Ledger V1062 and Root later loss changes were outside this scoped binary",
+    "Historical inconsistent/corruption variants are rollback-only temp read models over actual migrated shapes, not newly authorized legacy writes",
+    "Company voucher-by-voucher reconciliation and company data acceptance remain outside this task evidence",
+    "Pressure checks remain separate and do not establish HTTP or write throughput"
+  ]
+}

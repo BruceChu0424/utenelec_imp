@@ -1,131 +1,171 @@
 package com.uten.imp.common.finance;
 
-import com.uten.imp.support.MigratedSchemaBaseline;
+import com.uten.imp.businesschain.FinanceScopedChain;
+import com.uten.imp.businesschain.FinanceScopedChainDatabase;
+import com.uten.imp.common.columns.BusinessColumnService;
+import com.uten.imp.common.columns.ExtraColumnInput;
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.features.common.taskclaim.TaskClaimService;
+import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
+import com.uten.imp.features.purchase.order.PurchaseOrderService;
+import com.uten.imp.features.purchase.request.PurchaseRequestService;
+import com.uten.imp.features.subcontract.order.SubcontractOrderService;
+import java.math.*;
+import java.util.*;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import java.math.BigDecimal;
-import java.sql.*;
-import java.util.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import static com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.*;
 import static org.assertj.core.api.Assertions.*;
 
-/** Full forward migrations and real finance/snapshot/quantity mutation guards. */
-@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+/** Real current saves/review/revisions and actual SQL guards; no trigger suppression or invented legacy rows. */
+@EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
+@SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
+    "uten.inventory.value-work.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
+    "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
+    "uten.storage.uploads-enabled=false","uten.jwt.secret=total-input-synthetic-jwt-0123456789-test-only",
+    "uten.crypto.pgp-master-key=total-input-synthetic-pgp-0123456789-test-only",
+    "uten.crypto.hmac-key=total-input-synthetic-hmac-0123456789-test-only",
+    "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
 class ProcurementTotalAmountPostgresTest {
-    private static PostgreSQLContainer postgres;
-    @BeforeAll static void migrate() { postgres = MigratedSchemaBaseline.startMigratedContainer("total_amount"); }
-    @AfterAll static void stop() { if (postgres != null) postgres.stop(); }
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FinanceScopedChainDatabase.register(registry,ProcurementTotalAmountPostgresTest.class);}
+    @Autowired AutowireCapableBeanFactory beans;
+    @Autowired JdbcTemplate db;
+    @Autowired PurchaseRequestService requests;
+    @Autowired PurchaseOrderService purchases;
+    @Autowired SubcontractOrderService subcontracts;
+    @Autowired ProcurementFinanceApprovalService finance;
+    @Autowired TaskClaimService claims;
+    @Autowired BusinessColumnService columns;
+    @Autowired PlatformTransactionManager transactions;
+    Object harness;
+    @BeforeEach void prepare()throws Exception {
+        var constructor=Class.forName("com.uten.imp.businesschain.FullChainEndToEndTest").getDeclaredConstructor();
+        constructor.setAccessible(true);harness=constructor.newInstance();beans.autowireBean(harness);
+    }
+    @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
-    @Test void exactTotalRoundTripsAndFinanceChecksItInsteadOfTruncatedPriceProduct() throws Exception {
-        for (String prefix : List.of("purchase", "subcontract")) {
-            try (Connection db = connect()) {
-                Fixture f = seed(db, prefix);
-                assertThat(decimal(db, "SELECT total_amount_input FROM " + prefix + "_order_items WHERE id='" + f.item() + "'"))
-                        .isEqualByComparingTo("100");
-                exec(db, "CREATE TEMP TABLE commercial_probe(order_type text,order_id uuid,status text,amount_snapshot numeric DEFAULT 105);"
-                        + "CREATE TRIGGER guard BEFORE INSERT ON commercial_probe FOR EACH ROW EXECUTE FUNCTION fn_guard_procurement_finance_commercial_snapshot();"
-                        + "CREATE TEMP TABLE display_probe(order_type text,order_id uuid,submission_snapshot jsonb,display_snapshot jsonb);"
-                        + "CREATE TRIGGER display BEFORE INSERT ON display_probe FOR EACH ROW EXECUTE FUNCTION fn_procurement_approval_display_snapshot();");
-                exec(db, "INSERT INTO commercial_probe(order_type,order_id,status) VALUES('" + prefix.toUpperCase() + "','" + f.header() + "','PENDING')");
-                exec(db, "INSERT INTO display_probe VALUES('" + prefix.toUpperCase() + "','" + f.header()
-                        + "',jsonb_build_object('items',jsonb_build_array(jsonb_build_object('itemId','" + f.item() + "'))),NULL)");
-                assertThat(scalar(db, "SELECT display_snapshot->'items'->0->>'totalAmountInput' FROM display_probe")).isEqualTo("100");
-                exec(db, "UPDATE " + prefix + "_order_items SET amount_original=qty*price+5,amount_local=qty*price+5 WHERE id='" + f.item() + "'");
-                assertThatThrownBy(() -> exec(db, "INSERT INTO commercial_probe(order_type,order_id,status) VALUES('" + prefix.toUpperCase() + "','" + f.header() + "','PENDING')"))
-                        .isInstanceOf(SQLException.class).satisfies(e -> assertThat(((SQLException)e).getSQLState()).isEqualTo("23514"));
-                exec(db, "SET session_replication_role=replica");
-                exec(db, "UPDATE " + prefix + "_orders SET status=1 WHERE id='" + f.header() + "'");
-                exec(db, "SET session_replication_role=origin");
-                assertThatThrownBy(() -> exec(db, "UPDATE " + prefix + "_order_items SET total_amount_input=101 WHERE id='" + f.item() + "'"))
-                        .isInstanceOf(SQLException.class).hasMessageContaining("immutable");
-            }
+    @Test void exactTotalRoundTripsAndFinanceChecksItInsteadOfTruncatedPriceProduct(){
+        for(String kind:List.of("PURCHASE","SUBCONTRACT")){
+            Fixture f=fixture(kind);
+            assertThat(decimal("SELECT total_amount_input FROM "+f.lines()+" WHERE id=?",f.item())).isEqualByComparingTo("100");
+            assertThat(decimal("SELECT price FROM "+f.lines()+" WHERE id=?",f.item())).isEqualByComparingTo("0.0333333333");
+            UUID pending=submit(f);
+            assertThat(decimal("SELECT amount_snapshot FROM procurement_order_approval_cases WHERE id=?",pending)).isEqualByComparingTo("105");
+            assertThat(db.queryForObject("SELECT display_snapshot #>> '{items,0,totalAmountInput}' FROM procurement_order_approval_cases WHERE id=?",String.class,pending)).isEqualTo("100");
+            approve(f,pending);
+            assertSqlRejected(()->db.update("UPDATE "+f.lines()+" SET total_amount_input=101 WHERE id=?",f.item()),null);
+            // An actual editable row can hold a bad amount only until the real commercial-snapshot guard checks it.
+            Fixture bad=fixture(kind);
+            assertSqlRejected(()->new TransactionTemplate(transactions).executeWithoutResult(status->{
+                db.execute("CREATE TEMP TABLE commercial_probe(order_type text,order_id uuid,status text,amount_snapshot numeric DEFAULT 105) ON COMMIT DROP");
+                db.execute("CREATE TRIGGER commercial_guard BEFORE INSERT ON commercial_probe FOR EACH ROW EXECUTE FUNCTION fn_guard_procurement_finance_commercial_snapshot()");
+                db.update("UPDATE "+bad.lines()+" SET amount_original=qty*price+5,amount_local=qty*price+5 WHERE id=?",bad.item());
+                db.update("INSERT INTO commercial_probe(order_type,order_id,status)VALUES(?,?,'PENDING')",kind,bad.order());
+            }),null);
+            assertThat(decimal("SELECT amount_original FROM "+bad.lines()+" WHERE id=?",bad.item())).isEqualByComparingTo("105");
         }
     }
 
-    @Test void javaAndDatabaseAgreeOnReferencesAndExactRevisionRatios() throws Exception {
-        try (Connection db = connect()) {
-            for (String qty : List.of("3", "6", "3000", "99999999999999", "0.0001")) {
-                BigDecimal q = new BigDecimal(qty);
-                for (String total : List.of("0", "100", "1.000000000000000000000001")) {
-                    try (PreparedStatement sql = db.prepareStatement("SELECT fn_procurement_reference_price(?,?)")) {
-                        sql.setBigDecimal(1,new BigDecimal(total)); sql.setBigDecimal(2,q);
-                        try (ResultSet r=sql.executeQuery()) { r.next(); assertThat(r.getBigDecimal(1))
-                                .isEqualByComparingTo(MoneyPolicy.referenceUnitPrice(new BigDecimal(total),q)); }
-                    }
-                }
+    @Test void javaAndDatabaseAgreeOnReferencesAndExactRevisionRatios(){
+        for(String rawQty:List.of("3","6","3000","99999999999999","0.0001")){
+            BigDecimal qty=new BigDecimal(rawQty);
+            for(String rawTotal:List.of("0","100","1.000000000000000000000001")){
+                BigDecimal total=new BigDecimal(rawTotal);
+                BigDecimal legacy=total.divide(qty,10,RoundingMode.DOWN);
+                assertThat(decimal("SELECT fn_procurement_reference_price(?,?)",total,qty)).isEqualByComparingTo(legacy);
+                BigDecimal modern=precision("money.reference-unit-price",10,()->MoneyPolicy.referenceUnitPrice(total,qty));
+                // Current arithmetic preserves a finite quotient exactly; only repeating/oversized quotients use the declared choice.
+                assertThat(decimal("SELECT fn_business_exact_divide_with_policy(?,?,'money.reference-unit-price','synthetic',24,?::jsonb,false)",
+                    total,qty,"{\"version\":1,\"choices\":{\"money.reference-unit-price\":{\"scale\":10,\"rounding\":\"DOWN\"}}}")).isEqualByComparingTo(modern);
             }
-            assertThat(decimal(db,"SELECT fn_procurement_revised_total_input(100,3000,6000)")).isEqualByComparingTo("200");
-            assertThatThrownBy(() -> exec(db,"SELECT fn_procurement_revised_total_input(100,3000,1000)"))
-                    .isInstanceOf(SQLException.class).hasMessageContaining("not an exact finite");
+        }
+        assertThat(decimal("SELECT fn_procurement_revised_total_input(100,3000,6000)")).isEqualByComparingTo(MoneyPolicy.revisedTotalAmountInput(new BigDecimal("100"),new BigDecimal("3000"),new BigDecimal("6000")));
+        assertThatThrownBy(()->decimal("SELECT fn_procurement_revised_total_input(100,3000,1000)"))
+            .isInstanceOf(RuntimeException.class).hasStackTraceContaining("UTEN_PRECISION_REQUIRED");
+        assertThatThrownBy(()->MoneyPolicy.revisedTotalAmountInput(new BigDecimal("100"),new BigDecimal("3000"),new BigDecimal("1000")))
+            .isInstanceOf(BusinessPrecisionRequiredException.class);
+    }
+
+    @Test void pendingFinanceFreezesTheNewFactWhileOrderIsStillDraft(){
+        for(String kind:List.of("PURCHASE","SUBCONTRACT")){
+            Fixture f=fixture(kind);UUID pending=submit(f);
+            assertThat(decimal("SELECT status FROM "+f.headers()+" WHERE id=?",f.order())).isZero();
+            String before=db.queryForObject("SELECT to_jsonb(i)::text FROM "+f.lines()+" i WHERE id=?",String.class,f.item());
+            assertSqlRejected(()->db.update("UPDATE "+f.lines()+" SET total_amount_input=101 WHERE id=?",f.item()),null);
+            assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM "+f.lines()+" i WHERE id=?",String.class,f.item())).isEqualTo(before);
+            assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?",String.class,pending)).isEqualTo("PENDING");
         }
     }
 
-    @Test void pendingFinanceFreezesTheNewFactWhileOrderIsStillDraft() throws Exception {
-        for (String prefix : List.of("purchase", "subcontract")) {
-            try (Connection db = connect()) {
-                Fixture f = seed(db, prefix);
-                exec(db, "SET session_replication_role=replica");
-                try {
-                    exec(db, "INSERT INTO procurement_order_approval_cases(order_type,order_id,attempt,bill_no_snapshot,"
-                            + "amount_snapshot,submission_snapshot,snapshot_hash,submitted_by_user_id,submitted_by_employee_id,"
-                            + "assignee_user_id,assignee_employee_id,assignee_name_snapshot,status) VALUES('"
-                            + prefix.toUpperCase() + "','" + f.header() + "',1,'TOTAL-PENDING',105,"
-                            + "jsonb_build_object('items',jsonb_build_array(jsonb_build_object('itemId','" + f.item() + "'))),'fixture',"
-                            + "gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'fixture','PENDING')");
-                } finally { exec(db, "SET session_replication_role=origin"); }
-                assertThatThrownBy(() -> exec(db, "UPDATE " + prefix + "_order_items SET total_amount_input=101 WHERE id='" + f.item() + "'"))
-                        .isInstanceOf(SQLException.class).hasMessageContaining("immutable");
-            }
+    @Test void provenRevisionUpdatesTotalBasisAndHeaderWithoutReapplyingOldApproximatePrice(){
+        for(String kind:List.of("PURCHASE","SUBCONTRACT")){
+            Fixture f=fixture(kind);UUID first=submit(f);approve(f,first);
+            String before=db.queryForObject("SELECT to_jsonb(i)::text FROM "+f.lines()+" i WHERE id=?",String.class,f.item());
+            login(f.owner());var change=new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(f.item(),new BigDecimal("6000"))));
+            if(kind.equals("PURCHASE"))purchases.changeQty(f.order(),change);else subcontracts.changeQty(f.order(),change);
+            assertThat(decimal("SELECT total_amount_input FROM "+f.lines()+" WHERE id=?",f.item())).isEqualByComparingTo("200");
+            assertThat(decimal("SELECT amount_original FROM "+f.lines()+" WHERE id=?",f.item())).isEqualByComparingTo("205");
+            assertThat(decimal("SELECT total_original FROM "+f.headers()+" WHERE id=?",f.order())).isEqualByComparingTo("205");
+            assertThat(decimal("SELECT price FROM "+f.lines()+" WHERE id=?",f.item())).isEqualByComparingTo("0.0333333333");
+            assertThat(db.queryForObject("SELECT before_item::text FROM procurement_order_source_revisions WHERE order_type=? AND order_id=?",String.class,kind,f.order())).isEqualTo(before);
+            assertThat(db.queryForObject("SELECT fn_procurement_reference_price_matches(to_jsonb(i)) FROM "+f.lines()+" i WHERE id=?",Boolean.class,f.item())).isTrue();
+            assertThat(db.queryForObject("SELECT reference_price_policy->>'kind' FROM "+f.lines()+" WHERE id=?",String.class,f.item())).isEqualTo("PROCUREMENT_REFERENCE_PRICE_REVISION");
+            assertSqlRejected(()->db.update("UPDATE "+f.lines()+" SET total_amount_input=201 WHERE id=?",f.item()),null);
+            assertThat(decimal("SELECT count(*) FROM procurement_order_approval_cases WHERE order_type=? AND order_id=? AND status='PENDING'",kind,f.order())).isEqualByComparingTo("1");
         }
     }
 
-    @Test void provenRevisionUpdatesTotalBasisAndHeaderWithoutReapplyingOldApproximatePrice() throws Exception {
-        for (String prefix : List.of("purchase", "subcontract")) {
-            try (Connection db = connect()) {
-                Fixture f = seed(db,prefix);
-                db.setAutoCommit(false);
-                try {
-                    exec(db,"SET LOCAL session_replication_role=replica");
-                    exec(db,"UPDATE " + prefix + "_orders SET status=1 WHERE id='" + f.header() + "'");
-                    exec(db,"INSERT INTO procurement_order_source_revisions(id,order_type,order_id,order_item_id,old_qty,new_qty,unit_rate,before_item,approval_attempt_before,actor_user_id,actor_employee_id) "
-                            + "SELECT gen_random_uuid(),'" + prefix.toUpperCase() + "',order_id,id,qty,6000,1,to_jsonb(i),0,gen_random_uuid(),gen_random_uuid() FROM " + prefix + "_order_items i WHERE id='" + f.item() + "'");
-                    exec(db,"SET LOCAL session_replication_role=origin");
-                    assertThat(scalar(db,"SELECT fn_is_proven_procurement_qty_revision('" + prefix + "_order_items',to_jsonb(i),to_jsonb(i)||'{\"qty\":6000,\"total_amount_input\":200,\"amount_original\":205,\"amount_local\":205}'::jsonb) FROM " + prefix + "_order_items i WHERE id='" + f.item() + "'"))
-                            .isEqualTo("t");
-                    assertThat(scalar(db,"SELECT fn_is_proven_procurement_header_revision('" + prefix.toUpperCase() + "',to_jsonb(h),to_jsonb(h)||'{\"total_original\":205,\"total_local\":205}'::jsonb) FROM " + prefix + "_orders h WHERE id='" + f.header() + "'"))
-                            .isEqualTo("t");
-                    // Real UPDATE triggers also accept this proven revision and retain the same reference price.
-                    exec(db,"UPDATE " + prefix + "_order_items SET qty=6000,total_amount_input=200,amount_original=205,amount_local=205 WHERE id='" + f.item() + "'");
-                    assertThat(decimal(db,"SELECT total_amount_input FROM " + prefix + "_order_items WHERE id='" + f.item() + "'"))
-                            .isEqualByComparingTo("200");
-                } finally { db.rollback(); }
-            }
+    private Fixture fixture(String kind){
+        Object world=call(harness,"seedWorld","total-input-"+UUID.randomUUID());UUID owner=call(world,"superAdminUserId");login(owner);
+        UUID reviewer=call(harness,"createUserWithPerms",world,"total-review-"+UUID.randomUUID(),new String[]{"finance_order_approval:view","finance_order_approval:approve"});
+        login(owner);UUID unit=call(world,"unitId"),goods=call(world,kind.equals("PURCHASE")?"goodsD":"goodsE"),supplier=call(world,"supplierId"),warehouse=call(world,"warehouseId");
+        UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);
+        UUID settlement=db.queryForObject("SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted ORDER BY code LIMIT 1",UUID.class);
+        String prefix=kind.equals("PURCHASE")?"purchase":"subcontract";
+        var fee=columns.create(new BusinessColumnService.Create(prefix+"_order","包装费","AMOUNT","ADD"));
+        UUID order;
+        if(kind.equals("PURCHASE")){
+            var request=new com.uten.imp.features.purchase.request.dto.RequestSaveRequest();request.setBillDate(BusinessTime.today());request.setWarehouseId(warehouse);
+            var source=new com.uten.imp.features.purchase.request.dto.RequestItemLine();source.setGoodsId(goods);source.setUnitId(unit);source.setUnitRate(BigDecimal.ONE);source.setQty(new BigDecimal("10000"));request.setItems(List.of(source));
+            var saved=requests.create(request);requests.approve(saved.getId());
+            var body=new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();body.setBillDate(BusinessTime.today());body.setSupplierId(supplier);body.setWarehouseId(warehouse);body.setCurrencyId(currency);body.setExchangeRate(BigDecimal.ONE);body.setTaxRate(BigDecimal.ZERO);body.setSettlementMethodId(settlement);
+            var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(goods);line.setUnitId(unit);line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("3000"));line.setTotalAmountInput(new BigDecimal("100"));line.setRequestItemId(saved.getItems().getFirst().getId());line.setExtraColumns(List.of(new ExtraColumnInput(fee.id(),"5")));body.setItems(List.of(line));
+            order=precision("money.reference-unit-price",10,()->purchases.create(body).getId());
+        }else{
+            UUID material=call(harness,"addSubcontractDirectMaterial",world,goods,"1");call(harness,"receiveSubcontractMaterial",world,material,"10000");
+            var body=new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();body.setBillDate(BusinessTime.today());body.setSupplierId(supplier);body.setWarehouseId(warehouse);body.setCurrencyId(currency);body.setExchangeRate(BigDecimal.ONE);body.setTaxRate(BigDecimal.ZERO);body.setSettlementMethodId(settlement);
+            var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();line.setGoodsId(goods);line.setUnitId(unit);line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("3000"));line.setTotalAmountInput(new BigDecimal("100"));line.setExtraColumns(List.of(new ExtraColumnInput(fee.id(),"5")));body.setItems(List.of(line));
+            order=precision("money.reference-unit-price",10,()->subcontracts.create(body).getId());
         }
+        UUID item=db.queryForObject("SELECT id FROM "+prefix+"_order_items WHERE order_id=?",UUID.class,order);
+        return new Fixture(kind,prefix,owner,reviewer,order,item);
     }
-
-    private static Fixture seed(Connection db,String prefix) throws SQLException {
-        UUID header=UUID.randomUUID(),item=UUID.randomUUID(); String bill="TOTAL-" + header;
-        exec(db,"INSERT INTO units(id,code,name,status) VALUES(gen_random_uuid(),'TOTAL-U-" + header + "','个','使用')");
-        exec(db,"SET session_replication_role=replica");
-        try {
-            exec(db,"INSERT INTO " + prefix + "_orders(id,bill_no,bill_date,currency_id,settlement_method_id,exchange_rate,tax_rate,total_original,total_local) "
-                    + "SELECT '" + header + "','" + bill + "',CURRENT_DATE,(SELECT id FROM currencies WHERE status='使用' AND NOT is_deleted LIMIT 1),"
-                    + "(SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted LIMIT 1),1,0,105,105");
-            // 夹具代表 V1033 前的既有行(quantity_adoption_version=1 只存在于采购行)，带真实计量
-            // 单位与 1:1 换算率；随后经真实触发的改量走正式采用路径。
-            exec(db,"INSERT INTO " + prefix + "_order_items(id,order_id,bill_no,bill_date,goods_id,line_no,qty,price,total_amount_input,amount_original,amount_local,unit_id,unit_rate"
-                    + ("purchase".equals(prefix)?",quantity_adoption_version":"")
-                    + ",goods_snapshot_source,goods_code_snapshot,goods_name_snapshot,extra_columns) VALUES('"
-                    + item + "','" + header + "','" + bill + "',CURRENT_DATE,gen_random_uuid(),1,3000,0.0333333333,100,105,105,"
-                    + "(SELECT id FROM units WHERE code='TOTAL-U-" + header + "'),1"
-                    + ("purchase".equals(prefix)?",1":"")
-                    + ",'MASTER_AT_SAVE','TOTAL','总金额货品','[{\"name\":\"包装费\",\"type\":\"AMOUNT\",\"operation\":\"ADD\",\"value\":\"5\"}]'::jsonb)");
-        } finally { exec(db,"SET session_replication_role=origin"); }
-        return new Fixture(header,item);
+    private UUID submit(Fixture f){login(f.owner());finance.submit(f.kind(),f.order());return db.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_type=? AND order_id=? AND status='PENDING'",UUID.class,f.kind(),f.order());}
+    private void approve(Fixture f,UUID id){login(f.reviewer());long version=db.queryForObject("SELECT version FROM procurement_order_approval_cases WHERE id=?",Long.class,id);UUID claim=claims.claim("PROCUREMENT_FINANCE_APPROVE",id.toString()).claimId();finance.approveBatch(List.of(new BatchDecisionItem(id,version,claim)),null,BigDecimal.ONE);login(f.owner());}
+    private void login(UUID user){call(harness,"loginAs",user);}
+    private BigDecimal decimal(String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}
+    private static void assertSqlRejected(Runnable action,String message){
+        var check=assertThatThrownBy(action::run).isInstanceOf(DataAccessException.class).satisfies(failure->{
+            Throwable cause=failure;while(cause.getCause()!=null)cause=cause.getCause();
+            assertThat(cause).isInstanceOf(java.sql.SQLException.class);
+            assertThat(((java.sql.SQLException)cause).getSQLState()).isIn("23514","55000");
+        });if(message!=null)check.hasStackTraceContaining(message);
     }
-    private record Fixture(UUID header,UUID item) {}
-    private static Connection connect() throws SQLException { return DriverManager.getConnection(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()); }
-    private static void exec(Connection db,String sql) throws SQLException { try (Statement s=db.createStatement()) { s.execute(sql); } }
-    private static String scalar(Connection db,String sql) throws SQLException { try (Statement s=db.createStatement();ResultSet r=s.executeQuery(sql)) { r.next();return r.getString(1); } }
-    private static BigDecimal decimal(Connection db,String sql) throws SQLException { return new BigDecimal(scalar(db,sql)); }
+    @SuppressWarnings("try")
+    private static <T>T precision(String key,int scale,Supplier<T> body){try(var choice=BusinessPrecisionContext.use(Map.of(key,new BusinessPrecisionContext.Choice(scale,"DOWN")))){return body.get();}catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}}
+    @SuppressWarnings("unchecked") private static <T>T call(Object target,String method,Object...args){return (T)ReflectionTestUtils.invokeMethod(target,method,args);}
+    private record Fixture(String kind,String prefix,UUID owner,UUID reviewer,UUID order,UUID item){String headers(){return prefix+"_orders";}String lines(){return prefix+"_order_items";}}
 }

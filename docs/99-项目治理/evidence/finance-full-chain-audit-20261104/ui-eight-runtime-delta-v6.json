@@ -1,0 +1,25 @@
+{
+  "runtimeDeltaCount": 8,
+  "sourceSha256": {
+    "lib/components/feedback/uten_task_progress_dialog.dart": "13ac190f43916d1709941902bf6826caa8ea58576d5788855b4ee99707c82c07",
+    "lib/shared/export/report_export_job_dialog.dart": "496358010dbf2dcd43b76a83e1123f8b7f20fd491fe31c0a3dcd29c12cbb267d",
+    "lib/shared/widgets/business_precision_dialog.dart": "931cf540d4c6f2a4cf508417ca0e8b5266a67a5b956d333ccb70098852a29fd8",
+    "lib/features/finance/pages/finance_doc_detail_page.dart": "fa7a565943e16a6bc36e2029b56742e7c7f1f7d3b78996c490fd8dded6b825aa",
+    "lib/features/finance/pages/finance_statement_page.dart": "0fd6d780b7be71bcd229a103266fde694d1d2706fa34de74faf4c8e591c2917c",
+    "lib/features/basic_data/pages/unit_page.dart": "a66855b2dcf7aa6d51f76f4afa969dc4e40e4e13fce2ca400b333aee1a45224e",
+    "lib/features/basic_data/pages/currency_page.dart": "a8eaa9b8fbdd3cfc8e03ed5641e4122caefe11571f8b9cd19d98aa9aab898e9d",
+    "lib/features/basic_data/pages/color_page.dart": "d5f8113de2ac0d9f451ce5104a367e3b31bc3a936fb76e291fc1ee8a394af242"
+  },
+  "workerSha256": "565dd0a4fdff463eb4a061e7fc50055b325e82d894b91fc8e08b87b5dcefeae4",
+  "targetedEvidence": {
+    "R1": "296 pass/10 test driver failures retained",
+    "R2": "308 pass/1 remaining click-before-portal-disposal driver retained",
+    "R3": "remaining original export-jobs file23/23 passed after actual-hittable wait",
+    "finalPrecision": "6/6 actual choice/cancel/ABA/nested mask plus original choice rules passed"
+  },
+  "fullVmOld": "1858pass/60fail/1skip retained:52 actual owning-route regression now fixed,2 old driver assertions,6missing snapshot Java dependencies",
+  "finalFullVm": "Not run yet",
+  "browser": "Not run yet on this runtime",
+  "runtime8Status": "Product edits stable; whole-source analyze pending, final full-group and actual new-client UI acceptance pending",
+  "release": "Task-owned local candidate, not published or deployed; Win7 excluded"
+}

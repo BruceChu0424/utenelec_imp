@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "owner": "source_chain_review",
+  "worktree": "D:/Projects/uten_imp_worktrees/finance-full-chain-audit-20261104",
+  "frozenUtc": "2026-11-05T12:05:16.7446901Z",
+  "status": "Main and SQL frozen after focused actual checks; parent owns unified complete compile and final suite",
+  "files": [
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/FinancialJsonNodeDeserializer.java",
+      "sha256": "6a8403c0ac46a235ba8ef9da6265dd4ce7617c4d7b79f4cd98d7e8ca1d52db69"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/platformcolumns/DocumentPlatformReadContext.java",
+      "sha256": "9bcdfb7f7b583951ce51902e1bab09c314d2a4a7fa97ebdbd40545c676138769"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/platformcolumns/DocumentPlatformColumnAdapter.java",
+      "sha256": "b12ad59153e21438394b6f6d3593631ce78902b6a9376e2bc0dc470f89a8dc85"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/DocumentUnapprovalPort.java",
+      "sha256": "8abcb3b1566f7d82d6d653a643f7a1971f7a792ffe338dd37733361ad98074d2"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/DocumentUnapprovalExecutionPort.java",
+      "sha256": "3f80b27838e7f56d6f08e166726970b1a60862cd0c7e30838e624673d90e5c17"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/FinancialDocumentReviewSnapshotPort.java",
+      "sha256": "b8ac0b0be6e3a7db79e73e7eafbbbe928db1fe1de1ea1cf913aa9029a5e0654b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/FinancialDocumentUnapprovalCommandPort.java",
+      "sha256": "5133d7a9979cf94020a6554a6bbaffea96d3c4106376dbd36abb37ae8335525d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/documents/DocumentUnapprovalController.java",
+      "sha256": "8438e844d3d8c4512054e6d3bb65cb37ce36b63e92d8e79bfdcb8e0241f062fb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/documents/DocumentUnapprovalService.java",
+      "sha256": "26d11303913452a44585c768d2f6ba84b270ef3fe94f55fb304e5b07dc0c347e"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceOperationJournal.java",
+      "sha256": "aebee18adfe20cd4026f4ed97bce6f6362242f1e2617720841989cb5eeb693e8"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceDocumentActions.java",
+      "sha256": "5006903e9c0efc7cf0bac472408ff778ff86eab2c4908e6c625974e494be974a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceDocumentReviewContext.java",
+      "sha256": "b26ae12f69ceacde2fa7405dc3ca7ab19fa7c280f27fdc867b99c8b3ed33c5e2"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceDocumentReviewSnapshots.java",
+      "sha256": "19db80e80dce50078ff5c2877fe10740e6d4e26e1958bdc0df3a4008df62d271"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceReviewMetadata.java",
+      "sha256": "382843240a8cd38a1f6988426e0c0dfd34994873a23ca2a2ad32a3bac0635234"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationOperationJournal.java",
+      "sha256": "6025d53928149bbb0809c265e628a995a79bd5986a476b6530ec973441d1efea"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationRoles.java",
+      "sha256": "b0f0c656eedd3587d52ecbc2d1d2b09bdf19c14becf89d60cd6f42dca09af37c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationSettingsController.java",
+      "sha256": "ed71dc2f2a54e9a2b64f7399574506111db71b8da07811a69594edfb0de50b86"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartController.java",
+      "sha256": "7ea62953e7e2be13aceae5e6b0831d46e21ad2f845f16697560283ecee34223f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartService.java",
+      "sha256": "443bb7a0612bf2606e869f7749556f50a10b83406111dc561bde1aeca3115b5c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/GlController.java",
+      "sha256": "fa42abf567b3203633e4cfe0e200b65571229829a5ca87afe398b6360faa0bc5"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/GlReportLineBindingService.java",
+      "sha256": "65f277b3bc66aa999aaf4e0edab3d562a166f81b4ddf7be5a98cb85dff729f86"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/InventoryCostPostingController.java",
+      "sha256": "43dd9c5f3ad036ac8a087523b802d33c064d049e2aa70a77b55c7b6dd2193f2c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/InventoryCostPostingService.java",
+      "sha256": "55388641ed718c2a3259b5d3a4acbc27c357a81a76e8c38e49fa6adc44b55686"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayableRecognitionController.java",
+      "sha256": "c6984456df173dbbd4128acb0a0cbd7d2a35d38505ce915e9ce271c801382a37"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayableRecognitionService.java",
+      "sha256": "cfdba56f42fc81bf29f0bc160daa7a7723bc32ee0ac9e2227fd4ce2a56689eff"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptController.java",
+      "sha256": "0d863ce1f3a48b4c84b948e00163554181a4456b686313b54cde40e82f2f863f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java",
+      "sha256": "8d11e148066a4f0a5aab0e25365f7abe28a0b21f5f12fdca911540682ef368eb"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptUnapprovalAdapter.java",
+      "sha256": "8d884ac11872b905a8b5c97d059fa74d53e30f56f6468bbdaee04e4f54ee9dce"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptDetail.java",
+      "sha256": "1908172b83b235b6fa8c96cb38db43230f75a40c2ea16632753e36e9446079a3"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentController.java",
+      "sha256": "1d9ea064c1087ffcb3457dc3f44018b31af7fed79e77d049e4e3f3be6b600717"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java",
+      "sha256": "aabac2f9906527846fd186c92c519aba49e7d9fc8351573bf78f4ad859088ed7"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentUnapprovalAdapter.java",
+      "sha256": "03c527c99a3ea2d85ebd720ad5bb3e6d98348232e5f424bdb5b39924c74b4323"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payment/dto/FinancePaymentDetail.java",
+      "sha256": "c4dc6c0d2f0cd86be9249f941f608be55dba074af0cb16ab13f0339dc3f788d0"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseController.java",
+      "sha256": "8cb0ab746626eb99c20017e63d680df732ae5f96385e16110441d7d31fbac70c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseService.java",
+      "sha256": "7238f41db5ffbc53c3a976af9ef641a7abf51050e553ffb6ce278daaf0b91e4b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/expense/dto/FinanceExpenseDetail.java",
+      "sha256": "8763335e247986d1b98e790da941296b2bbdfa6cb4aa1b9a75aad34ed17fce50"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeController.java",
+      "sha256": "adbd9892d773daf03377b92a3bf24a5bf31db4314ccddb7f9514f897ac7178b7"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeService.java",
+      "sha256": "17c8dd9885916232f3bfd7a479a9c3757ff9046737cd3d1ce8c177b55a7b8d6f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/other_income/dto/FinanceOtherIncomeDetail.java",
+      "sha256": "18b943c784a29f446c455bf7bf6a8d520c277dc77a5167d9eccee8692d850acd"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferController.java",
+      "sha256": "9fb8ea8d4de0cd13e1f8ab60cb9185f9220c7cd35410234281b5f8da481e3896"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferService.java",
+      "sha256": "6f1dc444da1cd424ed8d2657e26a03110dac8d0c7acf5d67bb192f337b74b0b3"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/dto/FinanceBankTransferDetail.java",
+      "sha256": "a3388975a727b44faef19c050d5596841e3bf68011f8e65fc9e336340cf39cfa"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceNativeStatementSql.java",
+      "sha256": "cf33f4d9a391bda977b20b973b7d60ad6b27266cf49a277ff87baa3f49778cf4"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1053__shared_finance_command_receipts.sql",
+      "sha256": "ce2653e1e0ccfeac8f55ca799ba8af34c1f5c204f27766ee1d31da3e9f9fe697"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1061__book_projection_revaluation_scope.sql",
+      "sha256": "1857cf9204e9b0a13244564b1f0807bdf3264ba62060b8017a8930c5ef98c0e8"
+    }
+  ]
+}

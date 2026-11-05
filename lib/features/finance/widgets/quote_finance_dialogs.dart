@@ -95,7 +95,10 @@ class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
     ];
     return UtenAlertDialog(
       scrollable: false,
-      title: Text(l10n.quoteFinanceReturnTitle(widget.billNo)),
+      title: UtenDialogTitleWithHint(
+        title: Text(l10n.quoteFinanceReturnTitle(widget.billNo)),
+        info: l10n.quoteFinanceReturnBody,
+      ),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -107,8 +110,6 @@ class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
                 actionLabel: l10n.quoteFinanceActionReturn,
                 compact: true,
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(l10n.quoteFinanceReturnBody),
               const SizedBox(height: UtenSpacing.s12),
               Wrap(
                 spacing: UtenSpacing.s8,

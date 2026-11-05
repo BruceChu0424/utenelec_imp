@@ -238,6 +238,7 @@ public class FinancePaymentService {
 
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financePayment",id,"UPDATE");
         access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
@@ -276,6 +277,7 @@ public class FinancePaymentService {
 
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financePayment",id,"DELETE");
         access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
@@ -305,6 +307,7 @@ public class FinancePaymentService {
         requirePeriodIdentityUnchanged(
                 p,guardedSupplierId,guardedCurrencyId,guardedBillDate);
         requireActiveAfterLock(p);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financePayment",id,"APPROVE");
         access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
                 "finance_payment:approve");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
@@ -360,6 +363,7 @@ public class FinancePaymentService {
         requirePeriodIdentityUnchanged(
                 p,guardedSupplierId,guardedCurrencyId,guardedBillDate);
         requireActiveAfterLock(p);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financePayment",id,"UNAPPROVE");
         requireUnapprovalHeader(p);
         requireAuthoritativeAmounts(p, "红冲");
         settlementDependencies.requirePaymentReversible(p.getId());
@@ -1157,13 +1161,32 @@ public class FinancePaymentService {
         payment.setAccountCurrencyId(currency);payment.setAccountExchangeRate(rate);
         payment.setAccountAmount(bankDebit);payment.setAccountAmountLocal(bankLocal);
         payment.setBankFeeAccountAmount(fee);payment.setBankFeeLocal(feeLocal);
-        payment.setAmountLocal(vendorLocal);payment.setGlAccountStyleId(accountStyle);
+        payment.setAmountLocal(vendorLocal);refreshDraftPostingIdentity(payment,lines,accountStyle);
+        payment.setAmountAuthorityVersion(BANK_AUTHORITY_VERSION);paymentRepo.save(payment);
+    }
+    private void refreshDraftPostingIdentity(FinancePayment payment,List<FinancePaymentLine> lines,UUID accountStyle){
+        payment.setGlAccountStyleId(accountStyle);
         payment.setGlApStyleId((UUID)em.createNativeQuery("SELECT fn_finance_native_cash_counter_style('PAYMENT',:id,:role,:currency,'SUPPLIER',:party,:day)")
                 .setParameter("id",payment.getId()).setParameter("role",lines.isEmpty()?"SUPPLIER_PREPAYMENT_ASSET":"AP_CONTROL")
                 .setParameter("currency",payment.getCurrencyId()).setParameter("party",payment.getSupplierId()).setParameter("day",payment.getBillDate()).getSingleResult());
-        payment.setGlBankFeeStyleId(fee.signum()==0?null:paymentPostingStyle("BANK_FEE_EXPENSE"));
+        payment.setGlBankFeeStyleId(nz(payment.getBankFeeAccountAmount()).signum()==0?null:paymentPostingStyle("BANK_FEE_EXPENSE"));
         refreshPaymentFxStyle(payment,lines);
-        payment.setAmountAuthorityVersion(BANK_AUTHORITY_VERSION);paymentRepo.save(payment);
+    }
+
+    /** Trusted successor assembly, never an HTTP write entry. Preserve original
+     * adopted bank/line values; refresh only the new draft's current legal GL
+     * identities after its AP rows exist, exactly as normal draft finalization. */
+    @Transactional
+    public void prepareUnapprovalDraft(UUID originalId,UUID draftId){
+        FinancePayment original=require(originalId),draft=require(draftId);
+        if(original.getStatus()==null||original.getStatus()!=STATUS_REVERSED||draft.getStatus()==null||draft.getStatus()!=STATUS_DRAFT)
+            throw new ApiException(ErrorCode.CONFLICT,"付款反审续稿代次不正确");
+        if(original.getAmountAuthorityVersion()!=BANK_AUTHORITY_VERSION)return;
+        var rows=em.createNativeQuery("SELECT style_id FROM accounts WHERE id=:id AND status='使用' AND NOT is_deleted")
+                .setParameter("id",draft.getAccountId()).getResultList();
+        if(rows.size()!=1||rows.getFirst()==null)throw new ApiException(ErrorCode.CONFLICT,"付款续稿账户缺少当前有效会计身份");
+        refreshDraftPostingIdentity(draft,lineRepo.findByPaymentIdOrderByLineNoAsc(draftId),(UUID)rows.getFirst());
+        draft.setAmountAuthorityVersion(BANK_AUTHORITY_VERSION);paymentRepo.saveAndFlush(draft);
     }
 
     private void refreshPaymentFxStyle(FinancePayment payment,List<FinancePaymentLine> lines) {

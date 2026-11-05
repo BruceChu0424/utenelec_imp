@@ -4,6 +4,7 @@ import java.util.*;
 
 /** A financial code's currency identity is maintained once; source names never resolve a UUID. */
 public interface FinancialChartCurrencyReadPort {
+    int MAX_ACCOUNTS_PER_READ=5000;
     record Choice(UUID id,String code,String name,boolean baseCurrency,String status) { }
     record Reference(String accountCode,UUID currencyId,boolean baseCurrency,String sourceCurrencyName,long chartVersion) { }
     List<Choice> choices();

@@ -89,7 +89,8 @@ Future<void> main() => bootstrapUtenApp();
 /// Normal startup keeps the production pointer-aware binding.
 @visibleForTesting
 Future<void> bootstrapUtenApp({
-  WidgetsFlutterBinding Function()? bindingFactory,
+  WidgetsBinding Function()? bindingFactory,
+  Widget Function(Widget application)? applicationWrapperForTesting,
 }) async {
   recordLocalBootstrapPhase('binding.begin');
   // 在任何插件/默认 binding 初始化之前启用整体缩放的滚轮坐标换算。
@@ -130,16 +131,15 @@ Future<void> bootstrapUtenApp({
     return;
   }
 
-  runApp(
-    ProviderScope(
-      overrides: [
-        // 把 prefs 注入到全局 sharedPreferencesProvider
-        // 所有偏好 Provider（theme/locale/fontScale/performance）都从这里读
-        sharedPreferencesProvider.overrideWithValue(prefs),
-      ],
-      child: const UtenApp(),
-    ),
+  final application = ProviderScope(
+    overrides: [
+      // 把 prefs 注入到全局 sharedPreferencesProvider
+      // 所有偏好 Provider（theme/locale/fontScale/performance）都从这里读
+      sharedPreferencesProvider.overrideWithValue(prefs),
+    ],
+    child: const UtenApp(),
   );
+  runApp(applicationWrapperForTesting?.call(application) ?? application);
   WidgetsBinding.instance.addPostFrameCallback((_) {
     AppDiagnostics.record('startup.phase', fields: {'phase': 'ready'});
     webUpdateSafety.setReady(true);

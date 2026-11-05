@@ -41,6 +41,26 @@ class FinanceChartWorkbookParserTest {
         }));
         assertThat(result.issues()).anySatisfy(i->{assertThat(i.field()).isEqualTo("科目编码");assertThat(i.message()).contains("文本");});
     }
+    @Test void aMissingCodeIsLocatedAndNeverSilentlyDroppedAsACurrencySubtotal()throws Exception {
+        var result=parse(workbook((book,sheet)->{
+            var valid=sheet.createRow(1);valid.createCell(0).setCellValue("112202");valid.createCell(1).setCellValue("美元");valid.createCell(2).setCellValue("美元");
+            sheet.createRow(2).createCell(1).setCellValue("美元"); // same name, ordinary data position
+            sheet.createRow(3).createCell(0).setCellValue("资产小计");
+            sheet.createRow(4).createCell(1).setCellValue("缺编码的新科目");
+        }));
+        assertThat(result.rows()).hasSize(3);
+        assertThat(result.issues()).allSatisfy(issue->assertThat(issue.field()).isEqualTo("科目编码"));
+        assertThat(result.issues()).extracting(FinanceChartContracts.Issue::sourceRow).contains(3,5);
+    }
+    @Test void aRecognizedCurrencyLabelAfterASubtotalRemainsASourceSubtotal()throws Exception {
+        var result=parse(workbook((book,sheet)->{
+            var valid=sheet.createRow(1);valid.createCell(0).setCellValue("112202");valid.createCell(1).setCellValue("美元");valid.createCell(2).setCellValue("美元");
+            sheet.createRow(2).createCell(0).setCellValue("资产小计");
+            sheet.createRow(3).createCell(1).setCellValue("美元");
+        }));
+        assertThat(result.rows()).hasSize(1);
+        assertThat(result.issues()).isEmpty();
+    }
     private static FinanceChartContracts.Preview parse(byte[] bytes){return FinanceChartWorkbookParser.parse(UUID.randomUUID(),"chart.xlsx","source",bytes);}
     private static byte[] workbook(java.util.function.BiConsumer<XSSFWorkbook,org.apache.poi.ss.usermodel.Sheet> fill)throws Exception {
         try(var book=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {

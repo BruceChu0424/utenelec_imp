@@ -1,3 +1,5 @@
+import '../../support/finance_document_command_fixture.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,7 @@ import '../../support/document_scope_capability_overrides.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'new finance draft survives hard close without submitting incomplete money',
     (tester) async {
@@ -125,6 +128,12 @@ void main() {
         ProviderScope(
           overrides: [
             financeWriteAllDocumentScope(),
+            sharedPreferencesProvider.overrideWithValue(
+              await SharedPreferences.getInstance(),
+            ),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
             apiClientProvider.overrideWithValue(
               _ExactEditorApi({
                 'id': 'document-1',
@@ -206,127 +215,136 @@ void main() {
     FinanceDocType.otherIncome,
     FinanceDocType.bankTransfer,
   ]) {
-    testWidgets(
-      '${type.name} untouched and changed money save decimal text without double conversion',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1600, 1200));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-        const original = '1234567890123.123456789012345678901234';
-        const changed = '1234567890123.123456789012345678901235';
-        final detail = <String, dynamic>{
-          'id': 'document-1',
-          'version': 3,
-          'status': 0,
-          'makerId': 'maker-1',
-          'billNo': 'TEST-001',
-          'billDate': '2026-09-07',
-          'accountId': 'account-1',
-          'outAccountId': 'account-1',
-          'paymentMethodId': 'method-1',
-          'receiptMethodId': 'method-1',
-          'currencyId': 'currency-cny',
-          'exchangeRate': 1,
-          'exchangeRateExact': '1.000000',
-          'amountOriginal': 1234567890123.1,
-          'amountOriginalExact': original,
-          'amountLocal': 1234567890123.1,
-          'amountLocalExact': original,
-          'items': [
-            <String, dynamic>{
-              'id': 'line-1',
-              'amountOriginal': 1234567890123.1,
-              'amountOriginalExact': original,
-              'amountLocal': 1234567890123.1,
-              'amountLocalExact': original,
-              'qty': 2,
-              'qtyExact': '2.0000',
-              'price': 1.23456789,
-              'priceExact': '1.2345678901',
-              'expenseStyleId': 'style-1',
-              'incomeStyleId': 'style-1',
-              'inAccountId': 'account-2',
-              'occurDate': '2026-09-07',
-              'summary': '原始摘要',
-              'remark': '原始备注',
-            },
-          ],
-        };
-        final api = _ExactEditorApi(detail);
-        final location = '/finance/${type.pathSegment}/document-1';
-        final router = GoRouter(
-          initialLocation: location,
-          routes: [
-            GoRoute(
-              path: '/finance/${type.pathSegment}/:id',
-              builder: (_, state) => FinanceDocEditPage(
-                docType: type,
-                id: state.pathParameters['id'],
-              ),
-            ),
-          ],
-        );
-        addTearDown(router.dispose);
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              financeWriteAllDocumentScope(),
-              apiClientProvider.overrideWithValue(api),
-              sessionProvider.overrideWith(_TestSessionNotifier.new),
+    for (final changedInput in [false, true]) {
+      testWidgets(
+        '${type.name} ${changedInput ? 'changed' : 'untouched'} money saves decimal text from a fresh displayed generation',
+        (tester) async {
+          await tester.binding.setSurfaceSize(const Size(1600, 1200));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+          const original = '1234567890123.123456789012345678901234';
+          const changed = '1234567890123.123456789012345678901235';
+          final detail = <String, dynamic>{
+            'id': 'document-1',
+            'version': 3,
+            'status': 0,
+            'makerId': 'maker-1',
+            'billNo': 'TEST-001',
+            'billDate': '2026-09-07',
+            'accountId': 'account-1',
+            'outAccountId': 'account-1',
+            'paymentMethodId': 'method-1',
+            'receiptMethodId': 'method-1',
+            'currencyId': 'currency-cny',
+            'exchangeRate': 1,
+            'exchangeRateExact': '1.000000',
+            'amountOriginal': 1234567890123.1,
+            'amountOriginalExact': original,
+            'amountLocal': 1234567890123.1,
+            'amountLocalExact': original,
+            'items': [
+              <String, dynamic>{
+                'id': 'line-1',
+                'amountOriginal': 1234567890123.1,
+                'amountOriginalExact': original,
+                'amountLocal': 1234567890123.1,
+                'amountLocalExact': original,
+                'qty': 2,
+                'qtyExact': '2.0000',
+                'price': 1.23456789,
+                'priceExact': '1.2345678901',
+                'expenseStyleId': 'style-1',
+                'incomeStyleId': 'style-1',
+                'inAccountId': 'account-2',
+                'occurDate': '2026-09-07',
+                'summary': '原始摘要',
+                'remark': '原始备注',
+              },
             ],
-            child: MaterialApp.router(routerConfig: router),
-          ),
-        );
-        await tester.pumpAndSettle();
-        final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
-          find.byWidgetPredicate(
-            (widget) => widget is UtenEditableGrid<FinanceGridRow>,
-          ),
-        );
-        final row = grid.controller.rows.single;
-        expect(row.amount.text, original);
-        expect(row.qty.text, '2.0000');
-        expect(row.price.text, '1.2345678901');
-        await tester.tap(find.text('保存'));
-        await tester.pumpAndSettle();
-        expect(api.bodies, hasLength(1));
-        expect(router.routeInformationProvider.value.uri.toString(), location);
-        expect(find.text('保存失败，请稍后重试'), findsNothing);
-        final first = (api.bodies.single['items'] as List).single as Map;
-        expect(first['amountOriginal'], original);
-        // ADR-112: 本币由服务端按表头汇率派生, 请求只带实际金额原文。
-        expect(first.containsKey('amountLocal'), isFalse);
-        expect(first['summary'], '原始摘要');
-        if (type != FinanceDocType.bankTransfer) {
-          expect(first['qty'], '2.0000');
-          expect(first['price'], '1.2345678901');
-        }
-        tester
-                .widget<UtenEditableGrid<FinanceGridRow>>(
-                  find.byType(UtenEditableGrid<FinanceGridRow>),
-                )
-                .controller
-                .rows
-                .single
-                .amount
-                .text =
-            changed;
-        await tester.tap(find.text('保存'));
-        await tester.pumpAndSettle();
-        expect(api.bodies, hasLength(2));
-        final second = (api.bodies.last['items'] as List).single as Map;
-        expect(second['amountOriginal'], changed);
-        expect(second.containsKey('amountLocal'), isFalse);
-        expect(router.routeInformationProvider.value.uri.toString(), location);
-        expect(find.text('保存失败，请稍后重试'), findsNothing);
-        expect(tester.takeException(), isNull);
-      },
-    );
+          };
+          final api = _ExactEditorApi(detail);
+          final location = '/finance/${type.pathSegment}/document-1';
+          final router = GoRouter(
+            initialLocation: location,
+            routes: [
+              GoRoute(
+                path: '/finance/${type.pathSegment}/:id',
+                builder: (_, state) => FinanceDocEditPage(
+                  docType: type,
+                  id: state.pathParameters['id'],
+                ),
+              ),
+            ],
+          );
+          addTearDown(router.dispose);
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [
+                financeWriteAllDocumentScope(),
+                sharedPreferencesProvider.overrideWithValue(
+                  await SharedPreferences.getInstance(),
+                ),
+                formDraftStorageProvider.overrideWithValue(
+                  MemoryFormDraftStorage(),
+                ),
+                apiClientProvider.overrideWithValue(api),
+                sessionProvider.overrideWith(_TestSessionNotifier.new),
+              ],
+              child: MaterialApp.router(routerConfig: router),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+            find.byWidgetPredicate(
+              (widget) => widget is UtenEditableGrid<FinanceGridRow>,
+            ),
+          );
+          final row = grid.controller.rows.single;
+          expect(row.amount.text, original);
+          expect(row.qty.text, '2.0000');
+          expect(row.price.text, '1.2345678901');
+          if (changedInput) row.amount.text = changed;
+          await tester.tap(find.text('保存'));
+          await tester.pumpAndSettle();
+          expect(api.bodies, hasLength(1));
+          expect(
+            router.routeInformationProvider.value.uri.toString(),
+            location,
+          );
+          expect(find.text('保存失败，请稍后重试'), findsNothing);
+          final first = (api.bodies.single['items'] as List).single as Map;
+          expect(first['amountOriginal'], changedInput ? changed : original);
+          // ADR-112: 本币由服务端按表头汇率派生, 请求只带实际金额原文。
+          expect(first.containsKey('amountLocal'), isFalse);
+          expect(first['summary'], '原始摘要');
+          if (type != FinanceDocType.bankTransfer) {
+            expect(first['qty'], '2.0000');
+            expect(first['price'], '1.2345678901');
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
   }
 }
 
 class _TestSessionNotifier extends SessionNotifier {
   @override
-  SessionState build() => const SessionState();
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'finance-operator',
+      code: 'F',
+      name: '测试财务',
+      permissions: [
+        Perm.financeExpenseView,
+        Perm.financeExpenseEdit,
+        Perm.financeOtherIncomeView,
+        Perm.financeOtherIncomeEdit,
+        Perm.financeBankTransferView,
+        Perm.financeBankTransferEdit,
+      ],
+    ),
+  );
 }
 
 class _ExactEditorApi extends ApiClient {
@@ -338,7 +356,10 @@ class _ExactEditorApi extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => detail;
+  }) async => financeReviewedDetailFixture(
+    detail,
+    FinanceDocType.byPath(path.split('/')[2]),
+  );
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -362,7 +383,7 @@ class _ExactEditorApi extends ApiClient {
     }
     if (path == '/master/currencies/dict') {
       return [
-        {'id': 'currency-cny', 'name': '人民币'},
+        {'id': 'currency-cny', 'name': '人民币', 'baseCurrency': true},
       ];
     }
     if (path.contains('payment-styles')) {
@@ -380,7 +401,13 @@ class _ExactEditorApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
-    bodies.add(Map<String, dynamic>.from(body as Map));
-    return detail;
+    final command = Map<String, dynamic>.from(body as Map);
+    bodies.add(Map<String, dynamic>.from(command['document'] as Map));
+    return financeReviewReceiptFixture(
+      path: path,
+      command: command,
+      result: detail,
+      actorId: 'finance-operator',
+    );
   }
 }

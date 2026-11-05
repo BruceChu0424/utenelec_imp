@@ -37,11 +37,13 @@ class ProcurementReceiptArrivalAllowanceContractTest {
                         + "                ProcurementArrivalControlPort." + type);
         int authority = service.indexOf("receiptAmountAuthority.apply(r, items)");
         int iqc = service.indexOf("inspectionService.receive");
-        int ap = service.indexOf("arApService.postArAp");
+        int ap = type.equals("PURCHASE")?service.indexOf("postOrDefer(new ArApLedgerService.ArApPostingRequest")
+                :service.indexOf("boolean formallyPosted=postAp(r,payable.original(),payable.local(),+1)");
         assertThat(arrival).isGreaterThanOrEqualTo(0);
         assertThat(arrival).isLessThan(authority);
         assertThat(authority).isLessThan(iqc);
         assertThat(authority).isLessThan(ap);
+        assertThat(service).contains("ProcurementPayablePosting.post(firstPayables,arApService,req)");
     }
 
     private static String source(String relative) throws Exception {

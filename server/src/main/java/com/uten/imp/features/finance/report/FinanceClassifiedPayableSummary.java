@@ -37,6 +37,7 @@ final class FinanceClassifiedPayableSummary {
                                 ELSE ((ledger.legacy_source_resolution->>'snapshotAsOfUtc')::timestamptz AT TIME ZONE 'Asia/Shanghai')::date END AS effective_date
                     FROM ar_ap_ledger ledger %s
                     WHERE ledger.direction='AP' AND ledger.supplier_id IS NOT NULL
+                      AND NOT @representedCashLedger@
                       AND ((ledger.status=1 AND NOT ledger.is_deleted) OR (ledger.status=-1 AND ledger.is_deleted AND ledger.deleted_at IS NOT NULL))
                 ), posting_facts AS (
                     SELECT origin.supplier_id,origin.source_doc_type,origin.effective_date AS event_date,
@@ -58,7 +59,7 @@ final class FinanceClassifiedPayableSummary {
                     FROM posting_facts WHERE status=-1 AND is_deleted AND deleted_at IS NOT NULL
                 ), payment_facts AS (
                     SELECT payment.supplier_id,payment.bill_date AS event_date,payment.status,
-                           (COALESCE(payment.reversed_at,payment.updated_at) AT TIME ZONE 'Asia/Shanghai')::date AS reversed_date,
+                           (@reversalDate@ AT TIME ZONE 'Asia/Shanghai')::date AS reversed_date,
                            part.category,COALESCE(part.cash_local,line.amount_local) AS cash_local,
                            COALESCE(part.book_local,%s) AS book_local,classified.id IS NULL AS pending,payment.amount_authority_version>0 AS amount_verified
                     FROM finance_payments payment JOIN finance_payment_lines line ON line.payment_id=payment.id AND NOT line.is_deleted
@@ -66,11 +67,20 @@ final class FinanceClassifiedPayableSummary {
                     LEFT JOIN finance_payment_classification_parts part ON part.batch_id=classified.id
                     WHERE payment.status IN(1,-1) AND NOT payment.is_deleted AND payment.legacy_id IS NULL AND payment.legacy_import_run_id IS NULL
                     UNION ALL SELECT payment.supplier_id,payment.bill_date,payment.status,
-                           (COALESCE(payment.reversed_at,payment.updated_at) AT TIME ZONE 'Asia/Shanghai')::date,
+                           (@reversalDate@ AT TIME ZONE 'Asia/Shanghai')::date,
                            NULL,payment.amount_local,payment.amount_local,true,payment.amount_authority_version>0
                     FROM finance_payments payment WHERE payment.status IN(1,-1) AND NOT payment.is_deleted AND payment.legacy_id IS NULL
                       AND payment.legacy_import_run_id IS NULL AND NOT EXISTS(SELECT 1 FROM finance_payment_lines line WHERE line.payment_id=payment.id AND NOT line.is_deleted)
                       AND NOT EXISTS(SELECT 1 FROM finance_supplier_advances advance WHERE advance.payment_id=payment.id)
+                    UNION ALL SELECT payment.supplier_id,payment.bill_date,payment.status,
+                           (@reversalDate@ AT TIME ZONE 'Asia/Shanghai')::date,
+                           part.category,-COALESCE(part.amount_local,legacy.amount_original_local),0::numeric,classified.id IS NULL,payment.amount_authority_version>0
+                    FROM finance_payments payment JOIN ar_ap_ledger legacy ON legacy.source_doc_type='DIRECT_PAYMENT' AND legacy.source_doc_id=payment.id
+                    LEFT JOIN v_finance_open_item_classification_current classified ON classified.ledger_id=legacy.id
+                    LEFT JOIN finance_open_item_classification_parts part ON part.batch_id=classified.id
+                    WHERE payment.status IN(1,-1) AND NOT payment.is_deleted AND payment.legacy_id IS NULL AND payment.legacy_import_run_id IS NULL
+                      AND EXISTS(SELECT 1 FROM finance_payment_lines line WHERE line.payment_id=payment.id AND NOT line.is_deleted)
+                      AND @legacyPostingProof@
                     UNION ALL SELECT advance.supplier_id,payment.bill_date,payment.status,
                            (payment.reversed_at AT TIME ZONE 'Asia/Shanghai')::date,part.category,
                            COALESCE(part.amount_local,advance.amount_local),COALESCE(part.amount_local,advance.amount_local),part.payment_id IS NULL,true
@@ -183,6 +193,9 @@ final class FinanceClassifiedPayableSummary {
                     COALESCE(advance.remaining,0) AS "__unappliedAdvanceLocal",
                     CASE WHEN NOT balance.raw_unknown THEN balance.balance+COALESCE(advance.remaining,0) END AS "__formalPayableBalance"
                 FROM balances balance JOIN suppliers supplier ON supplier.id=balance.supplier_id LEFT JOIN advance_balances advance ON advance.supplier_id=balance.supplier_id
-                """.formatted(LegacyOpeningBalanceSql.localAmount("ledger.amount_original_local"),LegacyOpeningBalanceSql.PROOF_JOIN,LegacyOpeningBalanceSql.paymentBookLocal("line"));
+                """.formatted(LegacyOpeningBalanceSql.localAmount("ledger.amount_original_local"),LegacyOpeningBalanceSql.PROOF_JOIN,LegacyOpeningBalanceSql.paymentBookLocal("line"))
+                .replace("@representedCashLedger@",com.uten.imp.features.finance.SupplierAdvanceReplaySql.cashRepresentedLedger("ledger"))
+                .replace("@legacyPostingProof@",com.uten.imp.features.finance.SupplierAdvanceReplaySql.legacyPostingProof("payment"))
+                .replace("@reversalDate@",com.uten.imp.features.finance.SupplierAdvanceReplaySql.reversalDate("payment"));
     }
 }

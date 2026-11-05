@@ -47,6 +47,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../config/finance_doc_config.dart';
+import '../widgets/finance_document_review_command.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
@@ -208,7 +209,22 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         !ref.read(currentPermissionsProvider).contains(config.deletePerm)) {
       throw ApiException('FORBIDDEN', '当前身份、选择范围或${config.label}删除权限已变化');
     }
-    await repository.delete(id);
+    await reviewFinanceDraftDeletion(
+      context,
+      type: type,
+      reviewedDetail: detail,
+      beforeDispatch: () async {
+        if (!mounted ||
+            scope == null ||
+            ref.read(authenticatedScopeProvider) != scope ||
+            widget.docType != type ||
+            !_canSelectDrafts ||
+            !selectedDraftIds.contains(id) ||
+            !ref.read(currentPermissionsProvider).contains(config.deletePerm)) {
+          throw ApiException('FORBIDDEN', '当前身份、选择范围或${config.label}删除权限已变化');
+        }
+      },
+    );
   }
 
   bool get _canCreate {

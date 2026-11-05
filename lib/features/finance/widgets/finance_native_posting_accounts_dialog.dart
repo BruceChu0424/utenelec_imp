@@ -1,8 +1,10 @@
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -18,9 +20,8 @@ import 'finance_source_table.dart';
 const _path = '/finance/native-posting-accounts';
 
 Future<void> showFinanceNativePostingAccountsDialog(BuildContext context) =>
-    showDialog<void>(
+    showFinanceWorkbenchPanel<void>(
       context: context,
-      barrierDismissible: false,
       builder: (_) => const _Directory(),
     );
 
@@ -219,6 +220,11 @@ class _DirectoryState extends ConsumerState<_Directory> {
                 ],
               ),
             ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在读取业务科目对应',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),
@@ -417,7 +423,10 @@ class _EditorState extends ConsumerState<_Editor> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             UtenDialogHeader(
-              title: const Text('新增业务单据科目对应'),
+              title: const UtenDialogTitleWithHint(
+                title: Text('新增业务单据科目对应'),
+                info: '保存为待审核版本，由另一名具备权限的财务审核。已发生债务和已记账分录保留原对应，付款、收款按原债务科目清偿。',
+              ),
               showCloseButton: true,
               onClose: editable ? _close : null,
             ),
@@ -542,9 +551,6 @@ class _EditorState extends ConsumerState<_Editor> {
                       maxLines: 3,
                       onChanged: (_) => _dirty = true,
                     ),
-                    const Text(
-                      '保存为待审核版本，由另一名具备权限的财务审核。已发生债务和已记账分录保留原对应，付款、收款按原债务科目清偿。',
-                    ),
                   ],
                 ),
               ),
@@ -562,6 +568,11 @@ class _EditorState extends ConsumerState<_Editor> {
                 ),
               ],
             ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在核对业务科目对应',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),

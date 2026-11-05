@@ -77,12 +77,16 @@ class GiftUnitRateConservationEndToEndTest {
         checks.assertThat(stock(f)).as("New return generation uses the same original free base").isEqualByComparingTo("1.00005");
         returns.reverse(returnDraft.getId());assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         checks.assertThat(closed(f)).as("Mirrored return reverse restores fulfillment").isTrue();
-        // Existing value provenance deliberately blocks erasing a receipt after a
-        // compensated ISSUE history. Test that guard with no side effects, then
-        // exercise receipt unapproval on an independent unused physical source.
-        assertThatThrownBy(()->receipts.reverse(received)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
-        assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");assertThat(ap(received)).isEqualByComparingTo("10");
-        evidence(f,received,returnDraft.getId(),"USED_RECEIPT_REVERSAL_REFUSED_WITH_NO_EFFECT",Map.of("stockQty","2.0001","stockValue","10","AP","10","domainReversal","409 unused cost head","canReverseHint","observed separately from domain"));
+        // A fully compensated issue retains its exact original store ancestry.
+        // The real reverse must withdraw that source, while retaining every old movement.
+        Map<UUID,String> originalMovements=new LinkedHashMap<>();
+        db.query("SELECT id,to_jsonb(m)::text FROM stock_movements m WHERE source_doc_id IN(?,?,?)",
+                (row,index)->Map.entry(row.getObject(1,UUID.class),row.getString(2)),received,returned,returnDraft.getId())
+                .forEach(row->originalMovements.put(row.getKey(),row.getValue()));
+        receipts.reverse(received);
+        assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(received)).isZero();assertThat(closed(f)).isFalse();
+        originalMovements.forEach((id,original)->assertThat(db.queryForObject("SELECT to_jsonb(m)::text FROM stock_movements m WHERE id=?",String.class,id)).isEqualTo(original));
+        evidence(f,received,returnDraft.getId(),"COMPENSATED_ORIGINAL_RECEIPT_REVERSED",Map.of("stockQty","0","stockValue","0","AP","0","closed","false"));
         F fresh=fixture();UUID untouched=receipt(fresh,"1","1");receipts.approve(untouched);passAndStock(fresh,untouched);
         var command=new DocumentUnapprovalService.UnapproveRequest("gift-rate-unapprove-"+untouched,"转换残差仍按原冻结事实反审");
         var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",untouched,command);

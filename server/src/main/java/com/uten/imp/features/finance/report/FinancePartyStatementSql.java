@@ -12,7 +12,7 @@ final class FinancePartyStatementSql {
         String reason=receivable ? "batch.reason" : "allocation.reason";
         String reverseReason=receivable ? "batch.reverse_reason" : "allocation.reverse_reason";
         String sourceExclusion=receivable ? "1=1"
-                : "(ledger.source_doc_type<>'DIRECT_PAYMENT' OR ledger.legacy_import_run_id IS NOT NULL)";
+                : "NOT "+com.uten.imp.features.finance.SupplierAdvanceReplaySql.cashRepresentedLedger("ledger");
         return """
                 WITH @cashCte@, offset_facts AS NOT MATERIALIZED (
                     SELECT allocation.*, @reason@ AS event_remark,@reverseReason@ AS reversal_remark
@@ -29,6 +29,7 @@ final class FinancePartyStatementSql {
                     WHERE ledger.direction='@direction@' AND ledger.@party@=:pid
                       AND ledger.legacy_import_run_id IS NULL AND ledger.status=-1
                       AND COALESCE(ledger.is_deleted,false) AND ledger.deleted_at IS NOT NULL
+                      AND @sourceExclusion@
                     UNION ALL
                     SELECT cash.event_date,cash.bill_no,0::numeric,NULL::numeric,0::numeric,
                            cash.book_original,cash.book_rate,cash.book_local,cash.event_type,currency.code,
@@ -59,9 +60,11 @@ final class FinancePartyStatementSql {
                            allocation.reversal_remark,allocation.currency_id,80,allocation.id
                     FROM offset_facts allocation LEFT JOIN currencies currency ON currency.id=allocation.currency_id
                     WHERE allocation.status='REVERSED' AND allocation.reversed_at IS NOT NULL
+                    @nativeAdvanceEvents@
                 )
                 """.replace("@cashCte@",FinanceCashEventSql.ctes(receivable,"t."+party+"=:pid AND "+documentScope)
                         .replace("cash_facts AS (","cash_facts AS NOT MATERIALIZED ("))
+                .replace("@nativeAdvanceEvents@",receivable?"":nativeAdvanceEvents(documentScope))
                 .replace("@postingEvents@",postingEvents(false)+" UNION ALL "+postingEvents(true))
                 .replace("@party@",party)
                 .replace("@offsets@",offsets).replace("@reason@",reason).replace("@reverseReason@",reverseReason)
@@ -73,6 +76,26 @@ final class FinancePartyStatementSql {
                 .replace("@offsetLabel@",receivable ? "预收转销" : "应付抵销").replace("@sourceLabel@",receivable ? "预收" : "贷项")
                 .replace("@scope@",documentScope)
                 .replace("currency.code", com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency"));
+    }
+
+    private static String nativeAdvanceEvents(String documentScope) {
+        return """
+                UNION ALL
+                SELECT event.event_date,payment.bill_no,0::numeric,NULL::numeric,0::numeric,
+                       event.amount_original,target.exchange_rate,
+                       event.amount_local,event.event_type,currency.code,event.remark,event.currency_id,event.event_order,event.id
+                FROM v_finance_supplier_advance_ap_events event JOIN finance_payments payment ON payment.id=event.payment_id
+                JOIN ar_ap_ledger target ON target.id=event.ledger_id
+                LEFT JOIN currencies currency ON currency.id=event.currency_id
+                WHERE event.supplier_id=:pid AND @scope@
+                UNION ALL
+                SELECT event.event_date,event.bill_no,0::numeric,NULL::numeric,0::numeric,
+                       event.amount_original,payment.exchange_rate,
+                       event.amount_local,event.event_type,currency.code,event.remark,event.currency_id,event.event_order,event.id
+                FROM v_finance_supplier_advance_asset_events event JOIN finance_payments payment ON payment.id=event.payment_id
+                LEFT JOIN currencies currency ON currency.id=event.currency_id
+                WHERE event.supplier_id=:pid AND @scope@
+                """.replace("@scope@",documentScope);
     }
 
     /** Separate native dates from imported snapshot dates so range predicates remain indexable. */
@@ -234,15 +257,26 @@ final class FinancePartyStatementSql {
                            all_history AS (ORDER BY event.event_date,event.event_order,
                             event.ref_no,event.event_id ROWS UNBOUNDED PRECEDING)
                 )
-                SELECT event_date AS "billDate",ref_no AS "refNo",currency_code AS "currencyCode",
+                SELECT event.event_date AS "billDate",event.ref_no AS "refNo",event.currency_code AS "currencyCode",
                        posted_original AS "salesOriginal",posted_rate AS "salesRate",posted_local AS "salesLocal",
                        settled_original AS "receiptOriginal",settled_rate AS "receiptRate",settled_local AS "receiptLocal",
                        running_original AS "balanceOriginal",posted_rate AS "balanceRate",running_local AS "balanceLocal",
-                       event_type AS "type",remark AS "remark",event_order AS "eventOrder",event_id AS "eventId",
+                       event.event_type AS "type",event.remark AS "remark",event.event_order AS "eventOrder",event.event_id AS "eventId",
                        CASE WHEN running_original IS NULL THEN '待核验' ELSE '已核验' END AS "originalStatus",
-                       currency_id AS "__currencyId"
-                FROM windowed WHERE CAST(:from AS date) IS NULL OR event_date>=:from
-                """.replace("@side@", side);
+                       event.currency_id AS "__currencyId" @nativeMetadata@
+                FROM windowed event @nativeCashJoin@
+                WHERE CAST(:from AS date) IS NULL OR event.event_date>=:from
+                """.replace("@side@", side)
+                .replace("@nativeMetadata@","AP".equals(side)?"""
+                        ,event.event_type AS "__eventType",
+                        CASE WHEN actual_cash.id IS NULL THEN 0::numeric ELSE actual_cash.actual_bank_cash_local END AS "actualCashLocal",
+                        CASE WHEN actual_cash.id IS NULL THEN 0::numeric ELSE actual_cash.actual_bank_cash_local END AS "__actualCashLocal",
+                        CASE WHEN event.event_type LIKE '预付资产%' THEN event.settled_local ELSE 0 END AS "__advanceAssetDeltaLocal",
+                        CASE WHEN event.event_type LIKE '预付资产%' THEN 0 ELSE event.posted_local-event.settled_local END AS "__formalApDeltaLocal",
+                        event.posted_local-event.settled_local AS "__netDeltaLocal",'BOOK_NET_MOVEMENT'::text AS "__settledMeaning"
+                        """:"")
+                .replace("@nativeCashJoin@","AP".equals(side)?"LEFT JOIN cash_events actual_cash ON actual_cash.id=event.event_id "
+                        +"AND actual_cash.event_order=event.event_order AND actual_cash.event_date=event.event_date":"");
     }
 
     /**
@@ -253,6 +287,7 @@ final class FinancePartyStatementSql {
      */
     static String annual(String side) {
         return snapshotMonthly(events("AR".equals(side),"1=1"),side)+"""
+                @nativeMonthlyMetadata@
                 , summary_cells AS (
                     SELECT month_start,SUM(posted_local_sum) AS posted_local_sum,
                            SUM(settled_local_sum) AS settled_local_sum,SUM(net_local) AS net_local
@@ -270,11 +305,35 @@ final class FinancePartyStatementSql {
                 SELECT month.ym AS "ym",
                        COALESCE((SELECT SUM(prior.net_local)
                            FROM summary_cells prior WHERE prior.month_start<month.ms),0) AS "prevBalance",
-                       month.posted AS "posted",month.settled AS "settled",NULL::numeric AS "returned",
+                       month.posted AS "posted",month.settled AS "settled" @nativeCashColumn@,NULL::numeric AS "returned",
                        COALESCE((SELECT SUM(closing.net_local)
                            FROM summary_cells closing
-                           WHERE closing.month_start<month.ms+INTERVAL '1 month'),0) AS "balance"
+                           WHERE closing.month_start<month.ms+INTERVAL '1 month'),0) AS "balance" @nativeMetadata@
                 FROM monthly month ORDER BY month.ym
-                """.replace("@side@", side);
+                """.replace("@side@", side)
+                .replace("@nativeCashColumn@","AP".equals(side)?",CASE WHEN EXISTS(SELECT 1 FROM actual_cash_months WHERE month_start=month.ms) THEN (SELECT amount_local FROM actual_cash_months WHERE month_start=month.ms) ELSE 0::numeric END AS \"actualCashLocal\"":"")
+                .replace("@nativeMonthlyMetadata@","AP".equals(side)?"""
+                        , advance_asset_months AS (
+                            SELECT date_trunc('month',event_date)::date AS month_start,SUM(amount_local) AS amount_local
+                            FROM v_finance_supplier_advance_asset_events WHERE supplier_id=:pid AND event_date<=:ye
+                            GROUP BY date_trunc('month',event_date)::date
+                        ), actual_cash_months AS (
+                            SELECT date_trunc('month',event_date)::date AS month_start,
+                                   CASE WHEN COUNT(*)=COUNT(actual_bank_cash_local) THEN SUM(actual_bank_cash_local) END AS amount_local
+                            FROM cash_events WHERE event_date BETWEEN :ys AND :ye GROUP BY date_trunc('month',event_date)::date
+                        )
+                        """:"")
+                .replace("@nativeMetadata@","AP".equals(side)?"""
+                        ,CASE WHEN EXISTS(SELECT 1 FROM actual_cash_months WHERE month_start=month.ms) THEN (SELECT amount_local FROM actual_cash_months WHERE month_start=month.ms) ELSE 0::numeric END AS "__actualCashLocal",
+                        COALESCE((SELECT amount_local FROM advance_asset_months WHERE month_start=month.ms),0) AS "__advanceAssetDeltaLocal",
+                        month.posted-month.settled+COALESCE((SELECT amount_local FROM advance_asset_months WHERE month_start=month.ms),0) AS "__formalApDeltaLocal",
+                        month.posted-month.settled AS "__netDeltaLocal",'BOOK_NET_MOVEMENT'::text AS "__settledMeaning",
+                        COALESCE((SELECT SUM(prior.net_local) FROM summary_cells prior WHERE prior.month_start<month.ms),0)
+                            +COALESCE((SELECT SUM(amount_local) FROM advance_asset_months WHERE month_start<month.ms),0) AS "__formalApOpeningLocal",
+                        COALESCE((SELECT SUM(closing.net_local) FROM summary_cells closing WHERE closing.month_start<month.ms+INTERVAL '1 month'),0)
+                            +COALESCE((SELECT SUM(amount_local) FROM advance_asset_months WHERE month_start<month.ms+INTERVAL '1 month'),0) AS "__formalApClosingLocal",
+                        COALESCE((SELECT SUM(amount_local) FROM advance_asset_months WHERE month_start<month.ms),0) AS "__advanceAssetOpeningLocal",
+                        COALESCE((SELECT SUM(amount_local) FROM advance_asset_months WHERE month_start<month.ms+INTERVAL '1 month'),0) AS "__advanceAssetClosingLocal"
+                        """:"");
     }
 }

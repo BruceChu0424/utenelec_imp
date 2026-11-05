@@ -47,6 +47,14 @@ public class FinancePaymentController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceDocumentActions documentActions;
+
+    @GetMapping("/{id}/review-operations/{requestId}")
+    @PreAuthorize("hasAuthority('finance_payment:view')")
+    public java.util.Map<String,Object> reviewReceipt(@PathVariable UUID id,@PathVariable UUID requestId){return documentActions.receipt("financePayment",id,requestId);}
+    @PostMapping("/{id}/review-operations/{requestId}/cancel")
+    @PreAuthorize("hasAuthority('finance_payment:view')")
+    public java.util.Map<String,Object> cancelReview(@PathVariable UUID id,@PathVariable UUID requestId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation request){return documentActions.cancel("financePayment",id,requestId,request);}
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_payment:view')")
@@ -87,7 +95,7 @@ public class FinancePaymentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_payment:view')")
     public FinancePaymentDetail detail(@PathVariable UUID id) {
-        FinancePaymentDetail result = service.detail(id);
+        FinancePaymentDetail result = documentActions.reviewedDetail("financePayment",id,false);
         detailViewAudit.record(
                 "view_finance_payment_detail",
                 "finance_payments",
@@ -101,7 +109,7 @@ public class FinancePaymentController {
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('finance_payment:view')")
     public FinancePaymentDetail history(@PathVariable UUID id) {
-        FinancePaymentDetail result = service.detailHistory(id);
+        FinancePaymentDetail result = documentActions.reviewedDetail("financePayment",id,true);
         detailViewAudit.recordHistory(
                 "view_finance_payment_detail",
                 "finance_payments",
@@ -120,34 +128,26 @@ public class FinancePaymentController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_payment:edit')")
-    public FinancePaymentDetail update(@PathVariable UUID id, @Valid @RequestBody FinancePaymentSaveRequest req) {
-        return service.update(id, req);
+    public java.util.Map<String,Object> update(@PathVariable UUID id, @Valid @RequestBody com.uten.imp.features.finance.FinanceDocumentActions.UpdateCommand req) {
+        return documentActions.update("financePayment",id,req);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_payment:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
+    public java.util.Map<String,Object> delete(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.delete("financePayment",id,command);
     }
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_payment:approve')")
-    public FinancePaymentDetail approve(@PathVariable UUID id) {
-        FinancePaymentDetail result = service.approve(id);
-        // 审计：显式记录"谁审核了这张付款单"（触发器只记 update，业务语义在这里补）。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_payment_approve", "finance_payment", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> approve(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.approve("financePayment",id,command);
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('finance_payment:reverse')")
-    public FinancePaymentDetail reverse(@PathVariable UUID id) {
-        FinancePaymentDetail result = service.reverse(id);
-        // 审计：显式记录"谁红冲了这张付款单"。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_payment_reverse", "finance_payment", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> reverse(@PathVariable UUID id,@RequestBody com.uten.imp.application.port.FinancialDocumentUnapprovalCommandPort.Command command) {
+        return documentActions.unapprove("financePayment",id,command);
     }
 
     @GetMapping("/{id}/history/rows")

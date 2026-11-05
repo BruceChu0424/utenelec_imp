@@ -137,8 +137,10 @@ class GiftFreeOnlyOrderConservationEndToEndTest {
         UUID event=UUID.randomUUID();
         var context=new com.uten.imp.application.port.InventoryValuationPort.EventContext(event,"TEST_GIFT_UNRELATED_COST",
             document,(UUID)original.get("source_item_id"),1,f.w().superAdminUserId(),f.w().employeeId(),event.toString(),java.time.OffsetDateTime.now());
-        var correction=values.adjustSource(new com.uten.imp.application.port.InventoryValuationPort.SourceAdjustment(
-            context,(UUID)original.get("result_node_id"),BigDecimal.ONE,true));
+        // This anonymous acquisition's nominal100 plus actual extra1 is now
+        // explicitly confirmed as TOTAL101; a fee cannot finalise an unknown base.
+        var correction=values.confirmSourceTotal(new com.uten.imp.application.port.InventoryValuationPort.SourceTotalConfirmation(
+            context,(UUID)original.get("result_node_id"),new BigDecimal("101")));
         assertThat(correction.pendingTasks()).isPositive();
         assertThat(db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,correction.eventId())).isEqualTo("PENDING");
         return correction.eventId();

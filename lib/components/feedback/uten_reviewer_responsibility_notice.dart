@@ -13,11 +13,13 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
   const UtenReviewerResponsibilityNotice({
     super.key,
     this.actionLabel = '审核',
+    this.reviewerLabel = '审核员',
     this.description,
     this.compact = false,
   });
 
   final String actionLabel;
+  final String reviewerLabel;
   final String? description;
   final bool compact;
 
@@ -41,7 +43,7 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
 
     return Semantics(
       container: true,
-      label: '审核员 $currentActor。$detail',
+      label: '$reviewerLabel $currentActor。$detail',
       child: Container(
         key: const Key('reviewer-responsibility-notice'),
         width: double.infinity,
@@ -69,7 +71,7 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
                   color: colors.error,
                 ),
                 Text(
-                  '审核员：$currentActor',
+                  '$reviewerLabel：$currentActor',
                   style: theme.textTheme.labelLarge?.copyWith(
                     color: colors.error,
                     fontWeight: FontWeight.w800,

@@ -1,3 +1,5 @@
+import '../../support/finance_command_test_support.dart';
+import '../../support/finance_document_command_fixture.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,7 @@ class _Names extends Fake implements FinanceNameService {}
 class _Api extends ApiClient {
   _Api({this.status = 1}) : super(Dio());
   int status;
+  FinanceDocType type = FinanceDocType.receipt;
   final List<(String, Object?)> writes = [];
   @override
   Future<Map<String, dynamic>> get(
@@ -29,7 +32,7 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async => path.contains('scope')
       ? {'scope': 'finance', 'writeAll': false, 'writableOwnerIds': <String>[]}
-      : {
+      : financeReviewedDetailFixture({
           'id': 'finance-header-1',
           'makerId': 'header-maker-1',
           'billNo': 'TEST-HEADER-1',
@@ -54,7 +57,7 @@ class _Api extends ApiClient {
               'exchangeDiff': 0,
             },
           ],
-        };
+        }, type);
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -70,24 +73,33 @@ class _Api extends ApiClient {
   }) async {
     writes.add((path, body));
     status = 1;
-    return {'id': 'finance-header-1', 'status': status, 'items': <Object>[]};
+    return financeReviewReceiptFixture(
+      path: path,
+      command: Map<String, dynamic>.from(body as Map),
+      result: {'id': 'finance-header-1', 'status': status, 'items': <Object>[]},
+      operation: 'FINANCE_DOCUMENT_APPROVE',
+      actorId: financeCommandTestActor,
+    );
   }
 }
 
 void main() {
+  setUp(prepareFinanceCommandTest);
   for (final type in FinanceDocType.values) {
     testWidgets('${type.name} 审核单据只读，普通审核只提交决定', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1100));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      final api = _Api(status: 0);
+      final api = _Api(status: 0)..type = type;
       final config = FinanceDocConfig.by(type);
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            ...nativeDetailReaderOverrides(),
-            sharedPreferencesProvider.overrideWithValue(prefs),
+            ...nativeDetailReaderOverrides(
+              includeSession: false,
+              includeServer: false,
+            ),
+            ...financeCommandTestOverrides(permissions: false),
             apiClientProvider.overrideWithValue(api),
             currentPermissionsProvider.overrideWithValue({
               config.listPerm,
@@ -111,11 +123,20 @@ void main() {
       expect(find.widgetWithText(UtenButton, '编辑'), findsNothing);
       await tester.tap(find.widgetWithText(UtenButton, '审核'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, '确认审核'));
+      await tester.tap(find.widgetWithText(UtenButton, '确认审核'));
       await tester.pumpAndSettle();
-      expect(api.writes, [
-        ('/finance/${type.pathSegment}/finance-header-1/approve', null),
-      ]);
+      expect(
+        api.writes.single.$1,
+        '/finance/${type.pathSegment}/finance-header-1/approve',
+      );
+      expect(
+        (api.writes.single.$2 as Map)['expectedSnapshot'],
+        List.filled(64, 'a').join(),
+      );
+      expect(
+        (api.writes.single.$2 as Map).keys,
+        unorderedEquals(['requestId', 'expectedVersion', 'expectedSnapshot']),
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -171,7 +192,7 @@ void main() {
         type: type,
       );
       if (type == FinanceDocType.payment) {
-        expect(create.map((column) => column.label), ['应付单号', '本次付款金额']);
+        expect(create.map((column) => column.label), ['应付单号', '本次付款(原币)']);
         expect(detail['bill'], create.first.label);
         expect(detail['amountOriginal'], create.last.label);
         expect(table.columns.map((column) => column.key), [

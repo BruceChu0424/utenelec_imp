@@ -1,0 +1,149 @@
+{
+  "mode": "READ_ONLY preflight; no main checkout or mutation, no integration acceptance claimed",
+  "base": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "main": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "candidate": "current task worktree on old base, UI8 scoped tests only",
+  "rows": [
+    {
+      "paths": [
+        "lib/features/finance/pages/finance_doc_batch_entry.dart",
+        "lib/features/finance/models/finance_entry_request.dart",
+        "lib/features/finance/models/finance_entry_terms.dart",
+        "lib/features/finance/widgets/receipt_order_collection_panel.dart",
+        "lib/features/finance/widgets/ar_ap_picker_dialog.dart",
+        "lib/features/finance/widgets/finance_grid_columns.dart"
+      ],
+      "risk": "HIGH",
+      "mustKeepMain": [
+        "requestedSalesOrderId distinct from authoritative source/order identities and round-tripped in row/draft/request",
+        "sorted order-sources grouping suffix and matching cross-language contract",
+        "server order-collection-preview exact allocation/client/currency/amount proof, cancel/revision/read-owner fences",
+        "receiptBatches + initialAmounts and multi-source rows do not copy one bank actual-amount proof to every row",
+        "partyId changes clear old partyName; restore partyId before restoring referenced name"
+      ],
+      "mustKeepCandidate": [
+        "durable original batch request/key/body/precision choices and receipt/cancel fencing",
+        "BASE_ONLY option restrictions preserve historical foreign input",
+        "owned async callbacks, responsive preparation and unchanged raw money strings"
+      ]
+    },
+    {
+      "paths": [
+        "lib/features/finance/pages/finance_doc_detail_page.dart",
+        "lib/features/finance/pages/finance_doc_edit_page.dart",
+        "lib/features/finance/pages/finance_doc_list_page.dart",
+        "lib/features/finance/models/finance_doc.dart",
+        "lib/features/finance/config/finance_doc_config.dart"
+      ],
+      "risk": "HIGH",
+      "mustKeepMain": [
+        "partyName from server references preferred over live same-UUID name lookup",
+        "appliedSourceDocType/Id/No frozen original source, with original AR ledger number retained separately",
+        "receipt batch gross/customer paid vs actual bank net and fee/FX meanings remain distinct",
+        "requestedSalesOrderId preserved through edit reload/draft/save",
+        "completed approved non-stopped sales order true overpayment may retain order prepayment; receiptSources:true selectors",
+        "financePaymentOriginalAmountLabel and payment-source guidance"
+      ],
+      "mustKeepCandidate": [
+        "approvalSnapshot/approvalVersion and frozen approvalPlatformFields, not replacement of any old sourceSnapshot",
+        "approve/update/unapprove/GL_CONFIRM/DELETE original immutable commands and exact body + precision receipt checks",
+        "optional local owning-route lookup; imperative normal detail cannot inherit host recovery query",
+        "404 history recovery only on its explicit recovery path; 403 never fallback",
+        "all read/write/company/visitor/impersonation fences"
+      ]
+    },
+    {
+      "paths": [
+        "lib/features/finance/widgets/finance_actual_receipt_context.dart",
+        "lib/features/finance/widgets/customer_prepayment_receipt_fields.dart",
+        "lib/shared/widgets/sales_order_picker.dart"
+      ],
+      "risk": "HIGH",
+      "mustKeepMain": [
+        "lazy customer actual-receipt context, cancellable owner/revision protected read",
+        "customer cumulative actual cash is auxiliary only, never used to offset/recompute a selected batch balance",
+        "prepayment and receipt sources selectors preserve actual completed-order excess semantics"
+      ]
+    },
+    {
+      "paths": [
+        "lib/components/feedback/uten_task_progress_dialog.dart"
+      ],
+      "risk": "HIGH",
+      "mustKeepMain": [
+        "optional owner argument and Expando nested-owner progress reuse API, all its caller parameters"
+      ],
+      "mustKeepCandidate": [
+        "one BusyOverlay renderer, transparent progress-only route barrier, exact tracked route removal and invalidation",
+        "paint portal before synchronous work and retired-finally cannot remove another route"
+      ]
+    },
+    {
+      "paths": [
+        "lib/components/feedback/uten_busy_overlay.dart",
+        "lib/shared/widgets/business_precision_dialog.dart"
+      ],
+      "risk": "HIGH",
+      "mustKeepMain": [
+        "precision entry context.mounted guard and existing validity semantics"
+      ],
+      "mustKeepCandidate": [
+        "pending run owner registered before State mounts, scoped yield does not hide new modal work",
+        "real choice/cancel/ABA/nested-mask tests and no change to original precision/unknown DOWN contexts"
+      ],
+      "mergeNote": "Main await-endOfFrame pending workaround must be reconciled by semantics with pending-owner registration, not blindly combined"
+    },
+    {
+      "paths": [
+        "lib/shared/export/report_export_job_dialog.dart"
+      ],
+      "risk": "HIGH",
+      "mustKeepMain": [
+        "_previousTask and original-scope title/hint on pending/precision/recent restoration",
+        "_create clears prior job/recent display so a new unknown create cannot expose the prior downloadable file as current",
+        "explicit current-scope new export clears previous-task flag"
+      ],
+      "mustKeepCandidate": [
+        "per-action generation/Zone publication guard, semantic store identity, stale field/store resolve protection",
+        "user/init wait mask, nonblocking sequential auto poll, required states visible and guidance in adjacent hint"
+      ]
+    },
+    {
+      "paths": [
+        "lib/core/network/request_reload_semantics.dart",
+        "lib/shared/providers/list_refresh_provider.dart"
+      ],
+      "risk": "HIGH",
+      "mustKeepMain": [
+        "read-only sales/orders/delivery-preview classification and relevant list refresh behavior"
+      ],
+      "mustKeepCandidate": [
+        "new finance review/update/delete command mutation and receipt semantics"
+      ],
+      "verify": "Audit new receipt order preview read/write classification and permission checks against actual server; no inference from POST name"
+    },
+    {
+      "paths": [
+        "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+        "lib/features/finance/widgets/finance_material_statement_pickers.dart"
+      ],
+      "risk": "MEDIUM",
+      "mustKeepMain": [
+        "existing fact sourceSnapshot.document_remark/item_remark provenance remains separate from approvalSnapshot"
+      ]
+    }
+  ],
+  "requiredIntegrationTests": [
+    "main receipt_order_collection_panel and document party-name suites",
+    "batch old pending request retains original grouped body despite new order-source grouping",
+    "imperative/owning route read and review snapshot contract cases",
+    "all five families review/update/delete + lost reply/precision/scope recovery",
+    "Main owner-reuse task wait + candidate synchronous pending/nested work tests",
+    "original-scope export restore/unknown new-create plus candidate late field/store/busy cases"
+  ],
+  "notAuthorized": [
+    "push",
+    "release",
+    "Win7 inclusion"
+  ]
+}

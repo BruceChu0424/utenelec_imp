@@ -17,6 +17,7 @@ import static com.uten.imp.features.finance.application.FinanceApplicationContra
 public class FinanceApplicationRoles {
     private final JdbcTemplate db;private final UserAccountRepository users;private final PermissionResolver permissions;
     private final SecurityContextCurrentUser current;private final TxSessionVars tx;
+    private final FinanceApplicationOperationJournal operations;
     void lockSettings(){db.query("SELECT pg_advisory_xact_lock(hashtextextended('uten:finance-application-settings',0))",rs->{});}
     AuthUser staff(){var user=current.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED));if(user.isVisitor()||user.getEmployeeId()==null)throw new ApiException(ErrorCode.FORBIDDEN,"申请流程仅限有效员工账号");return user;}
     boolean has(AuthUser user,String code){return user.isSuperAdmin()||user.getPermissions().contains(code);}
@@ -38,10 +39,13 @@ public class FinanceApplicationRoles {
     }
     @Transactional
     public Map<String,Object> saveSettings(SettingsInput input){var user=staff();require(user,FinanceApplicationPermissions.SETTINGS);if(input==null)throw invalid("请核对设置");tx.bind();lockSettings();
+        return operations.execute(null,input.requestId(),"SETTINGS_SAVE",input,ignored->{},()->applySettings(input));
+    }
+    private Map<String,Object> applySettings(SettingsInput input){
         String reference=text(input.sourceReference(),1000,"启用/关闭依据");if(reference.strip().length()<8)throw invalid("请填写至少8字的流程启用/关闭依据");
         var old=db.queryForMap("SELECT enabled,row_version,source_reference FROM finance_application_settings WHERE id=1 FOR UPDATE");
-        if(Objects.equals(old.get("enabled"),input.enabled())&&reference.equals(old.get("source_reference")))return settings();
         if(((Number)old.get("row_version")).longValue()!=input.expectedVersion())throw conflict("流程设置已变化，请刷新核对，原输入请保留");
+        if(Objects.equals(old.get("enabled"),input.enabled())&&reference.equals(old.get("source_reference")))return settings();
         if(input.enabled())for(var role:FinanceApplicationCatalog.Role.values())if(role!=FinanceApplicationCatalog.Role.DEPARTMENT_REVIEW){
             var ids=db.queryForList("SELECT employee_id FROM finance_application_role_bindings WHERE role_key=? AND department_id IS NULL",UUID.class,role.name());
             if(ids.isEmpty())throw invalid("请先明确配置"+FinanceApplicationCatalog.roleTitle(role));for(UUID id:ids)eligible(id,true);
@@ -52,12 +56,15 @@ public class FinanceApplicationRoles {
     }
     @Transactional
     public Map<String,Object> saveRole(RoleInput input){var user=staff();require(user,FinanceApplicationPermissions.SETTINGS);if(input==null||input.id()==null||input.employeeId()==null)throw invalid("请选择真实员工");
+        tx.bind();lockSettings();return operations.execute(null,input.requestId(),"ROLE_SAVE",input,ignored->{},()->applyRole(input));
+    }
+    private Map<String,Object> applyRole(RoleInput input){
         FinanceApplicationCatalog.Role role;try{role=FinanceApplicationCatalog.Role.valueOf(input.roleKey());}catch(Exception e){throw invalid("原流程岗位不存在");}
         if(role==FinanceApplicationCatalog.Role.DEPARTMENT_REVIEW?input.departmentId()==null:input.departmentId()!=null)throw invalid("部门负责人代理需明确部门；其它原岗位按公司配置");
         var assignee=eligible(input.employeeId(),true);String reference=text(input.sourceReference(),1000,"指派依据");if(reference.strip().length()<4)throw invalid("请填写明确指派依据");
-        tx.bind();lockSettings();if(input.departmentId()!=null&&db.queryForObject("SELECT count(*) FROM departments WHERE id=? AND NOT is_deleted",Integer.class,input.departmentId())!=1)throw invalid("部门不存在或已删除");
+        if(input.departmentId()!=null&&db.queryForObject("SELECT count(*) FROM departments WHERE id=? AND NOT is_deleted",Integer.class,input.departmentId())!=1)throw invalid("部门不存在或已删除");
         var rows=db.queryForList("SELECT role_key,department_id,employee_id,source_reference,row_version FROM finance_application_role_bindings WHERE id=? FOR UPDATE",input.id());
-        if(!rows.isEmpty()){var old=rows.getFirst();if(role.name().equals(old.get("role_key"))&&Objects.equals(input.departmentId(),old.get("department_id"))&&assignee.employeeId().equals(old.get("employee_id"))&&reference.equals(old.get("source_reference")))return settings();if(((Number)old.get("row_version")).longValue()!=input.expectedVersion())throw conflict("节点配置已变化，请刷新后核对");}
+        if(!rows.isEmpty()){var old=rows.getFirst();if(((Number)old.get("row_version")).longValue()!=input.expectedVersion())throw conflict("节点配置已变化，请刷新后核对");if(role.name().equals(old.get("role_key"))&&Objects.equals(input.departmentId(),old.get("department_id"))&&assignee.employeeId().equals(old.get("employee_id"))&&reference.equals(old.get("source_reference")))return settings();}
         else if(input.expectedVersion()!=-1)throw conflict("原节点配置已不存在");
         if(db.queryForObject("SELECT count(*) FROM finance_application_role_bindings WHERE role_key=? AND department_id IS NOT DISTINCT FROM ?::uuid AND id<>?",Integer.class,role.name(),input.departmentId(),input.id())>=8)throw invalid("一个岗位最多明确指定8名可代办人员，任一人只能办理本单当前节点");
         db.update("""
@@ -66,7 +73,12 @@ public class FinanceApplicationRoles {
                     source_reference=excluded.source_reference,row_version=finance_application_role_bindings.row_version+1,updated_at=now(),updated_by=excluded.updated_by
                 """,input.id(),role.name(),input.departmentId(),assignee.employeeId(),reference,current.requireId());return settings();
     }
-    @Transactional public Map<String,Object> removeRole(UUID id,long version){var user=staff();require(user,FinanceApplicationPermissions.SETTINGS);tx.bind();lockSettings();if(db.update("DELETE FROM finance_application_role_bindings WHERE id=? AND row_version=?",id,version)!=1)throw conflict("节点配置已变化，请刷新核对");return settings();}
+    @Transactional public Map<String,Object> removeRole(UUID id,long version){return removeRole(id,version,UUID.randomUUID());}
+    @Transactional public Map<String,Object> removeRole(UUID id,long version,UUID request){var user=staff();require(user,FinanceApplicationPermissions.SETTINGS);if(id==null)throw invalid("请保留原岗位编号");tx.bind();lockSettings();return operations.execute(null,request,"ROLE_REMOVE",new RoleRemoval(id,version),ignored->{},()->{if(db.update("DELETE FROM finance_application_role_bindings WHERE id=? AND row_version=?",id,version)!=1)throw conflict("节点配置已变化，请刷新核对");return settings();});}
+    @Transactional(readOnly=true) public Map<String,Object> settingsReceipt(UUID request){require(staff(),FinanceApplicationPermissions.SETTINGS);return operations.settingsReceipt(request);}
+    @Transactional public Map<String,Object> cancelSettings(UUID request,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        require(staff(),FinanceApplicationPermissions.SETTINGS);tx.bind();lockSettings();return operations.cancelSettings(request,cancellation);
+    }
     public boolean enabled(){return Boolean.TRUE.equals(db.queryForObject("SELECT enabled FROM finance_application_settings WHERE id=1",Boolean.class));}
     public boolean enabledWhenCreated(OffsetDateTime createdAt){return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM finance_application_enable_periods WHERE enabled_at<=? AND (disabled_at IS NULL OR ?>=enabled_at AND ?<disabled_at))",Boolean.class,createdAt,createdAt,createdAt));}
     Assignment eligible(UUID raw,boolean throwIfMissing){

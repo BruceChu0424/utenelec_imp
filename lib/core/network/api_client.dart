@@ -762,13 +762,32 @@ class ApiClient {
 
   /// [query] 作为查询参数发送(例如乐观锁版本号 `?version=`)。
   Future<void> delete(String path, {Map<String, dynamic>? query}) =>
-      _reloadSafety.track(() async {
-        try {
-          await _dio.delete<dynamic>(path, queryParameters: query);
-        } on DioException catch (e) {
-          throw _convert(e);
-        }
-      });
+      _deleteResponse(path, query: query).then((_) {});
+
+  /// A reviewed DELETE command has an immutable body and a result receipt.
+  /// Legacy void deletes keep their existing wrapper and the same transport.
+  Future<Map<String, dynamic>> deleteObject(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async =>
+      _objectResponse(await _deleteResponse(path, body: body, query: query));
+
+  Future<Response<dynamic>> _deleteResponse(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) => _reloadSafety.track(() async {
+    try {
+      return await _dio.delete<dynamic>(
+        path,
+        data: body,
+        queryParameters: query,
+      );
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  });
 
   /// 下载二进制（Excel 导出用）：POST [path]，可选密码走 [body]，过滤/排序走 [query]，
   /// 以 bytes 接收。AuthInterceptor 自动管 401 刷新。错误体（bytes）尝试解 JSON 取业务消息。

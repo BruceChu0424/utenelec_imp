@@ -17,7 +17,7 @@ public class FinancialChartCurrencyReadAdapter implements FinancialChartCurrency
                 (rs,n)->new Choice(rs.getObject(1,UUID.class),rs.getString(2),rs.getString(3),rs.getBoolean(4),rs.getString(5)));
     }
     @Override @Transactional(readOnly=true) public Map<String,Reference> read(Set<String> codes) {
-        if(codes==null||codes.isEmpty())return Map.of();if(codes.size()>5000)throw new IllegalArgumentException("Too many chart currency references");
+        if(codes==null||codes.isEmpty())return Map.of();if(codes.size()>MAX_ACCOUNTS_PER_READ)throw new IllegalArgumentException("Too many chart currency references");
         var choices=choices();Map<UUID,Choice> currencies=new HashMap<>();choices.forEach(choice->currencies.put(choice.id(),choice));
         var base=choices.stream().filter(Choice::baseCurrency).toList();UUID baseId=base.size()==1?base.getFirst().id():null;
         Map<String,Reference> result=new LinkedHashMap<>();

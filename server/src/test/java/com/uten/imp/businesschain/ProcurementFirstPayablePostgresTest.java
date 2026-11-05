@@ -28,8 +28,9 @@ import static org.assertj.core.api.Assertions.*;
  "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
  "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
  "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
 class ProcurementFirstPayablePostgresTest {
- @DynamicPropertySource static void database(DynamicPropertyRegistry r){FullChainEndToEndTest.registerDataSource(r);}
+ @DynamicPropertySource static void database(DynamicPropertyRegistry r){FinanceScopedChainDatabase.register(r,ProcurementFirstPayablePostgresTest.class);}
  @Autowired AutowireCapableBeanFactory beans;
  @Autowired JdbcTemplate db;
  @Autowired TransactionTemplate transactions;

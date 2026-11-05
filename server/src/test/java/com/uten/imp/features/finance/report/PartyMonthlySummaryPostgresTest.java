@@ -376,7 +376,10 @@ class PartyMonthlySummaryPostgresTest {
     }
 
     private List<Map<String, Object>> annualRows(Session session, String side, UUID partyId, int year) {
-        String sql = FinancePartyStatementSql.annual(side);
+        // Compare the original six book columns by identity; AP now also
+        // exposes an independent cash column and explicit hidden provenance.
+        String sql = "SELECT \"ym\",\"prevBalance\",\"posted\",\"settled\",\"returned\",\"balance\" FROM ("
+                +FinancePartyStatementSql.annual(side)+") statement_book ORDER BY \"ym\"";
         List<Object[]> rows = session.createNativeQuery(sql, Object[].class)
                 .setParameter("pid", partyId)
                 .setParameter("ys", LocalDate.of(year, 1, 1))
@@ -396,7 +399,9 @@ class PartyMonthlySummaryPostgresTest {
 
     private List<Map<String, Object>> queryRows(Session session, String sql, UUID partyId,
                                                 LocalDate from, LocalDate to, LocalDate fromMonth) {
-        var query = session.createNativeQuery(sql, Object[].class)
+        // A window's order does not order the final relation after AP cash
+        // provenance joins. Use the same explicit chronology as the public API.
+        var query = session.createNativeQuery("SELECT * FROM ("+sql+") statement_rows ORDER BY \"billDate\",\"eventOrder\",\"refNo\",\"eventId\"", Object[].class)
                 .setParameter("pid", partyId).setParameter("from", from).setParameter("to", to);
         if (sql.contains(":fromMonth")) {
             query.setParameter("fromMonth", fromMonth);

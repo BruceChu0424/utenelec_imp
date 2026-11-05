@@ -34,8 +34,9 @@ import static org.assertj.core.api.Assertions.*;
     "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
     "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
     "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
 class FinanceReceivableMaterialPostgresTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FinanceScopedChainDatabase.register(registry,FinanceReceivableMaterialPostgresTest.class);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired FinanceOpenItemClassificationService sources;
     @Autowired FinanceReceivableClassificationService categories;
@@ -54,6 +55,8 @@ class FinanceReceivableMaterialPostgresTest {
         var world=fixture.seedWorld("fin08-material");fixture.loginAs(world.superAdminUserId());fixture.seedChartOfAccounts();
         db.update("UPDATE currencies SET code=?,name='匿名实际外币',exchange_rate=7 WHERE id=?","FIN08-"+world.currencyId(),world.currencyId());
         UUID orderItem=fixture.produceFinishedFromOpeningInputs(world,world.goodsA(),"20","20").orderItemId();
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"drainCostsWithFreshRunnerWithoutSession",world);
+        assertThat(db.queryForObject("SELECT fn_inventory_value_precision_marked(ARRAY[fn_inventory_value_precision_key(?,NULL)])",Boolean.class,world.goodsA())).isFalse();
         UUID order=fixture.orderIdOfItem(orderItem);fixture.loginAs(world.superAdminUserId());
         var shipment=fixture.shipmentRequest(world,orderItem,world.goodsA(),"10");shipment.setBillDate(BusinessTime.today());
         UUID shipmentId=shipments.create(shipment).getId();fixture.shipThroughWarehouse(shipmentId);fixture.loginAs(world.superAdminUserId());

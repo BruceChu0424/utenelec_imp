@@ -16,7 +16,7 @@ public class DocumentUnapprovalController {
     @PostMapping("/unapprove")
     public Object unapprove(@PathVariable String family,@PathVariable UUID id,
             @Valid @RequestBody DocumentUnapprovalService.UnapproveRequest request) {
-        return service.unapprove(family,id,request);
+        return service.unapproveHttp(family,id,request);
     }
     @GetMapping("/unapproval")
     public Map<String,Object> lineage(@PathVariable String family,@PathVariable UUID id) {
@@ -24,6 +24,6 @@ public class DocumentUnapprovalController {
     }
     @GetMapping("/unapproval-capability")
     public DocumentUnapprovalService.UnapprovalCapability capability(@PathVariable String family,@PathVariable UUID id) {
-        return service.capability(family,id);
+        return service.capabilityHttp(family,id);
     }
 }

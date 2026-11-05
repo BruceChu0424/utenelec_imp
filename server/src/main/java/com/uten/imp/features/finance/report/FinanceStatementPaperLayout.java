@@ -14,6 +14,33 @@ public final class FinanceStatementPaperLayout {
  private FinanceStatementPaperLayout(){}
  private static final Set<String> KEYS=Set.of("subcontractStatement","supplierStatement","otherReceivableStatement","clientStatement");
  public record PaperLayout(int version,String templateKey,String title,int mainColumnCount,int canvasColumns,List<Double> widths,List<Integer> hiddenColumns,String fontName,int fontSize,float rowHeight,int headerStartRow,int headerRow,List<ExportTableLayout.Heading> headings,List<ExportTableLayout.Merge> merges,Map<Integer,Float> headingRowHeights,ExportTableLayout.FooterBlock footer,boolean landscape,Map<String,Object> sourcePrint,String geometrySha256){}
+ /** New financial forms use the existing XLSX geometry and this same paper
+  * codec. This does not reinterpret the four frozen statement versions. */
+ public static Map<String,Object> financialMetadata(String key,ExportTableLayout layout,List<ReportColumn> columns,List<Map<String,Object>> rows){
+  if(!Set.of("balanceSheet","monthlyProfit","annualProfit").contains(key)||layout==null||layout.widths().size()!=columns.size())throw new IllegalArgumentException("Financial paper layout is incomplete");
+  var headings=new ArrayList<>(layout.headings());var heights=new LinkedHashMap<Integer,Float>();
+  for(var heading:layout.headings())heights.merge(heading.row(),Math.max(layout.rowHeight(),heading.fontSize()+8),Math::max);
+  heights.putAll(layout.headingRowHeights());
+  for(int column=0;column<columns.size();column++){
+   final int at=column;if(headings.stream().noneMatch(h->h.row()==layout.headerRow()&&h.column()==at))
+    headings.add(new ExportTableLayout.Heading(layout.headerRow(),column,columns.get(column).label(),layout.fontSize(),false,"CENTER"));
+  }
+  var footer=new ArrayList<ExportTableLayout.FooterCell>();int minimum=0;
+  if(layout.footer()!=null){minimum=layout.footer().minimumDataRows();footer.addAll(layout.footer().cells());}
+  int offset=footer.stream().mapToInt(cell->cell.rowOffset()+cell.rowSpan()).max().orElse(0);
+  for(String note:layout.footnotes())footer.add(new ExportTableLayout.FooterCell(offset++,0,columns.size()-1,1,"text",note,layout.fontSize(),false,"LEFT",false,"财务原表脚注"));
+  var paper=new PaperLayout(1,key,layout.sheetName(),columns.size(),layout.widths().size(),layout.widths(),layout.hiddenColumns(),layout.fontName(),layout.fontSize(),layout.rowHeight(),layout.headerStartRow(),layout.headerRow(),List.copyOf(headings),layout.merges(),Map.copyOf(heights),new ExportTableLayout.FooterBlock(minimum,footer),layout.landscape(),Map.of(),null);
+  var metadata=new LinkedHashMap<>(json(paper));
+  metadata.put("protectCompleteValues",true);
+  metadata.put("columnAlignments",columns.stream().map(column->ExportTableLayout.columnAlignment(column.type())).toList());
+  metadata.put("bodyBands",layout.bands().stream().map(band->{var value=new LinkedHashMap<String,Object>();value.put("row",band.row());value.put("firstColumn",band.firstColumn());value.put("lastColumn",band.lastColumn());value.put("fill",band.fill());value.put("bold",band.bold());return value;}).toList());
+  metadata.put("textSpans",layout.spans().stream().map(span->Map.of("row",span.row(),"column",span.column(),"start",span.start(),"end",span.end(),"color",span.color())).toList());
+  var keep=new ArrayList<Integer>();if(key.equals("balanceSheet"))for(int row=0;row+1<rows.size();row++){
+   var values=rows.get(row);for(String side:List.of("asset","liability"))if(values.get(side+"Item") instanceof String label&&!label.isBlank()&&values.get(side+"LineNo")==null){keep.add(row);break;}
+  }
+  metadata.put("keepWithNextRows",List.copyOf(keep));
+  return Map.of("paperLayout",metadata);
+ }
  private static final class Legacy {
   private static final JsonNode PRINTS=load();
   private static JsonNode load(){try(var stream=FinanceStatementPaperLayout.class.getResourceAsStream("/finance/statement-paper-v1.json")){if(stream==null)throw new IllegalStateException("Legacy source paper geometry unavailable");return new com.fasterxml.jackson.databind.ObjectMapper().readTree(stream);}catch(java.io.IOException failure){throw new IllegalStateException("Legacy source paper geometry unreadable",failure);}}

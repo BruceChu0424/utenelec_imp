@@ -37,10 +37,11 @@ class SupplierLegacyOpeningStatementPostgresTest {
                 "finance_payments",
                 "finance_payment_lines",
                 "supplier_open_item_offsets");
+        com.uten.imp.support.FinanceReportProjectionSchema.supplierAdvanceReplay(db.getJdbcTemplate());
     }
     @AfterAll static void stop() throws Exception { if(connection!=null){ connection.close(); } PG.stop(); }
     @BeforeEach void clean() {
-        db.getJdbcTemplate().execute("DELETE FROM finance_payment_lines; DELETE FROM finance_payments; DELETE FROM supplier_open_item_offsets; DELETE FROM legacy_finance_import_sources; DELETE FROM ar_ap_ledger");
+        db.getJdbcTemplate().execute("DELETE FROM finance_payment_lines; DELETE FROM finance_payments; DELETE FROM supplier_open_item_offsets; DELETE FROM legacy_finance_import_sources; DELETE FROM ar_ap_ledger; DELETE FROM legacy_migration_runs");
         supplier=UUID.randomUUID(); currency=UUID.randomUUID(); ledger=UUID.randomUUID();
     }
 
@@ -153,16 +154,19 @@ class SupplierLegacyOpeningStatementPostgresTest {
                 VALUES(?,?,?,'AP',1,'2025-01-02','PURCHASE','LEGACY_UNVERIFIED','PURCHASE_RECEIPT','synthetic',1,?,25,?,14,9001,?,
                   jsonb_build_object('snapshotAsOfUtc',CAST(? AS text)))
                 """,ledger,supplier,currency,knownOriginal?new BigDecimal("25"):null,knownOriginal?new BigDecimal("14"):null,run,cutoff);
+        db.getJdbcTemplate().update("INSERT INTO legacy_migration_runs(run_id,status) VALUES(?,'SUCCESS')",run);
         db.getJdbcTemplate().update("""
-                INSERT INTO legacy_finance_import_sources(run_id,target_id,target_table,initial_state) VALUES(?,?,'ar_ap_ledger',
+                INSERT INTO legacy_finance_import_sources(run_id,target_id,target_table,source_kind,source_legacy_id,initial_state) VALUES(?,?,'ar_ap_ledger','AP_OPENING',9001,
                   jsonb_build_object('amount_original',25,'amount_original_local',25,'amount_settled',8,
-                    'amount_balance',17,'amount_balance_original',CAST(? AS numeric)))
-                """,run,ledger,knownOriginal?new BigDecimal("17"):null);
+                    'amount_balance',17,'amount_balance_original',CAST(? AS numeric),'currency_id',CAST(? AS text),
+                    'sourceSnapshotAsOfUtc',CAST(? AS text),'legacy_source_resolution',jsonb_build_object('originalCurrencyProven',CAST(? AS boolean))))
+                """,run,ledger,knownOriginal?new BigDecimal("17"):null,currency,cutoff,knownOriginal);
+        assertThat(db.getJdbcTemplate().queryForObject("SELECT fn_is_verified_legacy_opening_target(?,'AP')",Boolean.class,ledger)).isEqualTo(knownOriginal);
     }
     private void payment(String date,int amount) {
         UUID id=UUID.randomUUID();
-        db.getJdbcTemplate().update("INSERT INTO finance_payments(id,bill_date,status,amount_original,amount_local) VALUES(?,?::date,1,?,?)",id,date,amount,amount);
-        db.getJdbcTemplate().update("INSERT INTO finance_payment_lines(payment_id,applied_ledger_id,amount_original,amount_local,applied_amount_local,exchange_diff) VALUES(?,?,?,?,?,0)",id,ledger,amount,amount,amount);
+        db.getJdbcTemplate().update("INSERT INTO finance_payments(id,bill_date,status,supplier_id,currency_id,amount_authority_version,amount_original,amount_local) VALUES(?,?::date,1,?,?,1,?,?)",id,date,supplier,currency,amount,amount);
+        db.getJdbcTemplate().update("INSERT INTO finance_payment_lines(payment_id,applied_ledger_id,supplier_id,amount_original,amount_local,applied_amount_local,exchange_diff) VALUES(?,?,?,?,?,?,0)",id,ledger,supplier,amount,amount,amount);
     }
     private MapSqlParameterSource parameters(String start) {
         LocalDate date=LocalDate.parse(start);

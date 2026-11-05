@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -368,8 +369,13 @@ class _FinanceTemplateInputSurfaceState
       final api = ref.read(apiClientProvider);
       final wasUnknown = formDraftHasUnknownSubmission;
       await runFormDraftSubmission(
-        () => scope.run(
-          () => api.post(_asset ? _base : '$_base/${widget.kind}', body: _sent),
+        () => UtenBusyOverlay.run(
+          context,
+          title: '正在保存原表资料',
+          action: () => scope.run(
+            () =>
+                api.post(_asset ? _base : '$_base/${widget.kind}', body: _sent),
+          ),
         ),
         isDefiniteRejection: (error) =>
             !wasUnknown &&
@@ -406,8 +412,13 @@ class _FinanceTemplateInputSurfaceState
     try {
       final scope = await captureFormDraftRequestScope();
       if (!mounted || !scope.isCurrent) return;
-      final result = await scope.run(
-        () => ref.read(apiClientProvider).get('$_base/operations/$_requestId'),
+      final result = await UtenBusyOverlay.run(
+        context,
+        title: '正在核对原请求结果',
+        action: () => scope.run(
+          () =>
+              ref.read(apiClientProvider).get('$_base/operations/$_requestId'),
+        ),
       );
       if (!mounted || !formDraftIdentityIsCurrent || !scope.isCurrent) return;
       if (result['requestId'] != _requestId) throw StateError('回执与原请求不一致');
@@ -476,19 +487,23 @@ class _FinanceTemplateInputSurfaceState
         context.appWarning('请选择完整的XLS或XLSX原表，最大${_asset ? 64 : 15}MB');
         return;
       }
-      final result = await scope.run(
-        () => uploadFinanceTemplateSource(
-          context: context,
-          api: ref.read(apiClientProvider),
-          bytes: bytes,
-          asset: _asset,
-          isCurrent: () =>
-              mounted && formDraftIdentityIsCurrent && scope.isCurrent,
-          query: {
-            'template': _template,
-            'period': period,
-            'filename': file.name,
-          },
+      final result = await UtenBusyOverlay.run(
+        context,
+        title: '正在读取财务原表',
+        action: () => scope.run(
+          () => uploadFinanceTemplateSource(
+            context: context,
+            api: ref.read(apiClientProvider),
+            bytes: bytes,
+            asset: _asset,
+            isCurrent: () =>
+                mounted && formDraftIdentityIsCurrent && scope.isCurrent,
+            query: {
+              'template': _template,
+              'period': period,
+              'filename': file.name,
+            },
+          ),
         ),
       );
       if (result == null ||
@@ -616,7 +631,18 @@ class _FinanceTemplateInputSurfaceState
           UtenDialogSurface(
             child: UtenDialogHeader(
               icon: Icons.table_chart_outlined,
-              title: Text(_title),
+              title: UtenDialogTitleWithHint(
+                title: Text(_title),
+                info: switch (widget.kind) {
+                  'sales' =>
+                    '月份：${widget.scope['period']}。销售出货金额与销售成本取已核对业务事实；本表按原表管理比例计算。',
+                  'plastic' =>
+                    '已结算原单位：${_sourceUnitName ?? '尚未明确'}。退料中的不良和耗用中的不良分别填写，不能重复计入。',
+                  'asset' =>
+                    '实际核算一级科目：${_expenseCaption ?? '尚未对应财务科目'}。原值、日期、年限和实际计提在资产流程中维护。',
+                  _ => null,
+                },
+              ),
               showCloseButton: true,
               onClose: _close,
             ),
@@ -633,19 +659,6 @@ class _FinanceTemplateInputSurfaceState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (widget.kind == 'sales')
-                            Text(
-                              '月份：${widget.scope['period']}。销售出货金额与销售成本取已核对业务事实；本表按原表管理比例计算。',
-                            ),
-                          if (widget.kind == 'plastic')
-                            Text(
-                              '已结算原单位：${_sourceUnitName ?? '尚未明确'}。退料中的不良和耗用中的不良分别填写，不能重复计入。',
-                            ),
-                          if (_asset)
-                            Text(
-                              '实际核算一级科目：${_expenseCaption ?? '尚未对应财务科目'}。原值、日期、年限和实际计提在资产流程中维护。',
-                            ),
-                          const SizedBox(height: UtenSpacing.s16),
                           UtenButton(
                             type: UtenButtonType.secondary,
                             onPressed: _saving || _sent != null
@@ -788,32 +801,27 @@ class _FinanceTemplateInputSurfaceState
                     ),
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed: _saving ? null : _close,
-                  child: const Text('关闭'),
+          UtenDialogActions(
+            children: [
+              UtenButton(
+                type: UtenButtonType.secondary,
+                onPressed: _saving ? null : _close,
+                child: const Text('关闭'),
+              ),
+              UtenButton(
+                onPressed: _saving || _loading || _error != null ? null : _save,
+                child: Text(
+                  _saving
+                      ? '保存中…'
+                      : _sent != null
+                      ? '使用原请求重试'
+                      : '保存',
                 ),
-                const SizedBox(width: UtenSpacing.s12),
-                UtenButton(
-                  onPressed: _saving || _loading || _error != null
-                      ? null
-                      : _save,
-                  child: Text(
-                    _saving
-                        ? '保存中…'
-                        : _sent != null
-                        ? '使用原请求重试'
-                        : '保存',
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
+          if (_loading)
+            const UtenBusyOverlay(title: '正在读取原表资料', showDoNotLeaveHint: false),
         ],
       ),
     ),

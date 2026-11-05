@@ -1464,6 +1464,7 @@ class _MasterInlineOptionsCellState extends State<MasterInlineOptionsCell> {
             ? null
             : widget.currentLabel,
         enabled: snapshot.hasData,
+        required: widget.field.required,
         allowClear: !widget.field.required,
         items: [
           if (value != null &&

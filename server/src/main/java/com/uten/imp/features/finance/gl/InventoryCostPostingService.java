@@ -20,6 +20,7 @@ public class InventoryCostPostingService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final InventoryCostPostingQueryPort costs;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceOperationJournal operations;
     public InventoryCostPostingService(EntityManager em,TxSessionVars tx,SecurityContextCurrentUser currentUser,InventoryCostPostingQueryPort costs){this.em=em;this.tx=tx;this.currentUser=currentUser;this.costs=costs;}
     public record Policy(boolean enabled,LocalDate effectiveFrom,String reconciliationReference,long version) {}
     public record PolicyChange(boolean enabled,LocalDate effectiveFrom,String reconciliationReference,long expectedVersion) {}
@@ -27,6 +28,82 @@ public class InventoryCostPostingService {
     public record ClosePeriod(long expectedVersion,String reason) {}
     public record Posted(String period,int newVoucherCount) {}
     public record PeriodView(String period,String status,long version,long pendingCount) {}
+    public record PolicyCommand(UUID requestId,Boolean enabled,LocalDate effectiveFrom,String reconciliationReference,Long expectedVersion) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand {
+        public PolicyCommand(UUID id,boolean enabled,LocalDate from,String reference,long version){this(id,Boolean.valueOf(enabled),from,reference,Long.valueOf(version));}
+    }
+    public record PeriodCommand(UUID requestId,String targetPeriod,String reason) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand { }
+    public record PostCommand(UUID requestId) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand { }
+    public record CloseCommand(UUID requestId,Long expectedVersion,String reason) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand {
+        public CloseCommand(UUID id,long version,String reason){this(id,Long.valueOf(version),reason);}
+    }
+    private static final java.util.Set<String> COMMANDS=java.util.Set.of("INVENTORY_COST_POLICY_SAVE","INVENTORY_COST_PERIOD_CHOICE","INVENTORY_COST_POST","INVENTORY_COST_CLOSE");
+
+    @Transactional public java.util.Map<String,Object> configureCommand(PolicyCommand request){
+        return configureCommand(request,null);
+    }
+    @Transactional public java.util.Map<String,Object> configureWire(com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){return configureCommand(operations.decodeOriginal(original,PolicyCommand.class),original);}
+    private java.util.Map<String,Object> configureCommand(PolicyCommand request,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        commandAccess();if(request==null)throw invalid("请保留原配置请求");
+        return operations.commandOriginal(request.requestId(),"INVENTORY_COST_POLICY_SAVE","PUT","/finance/gl/inventory-cost/policy",request,original,()->{
+            if(request.enabled()==null||request.expectedVersion()==null)throw invalid("请明确保留原策略版本和启用选择，本次未写入");
+            return configure(new PolicyChange(request.enabled(),request.effectiveFrom(),request.reconciliationReference(),request.expectedVersion()));
+        });
+    }
+    @Transactional public java.util.Map<String,Object> choosePeriodCommand(UUID posting,PeriodCommand request){
+        return choosePeriodCommand(posting,request,null);
+    }
+    @Transactional public java.util.Map<String,Object> choosePeriodWire(UUID posting,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){return choosePeriodCommand(posting,operations.decodeOriginal(original,PeriodCommand.class),original);}
+    private java.util.Map<String,Object> choosePeriodCommand(UUID posting,PeriodCommand request,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        commandAccess();if(request==null)throw invalid("请保留原期间选择请求");
+        return operations.commandOriginal(request.requestId(),"INVENTORY_COST_PERIOD_CHOICE","POST","/finance/gl/inventory-cost/postings/"+posting+"/period",request,original,
+                ()->choosePeriod(posting,new PeriodChoice(request.targetPeriod(),request.reason())));
+    }
+    @Transactional public java.util.Map<String,Object> postCommand(String period,PostCommand request){
+        return postCommand(period,request,null);
+    }
+    @Transactional public java.util.Map<String,Object> postWire(String period,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){return postCommand(period,operations.decodeOriginal(original,PostCommand.class),original);}
+    private java.util.Map<String,Object> postCommand(String period,PostCommand request,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        commandAccess();if(request==null)throw invalid("请保留原过账请求");
+        return operations.commandOriginal(request.requestId(),"INVENTORY_COST_POST","POST","/finance/gl/inventory-cost/periods/"+period+"/post",request,original,()->post(period));
+    }
+    @Transactional public java.util.Map<String,Object> closeCommand(String period,CloseCommand request){
+        return closeCommand(period,request,null);
+    }
+    @Transactional public java.util.Map<String,Object> closeWire(String period,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){return closeCommand(period,operations.decodeOriginal(original,CloseCommand.class),original);}
+    private java.util.Map<String,Object> closeCommand(String period,CloseCommand request,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        commandAccess();if(request==null)throw invalid("请保留原关账请求");
+        return operations.commandOriginal(request.requestId(),"INVENTORY_COST_CLOSE","POST","/finance/gl/inventory-cost/periods/"+period+"/close",request,original,()->{
+            if(request.expectedVersion()==null)throw invalid("请明确保留原关期版本，本次未写入");
+            close(period,new ClosePeriod(request.expectedVersion(),request.reason()));
+            return java.util.Map.of("period",period,"status","CLOSED","version",request.expectedVersion()+1);
+        });
+    }
+    @Transactional(readOnly=true) public java.util.Map<String,Object> operationReceipt(UUID request){
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("finance_report:view","goods:cost:view");
+        return operations.commandReceipt(request,COMMANDS);
+    }
+    @Transactional public java.util.Map<String,Object> cancelCommand(UUID request,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("finance_report:view","goods:cost:view");tx.bind();
+        if(cancellation==null)throw invalid("请保留原库存成本核对请求");
+        String operation=cancellation.operation(),path=cancellation.path(),base="/finance/gl/inventory-cost";
+        if("INVENTORY_COST_POLICY_SAVE".equals(operation))
+            return operations.cancelCommand(request,cancellation,operation,"PUT",base+"/policy",PolicyCommand.class);
+        if("INVENTORY_COST_PERIOD_CHOICE".equals(operation)&&path!=null){
+            var match=java.util.regex.Pattern.compile("^"+base+"/postings/([0-9a-fA-F-]{36})/period$").matcher(path);
+            if(match.matches()){
+                UUID posting;try{posting=UUID.fromString(match.group(1));}catch(IllegalArgumentException error){throw invalid("原成本来源编号不正确");}
+                return operations.cancelCommand(request,cancellation,operation,"POST",base+"/postings/"+posting+"/period",PeriodCommand.class);
+            }
+        }
+        if(("INVENTORY_COST_POST".equals(operation)||"INVENTORY_COST_CLOSE".equals(operation))&&path!=null){
+            String action=operation.equals("INVENTORY_COST_POST")?"post":"close";
+            var match=java.util.regex.Pattern.compile("^"+base+"/periods/([0-9]{4}-[0-9]{2})/"+action+"$").matcher(path);
+            if(match.matches())return operations.cancelCommand(request,cancellation,operation,"POST",base+"/periods/"+period(match.group(1))+"/"+action,
+                    operation.equals("INVENTORY_COST_POST")?PostCommand.class:CloseCommand.class);
+        }
+        throw invalid("原库存成本动作或来源路径不正确");
+    }
+    private void commandAccess(){com.uten.imp.security.CurrentAuthorityGuard.requireAll("finance_post:execute");tx.bind();}
 
     @Transactional(readOnly=true)
     public List<PeriodView> periods(String from,String to){

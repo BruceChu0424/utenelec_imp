@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -49,9 +50,8 @@ Future<void> showFinanceOpenItemClassificationDialog(
   String? partyId,
   String? currencyId,
   bool receivable = false,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
   builder: (_) => ledgerId == null
       ? _ClassificationDirectory(
           partyId: partyId,

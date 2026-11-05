@@ -66,12 +66,10 @@ public class FinanceCostInputService {
             requireClient(input.clientId());
         if(input.exchangeRate()!=null) {
             var period=YearMonth.parse(input.period());
-            var rates=db.queryForMap("""
+            var rates=db.queryForMap("WITH "+FinanceSalesRevenueSql.ctes().replace(":from","?").replace(":to","?")+"""
                 SELECT count(DISTINCT currency_id) AS currencies,count(DISTINCT exchange_rate) AS rates,
-                    max(exchange_rate) AS known_rate FROM ar_ap_ledger WHERE client_id=? AND direction='AR'
-                    AND source_doc_type IN('SALES_SHIPMENT','SALES_RETURN') AND status=1 AND NOT is_deleted
-                    AND bill_date BETWEEN ? AND ?
-                """,input.clientId(),period.atDay(1),period.atEndOfMonth());
+                    max(exchange_rate) AS known_rate FROM sales_revenue_events WHERE client_id=?
+                """,period.atDay(1),period.atEndOfMonth(),input.clientId());
             if(((Number)rates.get("currencies")).intValue()>1||((Number)rates.get("rates")).intValue()>1)throw invalid("该客户本月有多个币种或记账汇率，不能用一个汇率代表整组");
             if(rates.get("known_rate") instanceof BigDecimal known&&known.compareTo(input.exchangeRate())!=0)throw invalid("所填汇率与本月唯一已知记账汇率不一致，请核对原凭证");
         }

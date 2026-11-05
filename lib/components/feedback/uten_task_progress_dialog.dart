@@ -2,8 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_tokens.dart';
-import 'uten_dialog.dart';
+import 'uten_busy_overlay.dart';
 
 /// Keeps an awaited operation visible and prevents accidental duplicate actions.
 /// The exact route is removed on completion, including when the caller leaves.
@@ -19,6 +18,7 @@ Future<T> runUtenBlockingTask<T>({
   final route = DialogRoute<void>(
     context: context,
     barrierDismissible: false,
+    barrierColor: Colors.transparent,
     builder: (_) =>
         PopScope(canPop: false, child: UtenTaskProgressDialog(title: title)),
   );
@@ -38,7 +38,9 @@ Future<T> runUtenBlockingTask<T>({
   navigator.push(route);
   invalidation?.addListener(dismissIfInvalidated);
   try {
-    // Paint the busy state before starting work, including synchronous encoding.
+    // The first frame mounts the route; the portal's root entry paints in the
+    // next frame. Start even synchronous work only after that mask is visible.
+    await WidgetsBinding.instance.endOfFrame;
     await WidgetsBinding.instance.endOfFrame;
     if (isCurrent != null && !isCurrent()) {
       throw StateError('操作已取消，请重新操作');
@@ -56,23 +58,6 @@ class UtenTaskProgressDialog extends StatelessWidget {
   final String title;
 
   @override
-  Widget build(BuildContext context) => UtenAlertDialog(
-    maxWidth: 420,
-    content: Row(
-      children: [
-        const SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(strokeWidth: 3),
-        ),
-        const SizedBox(width: UtenSpacing.s20),
-        Expanded(
-          child: Semantics(
-            liveRegion: true,
-            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-          ),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) =>
+      UtenBusyOverlay(title: title, showDoNotLeaveHint: false);
 }

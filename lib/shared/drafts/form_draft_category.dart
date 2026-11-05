@@ -123,6 +123,7 @@ bool formDraftNeedsTaskAuthority(FormDraft draft) => const {
 /// these editor descriptors intentionally retain a view-only recovery surface.
 bool formDraftCountsAsActionable(FormDraft draft, Set<String> permissions) {
   if (draft.data[dailyReportReadRecoveryOnlyKey] == true) return false;
+  if (draft.data[financeBatchReadRecoveryOnlyKey] == true) return false;
   return switch (draft.permission) {
     Perm.goodsCostView => permissions.contains(Perm.goodsCostEdit),
     Perm.salesOrderFinanceView => permissions.contains(

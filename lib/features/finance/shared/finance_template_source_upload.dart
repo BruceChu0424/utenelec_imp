@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -56,53 +57,55 @@ Future<Map<String, dynamic>?> uploadFinanceTemplateSource({
       rethrow;
     }
     String? selected;
-    final chosen = await UtenDialog.showAndWaitForExit<String>(
-      context,
-      barrierDismissible: false,
-      builder: (dialogContext) => Consumer(
-        builder: (context, ref, _) {
-          ref.watch(exportContextEpochProvider);
-          ref.watch(apiClientProvider);
-          final current =
-              !retired &&
-              isCurrent() &&
-              identical(api, ref.read(apiClientProvider));
-          if (!current) retired = true;
-          return StatefulBuilder(
-            builder: (context, update) => UtenAlertDialog(
-              title: const Text('选择原表工作表'),
-              content: current
-                  ? UtenDropdownField(
-                      label: '原表工作表',
-                      value: selected,
-                      info: '同一文件有多张表头相同的原表，请按附件中的原名选择。',
-                      items: [
-                        for (final field in fields)
-                          UtenDropdownItem(
-                            value: field.message,
-                            label: field.message,
-                          ),
-                      ],
-                      onChanged: (value) => update(() => selected = value),
-                    )
-                  : const Text('身份或权限已变化，请关闭后从原入口重新打开。'),
-              actions: [
-                UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('取消'),
-                ),
-                if (current)
+    final chosen = await UtenBusyOverlay.yieldWhile(
+      () => UtenDialog.showAndWaitForExit<String>(
+        context,
+        barrierDismissible: false,
+        builder: (dialogContext) => Consumer(
+          builder: (context, ref, _) {
+            ref.watch(exportContextEpochProvider);
+            ref.watch(apiClientProvider);
+            final current =
+                !retired &&
+                isCurrent() &&
+                identical(api, ref.read(apiClientProvider));
+            if (!current) retired = true;
+            return StatefulBuilder(
+              builder: (context, update) => UtenAlertDialog(
+                title: const Text('选择原表工作表'),
+                content: current
+                    ? UtenDropdownField(
+                        label: '原表工作表',
+                        value: selected,
+                        info: '同一文件有多张表头相同的原表，请按附件中的原名选择。',
+                        items: [
+                          for (final field in fields)
+                            UtenDropdownItem(
+                              value: field.message,
+                              label: field.message,
+                            ),
+                        ],
+                        onChanged: (value) => update(() => selected = value),
+                      )
+                    : const Text('身份或权限已变化，请关闭后从原入口重新打开。'),
+                actions: [
                   UtenButton(
-                    onPressed: selected == null
-                        ? null
-                        : () => Navigator.pop(dialogContext, selected),
-                    child: const Text('导入所选工作表'),
+                    type: UtenButtonType.secondary,
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('取消'),
                   ),
-              ],
-            ),
-          );
-        },
+                  if (current)
+                    UtenButton(
+                      onPressed: selected == null
+                          ? null
+                          : () => Navigator.pop(dialogContext, selected),
+                      child: const Text('导入所选工作表'),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
     if (chosen == null || retired || !isCurrent()) return null;

@@ -232,18 +232,27 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                     org.springframework.transaction.support.TransactionSynchronizationManager.unbindResource(PRECISION_PREFLIGHT_RESOURCE);}
                 @Override public void resume(){org.springframework.transaction.support.TransactionSynchronizationManager.bindResource(PRECISION_PREFLIGHT_RESOURCE,owned);}
                 @Override public void beforeCommit(boolean readOnly){
-                    for(UUID representative:db.queryForList("""
-                            SELECT DISTINCT ON(coalesce(precision_origin_id,id)) id FROM stock_value_production_cost_revisions
-                            WHERE id IN(:ids) ORDER BY coalesce(precision_origin_id,id),id
-                            """,args("ids",owned),UUID.class))
-                        if(!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_preflight_plan(:revision)",args("revision",representative),Boolean.class)))
-                            throw conflict("生产累计成本尚未完成后继核对；本次未确认");
+                    verifyPendingPrecision();
                 }
                 @Override public void afterCompletion(int status){if(org.springframework.transaction.support.TransactionSynchronizationManager.getResource(PRECISION_PREFLIGHT_RESOURCE)==owned)
                     org.springframework.transaction.support.TransactionSynchronizationManager.unbindResource(PRECISION_PREFLIGHT_RESOURCE);}
             });
         }
         revisions.add(revision);
+    }
+
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    @SuppressWarnings("unchecked")
+    public void verifyPendingPrecision(){
+        transaction();
+        Set<UUID> revisions=(Set<UUID>)org.springframework.transaction.support.TransactionSynchronizationManager.getResource(PRECISION_PREFLIGHT_RESOURCE);
+        if(revisions==null||revisions.isEmpty())return;
+        for(UUID representative:db.queryForList("""
+                SELECT DISTINCT ON(coalesce(precision_origin_id,id)) id FROM stock_value_production_cost_revisions
+                WHERE id IN(:ids) ORDER BY coalesce(precision_origin_id,id),id
+                """,args("ids",revisions),UUID.class))
+            if(!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_preflight_plan(:revision)",args("revision",representative),Boolean.class)))
+                throw conflict("生产累计成本尚未完成后继核对；本次未确认");
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
@@ -417,7 +426,7 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
     private Map<String,Object> snapshot(UUID segment){return db.queryForMap("""
             SELECT (SELECT coalesce(jsonb_agg(jsonb_build_object('node',n.id,'revision',n.revision,'value',n.basis_value_local,'pending',n.pending_parents,
                     'returnedQty',coalesce((to_jsonb(n)->>'returned_consumption_qty')::numeric,0),'quantityBasis',n.quantity_basis,
-                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id','valuePrecisionVersion',coalesce((SELECT to_jsonb(applied)->>'value_precision_version' FROM stock_value_node_revisions applied WHERE applied.node_id=n.id AND applied.revision=n.revision),to_jsonb(n)->>'value_precision_version'),%s%s) ORDER BY n.id),'[]'::jsonb)
+                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id','valuePrecisionVersion',coalesce((SELECT to_jsonb(applied)->>'value_precision_version' FROM stock_value_node_revisions applied WHERE applied.node_id=n.id AND applied.revision=n.revision),to_jsonb(n)->>'value_precision_version')%s%s) ORDER BY n.id),'[]'::jsonb)
                 FROM stock_value_production_cost_inputs i JOIN stock_value_nodes n ON n.id=i.input_node_id WHERE i.execution_segment_id=:segment) inputs,
                 coalesce(jsonb_agg(jsonb_build_object('source',s.source_node_id,'movement',s.movement_id,'qty',s.qty_base,
                     'withdrawnMovement',to_jsonb(s)->>'withdrawn_movement_id',
@@ -426,7 +435,7 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
             FROM (SELECT o.*,CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END active_qty,
                     sum(CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END) OVER(ORDER BY output_sequence) through_qty
                 FROM stock_value_production_cost_outputs o WHERE execution_segment_id=:segment) s
-            """.formatted(exactBookValueInstalled?"'bookedNetValue',n.owned_value_local+n.distributed_value_local":"",
+            """.formatted(exactBookValueInstalled?",'bookedNetValue',n.owned_value_local+n.distributed_value_local":"",
                     frozenIdentityInstalled?",'identity',fn_production_cost_input_identity(n.id,i.approved_posting_id),'valueModel',n.value_model,'exactLower',CASE WHEN n.bound_revision=n.revision THEN n.bound_lower END,'exactUpper',CASE WHEN n.bound_revision=n.revision THEN n.bound_upper END":"",
                     frozenIdentityInstalled?",'identity',fn_production_cost_input_identity(s.source_node_id,NULL)":""),args("segment",segment));}
     private Map<String,Object> object(UUID id,boolean lock){List<Map<String,Object>> rows=db.queryForList("SELECT * FROM stock_value_production_cost_objects WHERE execution_segment_id=:id"+(lock?" FOR UPDATE":""),args("id",id));

@@ -1,3 +1,8 @@
+import '../../support/finance_document_command_fixture.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import '../../support/native_detail_reader_overrides.dart';
 import '../../support/detail_summary_tap.dart';
@@ -9,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -76,7 +82,7 @@ void main() {
   );
 
   testWidgets(
-    'payment without AP fails closed until supplier prepayment chain exists',
+    'ordinary payment without AP retains its draft and directs prepayment to the approved application flow',
     (tester) async {
       final api = await _pumpEditor(tester, detail: _directPaymentDetail());
 
@@ -93,7 +99,15 @@ void main() {
         find.byKey(const ValueKey('finance-payment-amount-original')),
         findsNothing,
       );
-      expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is UtenFieldHintIcon &&
+              (w.info ?? '').contains('供应商预付请从各部门申请流程建立预付申请'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('暂不支持给供应商预付'), findsNothing);
       expect(find.text('折算金额（人民币）: '), findsOneWidget);
       expect(find.text('720.00'), findsOneWidget);
 
@@ -111,7 +125,10 @@ void main() {
       final notifications = ProviderScope.containerOf(
         tester.element(find.byType(FinanceDocEditPage)),
       ).read(appNotificationProvider);
-      expect(notifications.single.message, contains('暂不支持给供应商预付'));
+      expect(notifications.single.message, contains('供应商预付请从各部门申请流程建立预付申请'));
+      expect(notifications.single.message, contains('本页草稿已保留'));
+      expect(rate.controller?.text, '7.2');
+      expect(grid.controller, isEmpty);
     },
   );
 
@@ -156,8 +173,16 @@ void main() {
     final notifications = ProviderScope.containerOf(
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
-    expect(notifications.single.message, contains('暂不支持给供应商预付'));
-    expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsOneWidget);
+    expect(notifications.single.message, contains('普通应付付款请引用已入账的应付'));
+    expect(notifications.single.message, contains('本页草稿已保留'));
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is UtenFieldHintIcon &&
+            (w.info ?? '').contains('供应商预付请从各部门申请流程建立预付申请'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -177,7 +202,14 @@ void main() {
         find.byKey(const ValueKey('finance-payment-amount-original')),
         findsNothing,
       );
-      expect(find.textContaining('暂不支持给供应商预付'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is UtenFieldHintIcon &&
+              (w.info ?? '').contains('供应商预付请从各部门申请流程建立预付申请'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('保存').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -192,7 +224,14 @@ void main() {
       find.byKey(const ValueKey('finance-payment-amount-original')),
       findsNothing,
     );
-    expect(find.text('由服务端按应付核销明细汇总'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            widget.info?.contains('由服务端汇总核销明细') == true,
+      ),
+      findsOneWidget,
+    );
 
     final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
       _financeGrid(),
@@ -397,7 +436,7 @@ void main() {
     );
     final columns = {for (final column in table.columns) column.key: column};
     final item = table.items.single;
-    expect(columns['amountOriginal']?.label, '本次付款金额');
+    expect(columns['amountOriginal']?.label, '本次付款(原币)');
     expect(columns['amountOriginal']?.value(item), '50.00');
     expect(columns['amountLocal']?.label, '付款本币');
     expect(columns['amountLocal']?.value(item), '360.00');
@@ -483,6 +522,8 @@ Future<_PaymentApi> _pumpEditor(
   Size size = const Size(1600, 1200),
   bool hideOriginalSupplier = false,
 }) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -514,8 +555,14 @@ Future<_PaymentApi> _pumpEditor(
       overrides: [
         ...nativeDetailReaderOverrides(includeSession: false),
         financeWriteAllDocumentScope(),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.financePaymentView,
+          Perm.financePaymentEdit,
+        }),
       ],
       child: MaterialApp.router(routerConfig: router),
     ),
@@ -736,7 +783,7 @@ class _PaymentApi extends ApiClient {
         'totalPages': 1,
       };
     }
-    return detail;
+    return financeReviewedDetailFixture(detail, FinanceDocType.payment);
   }
 
   @override
@@ -812,7 +859,12 @@ class _PaymentApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     writeCalls++;
-    lastPutBody = Map<String, dynamic>.from(body! as Map);
-    return detail;
+    final command = Map<String, dynamic>.from(body! as Map);
+    lastPutBody = Map<String, dynamic>.from(command['document'] as Map);
+    return financeReviewReceiptFixture(
+      path: path,
+      command: command,
+      result: detail,
+    );
   }
 }

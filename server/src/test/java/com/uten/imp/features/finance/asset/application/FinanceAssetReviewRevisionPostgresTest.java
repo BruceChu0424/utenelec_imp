@@ -69,17 +69,28 @@ class FinanceAssetReviewRevisionPostgresTest {
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.uten.imp.features.purchase.report.PurchaseReportService purchaseReports;
     @Autowired com.uten.imp.features.subcontract.report.SubcontractReportService subcontractReports;
+    private AutoCloseable explicitAllocationChoice;
+    private static AutoCloseable originalFixtureAllocationChoice(){
+        // These pre-existing workflow scenarios explicitly choose the original
+        // four-place installment policy; it is never a product/global default.
+        return com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+            "money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")));
+    }
     @org.junit.jupiter.api.BeforeEach
     void isolateCompanyWidePostingFacts() {
+        explicitAllocationChoice=originalFixtureAllocationChoice();
         // This private Testcontainers database contains anonymous fixtures only.
         // Monthly posting and report completeness are company-wide: another test's
         // posted run or unassigned GL must not become this test's business input.
         jdbc.execute("TRUNCATE finance_asset_posting_runs,finance_asset_books,finance_deferral_schedule_versions,finance_asset_opening_groups,finance_asset_template_metadata,finance_gl_opening_baselines,finance_accounting_period_coverage,gl_vouchers CASCADE");
     }
-    @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+    @AfterEach void logout() throws Exception {
+        try{SecurityContextHolder.clearContext();}
+        finally{if(explicitAllocationChoice!=null)explicitAllocationChoice.close();}
+    }
 
     @Test @org.springframework.transaction.annotation.Transactional
-    void financialExactAmountsSaveReadAndScheduleWithoutSilentFourPlaceRounding() {
+    void financialExactAmountsSaveReadAndScheduleWithoutSilentFourPlaceRounding() throws Exception {
         Actor maker=actor("exact-amount-maker"),reviewer=actor("exact-amount-reviewer");
         String exact="1234567890123456789012345.123456789012345678901234";
         BigDecimal amount=new BigDecimal(exact);
@@ -89,19 +100,24 @@ class FinanceAssetReviewRevisionPostgresTest {
         var saved=costInputs.saveSales(command);assertThat(costInputs.saveSales(command)).isEqualTo(saved);
         assertThat(new BigDecimal(costInputs.sales("2026-09",client).get("freightLocal").toString())).isEqualByComparingTo(amount);
         assertThat(jdbc.queryForObject("SELECT freight_local FROM finance_sales_cost_inputs WHERE client_id=?",BigDecimal.class,client)).isEqualByComparingTo(amount);
-        for(boolean deferred:List.of(false,true)) {
-            UUID category=category(deferred);login(maker,financialPermissions());
-            var draft=create(deferred,category,maker,"EXACT-"+UUID.randomUUID(),"匿名精确金额",exact,null);
-            assertThat(deferred?detail(draft.id(),true).summary().totalAmount():detail(draft.id(),false).summary().originalValue()).isEqualByComparingTo(amount);
-            var submitted=workflow.submit(draft.id(),draft.version(),deferred);login(reviewer,financialPermissions());
-            workflow.approve(draft.id(),submitted.version(),"按原金额核对",deferred);
-            if(deferred) {
-                assertThat(jdbc.queryForObject("SELECT sum(l.amount) FROM finance_deferral_schedule_lines l JOIN finance_deferral_schedule_versions v ON v.id=l.schedule_version_id WHERE v.deferred_id=?",BigDecimal.class,draft.id())).isEqualByComparingTo(amount);
-            } else {
-                var book=jdbc.queryForMap("SELECT original_value,residual_amount,depreciable_amount FROM finance_asset_books WHERE asset_id=?",draft.id());
-                assertThat((BigDecimal)book.get("original_value")).isEqualByComparingTo(amount);
-                assertThat((BigDecimal)book.get("residual_amount")).isEqualByComparingTo(amount.multiply(new BigDecimal(".05")));
-                assertThat(queries.fixedAsset(draft.id()).schedule().stream().map(com.uten.imp.features.finance.asset.api.AssetWorkbenchResponses.ScheduleLine::amount).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo((BigDecimal)book.get("depreciable_amount"));
+        // Monthly division is a separate explicit decision; it must not round
+        // the original amount or the complete residual-value product.
+        try(var monthlyChoice=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+                "money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))) {
+            for(boolean deferred:List.of(false,true)) {
+                UUID category=category(deferred);login(maker,financialPermissions());
+                var draft=create(deferred,category,maker,"EXACT-"+UUID.randomUUID(),"匿名精确金额",exact,null);
+                assertThat(deferred?detail(draft.id(),true).summary().totalAmount():detail(draft.id(),false).summary().originalValue()).isEqualByComparingTo(amount);
+                var submitted=workflow.submit(draft.id(),draft.version(),deferred);login(reviewer,financialPermissions());
+                workflow.approve(draft.id(),submitted.version(),"按原金额核对",deferred);
+                if(deferred) {
+                    assertThat(jdbc.queryForObject("SELECT sum(l.amount) FROM finance_deferral_schedule_lines l JOIN finance_deferral_schedule_versions v ON v.id=l.schedule_version_id WHERE v.deferred_id=?",BigDecimal.class,draft.id())).isEqualByComparingTo(amount);
+                } else {
+                    var book=jdbc.queryForMap("SELECT original_value,residual_amount,depreciable_amount FROM finance_asset_books WHERE asset_id=?",draft.id());
+                    assertThat((BigDecimal)book.get("original_value")).isEqualByComparingTo(amount);
+                    assertThat((BigDecimal)book.get("residual_amount")).isEqualByComparingTo(amount.multiply(new BigDecimal(".05")));
+                    assertThat(queries.fixedAsset(draft.id()).schedule().stream().map(com.uten.imp.features.finance.asset.api.AssetWorkbenchResponses.ScheduleLine::amount).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo((BigDecimal)book.get("depreciable_amount"));
+                }
             }
         }
         assertThatThrownBy(()->costInputs.saveSales(new com.uten.imp.features.finance.cost.FinanceCostInputContracts.Sales(UUID.randomUUID(),"2026-09",client,0,"OEM",new BigDecimal(".0000000000000000000000001"),null,"不能舍入",false,null,null,null,null,null))).isInstanceOf(ApiException.class);
@@ -300,7 +316,7 @@ class FinanceAssetReviewRevisionPostgresTest {
             var pending=new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
             for(boolean deferred:List.of(false,true)) pending.add(executor.submit(()->{
                 login(maker,financialPermissions());
-                try {
+                try(var requestChoice=originalFixtureAllocationChoice()) {
                     return new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status->{
                         var draft=sourceDraft(deferred,deferred?deferredCategory:fixedCategory,maker,sourceId,
                                 hasUuid&&deferred?"other-reference":reference,null,null);

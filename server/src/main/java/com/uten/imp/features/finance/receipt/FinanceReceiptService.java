@@ -265,6 +265,7 @@ public class FinanceReceiptService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeReceipt",id,"UPDATE");
 
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
@@ -305,6 +306,7 @@ public class FinanceReceiptService {
     public void delete(UUID id) {
         tx.bind();
         FinanceReceipt r = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeReceipt",id,"DELETE");
 
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
@@ -327,6 +329,7 @@ public class FinanceReceiptService {
         // 与草稿编辑保持固定锁顺序，避免并发停用/增加子类造成 TOCTOU。
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeReceipt",id,"APPROVE");
 
         access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
                 "finance_receipt:approve");
@@ -377,6 +380,7 @@ public class FinanceReceiptService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
+        com.uten.imp.features.finance.FinanceDocumentReviewContext.afterDocumentLock("financeReceipt",id,"UNAPPROVE");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
         requireUnapprovalHeader(r);
         assertCompletePosting(r); // 红冲前确认收款与另付费用流水完整
@@ -1277,13 +1281,7 @@ public class FinanceReceiptService {
                 .findByReceiptIdOrderByLineNoAsc(receipt.getId()).stream()
                 .map(line->nz(line.getExchangeDiff()))
                 .reduce(BigDecimal.ZERO,BigDecimal::add);
-        UUID counterStyle=(UUID)em.createNativeQuery("SELECT fn_finance_native_cash_counter_style('RECEIPT',:id,:role,:currency,'CUSTOMER',:party,:day)")
-                .setParameter("id",receipt.getId()).setParameter("role","CUSTOMER_PREPAYMENT".equals(receipt.getReceiptKind())?"CUSTOMER_ADVANCE":"AR_CONTROL")
-                .setParameter("currency",receipt.getCurrencyId()).setParameter("party",receipt.getClientId()).setParameter("day",receipt.getBillDate()).getSingleResult();
-        UUID bankFeeStyle=bankFeeLocal.signum()==0
-                ?null:requiredPostingStyle("BANK_FEE_EXPENSE");
-        UUID fxStyle=exchangeDifference.signum()==0
-                ?null:requiredPostingStyle("FX_GAIN_LOSS");
+        var postingIdentity=resolveDraftPostingIdentity(receipt,bankFeeLocal.signum()!=0,exchangeDifference.signum()!=0);
 
         receipt.setSettlementChannel(channel);
         receipt.setExchangeRateSource(rateSource);
@@ -1302,17 +1300,43 @@ public class FinanceReceiptService {
         receipt.setFeePaymentAccountId(feePaymentAccountId);
         receipt.setFeeAccountCurrencyId(feeAccount.currencyId());
         receipt.setFeeAccountExchangeRate(feeRate);
-        receipt.setGlAccountStyleId(receiving.styleId());
-        receipt.setGlCounterStyleId(counterStyle);
-        receipt.setGlBankFeeStyleId(bankFeeStyle);
-        receipt.setGlFxStyleId(fxStyle);
-        receipt.setGlFeePaymentStyleId(FEE_SEPARATE.equals(feeMode)
-                ?feeAccount.styleId():null);
+        applyDraftPostingIdentity(receipt,postingIdentity,receiving.styleId(),FEE_SEPARATE.equals(feeMode)?feeAccount.styleId():null);
         // Set V2 last: any validation query before this point may auto-flush
         // the managed draft, which must remain a complete V0 shape until all
         // server-derived authority snapshots are ready.
         receipt.setSettlementAuthorityVersion(SETTLEMENT_AUTHORITY_V2);
         receiptRepo.save(receipt);
+    }
+
+    private record DraftPostingIdentity(UUID counterStyle,UUID bankFeeStyle,UUID fxStyle) { }
+    private DraftPostingIdentity resolveDraftPostingIdentity(FinanceReceipt receipt,boolean hasBankFee,boolean hasFx){
+        UUID counter=(UUID)em.createNativeQuery("SELECT fn_finance_native_cash_counter_style('RECEIPT',:id,:role,:currency,'CUSTOMER',:party,:day)")
+                .setParameter("id",receipt.getId()).setParameter("role","CUSTOMER_PREPAYMENT".equals(receipt.getReceiptKind())?"CUSTOMER_ADVANCE":"AR_CONTROL")
+                .setParameter("currency",receipt.getCurrencyId()).setParameter("party",receipt.getClientId()).setParameter("day",receipt.getBillDate()).getSingleResult();
+        return new DraftPostingIdentity(counter,hasBankFee?requiredPostingStyle("BANK_FEE_EXPENSE"):null,hasFx?requiredPostingStyle("FX_GAIN_LOSS"):null);
+    }
+    private void applyDraftPostingIdentity(FinanceReceipt receipt,DraftPostingIdentity identity,UUID accountStyle,UUID feeAccountStyle){
+        receipt.setGlAccountStyleId(accountStyle);receipt.setGlCounterStyleId(identity.counterStyle());
+        receipt.setGlBankFeeStyleId(identity.bankFeeStyle());receipt.setGlFxStyleId(identity.fxStyle());receipt.setGlFeePaymentStyleId(feeAccountStyle);
+    }
+    /** The draft header is staged as V0 while its source rows are assembled.
+     * Keep every adopted bank/rate/fee/line amount; only resolve this new draft's
+     * legal account identities after those rows exist, then restore its actual
+     * original authority family instead of silently upgrading legacy V1 facts. */
+    @Transactional
+    public void prepareUnapprovalDraft(UUID originalId,UUID draftId){
+        FinanceReceipt original=require(originalId),draft=require(draftId);
+        if(original.getStatus()==null||original.getStatus()!=STATUS_REVERSED||draft.getStatus()==null||draft.getStatus()!=STATUS_DRAFT)
+            throw new ApiException(ErrorCode.CONFLICT,"收款反审续稿代次不正确");
+        short authority=original.getSettlementAuthorityVersion();if(authority!=SETTLEMENT_AUTHORITY_V1&&authority!=SETTLEMENT_AUTHORITY_V2)return;
+        boolean separate=FEE_SEPARATE.equals(draft.getFeeSettlementMode());
+        var ids=new ArrayList<UUID>();ids.add(draft.getAccountId());if(separate)ids.add(draft.getFeePaymentAccountId());
+        var accounts=loadAccountCurrencySnapshots(ids,false);var receiving=accounts.get(draft.getAccountId());var fee=separate?accounts.get(draft.getFeePaymentAccountId()):null;
+        if(receiving==null||separate&&fee==null)throw new ApiException(ErrorCode.CONFLICT,"收款续稿账户缺少当前有效会计身份");
+        boolean hasFx=lineRepo.findByReceiptIdOrderByLineNoAsc(draftId).stream().map(line->nz(line.getExchangeDiff())).reduce(BigDecimal.ZERO,BigDecimal::add).signum()!=0;
+        var identity=resolveDraftPostingIdentity(draft,nz(draft.getBankFee()).signum()!=0,hasFx);
+        applyDraftPostingIdentity(draft,identity,receiving.styleId(),separate?fee.styleId():null);
+        draft.setSettlementAuthorityVersion(authority);receiptRepo.saveAndFlush(draft);
     }
 
     private void allocateActualBankBasis(FinanceReceipt receipt) {

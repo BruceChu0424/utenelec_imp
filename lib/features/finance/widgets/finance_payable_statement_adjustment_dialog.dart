@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,9 +27,8 @@ Future<void> showFinancePayableStatementAdjustmentDialog(
   required String statementReviewId,
   required String expectedSourceFingerprint,
   String? resumeDraftId,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
   builder: (_) => _Adjustment(
     statementReviewId: statementReviewId,
     fingerprint: expectedSourceFingerprint,

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 2,
+  "status": "implementation candidate; final verification is recorded separately",
+  "owner": "FinanceDocumentActions / FinanceDocumentReviewSnapshots / FinanceOperationJournal",
+  "families": {
+    "financeReceipt": "receipts",
+    "financePayment": "payments",
+    "financeExpense": "expenses",
+    "financeOtherIncome": "incomes",
+    "financeBankTransfer": "bank-transfers"
+  },
+  "display": {
+    "path": "GET /finance/{segment}/{id}",
+    "fields": ["approvalSnapshot", "approvalVersion", "approvalPlatformFields"],
+    "view": "Native detail, opaque snapshot and permission-filtered platform projection use one REPEATABLE_READ transaction. The client renders this frozen projection, without replacing it with a later live platform read.",
+    "actualVersions": "receipt/payment retain their real Long business version; expense/other-income/bank-transfer have no such column and expose nullable/absent approvalVersion rather than invented zero.",
+    "opaqueGeneration": "The server digest includes full header, active ordered rows, declared source allocations, platform records/definition meanings/deletion generation and attachments. Header/row/source/platform/attachment PostgreSQL xmin distinguishes an ABA rewrite even if ordinary values and timestamps are restored.",
+    "trustedRead": "Internal native service DTOs omit unset review decoration, preserving established native-application fingerprints."
+  },
+  "commands": [
+    {"operation": "FINANCE_DOCUMENT_APPROVE", "method": "POST", "path": "/finance/{segment}/{id}/approve", "body": ["requestId", "expectedVersion", "expectedSnapshot"]},
+    {"operation": "FINANCE_DOCUMENT_UPDATE", "method": "PUT", "path": "/finance/{segment}/{id}", "body": ["requestId", "expectedVersion", "expectedSnapshot", "document"]},
+    {"operation": "FINANCE_DOCUMENT_UNAPPROVE", "method": "POST", "path": "/documents/{family}/{id}/unapprove", "body": ["requestId", "idempotencyKey", "reason", "expectedSnapshot"]},
+    {"operation": "FINANCE_DOCUMENT_UNAPPROVE", "method": "POST", "path": "/finance/{segment}/{id}/reverse", "body": ["requestId", "idempotencyKey", "reason", "expectedSnapshot"]},
+    {"operation": "FINANCE_DOCUMENT_GL_CONFIRM", "method": "POST", "path": "/finance/expenses/{id}/gl-confirm", "body": ["requestId", "expectedVersion", "expectedSnapshot"]},
+    {"operation": "FINANCE_DOCUMENT_DELETE", "method": "DELETE", "path": "/finance/{segment}/{id}", "body": ["requestId", "expectedVersion", "expectedSnapshot"]}
+  ],
+  "approvalAndUpdate": "expectedSnapshot is exactly the displayed detail.approvalSnapshot. Compare after the original business method has acquired its own document lock, preserving hierarchy/closed-period/source lock order. Original services remain the only money/SoD/nativeApplicationPermit authority.",
+  "rawUpdate": "document is the complete original business JSON, parsed using exact decimal nodes before any Double. Preserve explicit null versus absent keys, decimal values and original strings. The new update hash ignores object-key order only. receipt/payment document.expectedVersion must equal the outer real expectedVersion; the other three remain null.",
+  "unapproval": {
+    "capability": "GET /documents/{family}/{id}/unapproval-capability returns documentSnapshot in the same RR view as its existing factsSnapshot.",
+    "displayBinding": "Client must match capability.documentSnapshot to the displayed detail.approvalSnapshot before confirmation; it freezes factsSnapshot as command.expectedSnapshot.",
+    "key": "idempotencyKey must equal requestId.toString() for finance HTTP. Trusted internal/non-finance protocols retain established behavior.",
+    "oneSuccessor": "Retain existing unique family/original successor, factsSnapshot guards, original reverse work and atomic draft creation. A new command cannot invent another reversal of the original generation."
+  },
+  "receipts": {
+    "get": "/finance/{segment}/{id}/review-operations/{requestId}",
+    "cancel": "POST /finance/{segment}/{id}/review-operations/{requestId}/cancel",
+    "envelope": ["found", "requestId", "actorId", "operation", "method", "path", "requestBody", "outcome", "result", "precisionChoices", "precisionContext"],
+    "notFound": "No visible committed receipt is not proof that an in-flight write did not happen.",
+    "cancelProof": ["requestId", "actorId", "operation", "method", "path", "requestBody", "precisionChoices"],
+    "cancelSemantics": "Under the original request lock, return original committed success or append immutable CANCELLED_UNWRITTEN/result.cancelled=true. A late matching original never executes; wrong original intent conflicts. Cancellation failure/rollback does not seal the request.",
+    "authority": "Owner UUID plus current family/object read scope for receipt and cancel. Lost write permission permits own receipt/cancel, not mutation replay. Lost read permission denies contents. Visitor, forced-password, locked and impersonated identities cannot cancel.",
+    "afterCancellation": "Retain original business input and choices. Explicitly display/review current document, adopt its actual token/version only, then create a fresh requestId only upon the user's later explicit save/approval."
+  },
+  "precision": {
+    "scope": "New FINANCE_DOCUMENT_APPROVE/UPDATE/UNAPPROVE/GL_CONFIRM/DELETE hashes include the submitted HTTP BusinessPrecisionContext.choices. No established old journal/batch hash or stored byte is changed.",
+    "precisionContext": {"available": true, "choices": "original purpose -> {scale,rounding}", "usedChoices": "only original choices actually consumed by the command's calculation"},
+    "cancel": "precisionChoices must explicitly contain the original frozen map, even {}. Never replace it with choices from the cancellation's current Header.",
+    "strictChoice": "Each submitted cancellation choice retains both an integral scale and textual rounding; missing/null/fractional scale cannot be guessed as the primitive default zero.",
+    "negotiation": "A reliable-unwritten 422 rolls back and stores no receipt; the same original business body/id can explicitly acquire the needed choice and retry. After success, different choices under the original ID conflict. GET proves original execution choices.",
+    "legacy": "Older success without submitted-context evidence is unavailable, not reconstructed from current Header. Existing immutable executed amount/policy evidence remains authoritative."
+  },
+  "glConfirmation": "Expense-only. Original period/document lock order, scoped writable-owner/native-application restrictions and exact native voucher checks remain. Success result is the original detail with id/status=1/glStatus=2. Ordinary GL2 expense is a completed state with no public unconfirm/reverse route; only the established original financial-application workflow has its controlled withdrawal. Native is_closed=true alone is not completion; imported records retain their existing mutation refusal.",
+  "draftDeletion": "All five families use the original domain document lock before checking the displayed token and actual nullable business version. Trusted internal delete(UUID) methods remain controlled native calls. Success result is nativeDetailHistory with the original id/status=0/deleted=true; current financial inputs cannot be deleted using an earlier viewed generation. No monetary or original line facts are rewritten.",
+  "newActionAudit": "GL_CONFIRM and DELETE write their business audit via AuditService.logCommitted in the journal's actual work and original transaction. State, operation receipt and business audit commit/rollback together. GET, same-key replay, cancelled-unwritten and successful-receipt cancellation verification do not write another business audit.",
+  "platforms": {"web": "shared Flutter client", "windows_flutter": "shared Flutter client", "windows_wpf_legacy": "excluded; not migrated or accepted"},
+  "successorAssembly": "Receipt/payment native authority headers stage as V0 only while the new draft's rows are copied. The existing shared generatedHeaderInputs/afterDraftCreated mechanism then resolves the new draft's legal GL identity and restores its actual original authority family. Original adopted bank/rate/fee/row amounts and frozen native cash facts remain unchanged; actual database guards remain enabled.",
+  "detailPressure": "201/401 actual rows cross 200-row platform-read batches without relaxing existing limits. Evidence reports elapsed milliseconds, actual pooled JDBC executions via the existing ObservedSqlDataSource helper, Hibernate prepared-statement subset and native detail reload count; it separately checks row identity, empty cells, populated cross-batch cells and stale original token rejection.",
+  "tests": ["FinanceDocumentReviewCommandsPostgresTest", "FinanceReviewCommandWireTest", "FinanceSensitiveDetailViewAuditControllerTest", "existing FinanceUnapprovalEligibilityEndToEndTest"]
+}

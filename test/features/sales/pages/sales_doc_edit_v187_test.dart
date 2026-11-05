@@ -4,8 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import '../../../support/audit_screenshot_support.dart';
+import '../../../support/native_detail_reader_overrides.dart';
+import '../../../support/pump_until.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +37,104 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  for (final metadataLoaded in [false, true]) {
+    testWidgets(
+      'sales return own line locator with empty metadata loaded=$metadataLoaded',
+      (tester) async {
+        final api = await _pumpEditor(
+          tester,
+          type: SalesDocType.returnDoc,
+          id: 'return-draft',
+          nativeReader: true,
+          permissions: {Perm.salesReturnView, Perm.salesReturnEdit},
+          detail: const {
+            'id': 'return-draft',
+            'status': 0,
+            'writable': true,
+            'canEdit': true,
+            'makerId': 'maker-owner',
+            'billDate': '2026-10-11',
+            'clientId': 'client-1',
+            'warehouseId': 'warehouse-1',
+            'currencyId': 'currency-usd',
+            'exchangeRate': 7.123456,
+            'exchangeRateExact': '7.123456',
+            'taxRate': 0,
+            'items': [
+              {
+                'id': 'return-own-line',
+                'goodsId': 'goods-1',
+                'goodsCodeSnapshot': 'G001',
+                'goodsNameSnapshot': '来源货品',
+                'qty': 10.1256,
+                'qtyExact': '10.1256',
+                'price': 4.05,
+                'outItemId': 'source-out-line',
+                'orderItemId': 'source-order-line',
+                'unitId': 'piece',
+                'unitRate': 1,
+              },
+            ],
+          },
+        );
+        final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+          find.byType(UtenEditableGrid<SalesGridRow>),
+        );
+        final row = grid.controller.rows.single;
+        if (metadataLoaded) {
+          row.platformFields.adopt(
+            const PlatformRowValues(
+              recordId: 'return-own-line',
+              version: 17,
+              canWrite: true,
+            ),
+          );
+          expect(row.platformFields.savePayload()?['expectedVersion'], 17);
+        } else {
+          row.platformFields
+            ..sourceRecordId = null
+            ..loaded = false
+            ..dirty = false;
+        }
+        expect(row.platformFields.cells, isEmpty);
+        if (!metadataLoaded) expect(row.platformFields.savePayload(), isNull);
+        final clone = row.clone();
+        expect(clone.documentItemId, isNull);
+        expect(clone.platformFields.sourceRecordId, isNull);
+        clone.dispose();
+        if (!metadataLoaded) {
+          final state =
+              tester.state(find.byType(SalesDocEditPage))
+                  as FormDraftMixin<SalesDocEditPage>;
+          final draft = Map<String, dynamic>.from(state.captureFormDraft());
+          await pumpUntilCompletes(
+            tester,
+            state.restoreFormDraft(draft),
+            reason: 'Restoration must finish while its UI slices yield',
+          );
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+        await tester.pumpAndSettle();
+        expect(api.lastPutBody, isNotNull);
+        final item = (api.lastPutBody!['items'] as List).single as Map;
+        expect(item['id'], 'return-own-line');
+        expect(item['outItemId'], 'source-out-line');
+        expect(item['orderItemId'], 'source-order-line');
+        expect(item['qty'], '10.1256');
+        if (metadataLoaded) {
+          expect(item['platformFields'], {
+            'sourceRecordId': 'return-own-line',
+            'expectedVersion': 17,
+            'cells': <Object>[],
+          });
+        } else {
+          expect(item.containsKey('platformFields'), isFalse);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final hidden in [false, true]) {
     testWidgets(
       'sales picker ${hidden ? 'rejects a newly hidden' : 'accepts a selectable'} client after fresh lookup',
@@ -638,6 +739,8 @@ Future<_EditorApi> _pumpEditor(
   int batchCount = 1,
   Size size = const Size(1600, 1200),
   GlobalKey? capture,
+  Set<String>? permissions,
+  bool nativeReader = false,
 }) async {
   if (capture != null) await loadAuditScreenshotFonts(tester);
   await tester.binding.setSurfaceSize(size);
@@ -658,15 +761,21 @@ Future<_EditorApi> _pumpEditor(
         apiClientProvider.overrideWithValue(api),
         // 本套件核对订单保存提交的单价/折扣原文：看不到价格的账号会被客户端
         // 脱敏(_priceMasked)，价格与折扣都不随保存提交，须显式授予价格查看权限。
-        currentPermissionsProvider.overrideWithValue(const {
-          Perm.salesOrderView,
-          Perm.salesOrderEdit,
-          Perm.salesOrderPriceView,
-        }),
+        currentPermissionsProvider.overrideWithValue(
+          permissions ??
+              const {
+                Perm.salesOrderView,
+                Perm.salesOrderEdit,
+                Perm.salesOrderPriceView,
+              },
+        ),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
         ),
-        sessionProvider.overrideWith(_TestSessionNotifier.new),
+        if (nativeReader)
+          ...nativeDetailReaderOverrides()
+        else
+          sessionProvider.overrideWith(_TestSessionNotifier.new),
       ],
       child: RepaintBoundary(
         key: capture,

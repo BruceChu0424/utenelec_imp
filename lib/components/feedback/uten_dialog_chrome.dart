@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_close_button.dart';
+import '../inputs/uten_field_hint_icon.dart';
 import 'uten_dialog_action_scope.dart';
 import 'uten_dialog_action_layout.dart';
 
@@ -76,6 +77,26 @@ class _UtenDialogTopWash extends GradientTransform {
   }
 }
 
+/// Keep a title and its accessible explanation together when the title wraps.
+class UtenDialogTitleWithHint extends StatelessWidget {
+  const UtenDialogTitleWithHint({super.key, required this.title, this.info});
+
+  final Widget title;
+  final String? info;
+
+  @override
+  Widget build(BuildContext context) => info?.trim().isNotEmpty != true
+      ? title
+      : Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: title),
+            const SizedBox(width: UtenSpacing.s8),
+            UtenFieldHintIcon(info: info, dense: true),
+          ],
+        );
+}
+
 /// Shared title hierarchy for short dialogs and larger business workspaces.
 class UtenDialogHeading extends StatelessWidget {
   const UtenDialogHeading({
@@ -100,7 +121,13 @@ class UtenDialogHeading extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final color = accent ?? (danger ? scheme.error : scheme.primary);
-    if (MediaQuery.sizeOf(context).width < 280) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final enlarged = MediaQuery.textScalerOf(context).scale(20) > 26;
+    // Decorative heading icons yield their space to the user's text size.
+    // Keep an explicitly supplied business leading; it may carry real content.
+    if (screenWidth < 280 ||
+        leading == null &&
+            (screenWidth < 480 || enlarged && screenWidth < 640)) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

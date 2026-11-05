@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/finance/shared/finance_document_intent.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -23,13 +24,48 @@ void main() {
           },
         ],
       };
-      await repository.update('draft-1', input);
+      final update = {
+        'requestId': '00000000-0000-0000-0000-000000000301',
+        'expectedVersion':
+            type == FinanceDocType.receipt || type == FinanceDocType.payment
+            ? 7
+            : null,
+        'expectedSnapshot': List.filled(64, 'a').join(),
+        'document': input,
+      };
+      await repository.executeDocumentIntent(
+        FinanceDocumentIntent(
+          type: type,
+          documentId: 'draft-1',
+          actorId: 'actor',
+          operation: 'FINANCE_DOCUMENT_UPDATE',
+          body: update,
+          precisionChoices: {},
+        ),
+      );
       expect(api.putPath, api.getPath);
-      expect(api.putBody, input);
-      final approved = await repository.approve('draft-1');
+      expect(api.putBody, update);
+      final approve = {
+        'requestId': '00000000-0000-0000-0000-000000000302',
+        'expectedVersion':
+            type == FinanceDocType.receipt || type == FinanceDocType.payment
+            ? 7
+            : null,
+        'expectedSnapshot': List.filled(64, 'a').join(),
+      };
+      final approved = await repository.executeDocumentIntent(
+        FinanceDocumentIntent(
+          type: type,
+          documentId: 'draft-1',
+          actorId: 'actor',
+          operation: 'FINANCE_DOCUMENT_APPROVE',
+          body: approve,
+          precisionChoices: {},
+        ),
+      );
       expect(api.postPath, '/finance/${type.pathSegment}/draft-1/approve');
-      expect(api.postBody, isNull);
-      expect(approved.status, kFinanceStatusApproved);
+      expect(api.postBody, approve);
+      expect(approved['status'], kFinanceStatusApproved);
     });
   }
 }

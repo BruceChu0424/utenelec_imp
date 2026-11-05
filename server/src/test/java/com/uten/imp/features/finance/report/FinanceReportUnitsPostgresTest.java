@@ -59,6 +59,10 @@ class FinanceReportUnitsPostgresTest {
                 "goods","material_categories","v_stock_actual_cogs_postings","units","colors","stock_movements",
                 "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","sales_returns","sales_return_items",
                 "party_monthly_summaries","party_month_dirty","finance_payment_lines","supplier_open_item_offsets","legacy_finance_import_sources");
+        com.uten.imp.support.FinanceReportProjectionSchema.receivableClassifications(db);
+        com.uten.imp.support.FinanceReportProjectionSchema.supplierAdvanceReplay(db);
+        com.uten.imp.support.FinanceReportProjectionSchema.assetReports(db);
+        com.uten.imp.support.FinanceReportProjectionSchema.trialBalance(db);
         // Cash-event book rates call the real migrated precision functions; without them the
         // class-42 "function does not exist" surfaces as Spring bad SQL grammar.
         MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer",
@@ -195,16 +199,17 @@ class FinanceReportUnitsPostgresTest {
                 && sql.indexOf("AS balance")<sql.indexOf("FROM windowed"));
     }
     @BeforeEach void reset(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,finance_reconciliations,ar_ap_ledger,fixed_assets,deferred_expenses,fa_depreciation_log,da_amortization_log,gl_entries,gl_vouchers,goods,material_categories,v_stock_actual_cogs_postings,purchase_receipts,purchase_receipt_items,purchase_returns,purchase_return_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items");executedSql.clear();}
-    private static Query query(String sql){
+    private static Query query(String sql){return query(sql,named);}
+    private static Query query(String sql,NamedParameterJdbcTemplate reader){
         Query query=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
         when(query.setMaxResults(anyInt())).thenReturn(query);
         when(query.setParameter(anyString(),any())).thenAnswer(call->{parameters.put(call.getArgument(0),call.getArgument(1));return query;});
-        when(query.getResultList()).thenAnswer(call->{executedSql.add(sql);return named.query(sql,parameters,(rs,index)->{
+        when(query.getResultList()).thenAnswer(call->{executedSql.add(sql);return reader.query(sql,parameters,(rs,index)->{
             Object[] row=new Object[rs.getMetaData().getColumnCount()];var aliases=new java.util.ArrayList<String>();
             for(int i=0;i<row.length;i++){row[i]=rs.getObject(i+1);aliases.add(rs.getMetaData().getColumnLabel(i+1));}
             if(sql.contains("LIMIT :__limit OFFSET :__offset")){ dataColumns=List.copyOf(aliases); }return row;
         });});
-        when(query.getSingleResult()).thenAnswer(call->{executedSql.add(sql);return named.queryForObject(sql,parameters,Long.class);});return query;
+        when(query.getSingleResult()).thenAnswer(call->{executedSql.add(sql);return reader.queryForObject(sql,parameters,Object.class);});return query;
     }
     private static UUID create(String type){
         UUID id=UUID.randomUUID();String table=switch(type){case "RECEIPT"->"finance_receipts";case "PAYMENT"->"finance_payments";case "EXPENSE"->"finance_expenses";default->"finance_other_incomes";};
@@ -366,14 +371,14 @@ class FinanceReportUnitsPostgresTest {
     @Test void assetSchedulesPageStableMasterIdentitiesBeforeTheirExactActivePostingAggregates(){
         LocalDate cutoff=LocalDate.of(2026,2,28);
         for(int index=1;index<=3;index++){
-            UUID asset=assetScheduleMaster(false,"B1-FA-"+index,LocalDate.of(2025,12,31),null,null,false,new BigDecimal("40.0004"));
+            UUID asset=assetScheduleMaster(false,"B1-FA-"+index,LocalDate.of(2025,12,31),null,null,false,BigDecimal.ZERO);
             UUID deferred=assetScheduleMaster(true,"B1-DA-"+index,LocalDate.of(2025,12,31),null,null,false,BigDecimal.ZERO);
             for(boolean isDeferred:List.of(false,true)){
                 UUID id=isDeferred?deferred:asset;
                 assetSchedulePosting(isDeferred,id,"2026-01","10.0001","NORMAL","ACTIVE",LocalDate.of(2026,1,31),false);
                 assetSchedulePosting(isDeferred,id,"2026-02","20.0002","NORMAL","ACTIVE",cutoff,false);
                 assetSchedulePosting(isDeferred,id,"2026-01","37.0007","NORMAL","REVERSED",LocalDate.of(2026,1,31),false);
-                assetSchedulePosting(isDeferred,id,"2026-02","-37.0007","REVERSAL","ACTIVE",LocalDate.of(2026,2,14),false);
+                assetSchedulePosting(isDeferred,id,"2026-02","37.0007","REVERSAL","ACTIVE",LocalDate.of(2026,2,14),false);
                 assetSchedulePosting(isDeferred,id,"2026-02","99.0009","NORMAL","ACTIVE",cutoff,true);
                 assetSchedulePosting(isDeferred,id,"2026-03","44.0004","NORMAL","ACTIVE",LocalDate.of(2026,3,31),false);
             }
@@ -381,24 +386,26 @@ class FinanceReportUnitsPostgresTest {
         var assets=new FixedAssetService(em,mock(com.uten.imp.security.TxSessionVars.class),access);
         var first=assetScheduleReport(assets,false,1,1,cutoff);var second=assetScheduleReport(assets,false,2,1,cutoff);
         assertThat(first.total()).isEqualTo(3);assertThat(first.totalPages()).isEqualTo(3);
-        assertThat(first.rows().getFirst()).containsEntry("code","B1-FA-1").containsEntry("postedMonths",2L);
-        assertThat(second.rows().getFirst()).containsEntry("code","B1-FA-2");
-        assertThat((BigDecimal)first.rows().getFirst().get("accumDep")).isEqualByComparingTo("70.0007");
-        assertThat((BigDecimal)first.rows().getFirst().get("netValue")).isEqualByComparingTo("930.12");
-        assertThat((BigDecimal)first.rows().getFirst().get("monthlyDep")).isEqualByComparingTo("20.0002");
+        assertThat(first.rows().getFirst()).containsEntry("assetName","B1-FA-1");
+        assertThat(second.rows().getFirst()).containsEntry("assetName","B1-FA-2");
+        assertThat((BigDecimal)first.rows().getFirst().get("accumDep")).isEqualByComparingTo("30.0003");
+        assertThat((BigDecimal)first.rows().getFirst().get("netValue")).isEqualByComparingTo("970.1231");
+        assertThat((BigDecimal)first.rows().getFirst().get("monthlyDep")).isEqualByComparingTo("90.000123");
+        assertThat((BigDecimal)first.rows().getFirst().get("month202601")).isEqualByComparingTo("47.0008");
+        assertThat((BigDecimal)first.rows().getFirst().get("month202602")).isEqualByComparingTo("-17.0005");
         executedSql.clear();
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)){
             var page=assetScheduleReport(assets,false,3,1,cutoff);var deferred=assetScheduleReport(assets,true,2,1,cutoff);
-            assertThat(page.total()).isEqualTo(-1);assertThat(page.rows().getFirst()).containsEntry("code","B1-FA-3");
-            assertThat(deferred.total()).isEqualTo(-1);assertThat(deferred.rows().getFirst()).containsEntry("code","B1-DA-2");
+            assertThat(page.total()).isEqualTo(-1);assertThat(page.rows().getFirst()).containsEntry("assetName","B1-FA-3");
+            assertThat(deferred.total()).isEqualTo(-1);assertThat(deferred.rows().getFirst()).containsEntry("assetName","B1-DA-2");
             assertThat((BigDecimal)deferred.rows().getFirst().get("accumAmt")).isEqualByComparingTo("30.0003");
-            assertThat((BigDecimal)deferred.rows().getFirst().get("remain")).isEqualByComparingTo("970.12");
-            assertThat((BigDecimal)deferred.rows().getFirst().get("monthlyAmt")).isEqualByComparingTo("20.0002");
+            assertThat((BigDecimal)deferred.rows().getFirst().get("remain")).isEqualByComparingTo("970.1231");
+            assertThat((BigDecimal)deferred.rows().getFirst().get("monthlyAmt")).isEqualByComparingTo("90.000123");
             assertThat(deferred.rows().getFirst().get("accumAmtExact")).isEqualTo("30.0003");
             assertThat(assetScheduleReport(assets,false,4,1,cutoff).rows()).isEmpty();
         }
         assertThat(executedSql).hasSize(3).allSatisfy(sql->assertThat(sql)
-                .contains("ORDER BY report.\"code\"","LIMIT :__limit OFFSET :__offset","LEFT JOIN LATERAL","LEFT JOIN gl_vouchers"));
+                .contains("ORDER BY report.\"assetName\",report.\"__assetId\"","LIMIT :__limit OFFSET :__offset","LEFT JOIN LATERAL","v_finance_asset_posting_facts"));
     }
 
     @ParameterizedTest @ValueSource(booleans={false,true})
@@ -414,20 +421,25 @@ class FinanceReportUnitsPostgresTest {
         assetScheduleMaster(deferred,"IGNORED-REVERSED",recognized,null,cutoff,false,BigDecimal.ZERO);
         assetScheduleMaster(deferred,"IGNORED-DELETED",recognized,null,null,true,BigDecimal.ZERO);
         assetSchedulePosting(deferred,id,"2026-02","7.0001","NORMAL","ACTIVE",cutoff.minusDays(1),false);
-        assetSchedulePosting(deferred,id,"2026-02","2.0002","NORMAL","ACTIVE",null,false);
+        UUID unproved=assetScheduleMaster(deferred,"ASOF-03-UNPROVED",recognized,null,null,false,BigDecimal.ZERO);
+        assetSchedulePosting(deferred,unproved,"2026-02","2.0002","NORMAL","ACTIVE",null,false);
         assetSchedulePosting(deferred,id,"2026-03","31.0003","NORMAL","ACTIVE",LocalDate.of(2026,3,1),false);
         var assets=new FixedAssetService(em,mock(com.uten.imp.security.TxSessionVars.class),access);
         String accumulated=deferred?"accumAmt":"accumDep",monthly=deferred?"monthlyAmt":"monthlyDep";
         var midMonth=assetScheduleReport(assets,deferred,1,50,cutoff);
-        assertThat(midMonth.rows()).extracting(row->row.get("code")).containsExactly("ASOF-01","ASOF-02");
-        assertThat(midMonth.rows().getFirst()).containsEntry("postedMonths",1L);
-        assertThat((BigDecimal)midMonth.rows().getFirst().get(monthly)).isEqualByComparingTo("7.0001");
-        assertThat((BigDecimal)midMonth.rows().getFirst().get(accumulated)).isEqualByComparingTo(opening.add(new BigDecimal("7.0001")));
+        assertThat(midMonth.rows()).extracting(row->row.get("assetName")).containsExactly("ASOF-01","ASOF-02","ASOF-03-UNPROVED");
+        assertThat((BigDecimal)midMonth.rows().getFirst().get(monthly)).isEqualByComparingTo("90.000123");
+        if(deferred) assertThat((BigDecimal)midMonth.rows().getFirst().get(accumulated)).isEqualByComparingTo("7.0001");
+        else assertThat(midMonth.rows().getFirst().get(accumulated)).as("An opening total cannot invent historical monthly evidence").isNull();
+        assertThat(midMonth.rows().get(2).get("month202602")).isNull();
+        assertThat(midMonth.rows().get(2).get("__pending")).as("A fallback month-end fact is outside the mid-month as-of window").isEqualTo(false);
         var monthEnd=assetScheduleReport(assets,deferred,1,50,LocalDate.of(2026,2,28));
-        assertThat(monthEnd.rows()).extracting(row->row.get("code")).containsExactly("ASOF-01","ASOF-02");
-        assertThat(monthEnd.rows().getFirst()).containsEntry("postedMonths",2L);
-        assertThat((BigDecimal)monthEnd.rows().getFirst().get(monthly)).isEqualByComparingTo("9.0003");
-        assertThat((BigDecimal)monthEnd.rows().getFirst().get(accumulated)).isEqualByComparingTo(opening.add(new BigDecimal("9.0003")));
+        assertThat(monthEnd.rows()).extracting(row->row.get("assetName")).containsExactly("ASOF-01","ASOF-02","ASOF-03-UNPROVED");
+        assertThat((BigDecimal)monthEnd.rows().getFirst().get(monthly)).isEqualByComparingTo("90.000123");
+        if(deferred) assertThat((BigDecimal)monthEnd.rows().getFirst().get(accumulated)).isEqualByComparingTo("7.0001");
+        else assertThat(monthEnd.rows().getFirst().get(accumulated)).isNull();
+        assertThat(monthEnd.rows().get(2).get("month202602")).isNull();
+        assertThat(monthEnd.rows().get(2).get("__pending")).isEqualTo(true);
     }
 
     private static ReportTableResponse assetScheduleReport(FixedAssetService service,boolean deferred,int page,int size,LocalDate cutoff){
@@ -450,110 +462,110 @@ class FinanceReportUnitsPostgresTest {
                 VALUES(?,?,'同名资产',1000.1234,.05,10,'2026-01',?,?,?,?,?,?,?,?,?)
                 """,id,code,status,lifecycle,recognized,closed,reversed,deleted,
                 opening.signum()==0?null:LocalDate.of(2025,12,31),opening,opening.signum()==0?null:10);
+        db.update("UPDATE "+(deferred?"deferred_expenses":"fixed_assets")+" SET name=? WHERE id=?",code,id);
+        com.uten.imp.support.FinanceAssetProjectionFacts.freeze(db,deferred,id,"90.000123",LocalDate.of(2025,12,1));
         return id;
     }
 
     /** Projection fixtures use real voucher headers and explicit fact dates; full posting workflows are tested separately. */
     private static void assetSchedulePosting(boolean deferred,UUID id,String period,String amount,String kind,String status,LocalDate voucherDate,boolean deleted){
-        UUID voucher=voucherDate==null?null:UUID.randomUUID();
-        if(voucher!=null)db.update("""
-                INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status,is_deleted)
-                VALUES(?,?,?,?,'AUTO',?,?,?)
-                """,voucher,"REPORT-"+voucher,period,voucherDate,deferred?"DA_AMT":"FA_DEP",status.equals("REVERSED")?-1:1,deleted);
-        db.update(deferred?"INSERT INTO da_amortization_log(deferred_id,period,amount,entry_kind,status,voucher_id,is_deleted) VALUES(?,?,?,?,?,?,?)"
-                :"INSERT INTO fa_depreciation_log(asset_id,period,amount,entry_kind,status,voucher_id,is_deleted) VALUES(?,?,?,?,?,?,?)",
-                id,period,new BigDecimal(amount),kind,status,voucher,deleted);
+        com.uten.imp.support.FinanceAssetProjectionFacts.post(db,deferred,id,period,amount,kind,status,voucherDate,deleted);
     }
 
     @Test void glTrialBalancePaginatesAfterTheCompleteOpeningAndPeriodAggregation() throws Exception {
         for(int index=1;index<=3;index++){
             UUID style=UUID.randomUUID();
             db.update("INSERT INTO payment_styles(id,code,name,category,level) VALUES (?,?,'同名科目','EXPENSE',0)",style,"B1-GL-"+index);
-            db.update("INSERT INTO gl_entries(voucher_id,style_id,direction,amount,entry_date,period) VALUES (gen_random_uuid(),?,1,10,?,'2026-09'),(gen_random_uuid(),?,1,7,?,'2026-10'),(gen_random_uuid(),?,-1,2,?,'2026-10')",
-                    style,DATE.minusMonths(1),style,DATE,style,DATE);
+            for(var value:List.of(new Object[]{DATE.minusMonths(1),10,1},new Object[]{DATE,7,1},new Object[]{DATE,2,-1})) {
+                UUID voucher=UUID.randomUUID();
+                db.update("INSERT INTO gl_vouchers(id,voucher_no,voucher_date,status,is_deleted) VALUES(?,?,?,1,false)",voucher,"TRIAL-"+voucher,value[0]);
+                db.update("INSERT INTO gl_entries(voucher_id,style_id,direction,amount,entry_date,period) VALUES (?,?,?,?,?,'2026-10')",voucher,style,value[2],value[1],value[0]);
+            }
         }
         var constructor=GlReportService.class.getConstructors()[0];
         var gl=(GlReportService)constructor.newInstance(em,mock(constructor.getParameterTypes()[1]),access);
-        var first=gl.trialBalance(DATE.withDayOfMonth(1),DATE,1,1);
+        var options=new FinanceReportColumnOptions(Map.of("search.styleCode","B1-GL-"),null,null);
+        var first=gl.trialBalance(DATE.withDayOfMonth(1),DATE,1,1,options);
         assertThat(first.total()).isEqualTo(3);assertThat(first.rows()).hasSize(1);
         assertThat(first.rows().getFirst()).containsEntry("styleCode","B1-GL-1");
-        assertThat((BigDecimal)first.rows().getFirst().get("opening")).isEqualByComparingTo("10");
-        assertThat((BigDecimal)first.rows().getFirst().get("closing")).isEqualByComparingTo("15");
+        assertThat((BigDecimal)first.rows().getFirst().get("openingDebit")).isEqualByComparingTo("10");
+        assertThat((BigDecimal)first.rows().getFirst().get("closingDebit")).isEqualByComparingTo("15");
         executedSql.clear();
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)){
-            var second=gl.trialBalance(DATE.withDayOfMonth(1),DATE,2,1);
+            var second=gl.trialBalance(DATE.withDayOfMonth(1),DATE,2,1,options);
             assertThat(second.total()).isEqualTo(-1);assertThat(second.rows().getFirst()).containsEntry("styleCode","B1-GL-2");
-            assertThat((BigDecimal)second.rows().getFirst().get("opening")).isEqualByComparingTo("10");
-            assertThat((BigDecimal)second.rows().getFirst().get("closing")).isEqualByComparingTo("15");
-            assertThat(gl.trialBalance(DATE.withDayOfMonth(1),DATE,4,1).rows()).isEmpty();
+            assertThat((BigDecimal)second.rows().getFirst().get("openingDebit")).isEqualByComparingTo("10");
+            assertThat((BigDecimal)second.rows().getFirst().get("closingDebit")).isEqualByComparingTo("15");
+            assertThat(gl.trialBalance(DATE.withDayOfMonth(1),DATE,4,1,options).rows()).isEmpty();
         }
-        assertThat(executedSql).hasSize(2).allSatisfy(sql->assertThat(sql)
-                .contains("GROUP BY style_id","ORDER BY report.\"category\",report.\"styleCode\",report.\"styleName\",report.\"__styleId\" LIMIT :__limit OFFSET :__offset"));
+        assertThat(executedSql.stream().filter(sql->sql.contains("LIMIT :__limit OFFSET :__offset"))).hasSize(2).allSatisfy(sql->assertThat(sql)
+                .contains("GROUP BY style_id","fn_finance_gl_voucher_is_booked","report.\"__sectionOrder\",report.\"__band\""));
     }
 
-    /** Real COGS classification SQL and snapshot; unrelated fixed-row authorities have explicit fixture values. */
+    /** 5,001 actual GL facts aggregate through 100 legal targets into the original fixed 90-row table. */
     @Test void operatingPlReadsEveryClassificationInBoundedBatchesAndKeepsItsPreciseTotalAndTail() throws Exception {
-        db.execute("INSERT INTO material_categories(id,code,name,is_deleted) SELECT gen_random_uuid(),'B1-COGS-'||n,'分类-'||lpad(n::text,5,'0'),false FROM generate_series(1,5001) n");
-        db.execute("INSERT INTO goods(id,code,name,category_id,is_deleted) SELECT gen_random_uuid(),code,'分类夹具货品',id,false FROM material_categories WHERE code LIKE 'B1-COGS-%'");
-        db.update("INSERT INTO v_stock_actual_cogs_postings(goods_id,business_date,amount_local,pending) SELECT id,?,.1234,right(code,1) IN ('1','3','5','7','9') FROM goods WHERE code LIKE 'B1-COGS-%'",DATE);
-        try(var connection=java.sql.DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())){
-            connection.setTransactionIsolation(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
-            connection.setReadOnly(true);connection.setAutoCommit(false);
-            var cogs=new NamedParameterJdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true));
-            assertThat(cogs.queryForObject("SHOW transaction_isolation",Map.of(),String.class)).isEqualTo("repeatable read");
-            assertThat(cogs.queryForObject("SHOW transaction_read_only",Map.of(),String.class)).isEqualTo("on");
-            List<Long> offsets=new java.util.ArrayList<>();
-            EntityManager authority=mock(EntityManager.class);
-            when(authority.createNativeQuery(anyString())).thenAnswer(call->{
-                String sql=call.getArgument(0);Query value=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
-                when(value.setParameter(anyString(),any())).thenAnswer(bind->{parameters.put(bind.getArgument(0),bind.getArgument(1));return value;});
-                when(value.getSingleResult()).thenReturn(sql.contains("subcontract_receipt_items")?BigDecimal.ZERO:new BigDecimal("1000"));
-                when(value.getResultList()).thenAnswer(read->{
-                    if(!sql.contains("v_stock_actual_cogs_postings"))return List.of();
-                    offsets.add(((Number)parameters.get("__groupOffset")).longValue());
-                    assertThat(parameters.get("__groupLimit")).isEqualTo(500);
-                    return cogs.query(sql,parameters,(rs,index)->new Object[]{rs.getString(1),rs.getBigDecimal(2),rs.getBoolean(3)});
-                });
-                return value;
+        MigratedProjectionSchema.createCurrentTables(db,"finance_report_line_bindings");
+        MigratedProjectionSchema.createCurrentFunctions(db,"fn_finance_cost_expense_style_allowed",
+                "fn_finance_direction_occurrence","fn_finance_debit_occurrence","fn_finance_manufacturing_occurrence","fn_finance_entry_is_pnl_closing");
+        db.execute("INSERT INTO payment_styles(id,code,name,category,level,status) SELECT gen_random_uuid(),'OP-STRESS-'||n,'anonymous operating source '||n,'EXPENSE',0,'使用' FROM generate_series(1,100) n");
+        db.execute("INSERT INTO finance_report_line_bindings(line_key,binding_kind,style_id) SELECT 'OP_SUBCONTRACT','STYLE',id FROM payment_styles WHERE code LIKE 'OP-STRESS-%'");
+        UUID voucher=UUID.randomUUID();
+        db.update("INSERT INTO gl_vouchers(id,voucher_no,voucher_date,status,is_deleted) VALUES(?,?,?,1,false)",voucher,"OP-STRESS-"+voucher,DATE);
+        db.update("INSERT INTO gl_entries(voucher_id,line_no,style_id,direction,amount,entry_date,period) SELECT ?,n,style.id,1,.1234,?,'2026-10' FROM generate_series(1,5001) n JOIN payment_styles style ON style.code='OP-STRESS-'||(((n-1)%100)+1)",voucher,DATE);
+        Class<?> linesType=Class.forName("com.uten.imp.features.finance.gl.GlReportLineSource");
+        var linesConstructor=linesType.getDeclaredConstructor(EntityManager.class);linesConstructor.setAccessible(true);
+        var method=linesType.getDeclaredMethod("styleMonthly",java.util.Collection.class,String.class,LocalDate.class,LocalDate.class);method.setAccessible(true);
+        BigDecimal expected=new BigDecimal(".1234").multiply(new BigDecimal("5001"));
+        try(var connection=java.sql.DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword())) {
+            connection.setTransactionIsolation(java.sql.Connection.TRANSACTION_REPEATABLE_READ);connection.setReadOnly(true);connection.setAutoCommit(false);
+            var reader=new NamedParameterJdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true));
+            EntityManager readEm=mock(EntityManager.class);when(readEm.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0),reader));
+            Object lineReader=linesConstructor.newInstance(readEm);
+            @SuppressWarnings("unchecked") Map<String,BigDecimal[]> actual=(Map<String,BigDecimal[]>)method.invoke(lineReader,List.of("OP_SUBCONTRACT"),"EXPENSE",DATE.withDayOfYear(1),DATE);
+            assertThat(actual.get("OP_SUBCONTRACT")[10]).isEqualByComparingTo(expected);
+            db.update("UPDATE gl_entries SET amount=amount+.0001 WHERE voucher_id=? AND line_no=1",voucher);
+            @SuppressWarnings("unchecked") Map<String,BigDecimal[]> repeated=(Map<String,BigDecimal[]>)method.invoke(lineReader,List.of("OP_SUBCONTRACT"),"EXPENSE",DATE.withDayOfYear(1),DATE);
+            assertThat(repeated.get("OP_SUBCONTRACT")[10]).isEqualByComparingTo(expected);
+            var bindingType=Class.forName("com.uten.imp.features.finance.gl.GlReportLineSource$Bindings");
+            var bindingConstructor=bindingType.getDeclaredConstructor(Map.class);bindingConstructor.setAccessible(true);
+            Object bindings=bindingConstructor.newInstance(Map.of("OP_SUBCONTRACT",List.of("100 explicitly bound anonymous expense sources")));
+            Object reportLines=mock(linesType,invocation->switch(invocation.getMethod().getName()) {
+                case "styleMonthly"->actual;case "bindings"->bindings;case "payrollMonthly","depreciationMonthly"->Map.of();
+                default->org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
             });
-            Class<?> linesType=Class.forName("com.uten.imp.features.finance.gl.GlReportLineSource");
-            var linesConstructor=linesType.getDeclaredConstructor(EntityManager.class);linesConstructor.setAccessible(true);
-            var constructor=GlReportService.class.getConstructors()[0];
-            var gl=(GlReportService)constructor.newInstance(authority,linesConstructor.newInstance(authority),access);
-            var user=new com.uten.imp.security.AuthUser(UUID.randomUUID(),UUID.randomUUID(),"cogs-projection",
-                    Set.of("finance_report:view","finance_report:export","finance:view:all"),false,true,false);
-            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
-                    new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,null,user.getAuthorities()));
+            EntityManager otherAuthorities=mock(EntityManager.class);
+            when(otherAuthorities.createNativeQuery(anyString())).thenAnswer(call->{
+                Query q=mock(Query.class);when(q.setParameter(anyString(),any())).thenReturn(q);
+                when(q.getResultList()).thenReturn(List.of());when(q.getSingleResult()).thenReturn(Boolean.FALSE);return q;
+            });
+            var gl=(GlReportService)GlReportService.class.getConstructors()[0].newInstance(otherAuthorities,reportLines,access);
+            var first=gl.operatingPlPage(DATE.getYear(),DATE.getMonthValue(),1,50);
+            var second=gl.operatingPlPage(DATE.getYear(),DATE.getMonthValue(),2,50);
+            assertThat(first.columns()).hasSize(30);assertThat(first.total()).isEqualTo(90);
+            assertThat(first.rows()).hasSize(50);assertThat(second.rows()).hasSize(40);
+            var output=new java.util.ArrayList<Map<String,Object>>(first.rows());output.addAll(second.rows());
+            assertThat(output).anySatisfy(row->{assertThat(row.get("__lineKey")).isEqualTo("OP_SUBCONTRACT");assertThat((BigDecimal)row.get("m10")).isEqualByComparingTo(expected);});
+            assertThat(output).anySatisfy(row->{assertThat(row.get("__lineKey")).isEqualTo("OP_PROFIT");assertThat(row.get("m10")).isNull();});
+            var user=new com.uten.imp.security.AuthUser(UUID.randomUUID(),UUID.randomUUID(),"operating-projection",Set.of("finance_report:view","finance_report:export","finance:view:all"),false,true,false);
+            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,null,user.getAuthorities()));
             org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
             org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
             org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
-            try{
-                List<com.uten.imp.common.export.ExportPayload> batches=new java.util.ArrayList<>();
-                try(var sink=com.uten.imp.common.export.ExportPageSink.open(batches::add)){
-                    var result=gl.exportInCurrentSnapshot("gl/operating-pl",DATE,DATE.getYear(),DATE.getMonthValue(),10_000);
-                    assertThat(result.rows()).isEmpty();
-                    assertThat(result.total()).isEqualTo(batches.stream().mapToLong(batch->batch.rows().size()).sum());
+            try {
+                var batches=new java.util.ArrayList<com.uten.imp.common.export.ExportPayload>();
+                try(var sink=com.uten.imp.common.export.ExportPageSink.open(batches::add)) {
+                    var result=gl.exportInCurrentSnapshot("gl/operating-pl",DATE,DATE.getYear(),DATE.getMonthValue(),90);
+                    assertThat(result.total()).isEqualTo(90);assertThat(result.rows()).isEmpty();
                 }
-                assertThat(offsets).containsExactlyElementsOf(java.util.stream.LongStream.rangeClosed(0,10).map(value->value*500).boxed().toList());
-                assertThat(batches).allSatisfy(batch->assertThat(batch.rows().size()).isLessThanOrEqualTo(500));
-                var output=batches.stream().flatMap(batch->batch.rows().stream()).toList();
-                assertThat(output.stream().filter(row->"库存价值".equals(row.get("sub"))).map(row->row.get("item")))
-                        .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1,5001)
-                                .mapToObj(value->"分类-"+String.format("%05d",value)).toList());
-                assertThat(output).anySatisfy(row->{
-                    assertThat(row.get("sub")).isEqualTo("销售成本合计");
-                    assertThat((BigDecimal)row.get("amount")).isEqualByComparingTo(new BigDecimal(".1234").multiply(new BigDecimal("5001")));
-                });
-                assertThat(output.getLast().get("sub")).isEqualTo("管理费合计");
-                var page=gl.operatingPlPage(DATE.getYear(),DATE.getMonthValue(),2,500);
-                assertThat(page.rows()).containsExactlyElementsOf(output.subList(500,1000));
-                assertThat(page.total()).isEqualTo(output.size());
+                assertThat(batches.stream().flatMap(batch->batch.rows().stream())).containsExactlyElementsOf(output);
             } finally {
                 org.springframework.transaction.support.TransactionSynchronizationManager.clear();
                 org.springframework.security.core.context.SecurityContextHolder.clearContext();
-                connection.rollback();
             }
+            connection.rollback();
         }
+        @SuppressWarnings("unchecked") Map<String,BigDecimal[]> after=(Map<String,BigDecimal[]>)method.invoke(linesConstructor.newInstance(em),List.of("OP_SUBCONTRACT"),"EXPENSE",DATE.withDayOfYear(1),DATE);
+        assertThat(after.get("OP_SUBCONTRACT")[10]).isEqualByComparingTo(expected.add(new BigDecimal(".0001")));
     }
 
     @Test void accountSearchMatchesAllWordsLiterallyAfterRunningBalancesAndBeforePagingTotalsAndFacets(){

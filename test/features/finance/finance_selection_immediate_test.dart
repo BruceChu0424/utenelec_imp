@@ -13,6 +13,7 @@ import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/accounting_expense_purpose.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
@@ -32,9 +33,39 @@ class _Names extends ChangeNotifier implements FinanceNameService {
   @override
   String styleName(String? id, String category) => '—';
   @override
+  List<FinanceStyleOption> expenseStylesFor(AccountingExpensePurpose purpose) =>
+      stylesFor(
+        purpose == AccountingExpensePurpose.ordinaryExpense
+            ? 'EXPENSE'
+            : purpose.apiValue,
+      );
+  @override
+  String expenseStyleName(String? id, AccountingExpensePurpose purpose) =>
+      styleName(
+        id,
+        purpose == AccountingExpensePurpose.ordinaryExpense
+            ? 'EXPENSE'
+            : purpose.apiValue,
+      );
+  @override
   Map<String, String> get accountEntries => const {
     'first': '基本户',
     'second': '备用账户',
+    'foreign': '外币历史账户',
+  };
+  @override
+  Map<String, FinanceAccountReference> get accountReferences => const {
+    'first': FinanceAccountReference(
+      id: 'first',
+      name: '基本户',
+      baseCurrency: true,
+    ),
+    'second': FinanceAccountReference(
+      id: 'second',
+      name: '备用账户',
+      baseCurrency: true,
+    ),
+    'foreign': FinanceAccountReference(id: 'foreign', name: '外币历史账户'),
   };
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -78,6 +109,46 @@ class _CreateRepository extends Fake implements PaymentStyleRepository {
 
 void main() {
   const captureScreens = bool.fromEnvironment('UTEN_CAPTURE_FINANCE_STYLE');
+  testWidgets(
+    'transfer choices filter unsupported new currency but retain the selected historical foreign UUID and label',
+    (tester) async {
+      final names = _Names(),
+          row = FinanceGridRow(mode: ItemMode.transfer)
+            ..inAccountId = 'foreign';
+      addTearDown(names.dispose);
+      addTearDown(row.dispose);
+      await tester.pumpWidget(
+        _app(
+          (context) =>
+              financeGridColumns(
+                    ItemMode.transfer,
+                    context: context,
+                    names: names,
+                    type: FinanceDocType.bankTransfer,
+                  )
+                  .singleWhere((column) => column.key == 'inAccount')
+                  .cellBuilder(context, row),
+        ),
+      );
+      final field = tester.widget<UtenDropdownField>(
+        find.byType(UtenDropdownField),
+      );
+      expect(field.value, 'foreign');
+      final historical = field.items.singleWhere(
+        (item) => item.value == 'foreign',
+      );
+      expect(historical.label, '外币历史账户');
+      expect(historical.enabled, isFalse);
+      expect(historical.visible, isFalse);
+      expect(
+        field.items
+            .where((item) => item.enabled && item.visible)
+            .map((item) => item.value),
+        unorderedEquals(['first', 'second']),
+      );
+      expect(row.inAccountId, 'foreign');
+    },
+  );
   for (final type in [
     FinanceDocType.expense,
     FinanceDocType.otherIncome,

@@ -315,7 +315,7 @@ class FinancePaymentSettlementTest {
     }
 
     @Test
-    void approvalRejectsDirectPaymentUntilSupplierPrepaymentAssetChainExists() {
+    void approvalRejectsDirectPaymentWhenItsSupplierPrepaymentAuthorityIsUnavailable() {
         FinancePaymentSaveRequest request = new FinancePaymentSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 9));
         request.setSupplierId(SUPPLIER_ID);
@@ -332,8 +332,9 @@ class FinancePaymentSettlementTest {
 
         assertThatThrownBy(() -> service.approve(draft.getId()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("供应商预付资产科目")
-                .hasMessageContaining("当前禁止审核");
+                .hasMessageContaining("供应商预付资产来源尚未准备好")
+                .hasMessageContaining("原单据已保留")
+                .satisfies(error -> org.assertj.core.api.Assertions.assertThat(((ApiException) error).getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT));
 
         assertThat(payments.get(draft.getId()).getStatus()).isZero();
         verify(accountUpdate, never()).executeUpdate();

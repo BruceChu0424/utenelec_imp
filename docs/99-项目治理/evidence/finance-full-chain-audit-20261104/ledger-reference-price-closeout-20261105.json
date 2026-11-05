@@ -1,0 +1,111 @@
+{
+  "status": "independent_checks_complete_final_business_pending",
+  "updatedAtUtc": "2026-11-05T11:50:40.2988036Z",
+  "owner": "ledger_review",
+  "workspace": "D:\\Projects\\uten_imp_worktrees\\finance-full-chain-audit-20261104",
+  "productionFrozen": true,
+  "noCommitPushDeployPackage": true,
+  "scope": [
+    "V1056 sanctioned purchase quantity revision derived bases",
+    "V1057 exact receipt successor adoption with immutable source and deferred lineage",
+    "V1058 four native order/receipt unit-price financial domains",
+    "V1059 learned purchase/subcontract price domains",
+    "V1060 persisted reference-price adoption, original root basis, sanctioned quantity-revision ratio and exact successor lineage"
+  ],
+  "independentChecks": {
+    "postgres": {
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "log": "build/finance-failure-recheck-20261105/reference-policy-migrations-and-units.log",
+      "note": "These 17 PostgreSQL cases passed in a 41-case run whose two obsolete mocked receipt fixtures failed; preserve the complete original log."
+    },
+    "constructorUnits": {
+      "classes": 8,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "runtimeWarnings": 0,
+      "log": "build/finance-failure-recheck-20261105/constructor-unit-final.log",
+      "note": "Fresh run with Mockito premain and -Xshare:off; the two receipt fixtures now retain real 950 base/count1 evidence and all old assertions."
+    },
+    "compile": {
+      "mainSourceFiles": 3167,
+      "testSourceFiles": 2530,
+      "warnings": 0,
+      "log": "build/finance-failure-recheck-20261105/reference-policy-compile-followup.log",
+      "focusedTestLog": "build/finance-failure-recheck-20261105/reference-policy-focused-javac.log",
+      "notGlobalHeadReady": true,
+      "note": "Seven concurrent public command/journal classes changed after the main snapshot. Root owns one new complete compilation and final sharding; do not use this directory as global HEAD/UAT acceptance."
+    }
+  },
+  "finalRequired": {
+    "selectedClassList": "build/finance-failure-recheck-20261105/owned-final-selected-classes.txt",
+    "expectedPostgresInvocations": 99,
+    "businessVerification": "pending Root unified 301-class snapshot and nonoverlapping shards",
+    "mustCover": [
+      "SELECTED reference create/save/submit/approve without choosing again",
+      "EXACT and full40+24/1e-24 public order-to-receipt routes",
+      "original 2DOWN reference0.16 with new ratio2 under current HALF_UP",
+      "nonterminating revised total with saved money.revised-total and receipt residual",
+      "NORMAL and REVISION inheritance in both order families",
+      "actual source native account capture before payment, retained GL/bank reversals",
+      "read-only source adoption and original source/stock/GL preservation"
+    ]
+  },
+  "retainedFailedEvidence": [
+    "quantity-before-v1056.log",
+    "quantity-after-v1056.log",
+    "receipt-before-fix.log",
+    "core-three-isolated-before-fixture.log",
+    "final-eight-business-classes.log",
+    "final-successor-and-price-pg.log",
+    "final-proof-and-receivable-overrides.log",
+    "proof-sql-v1-raw-migrations.log",
+    "proof-sql-v1-raw-migrations-ready.log",
+    "proof-sql-v2-raw-migrations.log",
+    "reference-policy-compile.log",
+    "reference-policy-migrations-and-units.log"
+  ],
+  "primaryReferences": [
+    "https://www.postgresql.org/docs/16/sql-createtrigger.html",
+    "https://www.postgresql.org/docs/16/sql-set-constraints.html",
+    "https://www.postgresql.org/docs/16/explicit-locking.html",
+    "https://github.com/testcontainers/testcontainers-java/blob/main/modules/postgresql/src/main/java/org/testcontainers/containers/PostgreSQLContainer.java",
+    "https://docs.junit.org/6.0.0/advanced-topics/launcher-api.html"
+  ],
+  "sourceSha256": {
+    "server/src/main/java/com/uten/imp/features/purchase/common/ProcurementReferencePricePolicyService.java": "0d6a8fd799c133f57501166ac186df826d5a2d105d92dd2b9eb5f3fd29b0d2f9",
+    "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderService.java": "e0c84cfc893bd19aec21a48d8438745cd7553e8bda6142c967c6c31b3a8093a9",
+    "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java": "44a07e3b6be4a71c049fecd1aff04236dff4074fbbeb58379f69a1424f7aae85",
+    "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderUnapprovalAdapter.java": "3c6f31d0f5889aad884377230b212204b47cbc0cc45b3d7ee683f0f80f1f0a63",
+    "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderUnapprovalAdapter.java": "8a5fc3879585ea90702edd003706a848ef555c51eb95ca79e58c4f8d6c5289c2",
+    "server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptUnapprovalAdapter.java": "a48ea59927e69e43538787f2d72289fee484b336192aeef35311250f8e9c19ef",
+    "server/src/main/resources/db/migration/V1056__proven_purchase_qty_revision_base_facts.sql": "c4c3d25e7033b386b36c003be0b9c3ee829848d1fedae560338a6ebbd949d847",
+    "server/src/main/resources/db/migration/V1057__purchase_receipt_successor_quantity_proof.sql": "b2cf6ec6a11cc1568f52f8580eac591f1f16866a32aeb013eacce0cc82fd60f4",
+    "server/src/main/resources/db/migration/V1058__procurement_unit_price_financial_amount_domain.sql": "98331ff662b16d5a22ba5ce1d3d1f944540e5064ea4433270434f5d8f6b8ad88",
+    "server/src/main/resources/db/migration/V1059__procurement_learned_unit_price_financial_domain.sql": "4fdbeb9c632a3be558411e0bededfa41bd27961d07890fa4503fe2d4f1d79321",
+    "server/src/main/resources/db/migration/V1060__frozen_procurement_reference_price_adoption.sql": "d4017574831f2df3cefad849362effb056f0340aa804a0cbbe4a40d71a159aec",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceChartImportPostgresTest.java": "f7d677f9ba869d9239835f5057a8a6f07962a9d3e26698ffa5c99489aedd3d54",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentIntakeOperationsPostgresTest.java": "acde38043175393a656ce527abcc81b37a1f26acd84778905e3248b2856dd424",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceReceivableMaterialPostgresTest.java": "3d5007f628cd12694daf9e9c316dc03c37a4e73fc3c51c824ac6f21edf2b0a8b",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceUnapprovalEligibilityEndToEndTest.java": "8e975194d83e49fb4029207b7c5b0568182177009742fa1e34a7412844664bc6",
+    "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceEffectiveExchangeRateEndToEndTest.java": "75b7c331920146aa949f0d8ade2f5b142de98024fd20436c972ec5d02396138e",
+    "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceReviewReadOnlyEndToEndTest.java": "7397b19fe790d989e0716a18345fdde305c69f768c605b846408b534195cda6c",
+    "server/src/test/java/com/uten/imp/businesschain/SalesShipmentFinanceReleaseRateEndToEndTest.java": "f3c98eefb5531a7109ac6a04342b275441e26a681f294b061d44f930bea7493c",
+    "server/src/test/java/com/uten/imp/features/finance/accountflow/AccountPostingReversalPostgresTest.java": "7758a4607deae0cfb2cd5cc21554f512777ebf40d7c09721e5ec8cb9b92b6225",
+    "server/src/test/java/com/uten/imp/migration/PurchaseReceiptSuccessorQuantityPostgresTest.java": "ef156402a222ce526a3923132413a8c7b3b94bc2f6075e14b670573bee3731be",
+    "server/src/test/java/com/uten/imp/features/finance/payment/FinancePaymentSettlementPostgresTest.java": "fdda1a1d67f00b1422a2945ddbac8d780ae222125041344241d4293871ddc7d0",
+    "server/src/test/java/com/uten/imp/features/finance/receivables/CustomerPrepaymentSummaryPostgresTest.java": "71c9d56557a914a47e6729f9685eaab4f48535efc39d3cbc97b40324a90aa382",
+    "server/src/test/java/com/uten/imp/businesschain/SupplierPrepaymentPostgresTest.java": "f7082050f28963919f7a0920865773c6d7d77b0464377fca38b28e634c74ae74",
+    "server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementOrderFinanceReviewAccessTest.java": "6e9c47866edd91cbbe5c4e9b1dc0f47b6f3595abc8f6446d3155ec461035c7bd",
+    "server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementOrderSourceRequirementTest.java": "ad9fe6ae22e1f135aa0ebc2eda9061b505e8cc8db03f61815f8ff5d9c70cb904",
+    "server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementRejectedOrderEditTest.java": "eb428f13b37b0ea51ce86dedc91ca23024f2d048bfe8efb56585300d8679022b",
+    "server/src/test/java/com/uten/imp/features/finance/procurement/PurchaseOrderPendingCapacityTest.java": "e62c535cb1bdf3ad2edb58bae84f8d596bb5fb4b931879a695c84055f7beee34",
+    "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderDetailPeopleNameTest.java": "0a306eb94357e355f4b227510f54234b6cf6d838a129363a2db500703a8613c1",
+    "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderSourceMergeSplitTest.java": "2a5b7a8d3913fec58fa1f5da1113e77daf24a2a4a7f939d4abf408a51e683630",
+    "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderMaterialAuthorityTest.java": "f7fb6ff032c6cf9dce548ee40d5e4ca15d01d363721af641490c4629b70dc6f1",
+    "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderSystemQtyChangeTest.java": "801362064b32240686905a71374ade5da9de940b7c8a1ca2923934e34b3cc286",
+    "server/src/test/java/com/uten/imp/testsupport/NativeArApApprovalFixture.java": "ab621805076a4cb17142b232fb870e0031defb22a05fe4a2c3c6f15ed405a344"
+  }
+}

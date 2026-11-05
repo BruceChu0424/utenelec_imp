@@ -1,0 +1,1939 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-04",
+  "baseCommit": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "workspace": "D:/Projects/uten_imp_worktrees/finance-full-chain-audit-20261104",
+  "scope": "全部lib/features/finance Dart AST中的自有弹窗/滑窗创建调用；独立页面及内联区块按下方决策保留。项目共享日期、附件、客户/供应商等picker内部不重复计数。",
+  "sourceCounts": {
+    "files": 61,
+    "callSites": 136,
+    "apiCounts": {
+      "showDialog": 81,
+      "showUtenAdaptivePanel": 13,
+      "UtenDialog.show": 4,
+      "UtenDialog.showAndWaitForExit": 8,
+      "showFinanceWorkbenchPanel": 21,
+      "showUtenModalBottomSheet": 4,
+      "showUtenReviewerConfirmDialog": 4,
+      "DialogRoute": 1
+    },
+    "financeWorkbenchOpeners": 21
+  },
+  "method": "analyzer parseString + RecursiveAstVisitor；按MethodInvocation/构造调用定位创建API与实际owner，包含受控DialogRoute；逐文件记录最终用途/呈现选择。源码命中与数量不代表真实交互已验收。",
+  "sharedImplementation": [
+    "lib/features/finance/shared/finance_workbench_panel.dart",
+    "lib/components/feedback/uten_dialog.dart::UtenEmbeddedDialogScope",
+    "lib/components/feedback/uten_dialog_chrome.dart::UtenDialogActions",
+    "lib/components/feedback/uten_dialog_chrome.dart::UtenDialogTitleWithHint",
+    "lib/components/feedback/uten_dialog_chrome.dart::UtenDialogHeading",
+    "lib/components/feedback/uten_busy_overlay.dart",
+    "lib/components/feedback/uten_dialog.dart::UtenAlertDialog（同一嵌入scope下复用header/body/footer）"
+  ],
+  "platforms": {
+    "web": "同一Dart前端调用方已迁；真实应用终验由根审计单列",
+    "windows_flutter": "同一Dart前端调用方已迁；非真实目标机完整验收",
+    "windows_wpf_legacy": "本轮当前范围明确未迁移，不标为支持/通过"
+  },
+  "targetedEvidence": [
+    {
+      "command": "flutter test --no-pub --concurrency=2 --dart-define=UTEN_CAPTURE_FINANCE_DIALOGS=true（13文件，参数详见日志）",
+      "log": "build/finance-final-audit/flutter-dialogs-final.log",
+      "result": "98/98通过",
+      "sourceBoundary": "含窄屏heading/操作列宽/seed防重/工资列头与来源hint；不外推随后新增的Alert嵌入scope和metadata恢复"
+    },
+    {
+      "command": "flutter test --no-pub --concurrency=2 --dart-define=UTEN_CAPTURE_FINANCE_DIALOGS=true（11文件，参数详见日志）",
+      "log": "build/finance-final-audit/flutter-dialogs-alert-scope-final.log",
+      "result": "66/66通过",
+      "files": [
+        "test/components/uten_dialog_chrome_test.dart",
+        "test/components/uten_dialog_short_window_geometry_test.dart",
+        "test/components/uten_dialog_confirmation_lease_test.dart",
+        "test/components/uten_dialog_modules_test.dart",
+        "test/components/feedback/uten_busy_overlay_dialog_order_contract_test.dart",
+        "test/features/finance/gl_report_line_bindings_dialog_test.dart",
+        "test/features/finance/finance_workbench_panel_test.dart",
+        "test/features/finance/finance_chart_dialog_test.dart",
+        "test/features/finance/finance_chart_metadata_recovery_test.dart",
+        "test/features/finance/finance_chart_launcher_test.dart",
+        "test/features/finance/finance_application_settings_page_test.dart"
+      ],
+      "sourceBoundary": "本次最终Alert嵌入与metadata源码；不与98项简单相加，不当作全财务/真实安装程序/CI结果"
+    },
+    {
+      "command": "flutter analyze --no-pub（首批23范围/追加7范围/最终13范围）；dart analyze（新增Alert嵌入与真实launcher测试2范围）；metadata所属6范围由subjects检查",
+      "result": "各对应最后轮次均0问题；范围重叠，不相加为项目总覆盖率"
+    },
+    {
+      "command": "flutter test --no-pub（科目/取数/公共弹窗6文件）",
+      "log": "build/finance-final-audit/ui-independent-review.log",
+      "result": "41/41通过",
+      "sourceBoundary": "本轮独立复核先验，不包含后来补入的关闭/单飞/身份修复；不与其它组相加"
+    },
+    {
+      "command": "flutter test --no-pub --dart-define=UTEN_CAPTURE_FINANCE_DIALOGS=true test/features/finance/gl_report_line_bindings_dialog_test.dart test/features/finance/finance_chart_launcher_test.dart test/features/finance/finance_application_settings_page_test.dart --reporter expanded",
+      "log": "build/finance-final-audit/ui-interruption-and-scroll-v2.log",
+      "result": "16/16通过",
+      "sourceBoundary": "取数编辑全程单飞，挂起PUT拒旧关闭/默认补齐回调和系统返回；科目/取数清洁返回带changed，390设置标题滚回完整实证；不外推全部滑窗"
+    },
+    {
+      "command": "flutter test --no-pub test/features/finance/inventory_cost_posting_dialog_test.dart --reporter expanded",
+      "log": "build/finance-final-audit/inventory-interruption-v1.log",
+      "result": "11/11通过",
+      "sourceBoundary": "新增真实launcher挂起过账拒旧刷新/重复确认/关闭/系统返回；同权限换身份旧读取/旧写回调隔离；保取消、权限、精确金额及实际期间原9项。后续仅补显式mounted供lint识别，无语义变化"
+    },
+    {
+      "command": "dart analyze（科目/取数/设置相关5文件，库存成本2文件）",
+      "logs": [
+        "build/finance-final-audit/ui-interruption-analyze.log",
+        "build/finance-final-audit/inventory-interruption-analyze-v2.log"
+      ],
+      "result": "两组均No issues found",
+      "sourceBoundary": "库存成本首轮3条use_build_context_synchronously info保留于inventory-interruption-analyze.log；补显式mounted后消除，不使用忽略规则"
+    }
+  ],
+  "screenshots": {
+    "kind": "真实组件+匿名测试fixture，加载NotoSansSC；不是公司实账或安装程序UAT",
+    "directory": "D:/Projects/uten_imp_worktrees/finance-full-chain-audit-20261104/build/ui-audit",
+    "files": [
+      {
+        "file": "finance-settings-panel-1280.png",
+        "sha256": "b21b82ff977c0343d94178f10fde10163fa4b2d275ef395b203a49aeb6dd7e72"
+      },
+      {
+        "file": "finance-settings-panel-390.png",
+        "sha256": "6dadbc97f241b789274cbf4ee9761162d1f8a23cc9d52a61cb708983e5c07f42"
+      },
+      {
+        "file": "finance-settings-picker-1280.png",
+        "sha256": "cfe02fea0285e54607d4d104847452db0d164519f7aa7efdeff669e277011455"
+      },
+      {
+        "file": "finance-settings-picker-390.png",
+        "sha256": "dc025e465c1d3aa4f0c0bd676cbad58ff68a9216951b552fda5d3d37447770ef"
+      },
+      {
+        "file": "finance-settings-editor-390-keyboard.png",
+        "sha256": "2f706399ac005fa3626ed2575e07ddc38dd4dbb20abb208151bb4b02d9952b09"
+      },
+      {
+        "file": "finance-chart-panel-1280.png",
+        "sha256": "5371735669063fa6755440f96123fe196e8ab28a9bd457162103b24bc49a5a43"
+      },
+      {
+        "file": "finance-chart-panel-390.png",
+        "sha256": "8de5e8c31746c668cb884c4debf0976d1b45a0aa7a97f92c409f6739e5b2bc41"
+      },
+      {
+        "file": "finance-chart-panel-390-keyboard.png",
+        "sha256": "7aaaf594c564ed4fb86c8229b509e0ec04a6770b87c905544125a3e16b2d5f6d"
+      },
+      {
+        "file": "finance-settings-editor-390-keyboard-top.png",
+        "sha256": "c8db5619173a7b59a691d283e8cfc07a3d091a15e917c7f49f586ee927aeb1ae"
+      }
+    ],
+    "lastVisualReview": "最终66项之后8张均实际打开查看：390标题无孤字、hint紧邻；科目真实launcher无二次居中卡，搜索与启用依据均在键盘后实际输入，底栏可达。 独立复核另实际查看科目390键盘图、390候选图及启用设置原输入定位/滚回顶部两图；新增top图标题完整。原图标题上沿是原生标题+正文视口pixels>0时自然滚动，非RenderFlex溢出；用例验证jumpTo(0)后titleRect完全位于viewport内。现有9图不是9条真实应用全链验收。"
+  },
+  "remainingEvidenceBoundary": [
+    "最终完整财务/账户/共享组件组合回归由根任务维护，尚未结束的轮次不写通过；以上98与66含重叠，不相加",
+    "未逐一在真实Web/Windows安装程序会话执行全部136创建调用的开关、取消、中断及大数据验收；8张是实际组件fixture图",
+    "Win7/WPF本轮未迁移，包含两类新增requestId/本人回执合同；不标支持或通过",
+    "未改公司业务数据库、未推送/部署/正式打包/上传；不据源码及widget测试推定已上线",
+    "报表取数设置PUT、目录部分原有新增/对应和库存成本动作的硬关闭持久原请求恢复未由本轮单飞/返回保护建立。现有服务端源/期间/版本约束不等于客户端未知请求持久协议；不得以busy guard宣称已完成。"
+  ],
+  "files": [
+    {
+      "purpose": "来源识别复核",
+      "decision": "保留短弹窗",
+      "reason": "只确认待带入字段，不在弹窗自动执行业务写入。",
+      "file": "lib/features/finance/intake/finance_intake_launcher.dart",
+      "sha256": "87122283a30deaadccef7de8b4c401ad4a135f4c58fc79248d88b0b246ad43cd",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/intake/finance_intake_launcher.dart",
+          "line": 131,
+          "owner": "launchFinanceIntakeWithFile",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "申请流程设置",
+      "decision": "保留页面+短编辑弹窗",
+      "reason": "岗位清单保留页面；启用开关与单岗位资料使用UtenAlertDialog公共底栏，原请求进入FormDraftStore。",
+      "file": "lib/features/finance/pages/finance_application_settings_page.dart",
+      "sha256": "7e2f1baadc592203a19f385698bbb6e1348aa6e344f7ee54600296caa4b11ca7",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_application_settings_page.dart",
+          "line": 89,
+          "owner": "_edit",
+          "ownerClass": "class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "部门申请入口/来源选择",
+      "decision": "保留页面+模态选择",
+      "reason": "主流程以独立页面办理；新建类型与一个原来源的选择是单次决策。",
+      "file": "lib/features/finance/pages/finance_applications_page.dart",
+      "sha256": "15736915c16485fe3ea7a3e16fbc4dc87565c0f993ce861f9569b74447e6289f",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_applications_page.dart",
+          "line": 150,
+          "owner": "_new",
+          "ownerClass": "class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_applications_page.dart",
+          "line": 349,
+          "owner": "pickFinanceApplicationSource",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "多行收付款批量录入",
+      "decision": "保留现有滑窗",
+      "reason": "批量填充和逐行结算设置已用自适应面板，保留全模型与原草稿。",
+      "file": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+      "sha256": "babeec55aef0c87624d84b5b492d61371290078d81d6ce9a704c2a86f0505949",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+          "line": 248,
+          "owner": "_batchFillEntries",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+          "line": 462,
+          "owner": "_entrySettlementSettings",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "财务单据详情动作",
+      "decision": "保留页面+短确认",
+      "reason": "详情仍独立页面，审核/删除确认只返回决定，写入仍由页面防重与权限控制。",
+      "file": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "sha256": "743d35364e57e1e4a5cfe1cef69a2e591c9c6362235680a7fd9442551ff70ae7",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_doc_detail_page.dart",
+          "line": 269,
+          "owner": "_doAction",
+          "ownerClass": "class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> with NativeReadViewScopeMixin<FinanceDocDetailPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_doc_detail_page.dart",
+          "line": 325,
+          "owner": "_delete",
+          "ownerClass": "class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> with NativeReadViewScopeMixin<FinanceDocDetailPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "财务单据录入",
+      "decision": "保留页面+短确认",
+      "reason": "正式录入/草稿留在页面，变更应收客户的影响确认保留模态。",
+      "file": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "sha256": "554626129e99a37c66a78331ca3a1384873d17286faf090e3ef9457de2d1bd68",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_doc_edit_page.dart",
+          "line": 985,
+          "owner": "_confirmReceiptClientChange",
+          "ownerClass": "class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> with FormDraftMixin<FinanceDocEditPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "采购/委外审批详情",
+      "decision": "保留页面+短确认",
+      "reason": "完整审核保留页面；通过/驳回原因是一次决定，保留任务租约和草稿。",
+      "file": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+      "sha256": "3f709562971b73b4f82277e765e1fe119de3e0d3b04590c8e344b14217b18303",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+          "line": 567,
+          "owner": "_approve",
+          "ownerClass": "class _FinanceProcurementApprovalReviewPageState extends ConsumerState<FinanceProcurementApprovalReviewPage> with FormDraftMixin<FinanceProcurementApprovalReviewPage>, ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage>, ReviewAuthorityRefreshMixin<FinanceProcurementApprovalReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+          "line": 697,
+          "owner": "_reject",
+          "ownerClass": "class _FinanceProcurementApprovalReviewPageState extends ConsumerState<FinanceProcurementApprovalReviewPage> with FormDraftMixin<FinanceProcurementApprovalReviewPage>, ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage>, ReviewAuthorityRefreshMixin<FinanceProcurementApprovalReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "采购/委外批量审批",
+      "decision": "保留页面+短确认",
+      "reason": "队列保持页面，批量确认及原因收集保留模态。",
+      "file": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "sha256": "a06a070e449aa3a516594963bec7bee8e23bf1061591ee8416c4ae8567a60059",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+          "line": 593,
+          "owner": "_approveSelected",
+          "ownerClass": "class _FinanceProcurementApprovalTasksPageState extends ConsumerState<FinanceProcurementApprovalTasksPage> with ScopedPagedReadViewMixin<FinanceProcurementApprovalTasksPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+          "line": 656,
+          "owner": "_rejectSelected",
+          "ownerClass": "class _FinanceProcurementApprovalTasksPageState extends ConsumerState<FinanceProcurementApprovalTasksPage> with ScopedPagedReadViewMixin<FinanceProcurementApprovalTasksPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "报价财务核价",
+      "decision": "保留页面+短确认",
+      "reason": "价格编辑留在页面；确认/重新核价是一次决定，原页面已有BusyOverlay与claim/草稿守卫。",
+      "file": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "sha256": "2e9dea1b6372414d7bcaf7493e5eb887fe236394ee2aab8a78949f2fac046eea",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_quote_review_page.dart",
+          "line": 680,
+          "owner": "_confirm",
+          "ownerClass": "class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage> with FormDraftMixin<FinanceQuoteReviewPage>, ReviewTaskDraftMixin<FinanceQuoteReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_quote_review_page.dart",
+          "line": 860,
+          "owner": "_reopen",
+          "ownerClass": "class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage> with FormDraftMixin<FinanceQuoteReviewPage>, ReviewTaskDraftMixin<FinanceQuoteReviewPage>",
+          "api": "UtenDialog.show",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "财务报表与行取数依据",
+      "decision": "保留页面+短依据弹窗",
+      "reason": "报表保持整页；单行实际来源与依据保留正文，空白不代表零的规则提示已迁标题hint，相关入口保留短模态。",
+      "file": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256": "571365fadfc905121ca7e6a5da381a69379ef07238a3134f4ccb0fbd9b383a0b",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_report_table_page.dart",
+          "line": 910,
+          "owner": "_openReportRow",
+          "ownerClass": "class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "销售订单财务确认",
+      "decision": "保留页面+短确认",
+      "reason": "队列/原单保持页面，批量最终决定保留标准模态。",
+      "file": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "sha256": "5f8eb9cbff374b86c4bbfb3c0e953dffc492fa22e8708ab8db1c4cc1f65a60b2",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+          "line": 623,
+          "owner": "_confirmSelected",
+          "ownerClass": "class _FinanceSalesOrderConfirmationPageState extends ConsumerState<FinanceSalesOrderConfirmationPage> with ScopedPagedReadViewMixin<FinanceSalesOrderConfirmationPage>",
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "销售订单财务复核",
+      "decision": "保留页面+短确认",
+      "reason": "整单业务保留页面，退回/撤销/确认使用短模态，原任务权限与来源版本不变。",
+      "file": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+      "sha256": "b6100240bc0fa594378d2d0ea3e656656711de5c6a07c63f0c7c7a2a742dba29",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+          "line": 269,
+          "owner": "_reverseManager",
+          "ownerClass": "class _FinanceSalesOrderReviewPageState extends ConsumerState<FinanceSalesOrderReviewPage> with FormDraftMixin<FinanceSalesOrderReviewPage>, ReviewTaskDraftMixin<FinanceSalesOrderReviewPage>, ReviewAuthorityRefreshMixin<FinanceSalesOrderReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+          "line": 506,
+          "owner": "_confirm",
+          "ownerClass": "class _FinanceSalesOrderReviewPageState extends ConsumerState<FinanceSalesOrderReviewPage> with FormDraftMixin<FinanceSalesOrderReviewPage>, ReviewTaskDraftMixin<FinanceSalesOrderReviewPage>, ReviewAuthorityRefreshMixin<FinanceSalesOrderReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+          "line": 678,
+          "owner": "_reject",
+          "ownerClass": "class _FinanceSalesOrderReviewPageState extends ConsumerState<FinanceSalesOrderReviewPage> with FormDraftMixin<FinanceSalesOrderReviewPage>, ReviewTaskDraftMixin<FinanceSalesOrderReviewPage>, ReviewAuthorityRefreshMixin<FinanceSalesOrderReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "出货财务审核",
+      "decision": "保留页面+短确认",
+      "reason": "整单审核留在页面，驳回原因/批准/反向决定仍为模态。",
+      "file": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+      "sha256": "248db649f20a9f227404de370bc422b221eb103300463a91924c63654eab52bb",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+          "line": 525,
+          "owner": "_approve",
+          "ownerClass": "class _FinanceSalesShipmentAuditReviewPageState extends ConsumerState<FinanceSalesShipmentAuditReviewPage> with FormDraftMixin<FinanceSalesShipmentAuditReviewPage>, ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage>, ReviewAuthorityRefreshMixin<FinanceSalesShipmentAuditReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+          "line": 626,
+          "owner": "_reject",
+          "ownerClass": "class _FinanceSalesShipmentAuditReviewPageState extends ConsumerState<FinanceSalesShipmentAuditReviewPage> with FormDraftMixin<FinanceSalesShipmentAuditReviewPage>, ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage>, ReviewAuthorityRefreshMixin<FinanceSalesShipmentAuditReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+          "line": 745,
+          "owner": "_rejectReverse",
+          "ownerClass": "class _FinanceSalesShipmentAuditReviewPageState extends ConsumerState<FinanceSalesShipmentAuditReviewPage> with FormDraftMixin<FinanceSalesShipmentAuditReviewPage>, ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage>, ReviewAuthorityRefreshMixin<FinanceSalesShipmentAuditReviewPage>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "委外损耗决定/履行",
+      "decision": "保留现有滑窗+短原因弹窗",
+      "reason": "业务履行/抵销来源需要上下文和多行操作，已有自适应面板；仅原因文本使用短模态。",
+      "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+      "sha256": "46107444518e7b622a3126f06fb2efc0e98b7bc04866a65e7820829318fce789",
+      "callSiteCount": 4,
+      "calls": [
+        {
+          "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+          "line": 63,
+          "owner": "showSubcontractLossDecisionPanel",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+          "line": 76,
+          "owner": "showSubcontractLossFulfillmentPanel",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+          "line": 95,
+          "owner": "showSubcontractLossReasonDialog",
+          "ownerClass": null,
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+          "line": 213,
+          "owner": "_pickOffsets",
+          "ownerClass": "class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor>",
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "委外损耗履行反向确认",
+      "decision": "保留短弹窗",
+      "reason": "原详情已在面板，反向操作先收一次明确确认，避免二次长工作区。",
+      "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_detail_panel.dart",
+      "sha256": "21204adbaf38ef5bb9a614d8275e809848c16023910df13e4802f385f727cac3",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_detail_panel.dart",
+          "line": 184,
+          "owner": "_reverseFulfillment",
+          "ownerClass": "class _SubcontractLossClaimDetailPanelState extends ConsumerState<SubcontractLossClaimDetailPanel>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "委外损耗台账详情",
+      "decision": "保留现有滑窗",
+      "reason": "已有目录到详情的自适应面板，源记录关系保留。",
+      "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+      "sha256": "b59b71b217aa017885f1d4ffb1607a24f0c9d7139d90057a348d17986777ebf2",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+          "line": 208,
+          "owner": "_open",
+          "ownerClass": "class _SubcontractLossClaimPanelState extends ConsumerState<SubcontractLossClaimPanel> with ScopedPagedReadViewMixin<SubcontractLossClaimPanel>",
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "供应商抵销应用",
+      "decision": "保留现有滑窗",
+      "reason": "需对照原信用与目标应付、多行金额，现有侧滑/窄屏抽屉合适。",
+      "file": "lib/features/finance/payables/widgets/supplier_credit_apply_panel.dart",
+      "sha256": "bb19eadfdecb5ca72ef413677f41ecb1275fb6df1b1603f5fd73043f94ad32c6",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/payables/widgets/supplier_credit_apply_panel.dart",
+          "line": 66,
+          "owner": "showSupplierCreditApplyPanel",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "供应商结算操作",
+      "decision": "保留现有滑窗+短确认",
+      "reason": "创建结算为上下文工作区；实际确认与原因输入为单步模态。",
+      "file": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+      "sha256": "4f9441df3eabfb9cf2be81d915e72404f9a5471cd06e1f312f5102626c1467b5",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+          "line": 46,
+          "owner": "showSupplierSettlementCreatePanel",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+          "line": 63,
+          "owner": "showSupplierSettlementConfirmDialog",
+          "ownerClass": null,
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+          "line": 125,
+          "owner": "showSupplierSettlementReasonDialog",
+          "ownerClass": null,
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "供应商结算详情",
+      "decision": "保留现有滑窗",
+      "reason": "详情与原应付共存的现有自适应面板不重复改壳。",
+      "file": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "sha256": "520bdfc82b1b542c7f47988eee8ace8f463e598cc761765f14131b58e1c1f089",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+          "line": 203,
+          "owner": "_open",
+          "ownerClass": "class _SupplierSettlementPanelState extends ConsumerState<SupplierSettlementPanel> with ScopedPagedReadViewMixin<SupplierSettlementPanel>",
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "同一原文件工作表选择",
+      "decision": "保留短弹窗",
+      "reason": "必须由用户明确选择一个工作表；新增公共yieldWhile让已有等待遮罩让位，不自动重传新文件。",
+      "file": "lib/features/finance/shared/finance_template_source_upload.dart",
+      "sha256": "4e81bf32c45d3d6302d60b3a264632dd854fbf0a75e7df32bf022e35681edcbe",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/shared/finance_template_source_upload.dart",
+          "line": 61,
+          "owner": "uploadFinanceTemplateSource",
+          "ownerClass": null,
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "财务公共工作区壳",
+      "decision": "公共自适应滑窗",
+      "reason": "宽屏右侧75%/最小840，窄屏94%高抽屉；禁遮罩误关/拖拽丢稿；UtenDialogFrame和UtenAlertDialog在局部scope下共用原header/body/footer直铺，原关闭/草稿/未知提交由调用方所有。",
+      "file": "lib/features/finance/shared/finance_workbench_panel.dart",
+      "sha256": "af1bbb49ca780ced77ca7501d36e0e28eb4462ddc6ab5dad310989ca7663f6c2",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/shared/finance_workbench_panel.dart",
+          "line": 14,
+          "owner": "showFinanceWorkbenchPanel",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "应收应付核销选择",
+      "decision": "保留现有滑窗",
+      "reason": "多行余额核销需要原单上下文，已有自适应浏览面板。",
+      "file": "lib/features/finance/widgets/ar_ap_picker_dialog.dart",
+      "sha256": "c7193d1106177d503eff70617548ed1804f40c044b36199f93563d98a463c98d",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/ar_ap_picker_dialog.dart",
+          "line": 97,
+          "owner": "showArApPickerDialog",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "客户预收应用",
+      "decision": "保留现有滑窗+短原因弹窗",
+      "reason": "应用需原余额及目标单据并看；反向原因是短模态。",
+      "file": "lib/features/finance/widgets/customer_prepayment_apply_panel.dart",
+      "sha256": "41efacb5057e71ee7cdf8ff4e9131de76b92d3ab9f2c90471bc201862b205a91",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/customer_prepayment_apply_panel.dart",
+          "line": 29,
+          "owner": "showCustomerPrepaymentApplyPanel",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/customer_prepayment_apply_panel.dart",
+          "line": 256,
+          "owner": "_askReverseReason",
+          "ownerClass": "class _CustomerPrepaymentApplyPanelState extends ConsumerState<_CustomerPrepaymentApplyPanel>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "收付款账户选择",
+      "decision": "保留现有滑窗",
+      "reason": "已有搜索与真实账户身份的自适应选择面板，保留。",
+      "file": "lib/features/finance/widgets/finance_account_picker_panel.dart",
+      "sha256": "d3f47491102676814c0bb68cded78e5aa74fdb36dd9c278e63a263f4bb957a73",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_account_picker_panel.dart",
+          "line": 20,
+          "owner": "showFinanceAccountPickerPanel",
+          "ownerClass": null,
+          "api": "showUtenAdaptivePanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "原账套凭证/余额接续",
+      "decision": "迁公共滑窗+保留短选择",
+      "reason": "长多步骤工作区需要原报表上下文；仅辅助导入方向选择保留短模态，原请求与版本不改。",
+      "file": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+      "sha256": "b91eed1995d670ef999de323c0618e6a3db5571e47bb2cf974219a2cf2b6c481",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+          "line": 164,
+          "owner": "showFinanceAccountingImportDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+          "line": 1582,
+          "owner": "_importAuxiliary",
+          "ownerClass": "class _FinanceAccountingImportSurfaceState extends ConsumerState<FinanceAccountingImportSurface> with FormDraftMixin<FinanceAccountingImportSurface>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "部门申请办理",
+      "decision": "保留详情页面+动作弹窗",
+      "reason": "原申请详情为主体；本次节点/资金处理集中在既有动作表单，保留FormDraftMixin及来源权威。",
+      "file": "lib/features/finance/widgets/finance_application_detail.dart",
+      "sha256": "282be843552902885b431d32c29b8c500a091e04b3d5ecf599d1478c9694d83f",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_application_detail.dart",
+          "line": 177,
+          "owner": "_action",
+          "ownerClass": "class _DetailState extends ConsumerState<FinanceApplicationDetail>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "资产详情/单次动作",
+      "decision": "保留既有响应式模态",
+      "reason": "详情为独立单记录；窄屏底部sheet、桌面弹窗及短审核确认沿原实现，不改资产生命周期。",
+      "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "sha256": "091db3f5ece65593487c21fe847033fcc220b2f9b6ac5b18b346da69c590bc1c",
+      "callSiteCount": 6,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+          "line": 68,
+          "owner": "showFinanceAssetDetail",
+          "ownerClass": null,
+          "api": "showUtenModalBottomSheet",
+          "presentation": "compact_bottom_sheet"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+          "line": 82,
+          "owner": "showFinanceAssetDetail",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+          "line": 212,
+          "owner": "_runAction",
+          "ownerClass": "class _FinanceAssetDetailSurfaceState extends ConsumerState<FinanceAssetDetailSurface>",
+          "api": "showUtenReviewerConfirmDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+          "line": 219,
+          "owner": "_runAction",
+          "ownerClass": "class _FinanceAssetDetailSurfaceState extends ConsumerState<FinanceAssetDetailSurface>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+          "line": 907,
+          "owner": "showFinanceAssetActionInput",
+          "ownerClass": null,
+          "api": "showUtenModalBottomSheet",
+          "presentation": "compact_bottom_sheet"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+          "line": 919,
+          "owner": "showFinanceAssetActionInput",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "资产草稿录入",
+      "decision": "保留既有响应式模态",
+      "reason": "单资产完整表单与草稿守卫已有，窄屏sheet/桌面模态、固定UtenDialogActions及BusyOverlay保留。",
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "sha256": "52145f331b91b9a8b0b4385ba513c4eb7cb5e154a31bf3ade77d2297c54228e8",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+          "line": 52,
+          "owner": "showFinanceAssetForm",
+          "ownerClass": null,
+          "api": "showUtenModalBottomSheet",
+          "presentation": "compact_bottom_sheet"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+          "line": 69,
+          "owner": "showFinanceAssetForm",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+          "line": 453,
+          "owner": "_requestClose",
+          "ownerClass": "class _FinanceAssetFormSurfaceState extends ConsumerState<FinanceAssetFormSurface> with FormDraftMixin<FinanceAssetFormSurface>",
+          "api": "UtenDialog.show",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "资产台账删除确认",
+      "decision": "保留短确认",
+      "reason": "台账为主工作区，删除/生命周期影响只需一次明确确认。",
+      "file": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
+      "sha256": "d5da1cb9e6ea6f0a8187a264e7f99f1986280c4cae1551888f9c6a9a5a23ad0c",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
+          "line": 307,
+          "owner": "_delete",
+          "ownerClass": "class _FinanceAssetLedgerPanelState extends ConsumerState<FinanceAssetLedgerPanel> with ScopedPagedReadViewMixin<FinanceAssetLedgerPanel>",
+          "api": "UtenDialog.show",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "资产期初原表接续",
+      "decision": "迁公共滑窗+保留单项选择",
+      "reason": "原表/成员/凭证/历史多区需可回看原台账；挑一张既有资产草稿为局部模态选择。",
+      "file": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+      "sha256": "f47f9877c02f9960f2b4eef79b8fb5aca1f1f248288cbfc4186ca53ad25fdbab",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+          "line": 80,
+          "owner": "showFinanceAssetOpeningGroupDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+          "line": 548,
+          "owner": "_chooseAsset",
+          "ownerClass": "class _FinanceAssetOpeningGroupSurfaceState extends ConsumerState<FinanceAssetOpeningGroupSurface> with FormDraftMixin<FinanceAssetOpeningGroupSurface>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "资产类别与会计政策",
+      "decision": "保留既有响应式模态",
+      "reason": "单一会计政策维护为独立任务，既有sheet/模态及dirty/Busy/审核守卫保留；不机械改侧滑。",
+      "file": "lib/features/finance/widgets/finance_asset_policy_dialog.dart",
+      "sha256": "ec97375759f9d4bdeb8a62706eba799bad79221631db51ed5e16292f1010c6c3",
+      "callSiteCount": 4,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_asset_policy_dialog.dart",
+          "line": 50,
+          "owner": "showFinanceAssetPolicyDialog",
+          "ownerClass": null,
+          "api": "showUtenModalBottomSheet",
+          "presentation": "compact_bottom_sheet"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_policy_dialog.dart",
+          "line": 66,
+          "owner": "showFinanceAssetPolicyDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_policy_dialog.dart",
+          "line": 335,
+          "owner": "_confirmDiscard",
+          "ownerClass": "class _FinanceAssetPolicySurfaceState extends ConsumerState<FinanceAssetPolicySurface> with FormDraftMixin<FinanceAssetPolicySurface>",
+          "api": "UtenDialog.show",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_policy_dialog.dart",
+          "line": 480,
+          "owner": "_activate",
+          "ownerClass": "class _FinanceAssetPolicySurfaceState extends ConsumerState<FinanceAssetPolicySurface> with FormDraftMixin<FinanceAssetPolicySurface>",
+          "api": "showUtenReviewerConfirmDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "资产计提/历史动作",
+      "decision": "保留面板+短确认",
+      "reason": "计提与历史继续嵌入原资产工作区；审核/原因输入使用项目公共模态。",
+      "file": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+      "sha256": "daa70259f2406dec98041b15cedc68720b2d2ec82ebcb92cfc040ba384fb3b63",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+          "line": 240,
+          "owner": "_runPreviewAction",
+          "ownerClass": "class _FinanceAssetPostingPanelState extends ConsumerState<FinanceAssetPostingPanel>",
+          "api": "showUtenReviewerConfirmDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+          "line": 294,
+          "owner": "_reasonDialog",
+          "ownerClass": "class _FinanceAssetPostingPanelState extends ConsumerState<FinanceAssetPostingPanel>",
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+          "line": 379,
+          "owner": "_runHistoryAction",
+          "ownerClass": "class _FinanceAssetPostingPanelState extends ConsumerState<FinanceAssetPostingPanel>",
+          "api": "showUtenReviewerConfirmDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "辅助核算项目目录",
+      "decision": "迁公共滑窗+短编辑",
+      "reason": "长目录与真实对象对应需对照原科目；新增/改对应是单对象模态，unknown/dirty及新BusyOverlay保留。",
+      "file": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+      "sha256": "4342e704094f6e4c9957d87b7c910a4b50b0340693ea6a06b663cd0a468e719c",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+          "line": 36,
+          "owner": "showFinanceAuxiliaryPicker",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+          "line": 124,
+          "owner": "_edit",
+          "ownerClass": "class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+          "line": 447,
+          "owner": "_close",
+          "ownerClass": "class _AuxiliaryEditorState extends ConsumerState<_AuxiliaryEditor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "应收应付辅助原表导入比对",
+      "decision": "迁公共滑窗",
+      "reason": "需原文件/账套/比较结果和来源上下文，公共侧滑；公共footer/BusyOverlay。",
+      "file": "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart",
+      "sha256": "75c9cfca037a0d9fe66e1a5bfd9fb53d45d5b397a9a96edb6281e6a187fd4935",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart",
+          "line": 36,
+          "owner": "showFinanceAuxiliaryImportDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "会计科目目录",
+      "decision": "迁公共滑窗+短新增/编辑",
+      "reason": "目录长表用侧滑；新增/改名/目录对应各自短模态；操作列按真实字号测量完整两动作最小宽，保留横滚。",
+      "file": "lib/features/finance/widgets/finance_chart_dialog.dart",
+      "sha256": "4a1bd31327a9569d091fcbb40f25963a98ce03f75b011120108d8bd50137aa32",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_chart_dialog.dart",
+          "line": 34,
+          "owner": "showFinanceChartDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_chart_dialog.dart",
+          "line": 266,
+          "owner": "_edit",
+          "ownerClass": "class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_chart_dialog.dart",
+          "line": 299,
+          "owner": "_newAccount",
+          "ownerClass": "class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "科目名称维护与原请求恢复",
+      "decision": "保留短编辑弹窗",
+      "reason": "只维护一科目的名称及依据；复用FormDraftStore保留原编码、UUID、原body与expectedVersion，经本人回执或原请求重试收口；丢失写权限仍可按读取权核对原回执，不把单对象表单改成长目录侧滑。",
+      "file": "lib/features/finance/widgets/finance_chart_metadata_dialog.dart",
+      "sha256": "29bebfdc7e6a1b2cc35044fd9080ed16e4d2e21cf9d3e6dca7ad01aaf3eb0251",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_chart_metadata_dialog.dart",
+          "line": 28,
+          "owner": "showFinanceChartMetadataDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "往来整图分类更正",
+      "decision": "迁公共滑窗+短确认",
+      "reason": "多来源关系更正需原台账上下文；提交/原操作解决为短确认，原金额/未知请求不重造。",
+      "file": "lib/features/finance/widgets/finance_classification_correction_dialog.dart",
+      "sha256": "b0d7e067eff1b68a206f42f501c4c76db6860a139d6e78a65448f082f6934a68",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_classification_correction_dialog.dart",
+          "line": 53,
+          "owner": "showFinanceClassificationCorrectionDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_classification_correction_dialog.dart",
+          "line": 467,
+          "owner": "_submit",
+          "ownerClass": "class _CorrectionState extends ConsumerState<_Correction> with FormDraftMixin<_Correction>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_classification_correction_dialog.dart",
+          "line": 564,
+          "owner": "_resolveOriginal",
+          "ownerClass": "class _CorrectionState extends ConsumerState<_Correction> with FormDraftMixin<_Correction>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "财务单据撤审",
+      "decision": "保留短确认",
+      "reason": "一次有权限的反向决定；业务写入继续原页面控制。",
+      "file": "lib/features/finance/widgets/finance_document_unapproval_action.dart",
+      "sha256": "1059329657cae0e40d3222b01ca4186abda66ab65c0c14967b4692e8d7c04c5a",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_document_unapproval_action.dart",
+          "line": 62,
+          "owner": "_unapprove",
+          "ownerClass": "class _FinanceDocumentUnapprovalActionState extends ConsumerState<FinanceDocumentUnapprovalAction>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "费用归属与损益资料",
+      "decision": "按职责选择滑窗/短弹窗",
+      "reason": "目录/来源分配多行工作区侧滑；备注/人工/分组/期间口径单项编辑保留模态，公共footer与请求阶段BusyOverlay。",
+      "file": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+      "sha256": "8ccecd86037d6aa495e2f1e0725fe32c2e587bcd05a7c914db9f02dc87a9db88",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+          "line": 82,
+          "owner": "showFinanceExpenseAnalysisDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+          "line": 86,
+          "owner": "showFinanceExpenseAnalysisDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "已审核材料对账资料选择",
+      "decision": "迁公共滑窗",
+      "reason": "长目录需按真实UUID和账币属性挑选；保留精确搜索、分页与访问代次守卫，新增BusyOverlay。",
+      "file": "lib/features/finance/widgets/finance_material_context_picker.dart",
+      "sha256": "5927cd1012676564365837fae129a02d8214c298110d6ba8686ff3bac90f88e0",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_material_context_picker.dart",
+          "line": 16,
+          "owner": "showFinanceMaterialContextPicker",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "材料原行对应候选",
+      "decision": "保留局部选择模态",
+      "reason": "只选择一项实际对应，返回原比对工作区；不按同名自动建立身份。",
+      "file": "lib/features/finance/widgets/finance_material_statement_compare.dart",
+      "sha256": "8d41ee156700f31db24aa30552a5d451c9fc046caaf2a1f0ff5a9fa3213443f0",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_compare.dart",
+          "line": 282,
+          "owner": "_choose",
+          "ownerClass": "class _MaterialCompareState extends ConsumerState<_MaterialCompare> with FormDraftMixin<_MaterialCompare>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "材料/加工往来资料",
+      "decision": "主工作区迁公共滑窗",
+      "reason": "多区目录、实际来源和记录需要原表上下文；单条证据/比对的局部工作保留有界模态，原FormDraft守卫不变。",
+      "file": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+      "sha256": "1a6a93b5fb4e0110fc630a05228659d7cb724b99904e5f9011f39d23b16f7d8d",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+          "line": 102,
+          "owner": "showFinanceMaterialStatementDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+          "line": 308,
+          "owner": "_editor",
+          "ownerClass": "class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+          "line": 338,
+          "owner": "_compare",
+          "ownerClass": "class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "材料来源/加工款单项证据",
+      "decision": "保留单项表单/选择模态",
+      "reason": "只维护当前一类证据，已统一同高居中footer和BusyOverlay；选择原信用仍为明确单项决定。",
+      "file": "lib/features/finance/widgets/finance_material_statement_editor.dart",
+      "sha256": "9e3c8de8ae71ef07394b10fe072aa8daffdfc1e3ac8d53dc76a4f52ff5fc0014",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_editor.dart",
+          "line": 1294,
+          "owner": "_pickCredit",
+          "ownerClass": "class _MaterialEditorState extends ConsumerState<_MaterialEditor> with FormDraftMixin<_MaterialEditor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "材料资料真实引用选择",
+      "decision": "保留有界选择模态",
+      "reason": "分别选择一个引用、物量行或GL分录；结果立即回原编辑区，保留真实UUID/币别及分页。",
+      "file": "lib/features/finance/widgets/finance_material_statement_pickers.dart",
+      "sha256": "3538afb03ceb5909f80c34dec89c8b67c4fbb2286920a6ee20777cc048f9f28b",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_pickers.dart",
+          "line": 7,
+          "owner": "_materialReference",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_pickers.dart",
+          "line": 170,
+          "owner": "_materialMovement",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_material_statement_pickers.dart",
+          "line": 433,
+          "owner": "_materialGl",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "原债务科目与辅助核对",
+      "decision": "迁上下文滑窗+短确认",
+      "reason": "原单/原币/本币/分录与辅助需对照原台账，60%/最小720；审核与放弃为短模态。",
+      "file": "lib/features/finance/widgets/finance_native_debt_correspondence_dialog.dart",
+      "sha256": "0bbf6e07e5144b75036de01fe1416f06b09d1d6b5872628b5ab296a1a3ea3c05",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_native_debt_correspondence_dialog.dart",
+          "line": 23,
+          "owner": "showFinanceNativeDebtCorrespondenceDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_native_debt_correspondence_dialog.dart",
+          "line": 177,
+          "owner": "_approve",
+          "ownerClass": "class _CorrespondenceState extends ConsumerState<_Correspondence>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_native_debt_correspondence_dialog.dart",
+          "line": 222,
+          "owner": "_close",
+          "ownerClass": "class _CorrespondenceState extends ConsumerState<_Correspondence>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "历史未结接续",
+      "decision": "迁公共滑窗+短确认",
+      "reason": "多行来源拆分需原台账上下文；最后接续决定保留短确认。",
+      "file": "lib/features/finance/widgets/finance_native_legacy_opening_dialog.dart",
+      "sha256": "3852b27d3aade475ad8626851d19937902bb52c37f441f258852db01c2361718",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_native_legacy_opening_dialog.dart",
+          "line": 29,
+          "owner": "showFinanceNativeLegacyOpeningDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_native_legacy_opening_dialog.dart",
+          "line": 437,
+          "owner": "_act",
+          "ownerClass": "class _LegacyOpeningState extends ConsumerState<_LegacyOpening> with FormDraftMixin<_LegacyOpening>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "业务单据科目用途版本",
+      "decision": "目录迁公共滑窗+短版本编辑",
+      "reason": "用途版本目录需原表对照；一次版本新增/审核/放弃为模态，补BusyOverlay。",
+      "file": "lib/features/finance/widgets/finance_native_posting_accounts_dialog.dart",
+      "sha256": "31e11995b4192587179949be6ddd86c11a5642158889294dd3796194c626973e",
+      "callSiteCount": 4,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_native_posting_accounts_dialog.dart",
+          "line": 23,
+          "owner": "showFinanceNativePostingAccountsDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_native_posting_accounts_dialog.dart",
+          "line": 92,
+          "owner": "_create",
+          "ownerClass": "class _DirectoryState extends ConsumerState<_Directory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_native_posting_accounts_dialog.dart",
+          "line": 113,
+          "owner": "_approve",
+          "ownerClass": "class _DirectoryState extends ConsumerState<_Directory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_native_posting_accounts_dialog.dart",
+          "line": 381,
+          "owner": "_close",
+          "ownerClass": "class _EditorState extends ConsumerState<_Editor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "往来分类",
+      "decision": "目录迁公共滑窗+短分配表单",
+      "reason": "长往来目录侧滑；预付/收款单独分类与子关系表单聚焦一笔，保留模态及原数/unknown守卫。",
+      "file": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+      "sha256": "8accddf4f2e9c4729ff24eb3b9010ca38646846e75827f48d53e84c8bf7329c0",
+      "callSiteCount": 6,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+          "line": 32,
+          "owner": "showFinancePrepaymentClassificationDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+          "line": 41,
+          "owner": "showFinanceReceiptClassificationDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+          "line": 53,
+          "owner": "showFinanceOpenItemClassificationDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+          "line": 131,
+          "owner": "_edit",
+          "ownerClass": "class _ClassificationDirectoryState extends ConsumerState<_ClassificationDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+          "line": 505,
+          "owner": "_openChild",
+          "ownerClass": "class _ClassificationEditorState extends ConsumerState<_ClassificationEditor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+          "line": 552,
+          "owner": "_close",
+          "ownerClass": "class _ClassificationEditorState extends ConsumerState<_ClassificationEditor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "应付手续费/尾数处理",
+      "decision": "迁公共滑窗+短确认",
+      "reason": "对照原应付和结算来源的多行分配侧滑，实际提交前单次确认保留。",
+      "file": "lib/features/finance/widgets/finance_payable_statement_adjustment_dialog.dart",
+      "sha256": "6a1d704354da00d049995481e8a657003f2d1a0f20ce0111a584ff18f7bf96df",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_payable_statement_adjustment_dialog.dart",
+          "line": 30,
+          "owner": "showFinancePayableStatementAdjustmentDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_payable_statement_adjustment_dialog.dart",
+          "line": 426,
+          "owner": "_act",
+          "ownerClass": "class _AdjustmentState extends ConsumerState<_Adjustment> with FormDraftMixin<_Adjustment>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "工资扣款归属分配",
+      "decision": "保留单来源分配弹窗",
+      "reason": "当前原扣款行的份额核对为局部任务，完整工资主体保留；原独立引导文字已迁到对应扣款列头info。",
+      "file": "lib/features/finance/widgets/finance_payroll_deduction_allocations.dart",
+      "sha256": "0a71843343cd8d883f28f03f974f63484e88e4519f8b0448efa6ac78e4709c35",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_payroll_deduction_allocations.dart",
+          "line": 166,
+          "owner": "_open",
+          "ownerClass": "class FinancePayrollDeductionSection extends StatelessWidget",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "工资办理来源选择",
+      "decision": "保留原办理工作区+选择模态",
+      "reason": "工资办理仍由原FormDraft工作区管理；只挑单一来源的步骤保留模态。",
+      "file": "lib/features/finance/widgets/finance_payroll_preparation.dart",
+      "sha256": "3ec2f15647fc4b659c96944c7aca017aa529d3c92c34cece448016d904df6904",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_payroll_preparation.dart",
+          "line": 374,
+          "owner": "_pick",
+          "ownerClass": "class _PayrollPreparationState extends ConsumerState<FinancePayrollPreparation> with FormDraftMixin<FinancePayrollPreparation>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "采购/委外应付认定",
+      "decision": "主目录迁公共滑窗+短办理模态",
+      "reason": "长原来源和认定清单需原对账表；一个认定/查看/单次确认保留有界模态。",
+      "file": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+      "sha256": "19699516c9a6510f2cfd8c049e7a389827631fe1bc4ae8ac4f30bb6e0b0ccc04",
+      "callSiteCount": 5,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+          "line": 36,
+          "owner": "showFinanceProcurementConfirmationDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+          "line": 120,
+          "owner": "_submit",
+          "ownerClass": "class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+          "line": 140,
+          "owner": "_open",
+          "ownerClass": "class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+          "line": 150,
+          "owner": "_policy",
+          "ownerClass": "class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+          "line": 798,
+          "owner": "_act",
+          "ownerClass": "class _ConfirmationDetailState extends ConsumerState<_ConfirmationDetail>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "原表逐行逐列比对",
+      "decision": "迁公共滑窗",
+      "reason": "上下两张来源表及差异结果需回看报表；公共footer、完整模型分页、Busy与原行mapping保留。",
+      "file": "lib/features/finance/widgets/finance_statement_compare_dialog.dart",
+      "sha256": "9d85abad96a5fd4244c1ab1c029bd59046b265983cc1a0fa05333ce8f9558f3e",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_statement_compare_dialog.dart",
+          "line": 30,
+          "owner": "showFinanceStatementCompareDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "对账原件与打印资料",
+      "decision": "目录迁公共滑窗+原件/动作模态",
+      "reason": "目录联动报表；已冻结原件独立阅读、签署、质保组成和单次审核保留有界模态，公共Frame footer与Busy统一。",
+      "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "sha256": "670ea72b5daae9e687a37ff46300d6a429e4dc7dbc52a4986fa5fdec057ac7da",
+      "callSiteCount": 6,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+          "line": 96,
+          "owner": "showFinanceStatementDocumentDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+          "line": 228,
+          "owner": "_command",
+          "ownerClass": "class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+          "line": 256,
+          "owner": "_open",
+          "ownerClass": "class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+          "line": 993,
+          "owner": "_balance",
+          "ownerClass": "class _EditorState extends ConsumerState<FinanceStatementDocumentEditor> with FormDraftMixin<FinanceStatementDocumentEditor>",
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+          "line": 1101,
+          "owner": "_retention",
+          "ownerClass": "class _EditorState extends ConsumerState<FinanceStatementDocumentEditor> with FormDraftMixin<FinanceStatementDocumentEditor>",
+          "api": "UtenDialog.showAndWaitForExit",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+          "line": 1659,
+          "owner": "build",
+          "ownerClass": "class _EditorState extends ConsumerState<FinanceStatementDocumentEditor> with FormDraftMixin<FinanceStatementDocumentEditor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "单一供应商损耗率政策",
+      "decision": "保留政策模态",
+      "reason": "单个供应商的政策版本/短表单为封闭维护任务，已有公共footer/Busy/未知提交与审批守卫；不为形式强迁侧滑。",
+      "file": "lib/features/finance/widgets/finance_subcontract_loss_policy_dialog.dart",
+      "sha256": "e550a7d292a1a01a837dd057553794fe54f4c71807111036277a19737b570cca",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_subcontract_loss_policy_dialog.dart",
+          "line": 58,
+          "owner": "showFinanceSubcontractLossPolicyDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_subcontract_loss_policy_dialog.dart",
+          "line": 148,
+          "owner": "_open",
+          "ownerClass": "class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_subcontract_loss_policy_dialog.dart",
+          "line": 447,
+          "owner": "_choose",
+          "ownerClass": "class _PolicyEditorState extends ConsumerState<_PolicyEditor> with FormDraftMixin<_PolicyEditor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "委外数量证据",
+      "decision": "主目录迁公共滑窗+单项证据模态",
+      "reason": "证据目录需对照原实际来源；单份证据及一次来源选择保留有界模态。",
+      "file": "lib/features/finance/widgets/finance_subcontract_quantity_evidence_dialog.dart",
+      "sha256": "21b676ca8b4b244af02e89c22b3778dc29b731df5dad20024cdcc4d1a4ced6a4",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_subcontract_quantity_evidence_dialog.dart",
+          "line": 77,
+          "owner": "showFinanceSubcontractQuantityEvidenceDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_subcontract_quantity_evidence_dialog.dart",
+          "line": 155,
+          "owner": "_open",
+          "ownerClass": "class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_subcontract_quantity_evidence_dialog.dart",
+          "line": 553,
+          "owner": "_selectSource",
+          "ownerClass": "class _EvidenceEditorState extends ConsumerState<_EvidenceEditor> with FormDraftMixin<_EvidenceEditor>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "供应商预付应用",
+      "decision": "主目录迁公共滑窗+单笔动作模态",
+      "reason": "原预付/应用清单侧滑；具体原款处理与反向原因保持已有单笔模态，不混资金和往来事实。",
+      "file": "lib/features/finance/widgets/finance_supplier_prepayment_dialog.dart",
+      "sha256": "b347a5cce9b604f6252032ba52ea8830fa51954554e30fa9e62874d72a25da80",
+      "callSiteCount": 5,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_supplier_prepayment_dialog.dart",
+          "line": 27,
+          "owner": "showFinanceSupplierPrepaymentDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_supplier_prepayment_dialog.dart",
+          "line": 107,
+          "owner": "_open",
+          "ownerClass": "class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_supplier_prepayment_dialog.dart",
+          "line": 117,
+          "owner": "_open",
+          "ownerClass": "class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_supplier_prepayment_dialog.dart",
+          "line": 153,
+          "owner": "_command",
+          "ownerClass": "class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/finance_supplier_prepayment_dialog.dart",
+          "line": 596,
+          "owner": "_close",
+          "ownerClass": "class _AdvanceCommandState extends ConsumerState<_AdvanceCommand>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "成本/资产原表单行资料",
+      "decision": "保留短编辑弹窗",
+      "reason": "只编辑明确一行，不需整张表另开长工作区；同高公共footer、标题hint、请求/回执/上传Busy与原请求守卫。",
+      "file": "lib/features/finance/widgets/finance_template_input_dialog.dart",
+      "sha256": "bde39560c9655513dd0aa467817d45be61fd7189df84539233b173abde05e073",
+      "callSiteCount": 1,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/finance_template_input_dialog.dart",
+          "line": 26,
+          "owner": "showFinanceTemplateInputDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "报表行取数设置",
+      "decision": "目录迁公共滑窗+短候选选择",
+      "reason": "设置需原报表上下文；一次科目/部门多选保留短候选模态；预览缺值不补0，Busy让位与防重修复。",
+      "file": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
+      "sha256": "59bd751fe8e8d7a91ad5840c640f435f7ddec00c6ca43d060a0be6c5766498e0",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
+          "line": 133,
+          "owner": "showGlReportLineBindingsDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
+          "line": 241,
+          "owner": "_editBinding",
+          "ownerClass": "class _GlReportLineBindingsDialogState extends ConsumerState<GlReportLineBindingsDialog>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
+          "line": 544,
+          "owner": "showGlReportTargetPicker",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "库存成本过账",
+      "decision": "长工作区迁公共滑窗+短确认",
+      "reason": "来源/期间/状态长表需原财务上下文；激活/选期/过账/结期为单次明确模态，网络阶段补完整BusyOverlay。",
+      "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "sha256": "8cd7b9cf185a2c8fc4fb1951ea36cef7d88409e4063f6dd94f08d710b1fb78b6",
+      "callSiteCount": 3,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+          "line": 32,
+          "owner": "showInventoryCostPostingDialog",
+          "ownerClass": null,
+          "api": "showFinanceWorkbenchPanel",
+          "presentation": "adaptive_panel"
+        },
+        {
+          "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+          "line": 152,
+          "owner": "_confirm",
+          "ownerClass": "class _InventoryCostPostingDialogState extends ConsumerState<InventoryCostPostingDialog>",
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+          "line": 192,
+          "owner": "_inputDialog",
+          "ownerClass": "class _InventoryCostPostingDialogState extends ConsumerState<InventoryCostPostingDialog>",
+          "api": "DialogRoute",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    },
+    {
+      "purpose": "报价退回/批量折扣",
+      "decision": "保留短弹窗",
+      "reason": "退回原因和一个折扣各为一次输入；UtenAlertDialog公共actions已对齐，网络由核价页面接Busy与claim，退回说明移标题hint。",
+      "file": "lib/features/finance/widgets/quote_finance_dialogs.dart",
+      "sha256": "b020a4a2b5ddcce63fad05488a14ff15a8ad90b8aeb4f85856eec6c4a21785ce",
+      "callSiteCount": 2,
+      "calls": [
+        {
+          "file": "lib/features/finance/widgets/quote_finance_dialogs.dart",
+          "line": 26,
+          "owner": "showQuoteFinanceReturnDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        },
+        {
+          "file": "lib/features/finance/widgets/quote_finance_dialogs.dart",
+          "line": 178,
+          "owner": "showQuoteFinanceBatchDiscountDialog",
+          "ownerClass": null,
+          "api": "showDialog",
+          "presentation": "modal_dialog"
+        }
+      ],
+      "sourceReviewOnlyUnlessTestEvidenceListed": true
+    }
+  ],
+  "sourceState": "本轮独立UI复核的最终关闭/单飞/身份隔离源码SHA；AST仍136创建调用/61文件/21工作区主入口。16与11为不同调用方目标组，不替代Root全量、Web/Windows构建或真实安装程序UAT。",
+  "sharedSourceHashes": [
+    {
+      "file": "lib/components/feedback/uten_dialog.dart",
+      "sha256": "6af994f37825bea31903794f9045558d34dae58d045871b1d132c2c6db93f52b"
+    },
+    {
+      "file": "lib/components/feedback/uten_dialog_chrome.dart",
+      "sha256": "ef61a0424db1a6318c96bfa609de9aaf0e754d68250b78ac81ed64ab2a4fc564"
+    },
+    {
+      "file": "lib/shared/drafts/form_draft_catalog.dart",
+      "sha256": "2eb370bdc8a0e0a515e50caf3e62e4d0a6b29f29824a0bcca1fc88554195ab27"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_hub_page.dart",
+      "sha256": "5ef78cfc4fa18b823ff09510de187ef3088880fdf6887b2fba4ba957897cf307"
+    }
+  ],
+  "durableWriteContracts": [
+    {
+      "consumer": "FinanceApplicationSettingsPage._SettingsEditor",
+      "descriptor": "FormDraftCatalog.financeApplicationSettings",
+      "endpoint": "POST /finance/applications/settings 与 POST /finance/applications/settings/roles；GET /finance/applications/settings/operations/{requestId}",
+      "preserves": "owner / original body / requestId / record UUID / expectedVersion；found=false不视为未写；成功回执不覆盖后来当前设置"
+    },
+    {
+      "consumer": "showFinanceChartMetadataDialog / FinanceHubPage 恢复分支",
+      "descriptor": "FormDraftCatalog.financeChartMetadata",
+      "endpoint": "PUT /finance/chart/{code}/metadata；GET /finance/chart/{code}/metadata/operations/{requestId}",
+      "preserves": "原编码 / 原名称与新名称 / 依据 / 原requestId / 原版本；真实Hub硬关闭恢复；actor/result不一致不收口"
+    }
+  ]
+}

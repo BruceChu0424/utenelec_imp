@@ -97,7 +97,8 @@ class AccountSecurityAndRedactionTest {
 
     private static AccountService service(AccountRepository repository, EntityManager em) {
         return new AccountService(
-                repository, mock(TxSessionVars.class), em, mock(MasterCodeService.class));
+                repository, mock(TxSessionVars.class), em, mock(MasterCodeService.class),
+                mock(com.uten.imp.application.port.FundingAccountStylePort.class));
     }
 
     private static Account account() {

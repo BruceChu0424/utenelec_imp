@@ -6,6 +6,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../config/finance_doc_config.dart';
 import '../providers/finance_name_provider.dart';
+import '../shared/finance_entry_capabilities.dart';
 import 'finance_grid_columns.dart';
 
 List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
@@ -68,6 +69,9 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
           : names.account(row.entry.accountId),
       pickAccount,
     ),
+    // The cash amount is an essential entry fact. Keep it in the first screen;
+    // optional quantity/price inputs retain their original shared calculator.
+    if (config.isAllocate) ...details.where((column) => column.key == 'amount'),
     if (!config.isTransfer)
       EditableGridColumn<FinanceGridRow>(
         key: 'entryMethod',
@@ -86,6 +90,9 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
           listenable: row.entry,
           builder: (_, _) => UtenDropdownField(
             dense: true,
+            hintText: config.isClient || config.type.name == 'otherIncome'
+                ? '选择收款方式'
+                : '选择付款方式',
             value: row.entry.methodId,
             items: [
               for (final method in methods)
@@ -109,12 +116,30 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
         listenable: row.entry,
         builder: (_, _) => UtenDropdownField(
           dense: true,
+          hintText: '选择币种',
+          info: financeEntryRequiresBaseCurrency(config)
+              ? '这类单据按本位币入账；历史原币输入保留，不能作为新的外币入账。'
+              : null,
           value: row.entry.currencyId,
           enabled:
               row.appliedLedgerId == null && row.entry.salesOrderId == null,
           items: [
-            for (final currency in names.currencyEntries.entries)
+            for (final currency in financeEntryCurrencyChoices(
+              config,
+              names,
+            ).entries)
               UtenDropdownItem(value: currency.key, label: currency.value),
+            if (row.entry.currencyId != null &&
+                !financeEntryCurrencyChoices(
+                  config,
+                  names,
+                ).containsKey(row.entry.currencyId))
+              UtenDropdownItem(
+                value: row.entry.currencyId,
+                label: names.currency(row.entry.currencyId),
+                enabled: false,
+                visible: false,
+              ),
           ],
           onChanged: (value) => changeCurrency(row, value),
         ),
@@ -194,6 +219,7 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
     ],
     for (final column in details)
       if (column.key != 'remark' &&
+          !(config.isAllocate && column.key == 'amount') &&
           (config.isAllocate || config.isTransfer
               ? !{'exchangeRate', 'amountLocal'}.contains(column.key)
               : column.key == 'amount'))

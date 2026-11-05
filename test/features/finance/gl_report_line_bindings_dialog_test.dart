@@ -1,14 +1,92 @@
+import 'dart:async';
+
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/widgets/gl_report_line_bindings_dialog.dart';
+import '../../support/audit_screenshot_support.dart';
+import '../../support/finance_command_test_support.dart';
 
 /// ADR-112 / overhaul-gap-03: 附表取数设置——未配置的行明确标注, 选费用末级科目后整行保存,
 /// 「按默认名单补齐」调用服务端同一个库函数。
 void main() {
+  setUp(prepareFinanceCommandTest);
+  for (final layout in [(1280.0, 1.0), (390.0, 1.5)]) {
+    testWidgets(
+      'actual settings panel keeps aligned actions and usable nested picker at ${layout.$1}',
+      (tester) async {
+        const capture = bool.fromEnvironment('UTEN_CAPTURE_FINANCE_DIALOGS');
+        tester.view.physicalSize = Size(layout.$1, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        if (capture) await loadAuditScreenshotFonts(tester);
+        final boundary = GlobalKey();
+        final api = _Api();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              ...financeCommandTestOverrides(),
+            ],
+            child: MaterialApp(
+              theme: capture
+                  ? auditScreenshotTheme(buildLightTheme())
+                  : buildLightTheme(),
+              builder: (context, child) => RepaintBoundary(
+                key: boundary,
+                child: MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(layout.$2)),
+                  child: child!,
+                ),
+              ),
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) => TextButton(
+                    onPressed: () =>
+                        showGlReportLineBindingsDialog(context, canEdit: true),
+                    child: const Text('打开设置'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('打开设置'));
+        await tester.pumpAndSettle();
+        expect(find.text('厂房及成品仓租赁费'), findsOneWidget);
+        expect(find.text('按默认名单补齐').hitTestable(), findsOneWidget);
+        expect(tester.getSize(find.text('附表取数设置')).height, lessThan(60));
+        if (capture) {
+          await saveAuditScreenshot(
+            tester,
+            boundary,
+            'finance-settings-panel-${layout.$1.toInt()}',
+          );
+        }
+        await tester.tap(find.byKey(const ValueKey('gl-line-edit-ADM_OFFICE')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('gl-line-target-save')).hitTestable(),
+          findsOneWidget,
+        );
+        if (capture) {
+          await saveAuditScreenshot(
+            tester,
+            boundary,
+            'finance-settings-picker-${layout.$1.toInt()}',
+          );
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
   testWidgets(
     'statement categories and explicit zero confirmation are sent to the server',
     (tester) async {
@@ -18,6 +96,7 @@ void main() {
           'lineKey': 'BS_2',
           'label': '短期投资',
           'bindingKind': 'STYLE',
+          'stateFingerprint': 'original-state-v7',
           'category': 'ACCOUNT',
           'sheet': 'BALANCE',
           'targets': <Object>[],
@@ -27,7 +106,10 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api)],
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            ...financeCommandTestOverrides(),
+          ],
           child: const MaterialApp(
             home: GlReportLineBindingsDialog(canEdit: true),
           ),
@@ -37,12 +119,22 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('gl-line-edit-BS_2')));
       await tester.pumpAndSettle();
       expect(api.lastQuery, {'category': 'ACCOUNT'});
-      await tester.tap(find.byKey(const ValueKey('gl-line-confirm-zero')));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('gl-line-confirm-zero')),
+          matching: find.byType(Checkbox),
+        ),
+      );
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('gl-line-target-save')));
       await tester.pumpAndSettle();
       expect(api.putPath, '/finance/reports/gl/line-bindings/BS_2');
-      expect(api.putBody, {'targetIds': <String>[], 'confirmedZero': true});
+      expect(api.putBody, containsPair('targetIds', <String>[]));
+      expect(api.putBody, containsPair('confirmedZero', true));
+      expect(
+        api.putBody,
+        containsPair('expectedFingerprint', 'original-state-v7'),
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -57,7 +149,10 @@ void main() {
       bool? changed;
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api)],
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            ...financeCommandTestOverrides(),
+          ],
           child: MaterialApp(
             home: Builder(
               builder: (context) => Scaffold(
@@ -95,14 +190,19 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('gl-line-target-save')));
       await tester.pumpAndSettle();
       expect(api.putPath, '/finance/reports/gl/line-bindings/ADM_OFFICE');
-      expect(api.putBody, {
-        'targetIds': ['style-office'],
-      });
+      expect(api.putBody, containsPair('targetIds', ['style-office']));
       expect(find.text('办公费用 (6602)'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('gl-line-seed-defaults')));
+      final seed = tester
+          .widget<OutlinedButton>(
+            find.byKey(const ValueKey('gl-line-seed-defaults')),
+          )
+          .onPressed!;
+      seed();
+      seed();
       await tester.pumpAndSettle();
       expect(api.postPath, '/finance/reports/gl/line-bindings/defaults');
+      expect(api.postCalls, 1);
 
       await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
@@ -118,7 +218,10 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api)],
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            ...financeCommandTestOverrides(),
+          ],
           child: const MaterialApp(
             home: GlReportLineBindingsDialog(canEdit: true),
           ),
@@ -144,9 +247,88 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('gl-line-target-style-old')));
       await tester.tap(find.byKey(const ValueKey('gl-line-target-save')));
       await tester.pumpAndSettle();
-      expect(api.putBody, {
-        'targetIds': ['style-old'],
-      });
+      expect(api.putBody, containsPair('targetIds', ['style-old']));
+    },
+  );
+
+  testWidgets(
+    'one picker owns the edit and pending save cannot be closed by old controls or system back',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final api = _Api()..putGate = Completer<void>();
+      bool? changed;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            ...financeCommandTestOverrides(),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () async {
+                    changed = await showGlReportLineBindingsDialog(
+                      context,
+                      canEdit: true,
+                    );
+                  },
+                  child: const Text('打开设置'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开设置'));
+      await tester.pumpAndSettle();
+      final close = tester
+          .widget<UtenCloseButton>(find.byType(UtenCloseButton))
+          .onPressed!;
+      final edit = tester
+          .widget<TextButton>(
+            find.byKey(const ValueKey('gl-line-edit-ADM_OFFICE')),
+          )
+          .onPressed!;
+      final seed = tester
+          .widget<OutlinedButton>(
+            find.byKey(const ValueKey('gl-line-seed-defaults')),
+          )
+          .onPressed!;
+      edit();
+      await tester.pumpAndSettle();
+      edit();
+      seed();
+      await tester.pumpAndSettle();
+      expect(api.candidateReads, 1);
+      expect(api.postCalls, 0);
+      expect(find.byKey(const ValueKey('gl-line-target-save')), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('gl-line-target-style-office')),
+      );
+      await tester.tap(find.byKey(const ValueKey('gl-line-target-save')));
+      await tester.pump();
+      await tester.pump();
+      expect(api.putPath, '/finance/reports/gl/line-bindings/ADM_OFFICE');
+      close();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(changed, isNull);
+      expect(find.byType(GlReportLineBindingsDialog), findsOneWidget);
+      expect(
+        tester.widget<UtenCloseButton>(find.byType(UtenCloseButton)).onPressed,
+        isNull,
+      );
+      api.putGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('办公费用 (6602)'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(changed, isTrue);
+      expect(find.byType(GlReportLineBindingsDialog), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -174,6 +356,7 @@ class _Api extends ApiClient {
       'lineKey': 'ADM_RENT',
       'label': '厂房及成品仓租赁费',
       'bindingKind': 'STYLE',
+      'stateFingerprint': 'original-state-v7',
       'targets': [
         {'id': 'style-rent', 'code': '6601', 'name': '房租'},
       ],
@@ -182,12 +365,14 @@ class _Api extends ApiClient {
       'lineKey': 'ADM_OFFICE',
       'label': '办公费',
       'bindingKind': 'STYLE',
+      'stateFingerprint': 'original-state-v7',
       'targets': <Object>[],
     },
     {
       'lineKey': 'LABOR_DIRECT',
       'label': '直接人工',
       'bindingKind': 'DEPARTMENT',
+      'stateFingerprint': 'original-state-v7',
       'targets': <Object>[],
     },
   ];
@@ -195,6 +380,9 @@ class _Api extends ApiClient {
   String? putPath;
   Object? putBody;
   String? postPath;
+  int postCalls = 0;
+  int candidateReads = 0;
+  Completer<void>? putGate;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -202,6 +390,7 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path == '/finance/reports/gl/line-bindings') return lines;
+    candidateReads++;
     lastQuery = query;
     return [
       {
@@ -236,22 +425,45 @@ class _Api extends ApiClient {
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     putPath = path;
     putBody = body;
-    return {
+    if (putGate != null) await putGate!.future;
+    final saved = <String, dynamic>{
       'lineKey': 'ADM_OFFICE',
       'label': '办公费',
       'bindingKind': 'STYLE',
+      'stateFingerprint': 'original-state-v7',
       'targets': [
         {'id': 'style-office', 'code': '6602', 'name': '办公费用'},
       ],
     };
+    lines = [
+      for (final line in lines)
+        line['lineKey'] == path.split('/').last ? saved : line,
+    ];
+    return financeCommandTestReceipt(
+      operation: 'GL_REPORT_BINDING_REPLACE',
+      method: 'PUT',
+      path: path,
+      body: body,
+      result: saved,
+    );
   }
 
   @override
-  Future<List<Map<String, dynamic>>> postList(
+  Future<Map<String, dynamic>> post(
     String path, {
     Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+    bool preserveUnauthorizedSession = false,
   }) async {
     postPath = path;
-    return lines;
+    postCalls++;
+    return financeCommandTestReceipt(
+      operation: 'GL_REPORT_BINDINGS_SEED',
+      method: 'POST',
+      path: path,
+      body: body,
+      result: lines,
+    );
   }
 }

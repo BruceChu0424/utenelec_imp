@@ -10,6 +10,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/shared/models/procurement_quantity.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
@@ -20,8 +21,95 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_doc_edit_page.da
 import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.dart';
 
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/pump_until.dart';
 
 void main() {
+  for (final scenario in [
+    ('purchase', 'receipts', true),
+    ('purchase', 'returns', true),
+    ('subcontract', 'receipts', true),
+    ('subcontract', 'material-returns', true),
+    ('subcontract', 'returns', false),
+  ]) {
+    for (final metadataLoaded in [false, true]) {
+      testWidgets(
+        '${scenario.$1} ${scenario.$2} own line locator independently of empty metadata loaded=$metadataLoaded',
+        (tester) async {
+          final api = await _pump(tester, scenario.$1, scenario.$2);
+          final row = scenario.$1 == 'purchase'
+              ? _purchaseGrid(tester).controller.rows.single
+              : tester
+                    .widget<UtenEditableGrid<SubcontractGridRow>>(
+                      find.byType(UtenEditableGrid<SubcontractGridRow>),
+                    )
+                    .controller
+                    .rows
+                    .single;
+          final fields = row.platformFields;
+          expect(fields.cells, isEmpty);
+          expect(fields.sourceRecordId, 'draft-line');
+          if (metadataLoaded) {
+            fields.adopt(
+              const PlatformRowValues(
+                recordId: 'draft-line',
+                version: 17,
+                canWrite: true,
+              ),
+            );
+            expect(fields.savePayload()?['expectedVersion'], 17);
+          } else {
+            fields.loaded = false;
+            fields.dirty = false;
+            fields.sourceRecordId = null;
+            expect(fields.savePayload(), isNull);
+          }
+          final clone = scenario.$1 == 'purchase'
+              ? (row as PurchaseGridRow).clone()
+              : (row as SubcontractGridRow).clone();
+          expect(
+            clone is PurchaseGridRow
+                ? clone.documentItemId
+                : (clone as SubcontractGridRow).documentItemId,
+            isNull,
+          );
+          expect(clone.platformFields.sourceRecordId, isNull);
+          clone.dispose();
+          if (!metadataLoaded) {
+            final state = _formState(tester, scenario.$1);
+            final draft =
+                jsonDecode(jsonEncode(state.captureFormDraft()))
+                    as Map<String, dynamic>;
+            await pumpUntilCompletes(
+              tester,
+              state.restoreFormDraft(draft),
+              reason: 'Restoration must finish while its UI slices yield',
+            );
+            await tester.pumpAndSettle();
+          }
+          await _saveGift(tester);
+          expect(api.saved, isNotNull);
+          final item = (api.saved!['items'] as List).single as Map;
+          if (scenario.$3) {
+            expect(item['id'], 'draft-line');
+            expect(item['id'], isNot('source-line'));
+          } else {
+            expect(item.containsKey('id'), isFalse);
+          }
+          expect(item['qty'], '10.1256');
+          if (metadataLoaded) {
+            expect(item['platformFields'], {
+              'sourceRecordId': 'draft-line',
+              'expectedVersion': 17,
+              'cells': <Object>[],
+            });
+          } else {
+            expect(item.containsKey('platformFields'), isFalse);
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
   for (final module in ['purchase', 'subcontract']) {
     testWidgets('$module 1000行校验定位末行数量且不提交', (tester) async {
       final api = await _pump(tester, module, 'receipts');
@@ -381,6 +469,8 @@ Future<_FormApi> _pump(
             : SubcontractDocEditPage(
                 docType: segment == 'receipts'
                     ? SubcontractDocType.receipt
+                    : segment == 'material-returns'
+                    ? SubcontractDocType.materialReturn
                     : SubcontractDocType.returnDoc,
                 id: 'source-draft',
               ),
@@ -477,6 +567,8 @@ class _FormApi extends ApiClient {
         'price': 4.05,
         if (segment == 'receipts')
           'orderItemId': 'source-line'
+        else if (segment == 'material-returns')
+          'materialIssueItemId': 'source-line'
         else
           'receiptItemId': 'source-line',
       },

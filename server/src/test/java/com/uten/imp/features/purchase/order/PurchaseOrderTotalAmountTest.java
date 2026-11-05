@@ -20,17 +20,27 @@ class PurchaseOrderTotalAmountTest {
         assertThat(masked.getAmountOriginalExact()).isNull();
     }
 
-    @Test void financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct() {
+    @SuppressWarnings("try")
+    @Test void financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct() throws Exception {
         var order = new PurchaseOrder(); order.setExchangeRate(new BigDecimal("7.1"));
         order.setTotalOriginal(new BigDecimal("100")); order.setTotalLocal(new BigDecimal("710"));
         var item = new PurchaseOrderItem(); item.setQty(new BigDecimal("3000"));
         item.setTotalAmountInput(new BigDecimal("100"));
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of("money.reference-unit-price",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(10,"DOWN")))){
         item.setPrice(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty()));
+        }
+        order.setId(java.util.UUID.randomUUID());item.setId(java.util.UUID.randomUUID());
+        item.setUnitId(java.util.UUID.randomUUID());item.setUnitRate(BigDecimal.ONE);
+        order.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.LEGACY);item.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.LEGACY);
+        var saved=org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementReferencePricePolicyService.class);
+        var service=org.mockito.Mockito.mock(PurchaseOrderService.class,org.mockito.Mockito.CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(service,"referencePricePolicies",saved);
         item.setAmountOriginal(new BigDecimal("100")); item.setAmountLocal(new BigDecimal("710"));
-        assertThatCode(() -> ReflectionTestUtils.invokeMethod(PurchaseOrderService.class,
+        assertThatCode(() -> ReflectionTestUtils.invokeMethod(service,
                 "requireFinanceCommercialAuthority", order, List.of(item))).doesNotThrowAnyException();
         item.setAmountOriginal(item.getQty().multiply(item.getPrice()));
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(PurchaseOrderService.class,
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service,
                 "requireFinanceCommercialAuthority", order, List.of(item))).isInstanceOf(ApiException.class);
+        org.mockito.Mockito.verify(saved,org.mockito.Mockito.times(2)).requireSavedOrder("PURCHASE",order.getId());
     }
 }

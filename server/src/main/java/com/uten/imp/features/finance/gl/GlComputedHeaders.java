@@ -35,7 +35,7 @@ final class GlComputedHeaders {
         }
         for(var row:original.rows())if(identities.contains(identity(report,row)))rows.add(row);
         return new ReportTableResponse(original.columns(),rows,facets,1,Math.max(1,rows.size()),rows.size(),rows.isEmpty()?0:1,
-                original.totals(),original.readScopeVersion(),original.statisticsGeneratedAt(),condition.keys());
+                original.totals(),original.readScopeVersion(),original.statisticsGeneratedAt(),condition.keys(),original.documentMetadata());
     }
     private static Map<String,List<ReportFacet>> facets(ReportTableResponse original,FinanceReportColumnOptions options) {
         if(!com.uten.imp.common.report.ReportReadPlan.current().includeFacets())return Map.of();

@@ -257,8 +257,9 @@ class BusinessPrecisionTransport {
 
   /// Only after a matching real successful command receipt. A multi-window
   /// operation may retain its own current explicit policy for the next request.
-  void advanceConfirmedRequest() {
-    if (_attempts.values.any((entry) => entry['uncertain'] == true)) {
+  void advanceConfirmedRequest({bool originalReceiptAcknowledged = false}) {
+    if (!originalReceiptAcknowledged &&
+        _attempts.values.any((entry) => entry['uncertain'] == true)) {
       throw StateError('原请求结果仍待核对，不能开始下一段');
     }
     _attempts.clear();

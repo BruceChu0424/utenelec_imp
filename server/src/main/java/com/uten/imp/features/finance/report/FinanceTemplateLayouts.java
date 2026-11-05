@@ -9,8 +9,22 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /** Original paper headings and header groups; this class never computes a business amount. */
-final class FinanceTemplateLayouts {
+public final class FinanceTemplateLayouts {
     private FinanceTemplateLayouts() { }
+    /** Context was captured with the authoritative GL rows in their read-only
+     * snapshot. No date/company lookup or amount calculation is repeated here. */
+    public static ReportTableResponse withFinancialPaper(String sheet,ReportTableResponse response){
+        Object raw=response.documentMetadata().get("financialStatementContext");
+        if(!(raw instanceof Map<?,?> context))return response;
+        String report=switch(sheet){case "BALANCE"->"gl/balance-sheet";case "PROFIT"->"gl/profit-monthly";case "ANNUAL"->"gl/profit-annual";default->throw new IllegalArgumentException("Unsupported financial statement");};
+        if(!report.equals(context.get("report"))||!(context.get("organizationName") instanceof String company)||company.isBlank())throw new IllegalArgumentException("Financial paper identity is incomplete");
+        var query=new LinkedHashMap<String,String>();query.put("layout","template");
+        for(String field:List.of("dateFrom","dateTo","year","month")){Object value=context.get(field);if(value==null)throw new IllegalArgumentException("Financial paper period is incomplete");query.put(field,value.toString());}
+        var columns=response.columns().stream().map(c->new ExportColumn(c.key(),c.label(),c.type(),c.width()==null?null:c.width().doubleValue(),c.unitLabel(),c.unitKey())).toList();
+        var metadata=new LinkedHashMap<>(response.documentMetadata());
+        metadata.putAll(FinanceStatementPaperLayout.financialMetadata(key(report,query),create(report,query,columns,response.rows(),metadata,company),response.columns(),response.rows()));
+        return response.withDocumentMetadata(metadata);
+    }
     static String key(String report,Map<String,String> query) {
         return switch(report) {
             case "gl/trial-balance"->"trialBalance";
@@ -64,15 +78,16 @@ final class FinanceTemplateLayouts {
         boolean columnUnitsOnly=Set.of("copperFee","copperDetail","plasticUsage","plasticIssue","plasticReturn","plasticFinished").contains(key);
         String unit="元";
         if(balance||monthly||annual) {
-            int metaRow=2,unitColumn=balance?6:last;
+            int metaRow=2,unitColumn=balance?6:annual?last-1:last;
             headings.add(new ExportTableLayout.Heading(metaRow,0,"单位名称："+organization,fontSize,false,"LEFT"));
             merge(merges,metaRow,metaRow,0,balance?3:monthly?1:5);
             String period=balance?date.format(DateTimeFormatter.ofPattern("yyyy年MM月dd日")):monthly?"%d年%02d月".formatted(year,month):"%d年1至%d月".formatted(year,month);
             int periodColumn=balance?4:monthly?2:6;
             headings.add(new ExportTableLayout.Heading(metaRow,periodColumn,period,fontSize,false,"CENTER"));
-            merge(merges,metaRow,metaRow,periodColumn,balance?5:monthly?2:last-1);
-            headings.add(new ExportTableLayout.Heading(metaRow,unitColumn,"单位："+unit,fontSize,false,"RIGHT"));
+            merge(merges,metaRow,metaRow,periodColumn,balance?5:monthly?2:last-2);
+            headings.add(new ExportTableLayout.Heading(metaRow,unitColumn,"单位："+unit,annual?11:fontSize,false,annual?"CENTER":"RIGHT"));
             if(balance)merge(merges,metaRow,metaRow,6,7);
+            if(annual)merge(merges,metaRow,metaRow,last-1,last);
             if(balance||monthly){headings.add(new ExportTableLayout.Heading(1,unitColumn,balance?"会小企01表":"会小企02表",fontSize,false,"RIGHT"));if(balance)merge(merges,1,1,6,7);}
         }else {
             int companyEnd=Math.max(0,last/2-1),dateStart=companyEnd+1,dateEnd=Math.max(dateStart,last-1);
@@ -99,6 +114,7 @@ final class FinanceTemplateLayouts {
             }
             if(levels<depth){headings.add(new ExportTableLayout.Heading(firstHeader+levels,col,columns.get(col).label(),fontSize,true,"CENTER"));merge(merges,firstHeader+levels,headerRow,col,col);}
         }
+        if(annual)headings.add(new ExportTableLayout.Heading(headerRow,last,columns.get(last).label(),11,true,"CENTER"));
         if(balance) {
             for(int row=0;row<rows.size();row++)if(rows.get(row).get("__cellStyles") instanceof Map<?,?> styles)
                 for(int column=0;column<columns.size();column++)if(styles.get(columns.get(column).key()) instanceof Map<?,?> style) {

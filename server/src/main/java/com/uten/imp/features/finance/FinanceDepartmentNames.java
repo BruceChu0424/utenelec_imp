@@ -17,6 +17,9 @@ public final class FinanceDepartmentNames {
         var ids = new TreeSet<UUID>();
         for (UUID id : referencedIds) if (id != null) ids.add(id);
         if (ids.isEmpty()) return Map.of();
+        return com.uten.imp.common.platformcolumns.DocumentPlatformReadContext.referencedLabels(FinanceDepartmentNames.class,em,ids,()->read(em,ids));
+    }
+    private static Map<UUID,String> read(EntityManager em,Collection<UUID> ids){
         // Historical references remain readable even when their department was logically deleted.
         // Only the caller's persisted document IDs are supplied, and no employee/manager fields are read.
         var rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""

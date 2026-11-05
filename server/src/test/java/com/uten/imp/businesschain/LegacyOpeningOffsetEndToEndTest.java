@@ -41,6 +41,7 @@ import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -82,6 +83,7 @@ class LegacyOpeningOffsetEndToEndTest {
     @Autowired ProcurementPayablesService payables;
     @Autowired CustomerPrepaymentOffsetService customerOffsets;
     @Autowired FinanceReportService reports;
+    @Autowired jakarta.persistence.EntityManagerFactory entityManagers;
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
     private UUID maker,reviewer,account,currency,supplier,client;
@@ -138,6 +140,63 @@ class LegacyOpeningOffsetEndToEndTest {
         offsets.reverse(result.offsetBatchId(),new SupplierOffsetContracts.ReverseRequest("Same already reversed allocation"));
         assertBalance(target,"14");assertThat(proof(target)).isEqualTo(proof);
     }
+
+    @Test void realPaymentCommitsWhenRebuilderHasJanuaryAndProducerHasCurrentMonthMarker() throws Exception {
+        UUID target=opening("AP","25","8","17",true,"2025-01-31T15:59:59Z");
+        fixture.loginAs(maker);UUID payment=payments.create(paymentRequest(target,"3")).getId();
+        LocalDate january=LocalDate.of(2025,1,1),current=BusinessTime.today().withDayOfMonth(1);
+        var workerReady=new java.util.concurrent.CountDownLatch(1);var producerReady=new java.util.concurrent.CountDownLatch(1);var januaryDeleted=new java.util.concurrent.CountDownLatch(1);
+        var workerPid=new java.util.concurrent.atomic.AtomicInteger();var producerPid=new java.util.concurrent.atomic.AtomicInteger();var producedMarkers=new java.util.concurrent.atomic.AtomicInteger();
+        var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var consumer=pool.submit(()->{try(var session=entityManagers.unwrap(org.hibernate.SessionFactory.class).openSession()) {
+                var tx=session.beginTransaction();
+                try {
+                    workerPid.set(session.createNativeQuery("SELECT pg_backend_pid()",Integer.class).getSingleResult());
+                    session.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))::text",String.class).setParameter("key","party-month-summary/AP/"+supplier).getSingleResult();
+                    workerReady.countDown();await(producerReady,"producer current-month marker");
+                    new com.uten.imp.features.finance.report.PartyMonthlySummaryService(afterJanuaryDelete(session,january,()->{
+                        januaryDeleted.countDown();long deadline=System.nanoTime()+java.time.Duration.ofSeconds(15).toNanos();boolean observed=false;
+                        while(System.nanoTime()<deadline){if(Boolean.TRUE.equals(session.createNativeQuery("SELECT :worker=ANY(pg_blocking_pids(:producer))",Boolean.class).setParameter("worker",workerPid.get()).setParameter("producer",producerPid.get()).getSingleResult())){observed=true;break;}try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
+                        assertThat(observed).as("real native approval must reach its original January source marker while worker owns it").isTrue();
+                    })).reconcileNow("AP",supplier);
+                    tx.commit();
+                }catch(RuntimeException|Error failure){if(tx.isActive())tx.rollback();throw failure;}
+            }});
+            await(workerReady,"worker party lock");
+            new TransactionTemplate(transactions).executeWithoutResult(status->{for(LocalDate month:List.of(january,current))jdbc.queryForObject("SELECT fn_touch_party_month_summary('AP',?,?)",Object.class,supplier,month);});
+            var producer=pool.submit(()->{
+                fixture.loginAs(reviewer);
+                try{return new TransactionTemplate(transactions).execute(status->{
+                    producerPid.set(jdbc.queryForObject("SELECT pg_backend_pid()",Integer.class));
+                    jdbc.update("UPDATE party_month_dirty SET reason=reason WHERE side='AP' AND party_id=? AND month_start=?",supplier,current);
+                    producerReady.countDown();await(januaryDeleted,"worker January marker deletion");
+                    var result=payments.approve(payment);
+                    producedMarkers.set(jdbc.queryForObject("SELECT count(*) FROM party_month_dirty WHERE side='AP' AND party_id=? AND month_start IN(?,?)",Integer.class,supplier,january,current));
+                    return result;
+                });}finally{SecurityContextHolder.clearContext();}
+            });
+            consumer.get(25,java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(producer.get(25,java.util.concurrent.TimeUnit.SECONDS).getStatus()).isEqualTo((short)1);
+            assertThat(producedMarkers.get()).as("worker cannot erase the producer's replacement versions").isEqualTo(2);
+            assertBalance(target,"14");assertThat(amount("SELECT balance_current FROM accounts WHERE id=?",account)).isEqualByComparingTo("97");
+            assertThat(amount("SELECT sum(e.direction*e.amount) FROM gl_entries e JOIN gl_vouchers v ON v.id=e.voucher_id WHERE v.source_type='PAYMENT' AND v.source_doc_id=?",payment)).isZero();
+            fixture.loginAs(maker);assertReportBalance("14",current);
+        } finally {producerReady.countDown();januaryDeleted.countDown();pool.shutdownNow();}
+    }
+
+    private jakarta.persistence.EntityManager afterJanuaryDelete(org.hibernate.Session session,LocalDate january,Runnable hook){
+        var wrapped=org.mockito.Mockito.mock(jakarta.persistence.EntityManager.class);var fired=new java.util.concurrent.atomic.AtomicBoolean();
+        org.mockito.Mockito.when(wrapped.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call->{
+            String sql=call.getArgument(0);jakarta.persistence.Query query=((jakarta.persistence.EntityManager)session).createNativeQuery(sql);
+            if(!sql.contains("DELETE FROM party_month_dirty"))return query;
+            var intercepted=org.mockito.Mockito.mock(jakarta.persistence.Query.class,org.mockito.AdditionalAnswers.delegatesTo(query));var month=new java.util.concurrent.atomic.AtomicReference<Object>();
+            org.mockito.Mockito.doAnswer(binding->{String key=binding.getArgument(0);Object value=binding.getArgument(1);query.setParameter(key,value);if(key.equals("month"))month.set(value);return intercepted;}).when(intercepted).setParameter(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.doAnswer(ignored->{int changed=query.executeUpdate();if(changed>0&&january.toString().equals(Objects.toString(month.get()))&&fired.compareAndSet(false,true))hook.run();return changed;}).when(intercepted).executeUpdate();
+            return intercepted;
+        });return wrapped;
+    }
+    private static void await(java.util.concurrent.CountDownLatch latch,String label){try{assertThat(latch.await(15,java.util.concurrent.TimeUnit.SECONDS)).as(label).isTrue();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
 
     @Test void negativeUnknownOriginalWrongPartyAndCutoffCannotBecomeAnOffsetTargetOrFundingSource() throws Exception {
         UUID source=credit("8");
@@ -238,13 +297,17 @@ class LegacyOpeningOffsetEndToEndTest {
         });
     }
     private UUID payment(UUID target,String value) {
+        FinancePaymentSaveRequest request=paymentRequest(target,value);
+        fixture.loginAs(maker);UUID id=payments.create(request).getId();fixture.loginAs(reviewer);payments.approve(id);fixture.loginAs(maker);
+        return id;
+    }
+    private FinancePaymentSaveRequest paymentRequest(UUID target,String value) {
         FinancePaymentLineInput line=new FinancePaymentLineInput();line.setAppliedLedgerId(target);line.setSupplierId(supplier);line.setAmountOriginal(new BigDecimal(value));
         FinancePaymentSaveRequest request=new FinancePaymentSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(supplier);request.setAccountId(account);
         request.setCurrencyId(currency);request.setExchangeRate(BigDecimal.ONE);request.setAccountCurrencyId(currency);request.setAccountAmount(new BigDecimal(value));
         request.setBankFeeAccountAmount(BigDecimal.ZERO);request.setBankReference("OPENING-AP-"+UUID.randomUUID());request.setBankBookedAt(OffsetDateTime.now());
         request.setCreateIdempotencyKey(UUID.randomUUID().toString());request.setItems(List.of(line));
-        fixture.loginAs(maker);UUID id=payments.create(request).getId();fixture.loginAs(reviewer);payments.approve(id);fixture.loginAs(maker);
-        return id;
+        return request;
     }
     private UUID credit(String amount) {
         UUID source=UUID.randomUUID();String no="CT"+BusinessTime.today().toString().replace("-","")+String.format("%06d",SEQUENCE.incrementAndGet());

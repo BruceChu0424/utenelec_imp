@@ -89,6 +89,41 @@ class FinanceCostTemplatePostgresTest {
         row=reports.salesCostSummary(null,FROM,TO,1,50).rows().getFirst();assertThat(row.get("saleCost")).isNull();assertThat(row.get("netProfit")).isNull();
         assertThatThrownBy(()->reports.salesCostSummary(null,FROM.plusDays(1),TO,1,50)).hasMessageContaining("完整");
     }
+    @Test void crossMonthReversalPreservesOriginalRevenueAndUsesItsActualChinaDate() {
+        String original="-100.000000000000000000000001";
+        revenue(original);cost(original);input("OEM","0","0");
+        db.update("UPDATE ar_ap_ledger SET status=-1,is_deleted=true,deleted_at='2026-09-30T16:00:00Z'");
+        amount(reports.salesCostSummary(null,FROM,TO,1,50).rows().getFirst(),"saleAmount",original);
+        db.update("INSERT INTO v_stock_actual_cogs_postings(client_id,business_date,amount_local,pending) VALUES(?,'2026-10-01',?,false)",CLIENT,new BigDecimal(original).negate());
+        amount(reports.salesCostSummary(null,LocalDate.of(2026,10,1),LocalDate.of(2026,10,31),1,50).rows().getFirst(),
+                "saleAmount","100.000000000000000000000001");
+        db.update("UPDATE ar_ap_ledger SET deleted_at='2026-09-30T15:59:59Z'");
+        amount(reports.salesCostSummary(null,FROM,TO,1,50).rows().getFirst(),"saleAmount","0");
+    }
+    @Test void missingActualReversalDateKeepsRevenueUnknownInsteadOfInventingZero() {
+        revenue("100");cost("60");input("OEM","0","0");
+        db.update("UPDATE ar_ap_ledger SET status=-1,is_deleted=true,deleted_at=NULL");
+        var row=reports.salesCostSummary(null,FROM,TO,1,50).rows().getFirst();
+        assertThat(row.get("saleAmount")).isNull();assertThat(row.get("netProfit")).isNull();
+    }
+    @Test void anActualReversalBeforeAFutureBillDateIsStillIncludedInItsActualMonth() {
+        revenue("100");cost("60");input("OEM","0","0");
+        db.update("UPDATE ar_ap_ledger SET bill_date='2026-10-03',status=-1,is_deleted=true,deleted_at='2026-09-29T16:00:00Z'");
+        amount(reports.salesCostSummary(null,FROM,TO,1,50).rows().getFirst(),"saleAmount","-100");
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"legacy_id=987654321","legacy_source='M_out'"})
+    void oldImportMarkersCannotInventANativeDatedReversal(String marker) {
+        revenue("100");cost("60");input("OEM","0","0");
+        db.update("UPDATE ar_ap_ledger SET status=-1,is_deleted=true,deleted_at='2026-09-15T00:00:00Z',"+marker);
+        assertThat(reports.salesCostSummary(null,FROM,TO,1,50).rows().getFirst().get("saleAmount")).isNull();
+    }
+    @Test void multipleRealRatesNeverFallBackToOnePreviouslyConfirmedRate() {
+        revenue("100");revenue("100");cost("60");input("OEM","0","0");
+        db.update("UPDATE finance_sales_cost_inputs SET exchange_rate=1");
+        db.update("UPDATE ar_ap_ledger SET exchange_rate=7 WHERE id=(SELECT id FROM ar_ap_ledger LIMIT 1)");
+        assertThat(reports.salesCostSummary(null,FROM,TO,1,50).rows().getFirst().get("exchangeRate")).isNull();
+    }
     static void revenue(String v){db.update("INSERT INTO ar_ap_ledger(id,client_id,direction,status,source_doc_type,bill_date,amount_original_local,currency_id,exchange_rate,is_deleted) VALUES(gen_random_uuid(),?,'AR',1,'SALES_SHIPMENT','2026-09-03',?,?,1,false)",CLIENT,new BigDecimal(v),CURRENCY);}
     static void cost(String v){db.update("INSERT INTO v_stock_actual_cogs_postings(client_id,business_date,amount_local,pending) VALUES(?,'2026-09-03',?,false)",CLIENT,new BigDecimal(v));}
     static void input(String channel,String tax,String freight){db.update("INSERT INTO finance_sales_cost_inputs(period,client_id,channel,tax_rate,freight_local,confirmed,client_name_snapshot,seller_name_snapshot,region_snapshot,director_snapshot) VALUES('2026-09',?,?,?,?,true,'匿名客户','','','')",CLIENT,channel,new BigDecimal(tax),new BigDecimal(freight));}

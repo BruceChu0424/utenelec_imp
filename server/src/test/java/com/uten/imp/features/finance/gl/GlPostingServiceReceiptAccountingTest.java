@@ -273,13 +273,16 @@ class GlPostingServiceReceiptAccountingTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(arEntries)
-                .contains("system_posting_style_id('AR_CONTROL')")
-                .contains("system_posting_style_id('SALES_REVENUE')")
+                .contains("fn_finance_native_debt_style(l.id,'AR_CONTROL')")
+                .contains("fn_finance_native_debt_style(l.id,'SALES_REVENUE')")
+                .contains("finance_native_debt_entry_refs")
+                .contains("fn_finance_native_projection_is_frozen")
                 .doesNotContain("path='");
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
-                .contains("FROM ar_ap_ledger ledger")
-                .contains("system_posting_style_id('AR_CONTROL')")
-                .contains("system_posting_style_id('SALES_REVENUE')"));
+                .contains("WITH required_role(role_key)")
+                .contains("'AR_CONTROL'")
+                .contains("'SALES_REVENUE'")
+                .contains("system_posting_style_id(required.role_key)"));
 
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
                 .contains("invalid_voucher")

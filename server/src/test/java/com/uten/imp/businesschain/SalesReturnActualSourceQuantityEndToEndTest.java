@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.*;
         "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@SuppressWarnings("try")
 class SalesReturnActualSourceQuantityEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){
         FullChainEndToEndTest.registerDataSource(registry);
@@ -98,7 +99,11 @@ class SalesReturnActualSourceQuantityEndToEndTest {
     }
 
     private Source ship(String label,String qty,String rate,boolean anotherWarehouse)throws Exception {
-        var w=fixture.seedWorld("return-source-"+label+"-"+UUID.randomUUID());fixture.loginAs(w.superAdminUserId());
+        var w=fixture.seedWorld("return-source-"+label+"-"+UUID.randomUUID());
+        return shipForWorld(w,qty,rate,anotherWarehouse);
+    }
+    private Source shipForWorld(FullChainEndToEndTest.World w,String qty,String rate,boolean anotherWarehouse)throws Exception {
+        fixture.loginAs(w.superAdminUserId());
         UUID warehouse=anotherWarehouse?call("leafWarehouse","return-source-"+UUID.randomUUID()):w.warehouseId();
         call("putDirectTargetStockZeroPriceAt",w,w.goodsB(),BigDecimal.ONE,warehouse);
         UUID unit=UUID.randomUUID();db.update("INSERT INTO units(id,code,name) VALUES(?,?,'box')",unit,"RETURN-NATIVE-"+unit);

@@ -139,7 +139,20 @@ void main() {
       expect(bounds.left, greaterThanOrEqualTo(16));
       expect(bounds.right, lessThanOrEqualTo(304));
     }
-    expect(find.byType(Icon), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('narrow-date')),
+        matching: find.byType(Icon),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('uten-date-range-clear')),
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

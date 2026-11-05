@@ -73,8 +73,9 @@ class GlReportSourceSemanticsTest {
         var report=new GlReportService(em,mock(GlReportLineSource.class),
                 com.uten.imp.support.FinanceReportTestAccess.company()).profitMonthly(2032,2);
         assertThat(report.rows()).hasSize(20);
-        assertAmount(report.rows(),"四、净利润","monthAmount","58");
-        assertAmount(report.rows(),"四、净利润","yearAmount","158");
+        String originalLabel=FinancialStatementCatalog.lines("PROFIT").stream().filter(line->line.key().equals("PL_32")).findFirst().orElseThrow().label();
+        assertAmount(report.rows(),originalLabel,"monthAmount","58");
+        assertAmount(report.rows(),originalLabel,"yearAmount","158");
     }
 
     private static EntityManager statementQueries(String sheet,List<Object[]> amounts) {

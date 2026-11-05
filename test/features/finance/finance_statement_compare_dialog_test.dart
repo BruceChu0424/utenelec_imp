@@ -85,7 +85,7 @@ void main() {
       api.fingerprint = 'facts-2';
       await tester.tap(find.text('刷新实际原件'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('旧行对应保留'), findsOneWidget);
+      expect(find.text('实际原件已变化，旧对应待核对'), findsOneWidget);
       expect(_table(tester, 'source').items.single['__mapping'], '旧对应待核对');
       final compare = tester.widget<UtenButton>(
         find.widgetWithText(UtenButton, '逐列比对'),

@@ -48,7 +48,7 @@ class AuditTriggerCoverageMigrationContractTest {
     static final int POLICY_BASELINE_VERSION = 670;
     static final Path POLICY_BASELINE =
             MIGRATION_ROOT.resolve("V670__audit_three_list_policy_change_only_rows.sql");
-    private static final Pattern MIGRATION_FILE = Pattern.compile("^V(\\d+)__.+\\.sql$");
+    private static final Pattern MIGRATION_FILE = Pattern.compile("^V(\\d+)(?:_\\d+)*__.+\\.sql$");
     private static final String IDENT =
             "(?:\"?public\"?\\s*\\.\\s*)?\"?([a-z_][a-z0-9_]*)\"?";
     static final Pattern CREATE_TABLE = Pattern.compile(
@@ -83,8 +83,8 @@ class AuditTriggerCoverageMigrationContractTest {
     /**
      * V1006 以同一个动态 EXECUTE format 模板给工资/总账清偿十张表绑 fn_audit()
      * （两个 DO 块各引用一次模板，运行时表名来自数组，静态不可枚举）。
-     * 模板原文与出现次数在此钉死，文件字节由 {@link #FORWARD_AUDIT_REPAIRS} 的
-     * V1006 条目按 sha256 锁定；十张表已由 V1042 按同一列清单显式重登记为
+     * 模板原文与出现次数在此钉死，文件字节由 {@link #DYNAMIC_LEGACY_AUDIT_FILE}
+     * 按 sha256 锁定；十张表已由 V1042 按同一列清单显式重登记为
      * COLUMN_SCOPED（由「基线之后登记」用例逐表核对），模板本身仅此一处合法。
      */
     private static final String DYNAMIC_LEGACY_AUDIT_TEMPLATE =
@@ -173,6 +173,63 @@ class AuditTriggerCoverageMigrationContractTest {
                             "create trigger trg_audit_payable_statement_adjustment_line after insert or update or delete"
                                     + " on finance_payable_statement_adjustment_lines for each row execute function fn_audit();")));
 
+    /** Applied V999_x mistakes are excused only by exact bytes/statements and their V1050 public replacement. */
+    private record LegacyFinanceAudit(String sha256,List<String> triggers,List<String> tables,String dynamicTemplate) { }
+    private static final Map<String,LegacyFinanceAudit> SEGMENTED_FINANCE_AUDIT_REPAIRS=Map.ofEntries(
+            Map.entry("V999_1__finance_chart_code_imports.sql",new LegacyFinanceAudit("3668d1c45796ff017baf2cf302c17c5c01815be372f47125e1d0e4914195b5dd",
+                    List.of("create trigger trg_audit_finance_chart_codes after insert or update or delete on finance_chart_codes for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_chart_code_styles after insert or update or delete on finance_chart_code_styles for each row execute function fn_audit();"),
+                    List.of("finance_chart_codes","finance_chart_code_styles"),
+                    null)),
+            Map.entry("V999_10__procurement_reconciliation_first_payables.sql",new LegacyFinanceAudit("eebc2f9643998323d87a86b5422a38587ea0cfa3eb1a592f748ac5a6b8567723",
+                    List.of("create trigger trg_audit_finance_procurement_ap_policy after insert or update or delete on finance_procurement_ap_policy for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_procurement_payable_routes after insert or update or delete on finance_procurement_payable_routes for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_procurement_payable_candidates after insert or update or delete on finance_procurement_payable_candidates for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_procurement_ap_recognitions after insert or update or delete on finance_procurement_ap_recognitions for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_procurement_ap_recognition_lines after insert or update or delete on finance_procurement_ap_recognition_lines for each row execute function fn_audit();"),
+                    List.of("finance_procurement_ap_policy","finance_procurement_payable_routes","finance_procurement_payable_candidates","finance_procurement_ap_recognitions","finance_procurement_ap_recognition_lines"),
+                    null)),
+            Map.entry("V999_13__finance_open_item_classification_allocations.sql",new LegacyFinanceAudit("6137d5044dcb1ae0b5432c257c7b8ed951e4f55f4f1cc9fe14cae573adeadf85",
+                    List.of("create trigger trg_finance_settlement_dependencies_audit after insert on finance_supplier_settlement_dependencies for each row execute function fn_audit();"),
+                    List.of("finance_supplier_settlement_dependencies","finance_open_item_classification_batches","finance_open_item_classification_parts","finance_payment_classification_batches","finance_payment_classification_parts","finance_supplier_offset_classification_batches","finance_supplier_offset_classification_parts"),
+                    "execute format('create trigger %i after insert on %i for each row execute function fn_audit()',table_name||'_audit',table_name);")),
+            Map.entry("V999_2__financial_voucher_evidence_and_auxiliary_allocations.sql",new LegacyFinanceAudit("d077b5f8ee5c91e860d1a79245b49ae517fe810ccf9628379386766e2e0f2663",
+                    List.of("create trigger trg_audit_finance_gl_voucher_evidence after insert on finance_gl_voucher_evidence for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_gl_entry_allocations after insert or update or delete on finance_gl_entry_allocations for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_gl_aux_opening after insert on finance_gl_auxiliary_opening_evidence for each row execute function fn_audit();"),
+                    List.of("finance_gl_voucher_evidence","finance_gl_entry_allocations","finance_gl_auxiliary_opening_evidence"),
+                    null)),
+            Map.entry("V999_3__finance_accounting_source_continuation.sql",new LegacyFinanceAudit("376947bd9e26f69affca209629834d85ee8ff96a8ad88550a389473d2e8003f9",
+                    List.of("create trigger trg_audit_finance_accounting_batch after insert or update or delete on finance_accounting_import_batches for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_gl_baseline after insert on finance_gl_opening_baselines for each row execute function fn_audit();"),
+                    List.of("finance_accounting_import_batches","finance_gl_opening_baselines"),
+                    null)),
+            Map.entry("V999_4__finance_auxiliary_items.sql",new LegacyFinanceAudit("2e4b5b28309bf51edc45499a0d956d7721af3db6f4980bdac903201cda884879",
+                    List.of("create trigger trg_audit_finance_auxiliary_parties after insert or update or delete on finance_auxiliary_parties for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_auxiliary_items after insert or update or delete on finance_auxiliary_items for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_account_auxiliary_rules after insert or update or delete on finance_account_auxiliary_rules for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_account_auxiliary_bindings after insert or update or delete on finance_account_auxiliary_bindings for each row execute function fn_audit();"),
+                    List.of("finance_auxiliary_parties","finance_auxiliary_items","finance_account_auxiliary_rules","finance_account_auxiliary_bindings"),
+                    null)),
+            Map.entry("V999_5__finance_statement_source_reviews.sql",new LegacyFinanceAudit("e453b84f637b07cab7d50efe0ff1665e9309942e7e1bcc754d5493e63b46e2d1",
+                    List.of("create trigger trg_audit_finance_statement_source_reviews after insert or update or delete on finance_statement_source_reviews for each row execute function fn_audit();"),
+                    List.of("finance_statement_source_reviews"),
+                    null)),
+            Map.entry("V999_6__finance_cost_template_inputs.sql",new LegacyFinanceAudit("4a2531b6e1c6ed26d875c5706e340f1716dfb23aa9c285dbca18a809ffbbcb18",
+                    List.of("create trigger trg_audit_finance_copper_template_inputs after insert or update or delete on finance_copper_template_inputs for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_sales_cost_inputs after insert or update or delete on finance_sales_cost_inputs for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_plastic_template_inputs after insert or update or delete on finance_plastic_template_inputs for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_material_order_references after insert or update or delete on finance_material_order_references for each row execute function fn_audit();"),
+                    List.of("finance_copper_template_inputs","finance_sales_cost_inputs","finance_plastic_template_inputs","finance_material_order_references"),
+                    null)),
+            Map.entry("V999_7__finance_asset_template_facts.sql",new LegacyFinanceAudit("ab59e77ae658abf4960370270bddb7a1a036e81c4b8050d9c2f08770d192cc42",
+                    List.of("create trigger trg_audit_finance_asset_template_metadata after insert or update or delete on finance_asset_template_metadata for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_asset_opening_groups after insert or update or delete on finance_asset_opening_groups for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_asset_opening_members after insert or update or delete on finance_asset_opening_members for each row execute function fn_audit();",
+                            "create trigger trg_audit_finance_asset_template_history after insert or update or delete on finance_asset_template_history for each row execute function fn_audit();"),
+                    List.of("finance_asset_template_metadata","finance_asset_opening_groups","finance_asset_opening_members","finance_asset_template_history"),
+                    null)));
+
     record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
                        String reason, String updateFn, String rowFn) {
         ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
@@ -191,6 +248,19 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
+            new FullGroup("finance_original_master_decisions", "data_change", false,
+                    "V1050 仅人工辅助主档、成本输入、原表标识和政策决定保留FULL；私有原件/金额分摊转入明确SCOPED",
+                    Set.of("finance_auxiliary_parties",
+                            "finance_auxiliary_items",
+                            "finance_account_auxiliary_rules",
+                            "finance_account_auxiliary_bindings",
+                            "finance_sales_cost_inputs",
+                            "finance_plastic_template_inputs",
+                            "finance_material_order_references",
+                            "finance_copper_template_inputs",
+                            "finance_asset_template_metadata",
+                            "finance_asset_opening_entry_claims",
+                            "finance_procurement_ap_policy")),
             new FullGroup("employee_identity_aliases", "authorization", false,
                     "V937 经人工证据核实的员工身份合并关系决定跨档案历史的查询范围；身份授权决定须完整审计，不能因只追加而豁免",
                     Set.of("employee_identity_aliases")),
@@ -451,6 +521,164 @@ class AuditTriggerCoverageMigrationContractTest {
                     "称重观测(V743/ADR-135): 插入由仓库采集自动产生, 行内带称重人与来源; 红冲标记是系统随单据撤回写的; "
                             + "只记人工排除/恢复这一个人为决定"),
             // ===== 2026-11 财务复刻/精度批次(V1004-V1040): 定位线索列清单, 不复制金额与业务原文 =====
+            // V1050 explicitly closes the previously unscanned V999_x inventory.
+            new ScopedTable("finance_chart_imports", "data_change", true,
+                    List.of("id","actor_id","sha256","applied_at","created_at"),
+                    "V1050 科目原件只留导入身份、摘要与完成时间；预览和结果保持私有"),
+            new ScopedTable("finance_chart_codes", "data_change", true,
+                    List.of("code","native_style_id","source_import_id","source_kind","classification","currency_id",
+                            "row_version","mapping_fingerprint","updated_at","updated_by"),
+                    "V1050 科目对应审计只留身份、分类、币别、版本及映射指纹"),
+            new ScopedTable("finance_chart_manual_operations", "data_change", true,
+                    List.of("request_id","actor_id","fingerprint","created_at"),
+                    "V1050 手动科目命令只留请求、操作者与指纹，回执不复制到审计"),
+            new ScopedTable("finance_chart_code_styles", "data_change", true,
+                    List.of("code","style_id","created_at","created_by"),
+                    "V1050 财务代码与实际科目UUID对应保留关联和操作者"),
+            new ScopedTable("finance_chart_owned_bindings", "data_change", true,
+                    List.of("code","style_id","line_key"),
+                    "V1050 科目命令拥有的报表绑定只留代码、UUID和稳定行键"),
+            new ScopedTable("finance_accounting_import_batches", "data_change", true,
+                    List.of("id","actor_id","sha256","status","row_version","submitted_by",
+                            "submitted_at","approved_by","approved_at","created_at","kind","paired_import_id",
+                            "reversed_at","reversed_by"),
+                    "V1050 原账套批次保留状态与双人核对定位，原文件、预览、正文和结果不进入审计"),
+            new ScopedTable("finance_accounting_review_operations", "data_change", true,
+                    List.of("request_id","actor_id","import_id","action","fingerprint","created_at"),
+                    "V1050 账套复核命令只留请求、批次、动作及指纹"),
+            new ScopedTable("finance_gl_voucher_evidence", "data_change", true,
+                    List.of("voucher_id","import_batch_id","purpose","source_sha256","submitted_by","approved_by",
+                            "approved_at","reversed_voucher_id"),
+                    "V1050 原凭证证明只留来源摘要、性质及复核关系，不复制原凭证快照"),
+            new ScopedTable("finance_gl_entry_allocations", "data_change", true,
+                    List.of("entry_id","allocation_no","account_code","auxiliary_id","currency_id","original_currency_id",
+                            "auxiliary_role","party_id_snapshot","source_row","created_at","created_by"),
+                    "V1050 分录辅助分摊只留身份、币别与行定位；金额、原科目名称和原始快照保持私有"),
+            new ScopedTable("finance_gl_auxiliary_opening_evidence", "data_change", true,
+                    List.of("id","import_batch_id","account_code","auxiliary_id","currency_id","original_currency_id",
+                            "effective_from","entry_id","auxiliary_role","party_id_snapshot","source_sha256","source_row",
+                            "submitted_by","approved_by","approved_at"),
+                    "V1050 辅助期初只留批次、身份、日期与复核摘要，不复制期初金额和源名称"),
+            new ScopedTable("finance_gl_opening_baselines", "data_change", true,
+                    List.of("effective_from","import_batch_id","source_sha256","verified_by","verified_at"),
+                    "V1050 期初基准只留起点、批次和确认摘要"),
+            new ScopedTable("finance_accounting_period_coverage", "data_change", true,
+                    List.of("period","entries_revision","source_kind","import_batch_id","source_sha256","verified_by",
+                            "verified_at"),
+                    "V1050 完整期间核证保留版本、依据种类与确认摘要"),
+            new ScopedTable("finance_statement_source_reviews", "data_change", true,
+                    List.of("id","actor_id","kind","currency_id","date_from","date_to",
+                            "sha256","currency_mapping_fingerprint","created_at","directory_applied_at"),
+                    "V1050 辅助对账原件仅留身份、期间、摘要及完成时间，preview和directory_result不进入通用审计"),
+            new ScopedTable("finance_template_sources", "data_change", true,
+                    List.of("id","actor_id","template_key","period","sha256","source_selection"),
+                    "V1050 原表来源沿V1031只留文件及工作表身份，不复制原表预览"),
+            new ScopedTable("finance_asset_opening_groups", "data_change", true,
+                    List.of("id","actor_id","source_import_id","source_voucher_id","as_of","source_voucher_ids",
+                            "fingerprint","status","approved_by","approved_at","revoke_actor_id","revoke_approved_by",
+                            "revoked_at","row_version","created_at"),
+                    "V1050 资产接续组保留双人决定与来源指纹，成员/原分录快照保持私有"),
+            new ScopedTable("finance_asset_opening_members", "data_change", true,
+                    List.of("group_id","object_type","object_id","source_row","source_sha256","cost_style_id",
+                            "accumulated_style_id","active"),
+                    "V1050 资产接续成员只留对象、科目、来源坐标及有效性，不复制原始/累计金额"),
+            new ScopedTable("finance_asset_template_history", "data_change", true,
+                    List.of("id","group_id","object_type","object_id","period_from","period_to",
+                            "source_import_id","source_row","source_column"),
+                    "V1050 资产历史读源只留对象、期间与原单元格坐标，reported_value和金额保持私有"),
+            new ScopedTable("finance_sales_expense_groups", "data_change", true,
+                    List.of("id","period","employee_id","channel","sales_confirmed","reviewed",
+                            "sort_order","request_fingerprint","updated_by"),
+                    "V1050 沿V999_8审计人员/渠道归属与确认指纹，不复制销售额"),
+            new ScopedTable("finance_sales_expense_assignments", "data_change", true,
+                    List.of("entry_id","period","source_fingerprint","request_fingerprint","updated_by"),
+                    "V1050 沿V999_8只留实际费用分录与分配请求定位"),
+            new ScopedTable("finance_expense_analysis_periods", "data_change", true,
+                    List.of("period","policy_confirmed","locked","updated_by"),
+                    "V1050 沿V999_9保留费用口径确认及锁定决定"),
+            new ScopedTable("finance_operating_report_notes", "data_change", true,
+                    List.of("period","line_key","updated_by"),
+                    "V1050 沿V999_9只留经营损益备注所在期间/行和操作者，不复制备注原文"),
+            new ScopedTable("finance_expense_note_imports", "data_change", true,
+                    List.of("id","actor_id","period","sha256","applied_at"),
+                    "V1050 沿V999_9只留备注导入文件摘要与完成标记"),
+            new ScopedTable("finance_manufacturing_labor_splits", "data_change", true,
+                    List.of("period","source_fingerprint","request_fingerprint","reviewed","updated_by"),
+                    "V1050 沿V999_9只留制造人工归集的期间、指纹与核对决定"),
+            new ScopedTable("finance_procurement_payable_routes", "data_change", true,
+                    List.of("source_type","source_id","policy_version","approved_on","created_by","created_at"),
+                    "V1050 首笔应付路线冻结原来源、适用政策与实际审核身份"),
+            new ScopedTable("finance_procurement_payable_candidates", "data_change", true,
+                    List.of("id","source_type","source_id","bill_no","commercial_date","accrual_date",
+                            "due_date","supplier_id","currency_id","settlement_method_id","inventory_style_id","pending_style_id",
+                            "pending_account_code","pending_accounting_currency_id","auxiliary_id","source_fingerprint","pending_voucher_id","pending_reversal_voucher_id",
+                            "status","ledger_id","recognition_id","created_by","created_at","source_reversed_at"),
+                    "V1050 暂估应付候选保留来源、状态及凭证关系；金额、汇率和原辅助/业务快照不复制到审计"),
+            new ScopedTable("finance_procurement_ap_recognitions", "data_change", true,
+                    List.of("id","request_id","payload_hash","supplier_id","currency_id","effective_date",
+                            "counterpart_confirmed_date","file_sha256","submitted_by","created_at","status","approved_by",
+                            "approved_at","reversed_by","reversed_at"),
+                    "V1050 应付对账确认保留状态、双人决定与原件摘要，原件路径/名称和确认正文保持私有"),
+            new ScopedTable("finance_procurement_ap_recognition_lines", "data_change", true,
+                    List.of("recognition_id","candidate_id","ledger_id","voucher_id","reversal_voucher_id","source_fingerprint"),
+                    "V1050 应付确认行只留原候选、台账与正反凭证定位，不复制确认金额"),
+            new ScopedTable("finance_application_settings", "authorization", true,
+                    List.of("id","enabled","enabled_at","updated_by"),
+                    "V1050 沿原流程契约审计启停决定"),
+            new ScopedTable("finance_application_enable_periods", "authorization", true,
+                    List.of("id","enabled_at","disabled_at","actor_id"),
+                    "V1050 沿原流程契约审计启用期间"),
+            new ScopedTable("finance_application_role_bindings", "authorization", true,
+                    List.of("id","role_key","department_id","employee_id","updated_by"),
+                    "V1050 沿原流程契约审计明确岗位指派"),
+            new ScopedTable("finance_applications", "data_change", true,
+                    List.of("id","application_no","kind","source_kind","source_id","status",
+                            "current_step","submission_round","source_fingerprint","payroll_instruction_fingerprint","submitted_at","approved_at",
+                            "approved_by","created_by","updated_by"),
+                    "V1050 原申请只留身份、节点与冻结指纹，原正文及金额不进入通用审计"),
+            new ScopedTable("finance_application_nodes", "data_change", true,
+                    List.of("application_id","submission_round","step_no","role_key","action","status",
+                            "decided_by","decided_at"),
+                    "V1050 原审批节点保留顺序与实际决定者"),
+            new ScopedTable("finance_application_events", "data_change", true,
+                    List.of("id","application_id","submission_round","event_type","step_no","actor_id",
+                            "actor_employee_id","occurred_at"),
+                    "V1050 原申请事件只留不可变动作定位，不复制detail原文"),
+            new ScopedTable("finance_application_operations", "data_change", true,
+                    List.of("request_id","application_id","actor_id","operation","payload_hash","created_at"),
+                    "V1050 原申请及设置回执只留请求、作用域与指纹，result保持私有"),
+            new ScopedTable("finance_application_executions", "data_change", true,
+                    List.of("id","application_id","submission_round","request_id","doc_type","doc_id",
+                            "state","paid_by","paid_at","confirmed_by","confirmed_at","reversed_by",
+                            "reversed_at"),
+                    "V1050 原付款执行只留真实单据、状态及办理人，不复制结果正文"),
+            new ScopedTable("finance_expense_application_links", "data_change", true,
+                    List.of("claim_id","kind","travel_application_id","application_id","created_by"),
+                    "V1050 原报销与申请链接只留同一单据身份"),
+            new ScopedTable("finance_supplier_settlement_dependencies", "data_change", true,
+                    List.of("payment_line_id","offset_id","ledger_id","relation","created_at","created_by"),
+                    "V1050 结算先后依赖只留原付款/抵销/账目身份，source_snapshot保持私有"),
+            new ScopedTable("finance_open_item_classification_batches", "data_change", true,
+                    List.of("id","request_id","ledger_id","revision","direction","party_id",
+                            "currency_id","effective_from","fingerprint","created_at","created_by"),
+                    "V1050 往来分类只留完整命令指纹与归属，不复制原金额"),
+            new ScopedTable("finance_open_item_classification_parts", "data_change", true,
+                    List.of("batch_id","category"),
+                    "V1050 往来分类明细只留批次与类别，金额留在财务来源"),
+            new ScopedTable("finance_payment_classification_batches", "data_change", true,
+                    List.of("id","request_id","payment_line_id","revision","source_classification_id","currency_id",
+                            "fingerprint","created_at","created_by"),
+                    "V1050 付款分摊只留请求与实际来源身份，不复制原币/现金/账面金额"),
+            new ScopedTable("finance_payment_classification_parts", "data_change", true,
+                    List.of("batch_id","category"),
+                    "V1050 付款分类明细只留批次与类别"),
+            new ScopedTable("finance_supplier_offset_classification_batches", "data_change", true,
+                    List.of("id","request_id","offset_id","revision","source_classification_id","target_classification_id",
+                            "fingerprint","created_at","created_by"),
+                    "V1050 供应商抵销分摊只留请求及前后分类归属，不复制源/目标账面金额"),
+            new ScopedTable("finance_supplier_offset_classification_parts", "data_change", true,
+                    List.of("batch_id","source_category","target_category"),
+                    "V1050 抵销分类明细只留批次和前后类别"),
             new ScopedTable("finance_material_contexts", "data_change", true,
                     List.of("id","auxiliary_id","account_code","accounting_currency_id","goods_id","color_id",
                             "amount_basis","original_currency_id","row_version","active","created_by","created_at"),
@@ -632,9 +860,12 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
+            new NoneGroup("financial_period_revision",
+                    "总账分录变动自动维护版本戳，原计数与核证守卫不变；不是第二次人为决定",
+                    Set.of("finance_gl_period_versions")),
             new NoneGroup("finance_batch_entry_receipts",
-                    "V991 按账号和幂等键保存原子钱流批次的请求摘要与既定回执；实际单据和钱流仍按各自业务审计，重试只读取原回执，不把协调结果复制成第二份行审计",
-                    Set.of("finance_batch_entry_commands")),
+                    "按账号和原请求保存财务批次及成本/资产补录的协调回执；实际单据和人工输入分别审计，不将私有结果再复制到通用审计",
+                    Set.of("finance_batch_entry_commands","finance_cost_input_operations","finance_asset_template_operations")),
             new NoneGroup("stock_claim_storage_projection",
                     "V993 预留在实际仓位的剩余量由不可变流转事件维护，可按原预留与事件重建；不是人工主档或第二份库存归属，调拨单和预留决定继续保留 FULL 审计",
                     Set.of("stock_reservation_storage_positions")),
@@ -1132,6 +1363,17 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     @Test
+    void segmentedFinancialMigrationsAreIncludedInTheirActualFlywayOrder() throws IOException {
+        var versions=migrations().stream().map(source->source.path().getFileName().toString())
+                .map(name->name.substring(1,name.indexOf("__")))
+                .filter(version->version.startsWith("999_")).toList();
+        assertEquals(java.util.stream.IntStream.rangeClosed(1,13).mapToObj(n->"999_"+n).toList(),versions,
+                "The financial source inventory must not disappear behind an integer-only filename parser");
+        assertEquals(999,liveTableVersions().get("finance_template_sources"));
+        assertEquals(999,liveTableVersions().get("finance_application_operations"));
+    }
+
+    @Test
     void tablesCreatedAfterTheBaselineRegisterTheirPolicyInMigrations() throws IOException {
         Map<String, Integer> created = liveTableVersions();
         Map<String, String> registered = new HashMap<>();
@@ -1241,8 +1483,7 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     private static String removeExactlyForwardRepairedAuditTrigger(MigrationSource migration, String sql) throws Exception {
-        List<ForwardAuditRepair> repairs = FORWARD_AUDIT_REPAIRS.get(migration.version());
-        if (repairs == null) return sql;
+        List<ForwardAuditRepair> repairs = FORWARD_AUDIT_REPAIRS.getOrDefault(migration.version(),List.of());
         for (ForwardAuditRepair repair : repairs) {
             assertEquals(repair.file(), migration.path().getFileName().toString());
             assertEquals(repair.sha256(), HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -1271,6 +1512,35 @@ class AuditTriggerCoverageMigrationContractTest {
             assertEquals(DYNAMIC_LEGACY_AUDIT_TEMPLATE_OCCURRENCES, occurrences,
                     "the dynamic legacy audit template is pinned to its reviewed count");
             sql = sql.replace(DYNAMIC_LEGACY_AUDIT_TEMPLATE, "");
+        }
+        return removeReviewedFinancialAudit(migration,sql);
+    }
+
+    private static String removeReviewedFinancialAudit(MigrationSource migration,String sql) throws Exception {
+        var known=SEGMENTED_FINANCE_AUDIT_REPAIRS.get(migration.path().getFileName().toString());
+        if(known==null)return sql;
+        assertEquals(known.sha256(),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(Files.readAllBytes(migration.path()))),"Applied financial migration bytes remain immutable");
+        String forward=stripSqlComments(Files.readString(MIGRATION_ROOT.resolve(
+                "V1050__financial_source_audit_policy_forward.sql"),StandardCharsets.UTF_8));
+        Map<String,String> replacements=new HashMap<>();
+        Matcher registration=REGISTRATION.matcher(forward);
+        while(registration.find())assertNull(replacements.put(registration.group(1),registration.group(2)),
+                "Every V1050 policy is registered exactly once");
+        for(String table:known.tables()) {
+            String expected=fullTables().containsKey(table)?"FULL":scopedTables().containsKey(table)?"COLUMN_SCOPED":"NONE";
+            assertEquals(expected,replacements.get(table),"The historical trigger needs its exact final public policy: "+table);
+        }
+        for(String trigger:known.triggers()) {
+            assertTrue(sql.contains(trigger),"The reviewed historical trigger must remain present");
+            assertEquals(sql.indexOf(trigger),sql.lastIndexOf(trigger),"Only one occurrence of each reviewed trigger is allowed");
+            sql=sql.replace(trigger,"");
+        }
+        if(known.dynamicTemplate()!=null) {
+            String template=known.dynamicTemplate();
+            assertTrue(sql.contains(template),"The reviewed classification audit template must remain present");
+            assertEquals(sql.indexOf(template),sql.lastIndexOf(template),"Only the one pinned dynamic template is allowed");
+            sql=sql.replace(template,"");
         }
         return sql;
     }
@@ -1442,7 +1712,8 @@ class AuditTriggerCoverageMigrationContractTest {
                 }
             }
         }
-        result.sort(Comparator.comparingInt(MigrationSource::version));
+        result.sort(Comparator.comparing(source->org.flywaydb.core.api.MigrationVersion.fromVersion(
+                source.path().getFileName().toString().substring(1,source.path().getFileName().toString().indexOf("__")))));
         return result;
     }
 

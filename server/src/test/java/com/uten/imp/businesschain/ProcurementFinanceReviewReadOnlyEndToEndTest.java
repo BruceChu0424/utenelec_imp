@@ -42,10 +42,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "uten.storage.uploads-enabled=true", "uten.storage.malware-scan.provider=test-only", "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@FinanceScopedChain
 class ProcurementFinanceReviewReadOnlyEndToEndTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
-        FullChainEndToEndTest.registerDataSource(registry);
+        FinanceScopedChainDatabase.register(registry,ProcurementFinanceReviewReadOnlyEndToEndTest.class);
     }
 
     @Autowired AutowireCapableBeanFactory beans;
@@ -53,6 +54,8 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
     @Autowired PurchaseRequestService requests;
     @Autowired PurchaseOrderService orders;
     @Autowired PurchaseOrderPrintService prints;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired com.uten.imp.security.TxSessionVars transactionIdentity;
     @Autowired ProcurementFinanceApprovalService finance;
     @Autowired TaskClaimService claims;
     @Autowired SubcontractOrderService subcontractOrders;
@@ -144,10 +147,34 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
                         assertThat(failure.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
 
         fixture.loginAs(w.superAdminUserId());
+        String frozenBeforeChange=db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId);
+        assertThatThrownBy(()->db.update("UPDATE purchase_order_items SET qty=2,amount_original=0.2,amount_local=0.2 WHERE id=?",itemId))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId)).isEqualTo(frozenBeforeChange);
+        UUID incompleteRevision=UUID.randomUUID();
+        var incompleteUpdateReached=new java.util.concurrent.atomic.AtomicBoolean();
+        assertThatThrownBy(()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            transactionIdentity.bind();
+            db.update("""
+                INSERT INTO procurement_order_source_revisions(id,order_type,order_id,order_item_id,old_qty,new_qty,unit_rate,
+                    before_item,approval_attempt_before,actor_user_id,actor_employee_id)
+                SELECT ?,'PURCHASE',i.order_id,i.id,i.qty,2,i.unit_rate,to_jsonb(i),
+                    (SELECT COALESCE(max(attempt),0) FROM procurement_order_approval_cases WHERE order_type='PURCHASE' AND order_id=i.order_id),?,?
+                FROM purchase_order_items i WHERE i.id=?
+                """,incompleteRevision,w.superAdminUserId(),w.employeeId(),itemId);
+            db.update("UPDATE purchase_order_items SET qty=2,amount_original=0.2,amount_local=0.2 WHERE id=?",itemId);
+            incompleteUpdateReached.set(true);
+        })).isInstanceOf(RuntimeException.class);
+        assertThat(incompleteUpdateReached).as("a matching source proof alone cannot commit without allocation, log and reconfirmation facts").isTrue();
+        assertThat(db.queryForObject("SELECT count(*) FROM procurement_order_source_revisions WHERE id=?",Integer.class,incompleteRevision)).isZero();
+        assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId)).isEqualTo(frozenBeforeChange);
         var changed = orders.changeQty(order.getId(), new OrderQtyChangeRequest(
                 List.of(new OrderQtyChangeItem(itemId, new BigDecimal("2")))));
         assertThat(changed.getStatus()).isEqualTo((short) 1);
         assertThat(changed.getFinanceApproval().status()).isEqualTo("PENDING");
+        assertThat(db.queryForObject("SELECT before_item::text FROM procurement_order_source_revisions WHERE order_item_id=? ORDER BY revision_sequence DESC LIMIT 1",String.class,itemId)).isEqualTo(frozenBeforeChange);
+        assertThat(db.queryForObject("SELECT charged_base_qty FROM purchase_order_items WHERE id=?",BigDecimal.class,itemId)).isEqualByComparingTo("2");
+        assertThat(db.queryForObject("SELECT gift_base_qty FROM purchase_order_items WHERE id=?",BigDecimal.class,itemId)).isZero();
         assertExportShowsPendingWithoutApprovalSignature(order.getId(), "改量待财务复核");
 
         fixture.loginAs(reviewer);
@@ -187,7 +214,8 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
             line.setQty(new BigDecimal("3"));
             line.setTotalAmountInput(new BigDecimal("10.1234567891"));
             request.setItems(List.of(line));
-            var order = subcontractOrders.create(request);
+            var order = withExplicitReferencePrice(() -> subcontractOrders.create(request));
+            assertThat(order.getItems().getFirst().getPrice()).isEqualByComparingTo("3.374485596366666666666666");
             UUID itemId = order.getItems().getFirst().getId();
             var submitted = finance.submit("SUBCONTRACT", order.getId());
             String original = snapshot(submitted.caseId());
@@ -217,6 +245,14 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
 
     private String snapshot(UUID caseId) {
         return db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE id=?", String.class, caseId);
+    }
+
+    private <T>T withExplicitReferencePrice(java.util.function.Supplier<T> action) {
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.reference-unit-price",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))) {
+            return action.get();
+        } catch(RuntimeException|Error failure){throw failure;}
+        catch(Exception failure){throw new IllegalStateException("Cannot close the explicit reference-price choice",failure);}
     }
 
     /**

@@ -51,7 +51,7 @@ void main() {
     },
   );
   test(
-    'financial units preserve 24 digits while legacy quantity defaults stay four',
+    'financial units preserve 24 digits and finite products never round to a legacy quantum',
     () {
       const value = '0.123456789012345678901234';
       expect(financeAmountFromUnits(financeAmountUnits(value)!), value);
@@ -63,7 +63,19 @@ void main() {
       );
       expect(financeAmountUnits('0.0000000000000000000000001'), isNull);
       expect(financeExactDecimalUnits('0.00001'), isNull);
-      expect(financeExactProductUnits('0.0001', '0.5'), BigInt.one);
+      expect(
+        financeExactDecimalFromUnits(
+          financeExactProductUnits('0.0001', '0.5')!,
+          scale: 48,
+        ),
+        '0.000050000000000000000000000000000000000000000000',
+      );
+      expect(
+        financeExactProductUnits('0.0001', '0.5', outputScale: 4),
+        isNull,
+        reason:
+            'A four-place projection requires an explicit choice; it must not round .00005 to .0001',
+      );
     },
   );
   test(

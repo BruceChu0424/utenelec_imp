@@ -85,6 +85,8 @@ class FinancePaymentSettlementPostgresTest {
     private GlPostingService glPostingService;
 
     @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired private com.uten.imp.security.TxSessionVars transactionIdentity;
+    @Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativeAccounts;
 
     @AfterEach
     void clearSecurityContext() {
@@ -149,7 +151,7 @@ class FinancePaymentSettlementPostgresTest {
 
         glPostingService.generate(currentPeriod());
         var entries = jdbc.queryForList("""
-                SELECT entry.line_no, entry.direction, entry.amount
+                SELECT entry.line_no, entry.style_id, entry.direction, entry.amount
                 FROM gl_entries entry
                 JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id
                 WHERE voucher.source='AUTO'
@@ -158,12 +160,14 @@ class FinancePaymentSettlementPostgresTest {
                 ORDER BY entry.line_no
                 """, draft.getId());
         assertThat(entries).hasSize(3);
-        assertThat(((Number) entries.get(0).get("direction")).intValue()).isEqualTo(1);
-        assertMoney(entries.get(0).get("amount"), "210.0000");
-        assertThat(((Number) entries.get(1).get("direction")).intValue()).isEqualTo(-1);
-        assertMoney(entries.get(1).get("amount"), "216.0000");
-        assertThat(((Number) entries.get(2).get("direction")).intValue()).isEqualTo(1);
-        assertMoney(entries.get(2).get("amount"), "6.0000");
+        var debtPart=jdbc.queryForMap("SELECT 1000+line_no AS gl_line,(account_snapshot->>'styleId')::uuid AS style FROM finance_native_cash_debt_parts WHERE kind='PAYMENT' AND cash_id=? AND ledger_id=?",draft.getId(),ledgerId);
+        var debtEntry=entries.stream().filter(entry->((Number)entry.get("line_no")).intValue()==((Number)debtPart.get("gl_line")).intValue()).findFirst().orElseThrow();
+        assertThat(debtEntry.get("style_id")).as("native approval owns the saved AP account, independent of GL display order").isEqualTo(debtPart.get("style"));
+        assertThat(((Number)debtEntry.get("direction")).intValue()).isEqualTo(1);assertMoney(debtEntry.get("amount"),"210.0000");
+        var bankEntry=entries.stream().filter(entry->((Number)entry.get("line_no")).intValue()==2).findFirst().orElseThrow();
+        assertThat(((Number)bankEntry.get("direction")).intValue()).isEqualTo(-1);assertMoney(bankEntry.get("amount"),"216.0000");
+        var fxEntry=entries.stream().filter(entry->((Number)entry.get("line_no")).intValue()==3).findFirst().orElseThrow();
+        assertThat(((Number)fxEntry.get("direction")).intValue()).isEqualTo(1);assertMoney(fxEntry.get("amount"),"6.0000");
         assertMoney(jdbc.queryForObject("""
                 SELECT SUM(entry.direction*entry.amount)
                 FROM gl_entries entry
@@ -492,6 +496,9 @@ class FinancePaymentSettlementPostgresTest {
                 """, accountId, "ACC-PAY-" + accountId, currencyId);
         UUID receiptId=UUID.randomUUID(),receiptItemId=UUID.randomUUID(),unitId=UUID.randomUUID(),goodsId=UUID.randomUUID(),warehouseId=UUID.randomUUID();
         String receiptNo="CJ20260801%06d".formatted(BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet());
+        var previousAuthentication=SecurityContextHolder.getContext().getAuthentication();
+        loginAsSuperAdmin(UUID.randomUUID(),UUID.randomUUID(),"native-source-approval-fixture");
+        try {
         new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(transaction->{
         jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'付款来源单位')",unitId,"U-PAY-"+unitId);
         jdbc.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES(?,?,'付款来源物料',?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",goodsId,"G-PAY-"+goodsId,unitId);
@@ -518,7 +525,11 @@ class FinancePaymentSettlementPostgresTest {
                     false, 1, false)
                 """, ledgerId, receiptId,receiptNo,
                 receiptNo, supplierId, currencyId);
+        com.uten.imp.testsupport.NativeArApApprovalFixture.capture(jdbc,transactionIdentity,nativeAccounts,ledgerId);
         });
+        } finally {
+            SecurityContextHolder.getContext().setAuthentication(previousAuthentication);
+        }
     }
 
     private void seedAccountingStyles() {

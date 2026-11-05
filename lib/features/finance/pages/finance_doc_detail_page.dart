@@ -1,5 +1,10 @@
+import 'finance_doc_edit_page.dart';
+import '../widgets/finance_document_review_command.dart';
+import '../shared/finance_document_intent.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
+import '../../../shared/platform_tables/platform_table_models.dart';
+import '../../../core/network/api_client.dart';
 import '../../../shared/models/accounting_expense_purpose.dart';
-import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
@@ -60,9 +65,13 @@ class FinanceDocDetailPage extends ConsumerStatefulWidget {
     super.key,
     required this.docType,
     required this.id,
+    this.reviewSnapshot,
+    this.allowVersionAdoption = false,
   });
   final FinanceDocType docType;
   final String id;
+  final FinanceDocDetail? reviewSnapshot;
+  final bool allowVersionAdoption;
 
   @override
   ConsumerState<FinanceDocDetailPage> createState() =>
@@ -75,9 +84,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
   FinanceDocDetail? _detail;
   bool _loading = false;
   bool _summaryExpanded = false;
-  bool _busy = false;
-  // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
-  String _busyTitle = '正在处理，请稍候';
+  bool _reviewOpening = false, _reviewResumed = false;
   String? _error;
 
   @override
@@ -98,7 +105,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       ref.read(currentPermissionsProvider).contains(code);
 
   bool get _canMutate =>
-      nativeReadCanWrite && _detail != null && !_detail!.legacyImported;
+      widget.reviewSnapshot == null &&
+      nativeReadCanWrite &&
+      _detail != null &&
+      !_detail!.historyReadOnly &&
+      !_detail!.legacyImported;
 
   bool get _ordinaryWritable =>
       _canMutate &&
@@ -126,12 +137,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
   void nativeReadOwnerChanged() => setState(() {
     _detail = null;
     _loading = false;
-    _busy = false;
+    _reviewOpening = false;
     _error = '登录身份或服务器已变化，原页面信息已隐藏，请重新加载';
   });
   @override
   void nativeReadPermissionChanged() => setState(() {
-    _busy = false;
+    _reviewOpening = false;
   });
   @override
   Future<void> nativeReadReload() => _load();
@@ -142,6 +153,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       () => '${widget.docType.name}/${widget.id}',
     );
     if (!acceptsRead()) return;
+    final readRecovery =
+        widget.reviewSnapshot == null &&
+        goRouterPageStateOrNull(context)?.uri.queryParameters['draftForm'] ==
+            'financeDocumentReview';
     setState(() {
       _loading = true;
       _error = null;
@@ -171,9 +186,15 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         }
       }
       if (!acceptsRead()) return;
-      final d = await ref
-          .read(financeRepositoryProvider(widget.docType))
-          .detail(widget.id);
+      final d =
+          widget.reviewSnapshot ??
+          await (readRecovery
+              ? ref
+                    .read(financeRepositoryProvider(widget.docType))
+                    .detailForRecovery(widget.id)
+              : ref
+                    .read(financeRepositoryProvider(widget.docType))
+                    .detail(widget.id));
       if (!acceptsRead()) return;
       await ref
           .read(financeNameServiceProvider)
@@ -182,11 +203,50 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             supplierIds: [d.supplierId].whereType<String>(),
           );
       if (!acceptsRead()) return;
+      if (!mounted) return;
       acceptNativeRead();
       setState(() {
         _detail = d;
         _loading = false;
       });
+      if (!mounted) return;
+      if (!_reviewResumed && widget.reviewSnapshot == null) {
+        final uri = goRouterPageStateOrNull(context)?.uri ?? Uri();
+        if (uri.queryParameters['draftForm'] == 'financeDocumentEdit' &&
+            uri.queryParameters['draftId'] != null) {
+          _reviewResumed = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            await Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => FinanceDocEditPage(
+                  docType: widget.docType,
+                  id: widget.id,
+                  resumeDraftId: uri.queryParameters['draftId'],
+                  readRecovery: true,
+                ),
+              ),
+            );
+            if (mounted) await _load();
+          });
+        }
+        if (uri.queryParameters['draftForm'] == 'financeDocumentReview' &&
+            uri.queryParameters['draftId'] != null) {
+          _reviewResumed = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _reviewDocument(
+                d,
+                uri.queryParameters['reviewOperation'] == 'unapprove',
+                glConfirm:
+                    uri.queryParameters['reviewOperation'] == 'gl-confirm',
+                deleteDraft: uri.queryParameters['reviewOperation'] == 'delete',
+                resumeDraftId: uri.queryParameters['draftId'],
+              );
+            }
+          });
+        }
+      }
     } on ApiException catch (e) {
       if (!acceptsRead()) return;
       setState(() {
@@ -202,20 +262,128 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
     }
   }
 
-  Future<void> _approve() async => _doAction(
-    _approvalMessage,
-    (repo) => repo.approve(widget.id),
-    '已审核',
-    busyTitle: '正在审核，请稍候',
-    reviewerResponsibility: true,
-  );
+  Future<void> _reviewDocument(
+    FinanceDocDetail displayed,
+    bool unapprove, {
+    bool glConfirm = false,
+    bool deleteDraft = false,
+    String? resumeDraftId,
+  }) async {
+    if (_reviewOpening ||
+        !nativeReadAccessConfirmed ||
+        resumeDraftId == null &&
+            (!identical(displayed, _detail) || !nativeReadCanWrite)) {
+      return;
+    }
+    final owner = captureNativeOwnership();
+    setState(() => _reviewOpening = true);
+    try {
+      String? facts;
+      if (resumeDraftId == null) {
+        if (!financeDocumentHasReviewSnapshot(
+          displayed,
+          type: widget.docType,
+        )) {
+          context.appWarning('单据审核版本依据未加载完整，请刷新详情后再操作');
+          return;
+        }
+        if (unapprove) {
+          final capability = await UtenBusyOverlay.run(
+            context,
+            title: '正在核对反审条件',
+            action: () => fetchDocumentUnapprovalCapability(
+              ref.read(apiClientProvider),
+              unapprovalFamilyForRoute('finance', widget.docType.pathSegment)!,
+              widget.id,
+            ),
+          );
+          if (!mounted || !owner() || !identical(displayed, _detail)) return;
+          if (capability.documentSnapshot != displayed.approvalSnapshot) {
+            context.appWarning('当前单据已变化，请刷新并查看当前单据后再反审');
+            return;
+          }
+          if (!capability.eligible) {
+            context.appWarning(capability.blockReason);
+            return;
+          }
+          facts = capability.factsSnapshot;
+        }
+      }
+      if (!mounted || !owner()) return;
+      final envelope = await showFinanceDocumentReviewCommand(
+        context,
+        type: widget.docType,
+        documentId: widget.id,
+        unapprove: unapprove,
+        glConfirm: glConfirm,
+        deleteDraft: deleteDraft,
+        reviewedDetail: displayed,
+        factsSnapshot: facts,
+        resumeDraftId: resumeDraftId,
+        confirmationMessage: deleteDraft
+            ? '删除当前所查看的草稿，原单据和明细保留审计历史；其他人后来修改的版本不会被此请求删除。'
+            : glConfirm
+            ? '财务确认后，该费用单进入历史记录，不能从普通单据入口修改或反审。确认当前所查看的已过账费用单？'
+            : unapprove
+            ? documentUnapprovalConfirmation
+            : _approvalMessage,
+      );
+      if (!mounted || !owner() || envelope == null) return;
+      bumpListRefresh(ref, _cfg.refreshKey);
+      if (envelope['outcome'] == 'CANCELLED_UNWRITTEN') {
+        await _load();
+        return;
+      }
+      final result = Map<String, dynamic>.from(envelope['result'] as Map);
+      if (deleteDraft) {
+        if (result['id'] != widget.id ||
+            result['status'] != 0 ||
+            result['deleted'] != true) {
+          throw StateError('原删除回执不完整');
+        }
+        context.appSuccess('已删除');
+        popOrBackTo(context, defaultPath: RouteName.finance);
+      } else if (unapprove) {
+        final evidence = requireUnapprovalEvidence(widget.id, result);
+        showDocumentUnapprovalResult(context, evidence.status);
+        openUnapprovedDraft(
+          context,
+          RoutePath.financeDocDetail(
+            widget.docType.pathSegment,
+            evidence.successorId,
+          ),
+        );
+      } else {
+        context.appSuccess(
+          '${glConfirm ? '已财务确认' : '已审核'}${financeDocumentPrecisionLabel(envelope)}',
+        );
+        await _load();
+      }
+    } catch (error) {
+      if (mounted && owner()) {
+        context.appError(
+          error is ApiException ? error.message : '原操作仍待核对，请通过原草稿恢复',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _reviewOpening = false);
+    }
+  }
 
   String get _approvalMessage {
     final d = _detail;
     if (_cfg.type != FinanceDocType.payment ||
         d == null ||
         (d.settlementAuthorityVersion ?? 0) < 2) {
-      return '审核后将核销 AR/AP 并变动账户余额、写流水，确认审核？';
+      return switch (widget.docType) {
+        FinanceDocType.receipt when d?.receiptKind == 'CUSTOMER_PREPAYMENT' =>
+          '审核后将登记客户订单预收、变动对应账户余额并写入流水，确认审核？',
+        FinanceDocType.receipt => '审核后将按所查看的应收核销与实际到账资料登记账户流水和财务记录，确认审核？',
+        FinanceDocType.payment => '审核后将按所查看的应付核销与实际扣款资料登记账户流水和财务记录，确认审核？',
+        FinanceDocType.expense => '审核后将登记所查看的费用、对应账户流水和财务记录，确认审核？',
+        FinanceDocType.otherIncome => '审核后将登记所查看的收入、对应账户流水和财务记录，确认审核？',
+        FinanceDocType.bankTransfer => '审核后将按所查看的转出、转入明细变动账户余额并登记流水，确认审核？',
+      };
     }
     final names = ref.read(financeNameServiceProvider);
     final book = financeExactSumTexts(
@@ -232,143 +400,15 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         '审核将核销应付、登记实际账户流水并生成付款凭证，确认审核？';
   }
 
-  Future<void> _reverse() async => _doAction(
-    documentUnapprovalConfirmation,
-    (repo) => repo.reverse(widget.id),
-    '已反审，进入草稿',
-    busyTitle: '正在反审，请稍候',
-  );
-
-  /// C6 财务确认（仅费用单）：已过账 → 财务确认入账。
-  Future<void> _glConfirm() async => _doAction(
-    '确认该费用单的总账分录入账？',
-    (repo) => repo.glConfirm(widget.id),
-    '已财务确认',
-    busyTitle: '正在确认入账，请稍候',
-    reviewerResponsibility: true,
-    reviewerActionLabel: '费用单总账确认',
-  );
-
-  Future<void> _doAction(
-    String confirm,
-    Future<Object?> Function(FinanceRepository) fn,
-    String ok, {
-    bool reviewerResponsibility = false,
-    String reviewerActionLabel = '审核',
-    String? busyTitle,
-  }) async {
-    if (!nativeReadCanWrite) return;
-    final ownsNative = captureNativeOwnership();
-    if (_busy || !_canMutate) return;
-    final c = reviewerResponsibility
-        ? await showNativeReadReviewerConfirm(
-            context,
-            message: confirm,
-            actionLabel: reviewerActionLabel,
-          )
-        : await showDialog<bool>(
-            context: context,
-            builder: (ctx) => trackNativeReadDialog(
-              ctx,
-              UtenAlertDialog(
-                title: const Text('确认'),
-                content: Text(confirm),
-                actionsAlignment: MainAxisAlignment.center,
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('取消'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('确认'),
-                  ),
-                ],
-              ),
-            ),
-          );
-    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
-    setState(() {
-      _busy = true;
-      _busyTitle = busyTitle ?? '正在处理，请稍候';
-    });
-    try {
-      final result = await fn(
-        ref.read(financeRepositoryProvider(widget.docType)),
-      );
-      if (!mounted || !ownsNative()) return;
-      bumpListRefresh(ref, _cfg.refreshKey);
-      if (result is FinanceDocDetail && result.id != widget.id) {
-        showDocumentUnapprovalResult(context, result.status);
-        openUnapprovedDraft(
-          context,
-          RoutePath.financeDocDetail(widget.docType.pathSegment, result.id),
-        );
-        return;
-      }
-      context.appSuccess(ok);
-      await _load();
-    } on ApiException catch (e) {
-      if (mounted && ownsNative()) context.appError(e.message);
-    } catch (_) {
-      if (mounted && ownsNative()) context.appError('操作失败，请稍后重试');
-    } finally {
-      if (mounted && ownsNative()) setState(() => _busy = false);
-    }
+  /// These final document actions share the same frozen request and receipt owner.
+  Future<void> _glConfirm() async {
+    final detail = _detail;
+    if (detail != null) await _reviewDocument(detail, false, glConfirm: true);
   }
 
   Future<void> _delete() async {
-    if (!nativeReadCanWrite) return;
-    final ownsNative = captureNativeOwnership();
-    if (!_canMutate) return;
-    if (_busy) return;
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => trackNativeReadDialog(
-        ctx,
-        UtenAlertDialog(
-          title: const Text('删除单据'),
-          content: const Text('确定删除该草稿单据吗？'),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(ctx).colorScheme.error,
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('删除'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
-    setState(() {
-      _busy = true;
-      _busyTitle = '正在删除，请稍候';
-    });
-    try {
-      await ref
-          .read(financeRepositoryProvider(widget.docType))
-          .delete(widget.id);
-      if (!mounted || !ownsNative()) return;
-      context.appSuccess('已删除');
-      // 删除也 bump：来源列表立即去掉这行，草稿计数/徽章即时重拉
-      // （其余写动作都有 bump，唯独删除漏了）。
-      bumpListRefresh(ref, _cfg.refreshKey);
-      // 返回键契约（路由设计 §十一）：pop 回来源，栈空回钱流 hub。
-      popOrBackTo(context, defaultPath: RouteName.finance);
-    } on ApiException catch (e) {
-      if (mounted && ownsNative()) context.appError(e.message);
-    } catch (_) {
-      if (mounted && ownsNative()) context.appError('删除失败，请稍后重试');
-    } finally {
-      if (mounted && ownsNative()) setState(() => _busy = false);
-    }
+    final detail = _detail;
+    if (detail != null) await _reviewDocument(detail, false, deleteDraft: true);
   }
 
   @override
@@ -419,10 +459,6 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
                   ? const SizedBox.shrink()
                   : _body(theme, names, scopeCapability, canViewFiles),
             ),
-            // 处理中屏幕中央加载遮罩（对齐销售单据详情 UtenBusyOverlay 口径）：
-            // 只跟随网络等待段，结果提示展示期间已撤下；按钮禁用逻辑不变。
-            if (_busy)
-              Positioned.fill(child: UtenBusyOverlay(title: _busyTitle)),
           ],
         ),
       ),
@@ -432,7 +468,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       floatingActionButton:
           !nativeReadAccessConfirmed ||
               _detail == null ||
-              _busy ||
+              _reviewOpening ||
               _loading ||
               _error != null
           ? null
@@ -543,6 +579,26 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
       ],
     ];
+  }
+
+  String get _platformHeaderScope => switch (widget.docType) {
+    FinanceDocType.receipt => 'finance_receipt',
+    FinanceDocType.payment => 'finance_payment',
+    FinanceDocType.expense => 'finance_expense',
+    FinanceDocType.otherIncome => 'finance_other_income',
+    FinanceDocType.bankTransfer => 'finance_bank_transfer',
+  };
+  String get _platformItemScope => '${_platformHeaderScope}_item';
+  PlatformRowValues? _platformRow(String scope, String? id) {
+    final values = _detail?.approvalPlatformFields[scope];
+    if (values is! List || id == null) return null;
+    final row = values
+        .whereType<Map<Object?, Object?>>()
+        .where((value) => value['recordId'] == id)
+        .firstOrNull;
+    return row == null
+        ? null
+        : PlatformRowValues.fromJson(Map<String, dynamic>.from(row));
   }
 
   Widget _headerCard(ThemeData theme, FinanceNameService names) {
@@ -921,6 +977,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           if (primaryLabels.contains(r.label)) _kvRow(theme, r),
       ],
       facts: [
+        for (final cell
+            in _platformRow(_platformHeaderScope, d.id)?.cells ??
+                <PlatformColumnCell>[])
+          UtenSummaryField(
+            label: cell.definition.name,
+            value: cell.masked ? '••••' : cell.error ?? cell.value ?? '—',
+            inline: true,
+          ),
         for (final r in rows)
           if (factLabels.contains(r.label)) _kvRow(theme, r),
         for (final metric in moneyMetrics)
@@ -1153,7 +1217,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: _cfg.isClient ? '本次收款金额' : '本次付款金额',
+          label: isVersionedReceipt
+              ? FinanceDocConfig.receiptAllocationAmountLabel
+              : _cfg.isClient
+              ? '本次收款金额'
+              : FinanceDocConfig.paymentOriginalAmountLabel,
           width: _cfg.isClient ? 180 : 130,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
@@ -1233,7 +1301,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: '本次付款金额',
+          label: FinanceDocConfig.paymentOriginalAmountLabel,
           width: 110,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
@@ -1335,6 +1403,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         Expanded(
           child: MasterDataTableView<FinanceDocItem>(
             tableKey: 'finance.${widget.docType.name}.items',
+            platformBinding: PlatformTableBinding<FinanceDocItem>(
+              tableKey: 'finance.${widget.docType.name}.items',
+              scope: _platformItemScope,
+              recordIdOf: (row) => row.id,
+              snapshotOf: (row) => _platformRow(_platformItemScope, row.id),
+            ),
             primary: true,
             columns: columns,
             items: items,
@@ -1353,6 +1427,21 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
   }
 
   Widget _actions(ThemeData theme) {
+    if (widget.allowVersionAdoption && widget.reviewSnapshot != null) {
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('返回原输入'),
+          ),
+          UtenButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('采用当前版本，保留输入'),
+          ),
+        ],
+      );
+    }
     final detail = _detail!;
     final children = <Widget>[];
 
@@ -1413,7 +1502,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           UtenButton(
             size: UtenButtonSize.large,
             icon: Icons.check_circle_outline,
-            onPressed: _approve,
+            onPressed: _reviewOpening
+                ? null
+                : () => _reviewDocument(detail, false),
             child: const Text('审核'),
           ),
         );
@@ -1441,7 +1532,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             )!,
             documentId: widget.id,
             revision: detail,
-            onPressed: _reverse,
+            onPressed: _reviewOpening
+                ? null
+                : () => _reviewDocument(detail, true),
           ),
         );
       }

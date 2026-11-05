@@ -9,6 +9,15 @@ public record ExportTableLayout(String sheetName,int headerRow,int headerStartRo
                                 List<Band> bands,List<TextSpan> spans,List<String> footnotes,boolean landscape,
                                 List<SupplementalCell> supplementalCells,List<Integer> hiddenColumns,FooterBlock footer,java.util.Map<Integer,Float> headingRowHeights,
                                 java.util.Map<String,Object> sourcePrint) {
+    /** One body alignment contract for generated XLSX and PDF paper. Source
+     * cell styles can still override it for a frozen original. */
+    public static String columnAlignment(String type) {
+        return switch(type) {
+            case "int","count" -> "CENTER";
+            case "number","exact_number","money","qty" -> "RIGHT";
+            default -> "LEFT";
+        };
+    }
     public ExportTableLayout(String sheetName,int headerRow,int headerStartRow,List<Heading> headings,List<Merge> merges,List<Double> widths,String fontName,short fontSize,float rowHeight,List<Band> bands,List<TextSpan> spans,List<String> footnotes,boolean landscape,List<SupplementalCell> supplementalCells,List<Integer> hiddenColumns,FooterBlock footer,java.util.Map<Integer,Float> headingRowHeights){
         this(sheetName,headerRow,headerStartRow,headings,merges,widths,fontName,fontSize,rowHeight,bands,spans,footnotes,landscape,supplementalCells,hiddenColumns,footer,headingRowHeights,java.util.Map.of());
     }

@@ -1,0 +1,109 @@
+{
+  "status": "FROZEN",
+  "utc": "2026-11-05T18:00:24.4566277Z",
+  "scope": "Five native draft DELETE commands and expense GL confirmation only; no new public unconfirm route",
+  "sources": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceOperationJournal.java",
+      "sha256": "ce18399733fdbd8a029c599d29e7247f621bb85768c6646d612ce6fd6f6c3057",
+      "compiledSha256": "ce18399733fdbd8a029c599d29e7247f621bb85768c6646d612ce6fd6f6c3057"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/FinanceDocumentActions.java",
+      "sha256": "e6f19ad340a8ff116d07ef66ab26f9edc07825d86f62784de63f0c2d0e987caa",
+      "compiledSha256": "e6f19ad340a8ff116d07ef66ab26f9edc07825d86f62784de63f0c2d0e987caa"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptController.java",
+      "sha256": "d28b3647b7cba989ff72876853ade263cde252f0e3e2f6f74c9469d00e294261",
+      "compiledSha256": "d28b3647b7cba989ff72876853ade263cde252f0e3e2f6f74c9469d00e294261"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java",
+      "sha256": "ad2194f0dc324ad27667d30ab72d9ee7e745f8d797d46ccde5d1d4caced02ede",
+      "compiledSha256": "ad2194f0dc324ad27667d30ab72d9ee7e745f8d797d46ccde5d1d4caced02ede"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentController.java",
+      "sha256": "8c70b45ab18d0fc8c86ab1bf3eb24203dd25500e961d01958ed7ffaf091b6441",
+      "compiledSha256": "8c70b45ab18d0fc8c86ab1bf3eb24203dd25500e961d01958ed7ffaf091b6441"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java",
+      "sha256": "31b4bf1d39ff625f0ad69ad5e9da4c73f9a4055b1edce341a13ac3aa0207fa25",
+      "compiledSha256": "31b4bf1d39ff625f0ad69ad5e9da4c73f9a4055b1edce341a13ac3aa0207fa25"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseController.java",
+      "sha256": "d0b536cf3dd8dc8ef5dca1bb62ebf24ed43863494a684b467498155dc8b821d8",
+      "compiledSha256": "d0b536cf3dd8dc8ef5dca1bb62ebf24ed43863494a684b467498155dc8b821d8"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseService.java",
+      "sha256": "0b47cbcb87c5fff460cb78c4545834d1c159623a8d48f514d55d7a33b628814a",
+      "compiledSha256": "0b47cbcb87c5fff460cb78c4545834d1c159623a8d48f514d55d7a33b628814a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeController.java",
+      "sha256": "4af1f595071510539f7aa9012cc18654998044534f0b52bb2bc621dad22c035f",
+      "compiledSha256": "4af1f595071510539f7aa9012cc18654998044534f0b52bb2bc621dad22c035f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeService.java",
+      "sha256": "d4f6dc764f9dbc8f39ece83b3ef39e8e2e9f14222449a3a276e8e8f578a2908b",
+      "compiledSha256": "d4f6dc764f9dbc8f39ece83b3ef39e8e2e9f14222449a3a276e8e8f578a2908b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferController.java",
+      "sha256": "ddd776302aa70f122d7dd8ca8e8e391d12d89e609aa90a7362017092c0272c73",
+      "compiledSha256": "ddd776302aa70f122d7dd8ca8e8e391d12d89e609aa90a7362017092c0272c73"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferService.java",
+      "sha256": "c883c6b5ea468da1aef446a593f9bbc2171d8ab057c1c97e17faf84a346ceec2",
+      "compiledSha256": "c883c6b5ea468da1aef446a593f9bbc2171d8ab057c1c97e17faf84a346ceec2"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1065__finance_draft_deletion_command_receipts.sql",
+      "sha256": "c6f4751d7a40e8a151f779d7ae369d4d8c504a4d1fcb792da557389751ef4c9e",
+      "compiledSha256": "c6f4751d7a40e8a151f779d7ae369d4d8c504a4d1fcb792da557389751ef4c9e"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1064__expense_gl_confirmation_command_receipts.sql",
+      "sha256": "e8d6035735eb571a322e4a50ceb3de7157d186fde1d29f062c0c94a98f37ee2a",
+      "compiledSha256": "e8d6035735eb571a322e4a50ceb3de7157d186fde1d29f062c0c94a98f37ee2a"
+    }
+  ],
+  "drift": [],
+  "rounds": [
+    {
+      "found": 9,
+      "path": "build/finance-closeout-20261104/expense-gl-confirm-final/focused.log",
+      "scope": "GL-confirm",
+      "logSha256": "f77661331b44c89e61b0559cefa4f237080ee4de9c516b4b7494e73288a51d70",
+      "skip": 0,
+      "pass": 9,
+      "fail": 0
+    },
+    {
+      "found": 19,
+      "path": "build/finance-closeout-20261104/finance-delete-final/focused.log",
+      "scope": "Delete and native closed pending confirmation",
+      "logSha256": "748872a296133d0894e06891970deeb8ea9a71c80e6c471021af43158a36eaa1",
+      "skip": 0,
+      "pass": 19,
+      "fail": 0
+    }
+  ],
+  "contract": "docs/99-项目治理/evidence/finance-full-chain-audit-20261104/document-review-command-contract.json",
+  "audit": "AuditService.logCommitted only inside actual journal work, same transaction; state/receipt/audit roll back together, no controller replay audit",
+  "glTerminal": "Ordinary expense GL2 is completed and has no public unconfirm/reverse route; original application withdrawal remains its controlled existing path",
+  "closedNative": "Actual native is_closed=true, no legacy markers, glStatus1 receives the existing nullable-version snapshot and confirms toGL2",
+  "deletion": "All five HTTP DELETE routes require displayed snapshot and original request; internal trusted delete(UUID) unchanged except original-lock verification hook",
+  "precision": "GL_CONFIRM and DELETE join the existing submitted/used choices contract and owner receipt/cancel, not another journal",
+  "limitations": [
+    "Two scoped rounds, not one whole current HEAD suite",
+    "Historical component overlays used owning full resources through1061 +1063/1064/1065; Ledger1062 and Root later paper/loss deltas are separately validated by their owners",
+    "No company data mutation, deployment, push, formal packaging or Win7 acceptance"
+  ]
+}

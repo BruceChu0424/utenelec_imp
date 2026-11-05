@@ -1,15 +1,16 @@
-import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_dialog_modules.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/inputs/uten_date_field.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
-import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
+import '../../../components/inputs/uten_input.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -17,16 +18,237 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import 'finance_durable_command_dialog.dart';
 
 const inventoryCostPostingEndpoint = '/finance/gl/inventory-cost';
+
+Future<Map<String, dynamic>?> showInventoryCostCommand(
+  BuildContext context, {
+  required FinanceDurableOperation operation,
+  String target = '',
+  Map<String, dynamic>? initialBody,
+  Map<String, dynamic> initialContext = const {},
+  String? resumeDraftId,
+}) {
+  if (!operation.inventory) throw const FormatException('原操作不属于库存成本');
+  return showFinanceDurableCommandDialog(
+    context,
+    operation: operation,
+    target: target,
+    initialBody: initialBody,
+    initialContext: initialContext,
+    resumeDraftId: resumeDraftId,
+    saveLabel: '确认',
+    reviewLoader: (api, body, source, target) =>
+        _reviewInventoryCostCommand(operation, api, body, source, target),
+    hint: switch (operation) {
+      FinanceDurableOperation.inventoryPolicy =>
+        '启用前核对本期原价值及历史凭证差额；生效日期和核对依据按原版本保存。',
+      FinanceDurableOperation.inventoryPeriod =>
+        '按原成本来源及原金额指定期间，不改原发生日期或按当前价格重算。',
+      FinanceDurableOperation.inventoryPost =>
+        '按所选期间处理服务器当前已具备完整来源的实际成本。原请求回执与结果保留；重试原请求不会处理后来新到的来源。',
+      _ => '关期按原期间版本校验。必须处理完原来源并填写关闭依据；原请求结果独立保存。',
+    },
+    editorBuilder: (context, editor) {
+      final l10n = AppLocalizations.of(context);
+      final body = editor.body, source = editor.contextData;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (operation == FinanceDurableOperation.inventoryPolicy) ...[
+            UtenDialogSettingTile(
+              canRequestFocus: false,
+              icon: Icons.inventory_2_outlined,
+              title: Text(l10n.inventoryCostEnabled),
+              onTap: editor.editable
+                  ? () => editor.set('enabled', body['enabled'] != true)
+                  : null,
+              trailing: Switch(
+                value: body['enabled'] == true,
+                onChanged: editor.editable
+                    ? (value) => editor.set('enabled', value)
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            UtenDateField(
+              label: l10n.inventoryCostEffectiveDate,
+              value: DateTime.tryParse('${body['effectiveFrom'] ?? ''}'),
+              enabled: editor.editable,
+              onChanged: (value) =>
+                  editor.set('effectiveFrom', ChinaDateTime.formatDate(value)),
+            ),
+            const SizedBox(height: 12),
+            UtenInput(
+              label: l10n.inventoryCostEvidence,
+              controller: editor.controller('reconciliationReference'),
+              enabled: editor.editable,
+              maxLines: 3,
+              required: body['enabled'] == true,
+              validator: (value) =>
+                  editor.body['enabled'] == true &&
+                      (value ?? '').trim().length < 8
+                  ? l10n.inventoryCostEvidenceRequired
+                  : null,
+            ),
+          ],
+          if (operation == FinanceDurableOperation.inventoryPeriod) ...[
+            SelectableText(
+              '${l10n.inventoryCostSource}: $target\n${l10n.inventoryCostAmount}: ${source['amountLocal'] ?? '—'}\n${l10n.inventoryCostSourcePeriod}: ${source['sourcePeriod'] ?? '—'}',
+            ),
+            const SizedBox(height: 12),
+            UtenDropdownField(
+              label: l10n.inventoryCostTargetPeriod,
+              value: body['targetPeriod']?.toString(),
+              enabled: editor.editable,
+              allowClear: false,
+              items: [
+                for (final period in source['openPeriods'] as List? ?? const [])
+                  UtenDropdownItem(
+                    value: period.toString(),
+                    label: period.toString(),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null) editor.set('targetPeriod', value);
+              },
+            ),
+            const SizedBox(height: 12),
+            UtenInput(
+              label: l10n.inventoryCostReason,
+              controller: editor.controller('reason'),
+              enabled: editor.editable,
+              required: true,
+              validator: (value) => (value ?? '').trim().length < 4
+                  ? l10n.inventoryCostReasonRequired
+                  : null,
+            ),
+          ],
+          if (operation == FinanceDurableOperation.inventoryPost ||
+              operation == FinanceDurableOperation.inventoryClose) ...[
+            SelectableText(
+              '${l10n.inventoryCostTargetPeriod}: $target\n${operation == FinanceDurableOperation.inventoryPost ? l10n.inventoryCostReady : l10n.inventoryCostPendingCount}: ${source['sourceCount'] ?? '—'}',
+            ),
+            if (operation == FinanceDurableOperation.inventoryClose) ...[
+              const SizedBox(height: 12),
+              UtenInput(
+                label: l10n.inventoryCostReason,
+                controller: editor.controller('reason'),
+                enabled: editor.editable,
+                required: true,
+                validator: (value) => (value ?? '').trim().isEmpty
+                    ? l10n.inventoryCostReasonRequired
+                    : null,
+              ),
+            ],
+          ],
+        ],
+      );
+    },
+  );
+}
+
+Future<FinanceCommandReview> _reviewInventoryCostCommand(
+  FinanceDurableOperation operation,
+  ApiClient api,
+  Map<String, dynamic> body,
+  Map<String, dynamic> source,
+  String target,
+) async {
+  if (operation == FinanceDurableOperation.inventoryPolicy) {
+    final policy = await api.get('$inventoryCostPostingEndpoint/policy');
+    if (policy['version'] is! int) throw StateError('当前成本策略缺少版本依据');
+    return FinanceCommandReview(
+      versionPatch: {'expectedVersion': policy['version']},
+      rows: [
+        (
+          '实际成本过账',
+          body['enabled'] == true ? '启用' : '关闭',
+          policy['enabled'] == true ? '启用' : '关闭',
+        ),
+        (
+          '生效日期',
+          '${body['effectiveFrom'] ?? '未设置'}',
+          '${policy['effectiveFrom'] ?? '未设置'}',
+        ),
+        (
+          '核对依据',
+          '${body['reconciliationReference'] ?? ''}',
+          '${policy['reconciliationReference'] ?? ''}',
+        ),
+      ],
+    );
+  }
+  if (operation == FinanceDurableOperation.inventoryPeriod) {
+    if (source['queryFrom'] is! String || source['queryTo'] is! String) {
+      throw StateError('原来源范围缺失，请保留本次输入并从原成本来源重新核对');
+    }
+    final rows = await api.getList(
+      '$inventoryCostPostingEndpoint/postings',
+      query: {'from': source['queryFrom'], 'to': source['queryTo']},
+    );
+    final posting = rows.where((row) => row['postingId'] == target).firstOrNull;
+    if (posting == null ||
+        !const {
+          'TARGET_PERIOD_REQUIRED',
+          'TARGET_PERIOD_CLOSED',
+          'READY',
+        }.contains(posting['postingStatus'])) {
+      throw StateError('原成本来源不再允许指定期间，请在原表核对当前结果');
+    }
+    return FinanceCommandReview(
+      rows: [
+        (
+          '入账期间',
+          '${body['targetPeriod'] ?? '未指定'}',
+          '${posting['targetPeriod'] ?? '未指定'}',
+        ),
+        (
+          '原来源金额',
+          '${source['amountLocal'] ?? '待核对'}',
+          '${posting['amountLocal'] ?? '待核对'}',
+        ),
+      ],
+    );
+  }
+  final periods = await api.getList(
+    '$inventoryCostPostingEndpoint/periods',
+    query: {'from': target, 'to': target},
+  );
+  final period = periods.where((row) => row['period'] == target).firstOrNull;
+  if (period == null || period['status'] != 'OPEN') {
+    throw StateError('当前成本期间未开放，请保留输入并核对原表');
+  }
+  if (operation == FinanceDurableOperation.inventoryClose &&
+      period['version'] is! int) {
+    throw StateError('当前成本期间缺少版本依据');
+  }
+  return FinanceCommandReview(
+    versionPatch: {
+      if (operation == FinanceDurableOperation.inventoryClose)
+        'expectedVersion': period['version'],
+    },
+    rows: [
+      ('成本期间', target, '${period['period']}（开放）'),
+      (
+        '待处理来源',
+        '${source['sourceCount'] ?? '待核对'}',
+        '${period['pendingCount'] ?? '待核对'}',
+      ),
+    ],
+  );
+}
 
 Future<bool> showInventoryCostPostingDialog(
   BuildContext context, {
   required DateTime from,
   required DateTime to,
 }) async =>
-    await showDialog<bool>(
+    await showFinanceWorkbenchPanel<bool>(
       context: context,
       builder: (_) => InventoryCostPostingDialog(from: from, to: to),
     ) ??
@@ -55,12 +277,19 @@ class _InventoryCostPostingDialogState
   String? _period;
   String? _error;
   bool _busy = false;
+  bool _commandOpen = false;
   bool _changed = false;
   int _loadGeneration = 0;
-  ApiClient get _api => ref.read(apiClientProvider);
+  late final ApiClient _api;
+  late final int _ownerEpoch;
+  bool get _current =>
+      mounted &&
+      _ownerEpoch == ref.read(exportContextEpochProvider) &&
+      identical(_api, ref.read(apiClientProvider));
   bool get _canRead =>
-      ref.read(costWorkbenchCapabilityProvider).canReadPostings;
-  bool get _canPost => ref.read(costWorkbenchCapabilityProvider).canPost;
+      _current && ref.read(costWorkbenchCapabilityProvider).canReadPostings;
+  bool get _canPost =>
+      _current && ref.read(costWorkbenchCapabilityProvider).canPost;
   static String _month(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}';
   static String _date(DateTime date) =>
@@ -71,11 +300,13 @@ class _InventoryCostPostingDialogState
   @override
   void initState() {
     super.initState();
+    _api = ref.read(apiClientProvider);
+    _ownerEpoch = ref.read(exportContextEpochProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
-    if (!mounted || !_canRead) return;
+    if (!_canRead || _commandOpen) return;
     final generation = ++_loadGeneration;
     final l10n = AppLocalizations.of(context);
     if (_from.isAfter(_to)) {
@@ -103,7 +334,7 @@ class _InventoryCostPostingDialogState
           },
         );
       }
-      if (!mounted || generation != _loadGeneration || !_canRead) return;
+      if (!_canRead || generation != _loadGeneration) return;
       setState(() {
         _rows = rows;
         _policy = policy;
@@ -118,11 +349,11 @@ class _InventoryCostPostingDialogState
         }
       });
     } on ApiException catch (error) {
-      if (mounted && generation == _loadGeneration) {
+      if (_current && generation == _loadGeneration) {
         setState(() => _error = error.message);
       }
     } catch (_) {
-      if (mounted && generation == _loadGeneration) {
+      if (_current && generation == _loadGeneration) {
         setState(() => _error = l10n.inventoryCostLoadFailed);
       }
     } finally {
@@ -132,362 +363,117 @@ class _InventoryCostPostingDialogState
     }
   }
 
-  Future<bool> _confirm(String action, String details) async {
-    final l10n = AppLocalizations.of(context);
-    return await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => UtenAlertDialog(
-            title: Text(action),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: Text(details),
-            ),
-            actions: [
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text(l10n.commonCancel),
-              ),
-              UtenButton(
-                key: const ValueKey('inventory-cost-confirm'),
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(l10n.commonConfirm),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  Future<T?> _inputDialog<T>({
-    required WidgetBuilder builder,
-    required List<TextEditingController> controllers,
-  }) async {
-    final route = DialogRoute<T>(context: context, builder: builder);
-    final result = await Navigator.of(context, rootNavigator: true).push(route);
-    await route.completed;
-    for (final controller in controllers) {
-      controller.dispose();
+  void _close() {
+    if (!mounted || _current && (_busy || _commandOpen)) {
+      return;
     }
-    return result;
+    Navigator.pop(context, _changed);
   }
 
-  Future<void> _write(Future<void> Function() action) async {
-    if (!_canPost || _busy) return;
-    final l10n = AppLocalizations.of(context);
-    setState(() => _busy = true);
+  Future<void> _runCommand(
+    FinanceDurableOperation operation, {
+    String target = '',
+    required Map<String, dynamic> body,
+    Map<String, dynamic> contextData = const {},
+  }) async {
+    if (!_canPost || _busy || _commandOpen) return;
+    setState(() => _commandOpen = true);
     try {
-      await action();
-      if (!mounted) return;
-      _changed = true;
-      context.appSuccess(l10n.commonSuccess);
-    } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
-    } catch (_) {
-      if (mounted) context.appError(l10n.inventoryCostWriteFailed);
+      final result = await showInventoryCostCommand(
+        context,
+        operation: operation,
+        target: target,
+        initialBody: body,
+        initialContext: {
+          'queryFrom': _date(_from),
+          'queryTo': _date(_to),
+          ...contextData,
+        },
+      );
+      if (_current && result != null) _changed = true;
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-        await _load();
-      }
+      if (mounted) setState(() => _commandOpen = false);
+      if (_current) await _load();
     }
   }
 
   Future<void> _configure() async {
     final policy = _policy;
-    if (!_canPost || policy == null || _busy) return;
-    final l10n = AppLocalizations.of(context);
-    final reference = TextEditingController(
-      text: policy['reconciliationReference']?.toString() ?? '',
+    if (!_canPost || policy == null || _busy || _commandOpen) return;
+    await _runCommand(
+      FinanceDurableOperation.inventoryPolicy,
+      body: {
+        'enabled': policy['enabled'] == true,
+        'effectiveFrom': policy['effectiveFrom'],
+        'reconciliationReference': policy['reconciliationReference'] ?? '',
+        'expectedVersion': policy['version'],
+      },
     );
-    bool enabled = policy['enabled'] == true;
-    DateTime effective =
-        DateTime.tryParse(policy['effectiveFrom']?.toString() ?? '') ??
-        DateTime(_to.year, _to.month);
-    final form = GlobalKey<FormState>();
-    final result = await _inputDialog<Map<String, dynamic>>(
-      controllers: [reference],
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, localSetState) => UtenAlertDialog(
-          title: Text(l10n.inventoryCostPolicy),
-          content: SizedBox(
-            width: 500,
-            child: Form(
-              key: form,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(l10n.inventoryCostPolicyHint),
-                  const SizedBox(height: UtenSpacing.s12),
-                  UtenDialogSettingTile(
-                    canRequestFocus: false,
-                    icon: Icons.inventory_2_outlined,
-                    title: Text(l10n.inventoryCostEnabled),
-                    onTap: () => localSetState(() => enabled = !enabled),
-                    trailing: Switch(
-                      value: enabled,
-                      onChanged: (value) =>
-                          localSetState(() => enabled = value),
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  UtenDateField(
-                    label: l10n.inventoryCostEffectiveDate,
-                    value: effective,
-                    onChanged: (value) =>
-                        localSetState(() => effective = value),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextFormField(
-                    errorBuilder: utenTextFieldErrorBuilder,
-                    controller: reference,
-                    minLines: 1,
-                    maxLines: 3,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(labelText: l10n.inventoryCostEvidence),
-                    ),
-                    validator: (value) =>
-                        enabled && (value?.trim().length ?? 0) < 8
-                        ? l10n.inventoryCostEvidenceRequired
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(l10n.commonCancel),
-            ),
-            UtenButton(
-              onPressed: () {
-                if (form.currentState!.validate()) {
-                  Navigator.pop(dialogContext, {
-                    'enabled': enabled,
-                    'effectiveFrom': _date(effective),
-                    'reconciliationReference': reference.text.trim(),
-                    'expectedVersion': policy['version'],
-                  });
-                }
-              },
-              child: Text(l10n.commonConfirm),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (result == null || !mounted) return;
-    final action = result['enabled'] == true
-        ? l10n.inventoryCostEnable
-        : l10n.inventoryCostDisable;
-    if (!await _confirm(
-          action,
-          '${l10n.inventoryCostEffectiveDate}: ${result['effectiveFrom']}\n${l10n.inventoryCostEvidence}: ${result['reconciliationReference']}\n${l10n.inventoryCostPolicyHint}',
-        ) ||
-        !mounted) {
-      return;
-    }
-    await _write(() async {
-      await _api.put('$inventoryCostPostingEndpoint/policy', body: result);
-    });
   }
 
   Future<void> _choosePeriod(Map<String, dynamic> row) async {
-    if (!_canPost || _busy) return;
-    final l10n = AppLocalizations.of(context);
+    if (!_canPost || _busy || _commandOpen) return;
     final open = _periods
         .where((period) => period['status'] == 'OPEN')
         .toList();
     if (open.isEmpty) {
-      context.appError(l10n.inventoryCostNoOpenPeriod);
+      context.appError(AppLocalizations.of(context).inventoryCostNoOpenPeriod);
       return;
     }
-    String selected = open.any((period) => period['period'] == _period)
+    final selected = open.any((period) => period['period'] == _period)
         ? _period!
         : open.last['period'].toString();
-    final reason = TextEditingController();
-    final form = GlobalKey<FormState>();
-    final result = await _inputDialog<Map<String, dynamic>>(
-      controllers: [reason],
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, localSetState) => UtenAlertDialog(
-          title: Text(l10n.inventoryCostAssignPeriod),
-          content: SizedBox(
-            width: 500,
-            child: Form(
-              key: form,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SelectableText(
-                    '${l10n.inventoryCostSource}: ${_value(row, 'postingId')}\n${l10n.inventoryCostAmount}: ${_value(row, 'amountLocal')}\n${l10n.inventoryCostSourcePeriod}: ${_value(row, 'sourcePeriod')}',
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  UtenDropdownScrollScope(
-                    nativeDropdown: true,
-                    child: DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: selected,
-                      decoration: UtenInputDecoration(
-                        InputDecoration(
-                          labelText: l10n.inventoryCostTargetPeriod,
-                        ),
-                      ),
-                      items: open
-                          .map(
-                            (period) => DropdownMenuItem(
-                              value: period['period'].toString(),
-                              child: Text(period['period'].toString()),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          localSetState(() => selected = value);
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextFormField(
-                    errorBuilder: utenTextFieldErrorBuilder,
-                    controller: reason,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(labelText: l10n.inventoryCostReason),
-                    ),
-                    validator: (value) => (value?.trim().length ?? 0) < 4
-                        ? l10n.inventoryCostReasonRequired
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(l10n.commonCancel),
-            ),
-            UtenButton(
-              onPressed: () {
-                if (form.currentState!.validate()) {
-                  Navigator.pop(dialogContext, {
-                    'targetPeriod': selected,
-                    'reason': reason.text.trim(),
-                  });
-                }
-              },
-              child: Text(l10n.commonConfirm),
-            ),
-          ],
-        ),
-      ),
+    await _runCommand(
+      FinanceDurableOperation.inventoryPeriod,
+      target: row['postingId'].toString(),
+      body: {'targetPeriod': selected, 'reason': ''},
+      contextData: {
+        'amountLocal': row['amountLocal'],
+        'sourcePeriod': row['sourcePeriod'],
+        'openPeriods': [for (final period in open) period['period'].toString()],
+      },
     );
-    if (result == null || !mounted) return;
-    if (!await _confirm(
-          l10n.inventoryCostAssignPeriod,
-          '${l10n.inventoryCostSource}: ${_value(row, 'postingId')}\n${l10n.inventoryCostAmount}: ${_value(row, 'amountLocal')}\n${l10n.inventoryCostTargetPeriod}: ${result['targetPeriod']}\n${l10n.inventoryCostReason}: ${result['reason']}',
-        ) ||
-        !mounted) {
-      return;
-    }
-    await _write(() async {
-      await _api.post(
-        '$inventoryCostPostingEndpoint/postings/${row['postingId']}/period',
-        body: result,
-      );
-    });
   }
 
   Future<void> _post() async {
     final period = _period;
-    if (!_canPost || period == null || _busy) return;
-    final l10n = AppLocalizations.of(context);
-    final ready = _rows
-        .where(
-          (row) =>
-              row['targetPeriod'] == period && row['postingStatus'] == 'READY',
-        )
-        .length;
-    if (!await _confirm(
-          l10n.inventoryCostPost,
-          '${l10n.inventoryCostTargetPeriod}: $period\n${l10n.inventoryCostReady}: $ready\n${l10n.inventoryCostPostHint}',
-        ) ||
-        !mounted) {
-      return;
-    }
-    await _write(() async {
-      await _api.post(
-        '$inventoryCostPostingEndpoint/periods/$period/post',
-        body: const <String, dynamic>{},
-      );
-    });
+    if (!_canPost || period == null || _busy || _commandOpen) return;
+    await _runCommand(
+      FinanceDurableOperation.inventoryPost,
+      target: period,
+      body: const {},
+      contextData: {
+        'sourceCount': _rows
+            .where(
+              (row) =>
+                  row['targetPeriod'] == period &&
+                  row['postingStatus'] == 'READY',
+            )
+            .length,
+      },
+    );
   }
 
   Future<void> _closePeriod() async {
     final row = _periods.where((item) => item['period'] == _period).firstOrNull;
-    if (!_canPost || row == null || _busy) return;
-    final l10n = AppLocalizations.of(context);
-    final reason = TextEditingController();
-    final result = await _inputDialog<String>(
-      controllers: [reason],
-      builder: (dialogContext) => UtenAlertDialog(
-        title: Text(l10n.inventoryCostClosePeriod),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${l10n.inventoryCostTargetPeriod}: ${row['period']}\n${l10n.inventoryCostPendingCount}: ${row['pendingCount']}\n${l10n.inventoryCostCloseHint}',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              TextField(
-                controller: reason,
-                decoration: UtenInputDecoration(
-                  InputDecoration(labelText: l10n.inventoryCostReason),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(l10n.commonCancel),
-          ),
-          UtenButton(
-            onPressed: () {
-              if (reason.text.trim().isNotEmpty) {
-                Navigator.pop(dialogContext, reason.text.trim());
-              }
-            },
-            child: Text(l10n.commonConfirm),
-          ),
-        ],
-      ),
+    if (!_canPost || row == null || _busy || _commandOpen) return;
+    await _runCommand(
+      FinanceDurableOperation.inventoryClose,
+      target: row['period'].toString(),
+      body: {'expectedVersion': row['version'], 'reason': ''},
+      contextData: {'sourceCount': row['pendingCount']},
     );
-    if (result == null || !mounted) return;
-    await _write(() async {
-      await _api.post(
-        '$inventoryCostPostingEndpoint/periods/${row['period']}/close',
-        body: {'expectedVersion': row['version'], 'reason': result},
-      );
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final capability = ref.watch(costWorkbenchCapabilityProvider);
+    ref.watch(exportContextEpochProvider);
     final l10n = AppLocalizations.of(context);
-    if (!capability.canReadPostings) {
+    if (!_current || !capability.canReadPostings) {
       return UtenAlertDialog(
         showCloseButton: true,
-        onClose: () => Navigator.pop(context, _changed),
+        onClose: _close,
         title: Text(l10n.inventoryCostTitle),
         content: Text(l10n.inventoryCostNoAccess),
       );
@@ -566,153 +552,158 @@ class _InventoryCostPostingDialogState
         ),
       );
     }
-    return UtenDialogFrame(
-      insetPadding: const EdgeInsets.all(UtenSpacing.s12),
-      child: SizedBox(
-        width: 1200,
-        height: MediaQuery.sizeOf(context).height * .9,
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              UtenDialogHeader(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
-                icon: Icons.account_balance_wallet_outlined,
-                title: Text(l10n.inventoryCostTitle),
-                showCloseButton: true,
-                onClose: _busy ? null : () => Navigator.pop(context, _changed),
-              ),
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    onPressed: _busy ? null : _load,
-                    child: Text(l10n.commonRefresh),
-                  ),
-                  if (canPost)
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: UtenDialogFrame(
+        insetPadding: const EdgeInsets.all(UtenSpacing.s12),
+        child: SizedBox(
+          width: 1200,
+          height: MediaQuery.sizeOf(context).height * .9,
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                UtenDialogHeader(
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: Text(l10n.inventoryCostTitle),
+                  showCloseButton: true,
+                  onClose: _busy ? null : _close,
+                ),
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
                     UtenButton(
-                      key: const ValueKey('inventory-cost-policy'),
                       type: UtenButtonType.secondary,
-                      onPressed: _busy || _policy == null ? null : _configure,
-                      child: Text(l10n.inventoryCostPolicy),
+                      onPressed: _busy ? null : _load,
+                      child: Text(l10n.commonRefresh),
                     ),
-                  if (_policy != null)
-                    Text(
-                      _policy!['enabled'] == true
-                          ? l10n.inventoryCostEnabled
-                          : l10n.inventoryCostDisabled,
-                    ),
-                ],
-              ),
-              if (canPost && _periods.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                  child: Wrap(
-                    spacing: UtenSpacing.s8,
-                    runSpacing: UtenSpacing.s8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 220,
-                        child: UtenDropdownScrollScope(
-                          nativeDropdown: true,
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            key: ValueKey(_period),
-                            initialValue: _period,
-                            decoration: UtenInputDecoration(
-                              InputDecoration(
-                                labelText: l10n.inventoryCostTargetPeriod,
-                              ),
-                            ),
-                            items: _periods
-                                .map(
-                                  (row) => DropdownMenuItem(
-                                    value: row['period'].toString(),
-                                    child: Text(
+                    if (canPost)
+                      UtenButton(
+                        key: const ValueKey('inventory-cost-policy'),
+                        type: UtenButtonType.secondary,
+                        onPressed: _busy || _policy == null ? null : _configure,
+                        child: Text(l10n.inventoryCostPolicy),
+                      ),
+                    if (_policy != null)
+                      Text(
+                        _policy!['enabled'] == true
+                            ? l10n.inventoryCostEnabled
+                            : l10n.inventoryCostDisabled,
+                      ),
+                  ],
+                ),
+                if (canPost && _periods.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                    child: Wrap(
+                      spacing: UtenSpacing.s8,
+                      runSpacing: UtenSpacing.s8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 220,
+                          child: UtenDropdownField(
+                            label: l10n.inventoryCostTargetPeriod,
+                            value: _period,
+                            enabled: !_busy && !_commandOpen,
+                            allowClear: false,
+                            items: [
+                              for (final row in _periods)
+                                UtenDropdownItem(
+                                  value: row['period'].toString(),
+                                  label:
                                       '${row['period']} · ${row['status'] == 'CLOSED' ? l10n.inventoryCostClosed : l10n.inventoryCostOpen}',
-                                      maxLines: 1,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: _busy
-                                ? null
-                                : (value) => setState(() => _period = value),
+                                ),
+                            ],
+                            onChanged: (value) {
+                              if (!_busy && !_commandOpen && value != null) {
+                                setState(() => _period = value);
+                              }
+                            },
                           ),
                         ),
+                        Text(
+                          '${l10n.inventoryCostPendingCount}: ${selectedPeriod?['pendingCount'] ?? 0}',
+                        ),
+                        UtenButton(
+                          key: const ValueKey('inventory-cost-post'),
+                          onPressed: !_busy && isOpen && ready ? _post : null,
+                          child: Text(l10n.inventoryCostPost),
+                        ),
+                        UtenButton(
+                          key: const ValueKey('inventory-cost-close-period'),
+                          type: UtenButtonType.secondary,
+                          onPressed:
+                              !_busy &&
+                                  _policy?['enabled'] == true &&
+                                  isOpen &&
+                                  selectedPeriod?['pendingCount'] == 0
+                              ? _closePeriod
+                              : null,
+                          child: Text(l10n.inventoryCostClosePeriod),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s8,
+                    ),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
                       ),
-                      Text(
-                        '${l10n.inventoryCostPendingCount}: ${selectedPeriod?['pendingCount'] ?? 0}',
-                      ),
-                      UtenButton(
-                        key: const ValueKey('inventory-cost-post'),
-                        onPressed: !_busy && isOpen && ready ? _post : null,
-                        child: Text(l10n.inventoryCostPost),
-                      ),
-                      UtenButton(
-                        key: const ValueKey('inventory-cost-close-period'),
-                        type: UtenButtonType.secondary,
-                        onPressed:
-                            !_busy &&
-                                _policy?['enabled'] == true &&
-                                isOpen &&
-                                selectedPeriod?['pendingCount'] == 0
-                            ? _closePeriod
-                            : null,
-                        child: Text(l10n.inventoryCostClosePeriod),
+                    ),
+                  ),
+                const SizedBox(height: UtenSpacing.s8),
+                Expanded(
+                  child: MasterDataTableView<Map<String, dynamic>>(
+                    expensiveRowMounts: false,
+                    tableKey: 'finance.inventory_cost_posting',
+                    toolbarActions: [
+                      UtenDateRangeSelectionButton(
+                        from: _from,
+                        to: _to,
+                        enabled: !_busy,
+                        helpText: '选择成本来源日期范围',
+                        onChanged: (start, end) {
+                          setState(() {
+                            _from = ChinaDateTime.dateOnly(start!);
+                            _to = ChinaDateTime.dateOnly(end!);
+                          });
+                          return _load();
+                        },
                       ),
                     ],
+                    columns: columns,
+                    items: _rows,
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    isLoading: _busy,
+                    error: _error,
+                    onRetry: _load,
+                    emptyMessage: l10n.commonNoData,
+                    rowKeyOf: (row) => row['postingId']?.toString() ?? '',
                   ),
                 ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                if (_busy)
+                  const UtenBusyOverlay(
+                    title: '正在处理库存成本过账',
+                    showDoNotLeaveHint: false,
                   ),
-                ),
-              const SizedBox(height: UtenSpacing.s8),
-              Expanded(
-                child: MasterDataTableView<Map<String, dynamic>>(
-                  expensiveRowMounts: false,
-                  tableKey: 'finance.inventory_cost_posting',
-                  toolbarActions: [
-                    UtenDateRangeSelectionButton(
-                      from: _from,
-                      to: _to,
-                      enabled: !_busy,
-                      helpText: '选择成本来源日期范围',
-                      onChanged: (start, end) {
-                        setState(() {
-                          _from = ChinaDateTime.dateOnly(start!);
-                          _to = ChinaDateTime.dateOnly(end!);
-                        });
-                        return _load();
-                      },
-                    ),
-                  ],
-                  columns: columns,
-                  items: _rows,
-                  facets: const {},
-                  nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
-                  isLoading: _busy,
-                  error: _error,
-                  onRetry: _load,
-                  emptyMessage: l10n.commonNoData,
-                  rowKeyOf: (row) => row['postingId']?.toString() ?? '',
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

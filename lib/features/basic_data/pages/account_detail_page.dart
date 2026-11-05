@@ -46,11 +46,9 @@ import '../../../shared/report/account_statement_column_query.dart';
 import '../models/account_node.dart';
 import '../models/currency_node.dart';
 import '../widgets/master_server_column_filters.dart';
-import '../models/payment_style_node.dart';
 import '../repositories/account_repository.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/master_status_repository.dart';
-import '../repositories/payment_style_repository.dart';
 import '../widgets/account_balance_reconciliation_dialog.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
@@ -267,9 +265,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         errorFallback: '币种或会计科目加载失败，请重试',
         load: () => Future.wait<Object>([
           ref.read(currencyRepositoryProvider).dict(),
-          ref
-              .read(paymentStyleRepositoryProvider)
-              .tree(category: PaymentStyleCategory.account.value),
+          ref.read(accountPostingStylesReaderProvider)(),
         ]),
       );
       if (!mounted || !current()) return false;
@@ -278,8 +274,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         return false;
       }
       final currencies = results[0] as List<CurrencyListItem>;
-      final roots = results[1] as List<PaymentStyleNode>;
-      final leaves = activeAccountStyleLeaves(roots);
+      final leaves = results[1] as List<AccountPostingStyle>;
       if (!mounted || !current()) return false;
       setState(() {
         _currencies = {for (final item in currencies) item.id: item};
@@ -294,8 +289,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         ];
         _styleLoadError = currencies.isEmpty
             ? '没有可用的币种资料'
-            : leaves.isEmpty
-            ? '没有可用的账户类末级会计科目'
+            : leaves.isEmpty && _detail?.styleId == null
+            ? '尚无可用的资金记账科目，请先在财务科目与取数设置中维护货币资金对应'
             : null;
       });
       return _styleLoadError == null;
@@ -439,7 +434,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       key: 'code',
       label: '账户编号',
       group: '基础',
-      hint: '留空自动生成；已有编号可修改，旧编号不会被复用',
+      hint: '留空自动生成',
+      useFieldNameHint: false,
+      info: '已有编号可修改，旧编号不会被复用',
       identifierDomain: 'ACCOUNT',
       identifierId: _detail?.id,
     ),
@@ -470,12 +467,20 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     ),
     MasterFieldDef(
       key: 'styleId',
-      label: '会计科目',
+      label: '资金记账科目',
       required: true,
       group: '基础',
       type: MasterFieldType.select,
-      options: _styleOptions,
-      hint: '必须选择使用中的最末级会计科目',
+      options: [
+        ..._styleOptions,
+        if (_detail?.styleId case final existing?
+            when !_styleOptions.any((option) => option.value == existing))
+          MasterSelectOption(
+            value: existing,
+            label: '${_styleLabel(_detail!)}（保留原关联）',
+          ),
+      ],
+      info: '用于记录本账户的资金余额，不限制收款、付款或转账；具体收入、费用项目在业务单据选择。',
     ),
     const MasterFieldDef(
       key: 'status',
@@ -511,12 +516,6 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       return;
     }
     final detail = _detail!;
-    final styleAvailable =
-        detail.styleId != null &&
-        _styleOptions.any((option) => option.value == detail.styleId);
-    if (!styleAvailable) {
-      context.appError('该账户当前的会计科目已不可用，请重新选择后再保存');
-    }
     await showMasterEditDialog(
       context: context,
       title: '编辑账户',
@@ -527,7 +526,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         'bankAccountNo': detail.bankAccountNo ?? '',
         'accountType': detail.accountType ?? '',
         'currencyId': detail.currencyId ?? '',
-        'styleId': styleAvailable ? detail.styleId! : '',
+        'styleId': detail.styleId ?? '',
         'status': detail.status ?? '使用',
       },
       readOnlyKeys: _canStatus ? null : const {'status'},

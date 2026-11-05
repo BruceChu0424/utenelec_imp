@@ -41,11 +41,9 @@ import '../models/account_node.dart';
 import '../models/currency_node.dart';
 import '../models/master_facet.dart';
 import '../models/master_batch.dart';
-import '../models/payment_style_node.dart';
 import '../repositories/account_repository.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/master_status_repository.dart';
-import '../repositories/payment_style_repository.dart';
 import '../widgets/account_balance_reconciliation_dialog.dart';
 import '../widgets/account_overview_card.dart';
 import '../widgets/master_data_table_view.dart';
@@ -469,13 +467,10 @@ class _AccountPageState extends ConsumerState<AccountPage>
     try {
       final results = await Future.wait<Object>([
         ref.read(currencyRepositoryProvider).dict(),
-        ref
-            .read(paymentStyleRepositoryProvider)
-            .tree(category: PaymentStyleCategory.account.value),
+        ref.read(accountPostingStylesReaderProvider)(),
       ]);
       final currencies = results[0] as List<CurrencyListItem>;
-      final roots = results[1] as List<PaymentStyleNode>;
-      final leaves = activeAccountStyleLeaves(roots);
+      final leaves = results[1] as List<AccountPostingStyle>;
       if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return false;
       final currencyMap = {for (final item in currencies) item.id: item};
       setState(() {
@@ -505,7 +500,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
         _stylesError = currencies.isEmpty
             ? '没有可用的币种资料'
             : leaves.isEmpty
-            ? '没有可用的账户类末级会计科目'
+            ? '尚无可用的资金记账科目，请先在财务科目与取数设置中维护货币资金对应'
             : null;
       });
       return _stylesError == null;
@@ -620,7 +615,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
       key: 'code',
       label: '账户编号',
       group: '基础',
-      hint: '留空自动生成；编号只用于展示和查找，不影响系统内部关联',
+      hint: '留空自动生成',
+      useFieldNameHint: false,
+      info: '编号只用于展示和查找，不影响系统内部关联',
       identifierDomain: 'ACCOUNT',
     ),
     const MasterFieldDef(key: 'bankAccountNo', label: '银行账号', group: '基础'),
@@ -645,12 +642,12 @@ class _AccountPageState extends ConsumerState<AccountPage>
     ),
     MasterFieldDef(
       key: 'styleId',
-      label: '会计科目',
+      label: '资金记账科目',
       required: true,
       group: '基础',
       type: MasterFieldType.select,
       options: _styleOptions,
-      hint: '必须选择使用中的最末级会计科目',
+      info: '用于记录本账户的资金余额，不限制收款、付款或转账；具体收入、费用项目在业务单据选择。',
     ),
     const MasterFieldDef(
       key: 'status',
@@ -691,6 +688,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   @override
   MasterInlineCreateConfig get inlineCreation => MasterInlineCreateConfig(
     namespace: 'accounts',
+    showMissingFieldsAction: false,
     fields: masterInlineCreateFields(
       _createFields,
       excluded: {if (!_canStatus) 'status'},
@@ -1101,10 +1099,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   List<UtenContextMenuEntry> _rowMenu(AccountListItem account) {
-    if (_selectedAccountIds.length > 1 &&
+    if (_selectedAccountIds.isNotEmpty &&
         _selectedAccountIds.contains(account.id)) {
       final ids = Set<String>.of(_selectedAccountIds);
       return [
+        if (ids.length == 1) ...[
+          ..._accountDetailMenu(account),
+          const UtenMenuDivider(),
+        ],
         if (_canStatus) ...[
           UtenMenuItem(
             label: '停用选中(${ids.length})',
@@ -1134,24 +1136,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
       ];
     }
     return [
-      UtenMenuItem(
-        label: '查看详情',
-        icon: Icons.open_in_new_rounded,
-        enabled: !_batchBusy,
-        onTap: () => _openAccount(account.id),
-      ),
-      UtenMenuItem(
-        label: '编辑账户',
-        icon: Icons.edit_outlined,
-        enabled: _canEdit && !_batchBusy,
-        onTap: () => _openAccount(account.id, edit: true),
-      ),
-      UtenMenuItem(
-        label: '余额校准',
-        icon: Icons.fact_check_outlined,
-        enabled: _canAdjustBalance && !_batchBusy,
-        onTap: () => _openBalanceReconciliation(accountId: account.id),
-      ),
+      ..._accountDetailMenu(account),
       const UtenMenuDivider(),
       UtenMenuItem(
         label: account.status == '使用' ? '停用账户' : '启用账户',
@@ -1174,6 +1159,27 @@ class _AccountPageState extends ConsumerState<AccountPage>
     ];
   }
 
+  List<UtenContextMenuEntry> _accountDetailMenu(AccountListItem account) => [
+    UtenMenuItem(
+      label: '查看详情',
+      icon: Icons.open_in_new_rounded,
+      enabled: !_batchBusy,
+      onTap: () => _openAccount(account.id),
+    ),
+    UtenMenuItem(
+      label: '编辑账户',
+      icon: Icons.edit_outlined,
+      enabled: _canEdit && !_batchBusy,
+      onTap: () => _openAccount(account.id, edit: true),
+    ),
+    UtenMenuItem(
+      label: '余额校准',
+      icon: Icons.fact_check_outlined,
+      enabled: _canAdjustBalance && !_batchBusy,
+      onTap: () => _openBalanceReconciliation(accountId: account.id),
+    ),
+  ];
+
   List<Widget> _accountFloatingActions(
     BuildContext context,
     Set<String> ids,
@@ -1186,36 +1192,6 @@ class _AccountPageState extends ConsumerState<AccountPage>
       onSave: saveInline,
       embedded: true,
       additionalActions: [
-        if (ids.isNotEmpty && _canStatus) ...[
-          UtenButton(
-            key: const Key('account-batch-disable'),
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            onPressed: _batchBusy || _loading
-                ? null
-                : () => _runAccountBatch(Set.of(ids), status: '禁用'),
-            child: const Text('停用选中'),
-          ),
-          UtenButton(
-            key: const Key('account-batch-enable'),
-            type: UtenButtonType.tonal,
-            size: UtenButtonSize.large,
-            onPressed: _batchBusy || _loading
-                ? null
-                : () => _runAccountBatch(Set.of(ids), status: '使用'),
-            child: const Text('启用选中'),
-          ),
-        ],
-        if (ids.isNotEmpty && _canDelete)
-          UtenButton(
-            key: const Key('account-batch-delete'),
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            onPressed: _batchBusy || _loading
-                ? null
-                : () => _runAccountBatch(Set.of(ids)),
-            child: const Text('删除选中'),
-          ),
         if (_canCreate)
           UtenButton(
             size: UtenButtonSize.large,
@@ -1271,6 +1247,15 @@ class _AccountPageState extends ConsumerState<AccountPage>
       label: '币种',
       width: 130,
       value: _accountCurrencyLabel,
+    ),
+    MasterColumnDef(
+      key: 'styleId',
+      label: '资金记账科目',
+      width: 230,
+      defaultVisible: false,
+      exportable: false,
+      info: '新增账户在此选择资金记账科目；已有账户在账户详情维护。用于记录资金余额，不限制收款、付款或转账。',
+      value: (_) => '详情维护',
     ),
     MasterColumnDef(
       key: 'bankAccountNo',
@@ -1554,6 +1539,11 @@ class _AccountPageState extends ConsumerState<AccountPage>
                             showColumnChooser:
                                 MediaQuery.sizeOf(context).width >= 600,
                             columns: inlineColumns(_columns),
+                            temporaryLeadingColumnKeys: inlineEdit
+                                .requiredColumnKeys(
+                                  columns: _columns,
+                                  fields: inlineFields,
+                                ),
                             serverColumnSearchKeys: {
                               'code',
                               'name',

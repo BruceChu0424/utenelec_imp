@@ -33,8 +33,8 @@ public final class FinancialStatementPresentation {
             source.rows().forEach(row->{var copy=new LinkedHashMap<>(row);copy.put("__basis",row.get("basis"));
                 copy.put("__pending",pending(row));presented.add(copy);});
             var columns=source.columns().stream().filter(c->!c.key().equals("basis")).toList();
-            return new ReportTableResponse(columns,presented,Map.of(),1,source.rows().size(),source.rows().size(),1,
-                    source.totals(),source.readScopeVersion(),source.statisticsGeneratedAt(),Set.of());
+            return FinanceTemplateLayouts.withFinancialPaper(sheet,new ReportTableResponse(columns,presented,Map.of(),1,source.rows().size(),source.rows().size(),1,
+                    source.totals(),source.readScopeVersion(),source.statisticsGeneratedAt(),Set.of(),source.documentMetadata()));
         }
         List<Object> left=new ArrayList<>(),right=new ArrayList<>();
         left.add(FinanceTemplateContract.section("A5"));for(int n=1;n<=15;n++)left.add(n);
@@ -60,8 +60,8 @@ public final class FinancialStatementPresentation {
             row.put("__basis",String.join("；",pending));row.put("__pending",!pending.isEmpty());
             ReportQueryKit.includeDecimalTexts(row);rows.add(row);
         }
-        return new ReportTableResponse(columns,rows,Map.of(),1,rows.size(),rows.size(),1,
-                List.of(),source.readScopeVersion(),source.statisticsGeneratedAt(),Set.of());
+        return FinanceTemplateLayouts.withFinancialPaper(sheet,new ReportTableResponse(columns,rows,Map.of(),1,rows.size(),rows.size(),1,
+                List.of(),source.readScopeVersion(),source.statisticsGeneratedAt(),Set.of(),source.documentMetadata()));
     }
     private static void add(Map<String,Object> row,String prefix,Object token,Map<Integer,Map<String,Object>> facts,List<String> pending) {
         if(token==null)return;

@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/business_precision_coordinator.dart';
@@ -44,10 +46,23 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
   ReportExportJob? _job;
   List<ReportExportJob> _recent = const [];
   bool _busy = false;
+  bool _showWait = false;
+  String _waitTitle = '正在处理导出任务';
   bool _retired = false;
   String? _error;
+  int _generation = 0;
+  final _actionScopeKey = Object();
 
-  bool get _current => mounted && !_retired && widget.stillCurrent();
+  bool _sameStore(ReportExportPendingStore a, ReportExportPendingStore b) =>
+      a.key == b.key && identical(a.preferences, b.preferences);
+
+  bool get _current {
+    final actionCurrent = Zone.current[_actionScopeKey];
+    return mounted &&
+        !_retired &&
+        widget.stillCurrent() &&
+        (actionCurrent is! bool Function() || actionCurrent());
+  }
 
   @override
   void initState() {
@@ -57,13 +72,28 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
 
   @override
   void dispose() {
+    _generation++;
     _poll?.cancel();
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant ReportExportJobDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.client, widget.client) ||
+        !_sameStore(oldWidget.store, widget.store) ||
+        !identical(oldWidget.request, widget.request) ||
+        oldWidget.stillCurrent != widget.stillCurrent) {
+      // A different owner must reopen explicitly; an old operation cannot
+      // silently become a new actor's create or download.
+      _retire();
+    }
+  }
+
   void _retire() {
     _poll?.cancel();
-    if (!mounted) return;
+    _generation++;
+    if (!mounted || _retired) return;
     setState(() {
       _retired = true;
       _job = null;
@@ -71,36 +101,69 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
       _unresolved = null;
       _unresolvedPrecision = null;
       _busy = false;
+      _showWait = false;
       _error = '账号、权限或服务器已变化，请关闭后重新打开导出';
     });
   }
 
-  Future<void> _perform(Future<void> Function() action) async {
+  Future<void> _perform(
+    Future<void> Function() action, {
+    bool showWait = true,
+    String title = '正在处理导出任务',
+  }) async {
     if (!_current || _busy) return;
+    final generation = ++_generation;
+    final owner = widget;
+    bool current() =>
+        mounted &&
+        !_retired &&
+        generation == _generation &&
+        identical(owner.client, widget.client) &&
+        _sameStore(owner.store, widget.store) &&
+        identical(owner.request, widget.request) &&
+        owner.stillCurrent == widget.stillCurrent &&
+        owner.stillCurrent();
     _poll?.cancel();
     setState(() {
       _busy = true;
+      _showWait = showWait;
+      _waitTitle = title;
       _error = null;
     });
     try {
-      await action();
+      if (showWait) {
+        // Mount the existing modal's busy portal, then paint its root entry.
+        await WidgetsBinding.instance.endOfFrame;
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      if (!current()) return;
+      await runZoned<Future<void>>(
+        action,
+        zoneValues: {_actionScopeKey: current},
+      );
     } catch (error) {
+      if (!current()) return;
       if (error is ApiException &&
           ({401, 403}.contains(error.httpStatus) ||
               isSessionBoundaryError(error))) {
         _retire();
         return;
       }
-      if (_current) {
+      if (current()) {
         setState(() {
           _error = error is ApiException ? error.message : '任务状态暂时无法确认，请核查原任务';
         });
       }
     } finally {
-      if (_current) {
-        setState(() => _busy = false);
-      } else if (mounted) {
-        _retire();
+      if (mounted && generation == _generation) {
+        if (current()) {
+          setState(() {
+            _busy = false;
+            _showWait = false;
+          });
+        } else {
+          _retire();
+        }
       }
     }
   }
@@ -129,7 +192,7 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
         )
         .toList(growable: false);
     if (_recent.isEmpty) await _create(widget.request);
-  });
+  }, title: '正在恢复导出任务');
 
   Future<void> _create(ReportExportJobRequest request) async {
     if (!_current) return;
@@ -166,19 +229,23 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
           if (mounted) _retire();
           return;
         }
-        _verify();
+        _verify(automatic: true);
       });
     }
   }
 
-  Future<void> _verify() => _perform(() async {
-    if (_unresolvedPrecision != null) {
-      await _verifyPrecisionReceipt();
-      return;
-    }
-    final id = _unresolved?.id ?? _job?.id;
-    if (id != null) await _accept(await widget.client.read(id));
-  });
+  Future<void> _verify({bool automatic = false}) => _perform(
+    () async {
+      if (_unresolvedPrecision != null) {
+        await _verifyPrecisionReceipt();
+        return;
+      }
+      final id = _unresolved?.id ?? _job?.id;
+      if (id != null) await _accept(await widget.client.read(id));
+    },
+    showWait: !automatic,
+    title: '正在核查导出任务',
+  );
   Future<void> _verifyPrecisionReceipt() async {
     final request = _unresolvedPrecision;
     if (request == null) {
@@ -210,12 +277,14 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
         precisionConfirmed: true,
       );
     } on ApiException catch (error) {
-      if (!retry &&
+      if (_current &&
+          !retry &&
           error.hasResponseCode &&
           (error.httpStatus == 400 ||
               error.httpStatus == 422 ||
               error.httpStatus == 409 && error.code == 'CONFLICT')) {
         await widget.store.resolvePrecisionResume(request.requestId);
+        if (!_current) return;
         _unresolvedPrecision = null;
       }
       rethrow;
@@ -249,7 +318,7 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
       ReportExportPrecisionResume.create(job, choice),
       retry: false,
     );
-  });
+  }, title: '正在处理精度请求');
 
   Future<void> _newExport() => _perform(() async {
     final request = ReportExportJobRequest.fromJson({
@@ -257,14 +326,14 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
       'id': const Uuid().v4(),
     });
     await _create(request);
-  });
+  }, title: '正在创建导出任务');
 
   Future<void> _download() => _perform(() async {
     final job = _job;
     if (job == null || !job.downloadable) return;
     await widget.onDownload(job);
     if (mounted && _current) Navigator.of(context).pop();
-  });
+  }, title: '正在下载导出文件');
 
   @override
   Widget build(BuildContext context) {
@@ -275,120 +344,148 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
     final unresolved = _unresolved;
     final unresolvedPrecision = _unresolvedPrecision;
     final scheme = Theme.of(context).colorScheme;
-    return UtenAlertDialog(
-      title: const Text('报表导出任务'),
-      showCloseButton: true,
-      onClose: () => Navigator.of(context).pop(),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_busy || job?.active == true) ...[
-            const LinearProgressIndicator(),
-            const SizedBox(height: UtenSpacing.s16),
-          ],
-          if (job != null) ...[
-            Text(
-              job.statusLabel,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text('已处理 ${job.rows} 行'),
-            if (job.snapshotAt != null)
-              Text('数据快照：${ChinaDateTime.formatIsoInstant(job.snapshotAt!)}'),
-            if (job.error?.isNotEmpty == true)
-              Text(job.error!, style: TextStyle(color: scheme.error)),
-            if (job.active) const Text('可稍后回来查看；关闭窗口不会取消任务。'),
-            if (job.awaitingPrecision)
-              const Text('尚未生成可下载文件。选择后按原任务、原筛选重新读取，会使用新的读取时点。'),
-            if (unresolvedPrecision != null)
-              const Text('原精度续处理结果尚未确认，请核查原回执或原样重试，不再次选择。'),
-          ] else if (unresolved != null) ...[
-            const Text('上次创建结果尚未确认，请先核查原任务。'),
-            const SizedBox(height: UtenSpacing.s8),
-            SelectableText('任务编号：${unresolved.id}'),
-          ] else if (_recent.isNotEmpty) ...[
-            const Text('最近的同类导出任务'),
-            const SizedBox(height: UtenSpacing.s8),
-            for (final recent in _recent.take(10))
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('${recent.statusLabel} · ${recent.rows} 行'),
-                subtitle: recent.createdAt == null
+    final info = [
+      if (job?.active == true) '可稍后回来查看；关闭窗口不会取消任务。',
+      if (job?.awaitingPrecision == true)
+        '尚未生成可下载文件。选择后按原任务、原筛选重新读取，会使用新的读取时点。',
+      if (unresolvedPrecision != null) '原精度续处理结果尚未确认，请核查原回执或原样重试，不再次选择。',
+      if (unresolved != null) '上次创建结果尚未确认，请先核查原任务。',
+    ].join('\n\n');
+    return Stack(
+      children: [
+        UtenAlertDialog(
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Flexible(child: Text('报表导出任务')),
+              if (info.isNotEmpty) ...[
+                const SizedBox(width: UtenSpacing.s4),
+                UtenFieldHintIcon(info: info),
+              ],
+            ],
+          ),
+          showCloseButton: true,
+          onClose: () => Navigator.of(context).pop(),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (job?.active == true) ...[
+                const LinearProgressIndicator(),
+                const SizedBox(height: UtenSpacing.s16),
+              ],
+              if (job != null) ...[
+                Text(
+                  job.statusLabel,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                Text('已处理 ${job.rows} 行'),
+                if (job.snapshotAt != null)
+                  Text(
+                    '数据快照：${ChinaDateTime.formatIsoInstant(job.snapshotAt!)}',
+                  ),
+                if (job.error?.isNotEmpty == true)
+                  Text(job.error!, style: TextStyle(color: scheme.error)),
+                if (job.awaitingPrecision) const Text('文件状态：尚未生成可下载文件'),
+              ] else if (unresolved != null) ...[
+                const Text('上次创建结果尚未确认'),
+                const SizedBox(height: UtenSpacing.s8),
+                SelectableText('任务编号：${unresolved.id}'),
+              ] else if (_recent.isNotEmpty) ...[
+                const Text('最近的同类导出任务'),
+                const SizedBox(height: UtenSpacing.s8),
+                for (final recent in _recent.take(10))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${recent.statusLabel} · ${recent.rows} 行'),
+                    subtitle: recent.createdAt == null
+                        ? null
+                        : Text(
+                            ChinaDateTime.formatIsoInstant(recent.createdAt!),
+                          ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _busy
+                        ? null
+                        : () => _perform(
+                            () async =>
+                                _accept(await widget.client.read(recent.id)),
+                            title: '正在核查导出任务',
+                          ),
+                  ),
+              ],
+              if (unresolvedPrecision != null) const Text('原精度续处理结果尚未确认'),
+              if (_error != null) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                Text(_error!, style: TextStyle(color: scheme.error)),
+              ],
+            ],
+          ),
+          actions: [
+            if (!_retired && (job != null || unresolved != null))
+              UtenButton(
+                type: UtenButtonType.tonal,
+                onPressed: _busy ? null : _verify,
+                child: const Text('核查任务'),
+              ),
+            if (!_retired && unresolved != null)
+              UtenButton(
+                onPressed: _busy
                     ? null
-                    : Text(ChinaDateTime.formatIsoInstant(recent.createdAt!)),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _busy
+                    : () => _perform(() => _create(unresolved)),
+                child: const Text('按原编号重试'),
+              ),
+            if (!_retired && unresolvedPrecision != null)
+              UtenButton(
+                onPressed: _busy
                     ? null
                     : () => _perform(
-                        () async =>
-                            _accept(await widget.client.read(recent.id)),
+                        () => _sendPrecision(unresolvedPrecision, retry: true),
+                        title: '正在核对原精度请求',
                       ),
+                child: const Text('重试原精度请求'),
+              ),
+            if (!_retired &&
+                unresolvedPrecision == null &&
+                job?.awaitingPrecision == true &&
+                job?.precisionRequirement != null)
+              UtenButton(
+                onPressed: _busy ? null : _choosePrecision,
+                child: const Text('选择精度并继续原任务'),
+              ),
+            if (!_retired &&
+                unresolvedPrecision == null &&
+                job != null &&
+                (job.active || job.awaitingPrecision) &&
+                !job.cancelRequested)
+              UtenButton(
+                type: UtenButtonType.tonal,
+                onPressed: _busy
+                    ? null
+                    : () => _perform(
+                        () async => _accept(await widget.client.cancel(job.id)),
+                        title: '正在取消导出任务',
+                      ),
+                child: const Text('取消任务'),
+              ),
+            if (!_retired && job?.downloadable == true)
+              UtenButton(
+                onPressed: _busy ? null : _download,
+                child: const Text('下载文件'),
+              ),
+            if (!_retired &&
+                unresolved == null &&
+                unresolvedPrecision == null &&
+                job?.active != true)
+              UtenButton(
+                type: UtenButtonType.tonal,
+                onPressed: _busy ? null : _newExport,
+                child: const Text('按当前筛选新建'),
               ),
           ],
-          if (_error != null) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            Text(_error!, style: TextStyle(color: scheme.error)),
-          ],
-        ],
-      ),
-      actions: [
-        if (!_retired && (job != null || unresolved != null))
-          UtenButton(
-            type: UtenButtonType.tonal,
-            onPressed: _busy ? null : _verify,
-            child: const Text('核查任务'),
-          ),
-        if (!_retired && unresolved != null)
-          UtenButton(
-            onPressed: _busy ? null : () => _perform(() => _create(unresolved)),
-            child: const Text('按原编号重试'),
-          ),
-        if (!_retired && unresolvedPrecision != null)
-          UtenButton(
-            onPressed: _busy
-                ? null
-                : () => _perform(
-                    () => _sendPrecision(unresolvedPrecision, retry: true),
-                  ),
-            child: const Text('重试原精度请求'),
-          ),
-        if (!_retired &&
-            unresolvedPrecision == null &&
-            job?.awaitingPrecision == true &&
-            job?.precisionRequirement != null)
-          UtenButton(
-            onPressed: _busy ? null : _choosePrecision,
-            child: const Text('选择精度并继续原任务'),
-          ),
-        if (!_retired &&
-            unresolvedPrecision == null &&
-            job != null &&
-            (job.active || job.awaitingPrecision) &&
-            !job.cancelRequested)
-          UtenButton(
-            type: UtenButtonType.tonal,
-            onPressed: _busy
-                ? null
-                : () => _perform(
-                    () async => _accept(await widget.client.cancel(job.id)),
-                  ),
-            child: const Text('取消任务'),
-          ),
-        if (!_retired && job?.downloadable == true)
-          UtenButton(
-            onPressed: _busy ? null : _download,
-            child: const Text('下载文件'),
-          ),
-        if (!_retired &&
-            unresolved == null &&
-            unresolvedPrecision == null &&
-            job?.active != true)
-          UtenButton(
-            type: UtenButtonType.tonal,
-            onPressed: _busy ? null : _newExport,
-            child: const Text('按当前筛选新建'),
-          ),
+        ),
+        if (_busy && _showWait && !_retired)
+          UtenBusyOverlay(title: _waitTitle, showDoNotLeaveHint: false),
       ],
     );
   }

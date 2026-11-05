@@ -63,7 +63,13 @@ class ProcurementReceiptAmountAuthorityContractTest {
         int apply = service.indexOf(call);
         assertThat(apply).isGreaterThanOrEqualTo(0);
         assertThat(apply).isLessThan(service.indexOf("inspectionService.receive"));
-        assertThat(apply).isLessThan(service.indexOf("arApService.postArAp"));
+        int posting=servicePath.startsWith("purchase/")?service.indexOf("postOrDefer(new ArApLedgerService.ArApPostingRequest")
+                :service.indexOf("boolean formallyPosted=postAp(r,payable.original(),payable.local(),+1)");
+        assertThat(posting).as("reviewed amount reaches the formal/deferred payable adapter").isGreaterThan(apply);
+        assertThat(service).contains("ProcurementPayablePosting.post(firstPayables,arApService,req)");
+        assertThat(source("finance/arap/ProcurementPayablePosting.java"))
+                .contains("req.amountOriginal(),req.amountOriginalLocal(),req.settlementMethodId(),req.settlementStyleLegacy()")
+                .contains("ledgers.postArAp(req)");
         assertThat(authority)
                 .contains(sourceTable)
                 .contains("FOR UPDATE OF source_item, source_order")

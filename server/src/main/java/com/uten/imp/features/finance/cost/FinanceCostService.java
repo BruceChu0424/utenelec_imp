@@ -30,7 +30,7 @@ import java.util.UUID;
  *       plating/machining/polish/electric/incidental/manage/lost/rent/casing_e）+ 标准合计 total +
  *       单位成本 c_total 仅作为历史主档预算；实际值来自有效成品入库的生产价值来源，未核清保持待定。</li>
  *   <li><b>销售成本核算汇总</b>（附件 15）{@link #salesCostSummary}：按客户 销售出货金额 E（出货−退货）、
- *       销售成本读取追加式 COGS 价值变动（含退货与后补差额），收入使用已审核 AR 本币原额。
+ *       销售成本读取追加式 COGS 价值变动（含退货与后补差额），收入使用已审核 AR 本币原额及实际日期的反向事件。
  *       管理分摊读取已核对客户/月渠道及税费适用行；未知运费/成本保持NULL，不冒充财务会计利润。</li>
  *   <li><b>铜柱加工费核算</b>（附件 7）{@link #copperFee}：委外进仓按货品聚合 数量×单价=金额
  *       （须明确加工商UUID，按原成交单价分组并累计原单金额，不以最近价重算）。</li>
@@ -155,15 +155,15 @@ public class FinanceCostService {
                 ReportColumn.number("profitRate", "净利润率"),
                 ReportColumn.text("currencyBasis", "币种口径", 100),
                 ReportColumn.text("costState", "成本状态", 150),ReportColumn.text("__clientId",""),ReportColumn.number("exchangeRate","汇率"),ReportColumn.bool("__inputConfirmed","",1));
-        String core = """
-                WITH revenue AS (
-                    SELECT client_id,sum(amount_original_local) amount,bool_or(amount_original_local IS NULL) pending,
+        String core = "WITH "+FinanceSalesRevenueSql.ctes()+"""
+                , revenue AS (
+                    SELECT client_id,sum(amount_local) amount,bool_or(pending OR amount_local IS NULL) pending,
                            count(DISTINCT currency_id) currency_count,
+                           count(DISTINCT exchange_rate) rate_count,max(exchange_rate) known_rate,
                            CASE WHEN count(DISTINCT currency_id)=1 AND count(DISTINCT exchange_rate)=1
                                   AND NOT bool_or(currency_id IS NULL OR exchange_rate IS NULL)
                                 THEN max(exchange_rate) END common_rate
-                    FROM ar_ap_ledger WHERE direction='AR' AND source_doc_type IN('SALES_SHIPMENT','SALES_RETURN')
-                      AND status=1 AND NOT is_deleted AND bill_date BETWEEN :from AND :to GROUP BY client_id
+                    FROM sales_revenue_events GROUP BY client_id
                 ), costs AS (
                     SELECT client_id,sum(amount_local) amount,bool_or(COALESCE(pending,true) OR amount_local IS NULL) pending
                     FROM v_stock_actual_cogs_postings WHERE business_date BETWEEN :from AND :to GROUP BY client_id
@@ -190,7 +190,8 @@ public class FinanceCostService {
                                 WHEN coverage.client_id IS NOT NULL AND NOT coverage.pending THEN 0 END f,
                            COALESCE(costs.pending,false) OR COALESCE(coverage.pending,false)
                              OR (costs.amount IS NULL AND coverage.client_id IS NULL) pending,
-                           COALESCE(revenue.currency_count,0) currency_count,revenue.common_rate
+                           COALESCE(revenue.currency_count,0) currency_count,
+                           COALESCE(revenue.rate_count,0) rate_count,revenue.known_rate,revenue.common_rate
                     FROM client_scope scope LEFT JOIN revenue ON revenue.client_id IS NOT DISTINCT FROM scope.client_id
                     LEFT JOIN costs ON costs.client_id IS NOT DISTINCT FROM scope.client_id
                     LEFT JOIN coverage ON coverage.client_id IS NOT DISTINCT FROM scope.client_id
@@ -203,8 +204,9 @@ public class FinanceCostService {
                             THEN a.e*inputs.tax_rate END tax_fee,
                        CASE WHEN inputs.confirmed AND inputs.freight_local IS NOT NULL THEN inputs.freight_local
                             WHEN NOT freight_state.unassigned THEN freight_facts.amount END freight,
-                       CASE WHEN a.currency_count<=1 THEN COALESCE(a.common_rate,
-                            CASE WHEN inputs.confirmed THEN inputs.exchange_rate END) END exchange_rate,
+                       CASE WHEN a.currency_count<=1 AND a.rate_count<=1 THEN COALESCE(a.common_rate,
+                            CASE WHEN inputs.confirmed AND (a.rate_count=0 OR inputs.exchange_rate=a.known_rate)
+                                 THEN inputs.exchange_rate END) END exchange_rate,
                        CASE WHEN inputs.confirmed THEN inputs.client_name_snapshot END client_name,
                        CASE WHEN inputs.confirmed THEN inputs.seller_name_snapshot END seller_name,
                        CASE WHEN inputs.confirmed THEN inputs.region_snapshot END region_name,

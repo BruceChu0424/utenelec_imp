@@ -11,10 +11,16 @@ final class PartyStatementHeaderQuery {
     private final Map<String, SqlColumnSearch.Field> fields;
     private final Map<String, String> filters;
     private final boolean annual;
+    private final boolean actualCash;
 
     PartyStatementHeaderQuery(Map<String, String> filters, boolean annual, boolean simple) {
+        this(filters,annual,simple,false);
+    }
+
+    PartyStatementHeaderQuery(Map<String, String> filters, boolean annual, boolean simple,boolean actualCash) {
         this.filters = filters == null ? Map.of() : Map.copyOf(filters);
         this.annual = annual;
+        this.actualCash=actualCash;
         var declared = new LinkedHashMap<String, SqlColumnSearch.Field>();
         if (annual) {
             declared.put("ym", SqlColumnSearch.Field.calendarDate("to_date(report.ym,'YYYY-MM')"));
@@ -26,16 +32,18 @@ final class PartyStatementHeaderQuery {
                 declared.put(key, SqlColumnSearch.Field.text(expression(key)));
             if (!simple) for (String key : List.of("type", "remark"))
                 declared.put(key, SqlColumnSearch.Field.text(expression(key)));
+            if(simple&&actualCash)declared.put("type",SqlColumnSearch.Field.text(expression("type")));
             for (String key : List.of("salesOriginal", "salesRate", "salesLocal", "receiptOriginal",
                     "receiptRate", "receiptLocal", "balanceOriginal", "balanceRate", "balanceLocal"))
                 declared.put(key, SqlColumnSearch.Field.decimal(expression(key)));
         }
+        if(actualCash)declared.put("actualCashLocal",SqlColumnSearch.Field.decimal(expression("actualCashLocal")));
         fields = Map.copyOf(declared);
         for (String key : this.filters.keySet()) {
             if (key.equals("keyword") && !annual) continue;
             if (key.startsWith("search.") ? !fields.containsKey(key.substring(7))
                     : annual || !Set.of("currencyCode", "originalStatus", "type").contains(key)
-                        || simple && key.equals("type")) throw invalid("此列不支持对账条件");
+                        || simple && !actualCash && key.equals("type")) throw invalid("此列不支持对账条件");
         }
         if (this.filters.entrySet().stream().anyMatch(entry -> entry.getKey().startsWith("search.")
                 && ORIGINAL_AMOUNTS.contains(entry.getKey().substring(7))
@@ -88,7 +96,7 @@ final class PartyStatementHeaderQuery {
         remaining.remove(key);
         remaining.remove("search." + key);
         if (key.equals("currencyCode")) ORIGINAL_AMOUNTS.forEach(amount -> remaining.remove("search." + amount));
-        return new PartyStatementHeaderQuery(remaining, annual, simple);
+        return new PartyStatementHeaderQuery(remaining, annual, simple,actualCash);
     }
 
     private void requireCurrency() {

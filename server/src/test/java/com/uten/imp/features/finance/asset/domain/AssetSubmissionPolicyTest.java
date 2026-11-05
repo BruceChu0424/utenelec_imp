@@ -1,11 +1,14 @@
 package com.uten.imp.features.finance.asset.domain;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import com.uten.imp.common.finance.BusinessPrecisionRequiredException;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -13,17 +16,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AssetSubmissionPolicyTest {
 
     @Test
-    void fixedAssetRequiresAllFourAccountsAndOrderedDates() {
+    void fixedAssetRequiresAllFourAccountsAndOrderedDates() throws Exception {
         var input = new AssetSubmissionPolicy.FixedAssetInput(
                 new AssetSubmissionPolicy.PolicyInput(UUID.randomUUID(), null, null, null, null),
                 new BigDecimal("100"), BigDecimal.ZERO, 12, "2026-08",
                 LocalDate.parse("2026-08-02"), LocalDate.parse("2026-08-01"), LocalDate.parse("2026-07-31"));
 
+        try(var explicitChoice=BusinessPrecisionContext.use(Map.of("money.cumulative-share",new BusinessPrecisionContext.Choice(24,"DOWN")))) {
         assertThatThrownBy(() -> AssetSubmissionPolicy.validateFixedAsset(input))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("成本科目")
                 .hasMessageContaining("验收日期")
                 .hasMessageContaining("可使用");
+        }
     }
 
     @Test
@@ -39,7 +44,7 @@ class AssetSubmissionPolicyTest {
     }
 
     @Test
-    void rejectsAmountsThatRoundToZeroAtPostingPrecision() {
+    void rejectsAmountsOnlyWhenTheExplicitPostingChoiceMakesTheRegularInstallmentZero() throws Exception {
         UUID account = UUID.randomUUID();
         var policy = new AssetSubmissionPolicy.PolicyInput(UUID.randomUUID(), account, account, account, account);
         var fixed = new AssetSubmissionPolicy.FixedAssetInput(policy, new BigDecimal("0.01"),
@@ -48,10 +53,18 @@ class AssetSubmissionPolicyTest {
         var deferred = new AssetSubmissionPolicy.DeferredInput(policy, new BigDecimal("0.01"),
                 1200, "2026-08", LocalDate.parse("2026-08-01"), LocalDate.parse("2126-07-31"));
 
+        assertThatThrownBy(() -> AssetSubmissionPolicy.validateFixedAsset(fixed)).isInstanceOf(BusinessPrecisionRequiredException.class);
+        assertThatThrownBy(() -> AssetSubmissionPolicy.validateDeferredExpense(deferred)).isInstanceOf(BusinessPrecisionRequiredException.class);
+        try(var explicitChoice=BusinessPrecisionContext.use(Map.of("money.cumulative-share",new BusinessPrecisionContext.Choice(2,"DOWN")))) {
         assertThatThrownBy(() -> AssetSubmissionPolicy.validateFixedAsset(fixed))
                 .hasMessageContaining("月折旧额是 0");
         assertThatThrownBy(() -> AssetSubmissionPolicy.validateDeferredExpense(deferred))
                 .hasMessageContaining("月摊销额是 0");
+        }
+        try(var explicitChoice=BusinessPrecisionContext.use(Map.of("money.cumulative-share",new BusinessPrecisionContext.Choice(24,"DOWN")))) {
+            assertThatCode(() -> AssetSubmissionPolicy.validateFixedAsset(fixed)).doesNotThrowAnyException();
+            assertThatCode(() -> AssetSubmissionPolicy.validateDeferredExpense(deferred)).doesNotThrowAnyException();
+        }
     }
 
     @Test

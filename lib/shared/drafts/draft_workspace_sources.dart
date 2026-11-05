@@ -5,6 +5,7 @@ import '../../features/finance/config/finance_doc_config.dart';
 import '../../features/finance/models/finance_doc.dart';
 import '../../features/finance/providers/finance_name_provider.dart';
 import '../../features/finance/repositories/finance_repository.dart';
+import '../../features/finance/widgets/finance_document_review_command.dart';
 import '../../features/production/repositories/production_repository.dart';
 import '../../features/purchase/config/purchase_doc_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
@@ -576,10 +577,22 @@ Future<void> deleteDraftWorkspaceRow(
   if (finance != null) {
     final repo = ref.read(financeRepositoryProvider(finance));
     final detail = await repo.detail(row.id);
-    verify(detail.status == 0 && !detail.legacyImported);
+    verify(
+      detail.status == 0 && !detail.legacyImported && !detail.historyReadOnly,
+    );
     await owner(DocumentDataScope.finance, detail.makerId);
-    await beforeDispatch();
-    return repo.delete(row.id);
+    final reviewContext = ref.context;
+    if (!reviewContext.mounted) {
+      throw ApiException('DRAFT_DELETE_STOPPED', '草稿页面已关闭，后续删除已停止');
+    }
+    await reviewFinanceDraftDeletion(
+      reviewContext,
+      type: finance,
+      reviewedDetail: detail,
+      beforeDispatch: beforeDispatch,
+      confirmationMessage: '请查看当前草稿后确认删除。实际提交前才清除你已确认舍弃的本机填写；原删除请求及结果仍可通过草稿核对。',
+    );
+    return;
   }
   final sales = _salesType(kind);
   if (sales != null) {

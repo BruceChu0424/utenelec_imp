@@ -1,0 +1,83 @@
+{
+  "status": "FROZEN_SUPPLIER_AND_CACHE_SOURCE",
+  "utc": "2026-11-05T17:50:15.1009285Z",
+  "scope": "Nine Main sources plus V1063 only; new GL-confirm/delete commands are separate pending scopes",
+  "sources": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/SupplierAdvanceReplaySql.java",
+      "sha256": "b65c52215bc7cec9c07de63d224a278ee9fdc0812003ae5c2be3b7ac1f17888d"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementService.java",
+      "sha256": "193702d2503ec9cf121fc9598a2ba27fb9d7dd8853f5d169f03b3ff9617fd596"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementSnapshotSql.java",
+      "sha256": "00419a600127256e4310647b5f7e534e9c8bdfe3e2fffd2d61de085dfa308fbe"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceCashEventSql.java",
+      "sha256": "d4e92f66698dd94c7208e507850b677518c33366a6d19ff071a8db732ff39cf1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinancePartyStatementSql.java",
+      "sha256": "ee844ba0089e9504fb54de6fe3f436a5a1cf02c5a24faf204bb6a24c8a198ca9"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+      "sha256": "0b5d102d7b5bdd96533d35f6f95b794f7c2eac5434d57b802cd27be4449bc112"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/PartyStatementHeaderQuery.java",
+      "sha256": "29be1b09e90c79122753bb78320b46c02cdcd28710707e2776300c18da074754"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceClassifiedPayableSummary.java",
+      "sha256": "b236e5ccfb6a5b3eb5ee7b2563c7ade1147b240e4d455874fd2f5150842c55c3"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/PartyMonthlySummaryService.java",
+      "sha256": "ef27380e3a92223bbbeeed8c7f5b78a44c17e619f8a066c878e16d209fcb71f7"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1063__supplier_advance_statement_replay.sql",
+      "sha256": "df2b29e1db79ef03011475ae663f77b3f4ff586e47a2bfebd8c9bccb18884a55"
+    }
+  ],
+  "rounds": [
+    {
+      "fail": 1,
+      "found": 63,
+      "path": "source-import-compat-final/scoped.log",
+      "pass": 62,
+      "skip": 0,
+      "note": "Only actual Jan/Nov dirty-marker deadlock failed; real R1 import/GL/AP1400->1300->1400 and strict verified legacy target positive/negative matrices passed"
+    },
+    {
+      "fail": 1,
+      "found": 1,
+      "path": "party-cache-lock-order-red/red.log",
+      "pass": 0,
+      "skip": 0,
+      "note": "Deterministic two-transaction actual native payment reproduces old40P01; observed business waits on worker January while it owns current month"
+    },
+    {
+      "fail": 1,
+      "found": 24,
+      "path": "party-cache-lock-order-green/green.log",
+      "pass": 23,
+      "skip": 0,
+      "note": "Real payment concurrency, old RR snapshots/new xmin/producer lock skip/nonblocking read/modern/R1 pass; one old raw shadow SQL assumed outer order without ORDER BY"
+    },
+    {
+      "fail": 0,
+      "found": 5,
+      "path": "party-cache-fixture-final/summary-final.log",
+      "pass": 5,
+      "skip": 0,
+      "note": "Same original book fields/values explicitly selected and chronologically ordered as public API; all shadow cases pass"
+    }
+  ],
+  "verification": "Separate scoped rounds; case-level replacement does not constitute one all-suite green run",
+  "sqlChange": "Claim old xmin+ctid at final delete using MATERIALIZED FOR UPDATE SKIP LOCKED; never lock producer markers before aggregation. Busy/newer producer markers survive and reads retain same-snapshot full fallback."
+}

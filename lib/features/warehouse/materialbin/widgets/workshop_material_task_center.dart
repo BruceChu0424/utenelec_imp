@@ -13,6 +13,7 @@ import '../../../../core/theme/uten_tokens.dart';
 import '../../../../shared/badges/badge_registry.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/search/keyword_search.dart';
+import '../../../../shared/drafts/task_form_drafts.dart';
 import '../../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../../shared/warehouse/warehouse_task_badges.dart';
@@ -240,7 +241,14 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
   Future<void> _open(_BinStatusRow row) async {
     final period = row.period;
     if (period != null && period.status != WmPeriodStatus.open) {
-      await context.push(RoutePath.workshopMaterialCount(period.id));
+      final resumed = await resumeWorkshopMaterialPeriodTaskDraft(
+        context,
+        ref,
+        period.id,
+      );
+      if (!resumed && mounted) {
+        await context.push(RoutePath.workshopMaterialCount(period.id));
+      }
     } else {
       await context.push(
         RoutePath.workshopMaterialBin(

@@ -1,0 +1,15 @@
+{
+  "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+  "contractSha256": "d3ec103e1fc3f33f678091d097b0f40d8c78fa396b67c7a1077dce999ffa9862",
+  "sourceSheetCount": 21,
+  "requirementCount": 20,
+  "sourceFormulaCellCount": 3200,
+  "contractTemplateCount": 30,
+  "checkedHeaderParts": 255,
+  "numberedRows": {
+    "monthlyProfit": 20,
+    "balanceSheet": 53
+  },
+  "differences": [],
+  "passed": true
+}

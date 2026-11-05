@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,9 +26,8 @@ Future<void> showFinanceNativeLegacyOpeningDialog(
   BuildContext context, {
   required String ledgerId,
   String? resumeDraftId,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
   builder: (_) =>
       _LegacyOpening(ledgerId: ledgerId, resumeDraftId: resumeDraftId),
 );

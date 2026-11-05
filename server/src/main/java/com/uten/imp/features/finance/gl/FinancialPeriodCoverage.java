@@ -2,7 +2,6 @@ package com.uten.imp.features.finance.gl;
 
 import jakarta.persistence.EntityManager;
 import com.uten.imp.common.util.NativeQueryResults;
-import com.uten.imp.common.web.*;
 import java.util.*;
 
 /** An empty month is not a verified zero. One bounded query reads the selected year's source coverage. */
@@ -23,7 +22,7 @@ public final class FinancialPeriodCoverage {
         return new Value(complete,complete?"所选期间完整发生额已核对":"所选期间发生额尚未完整核对");
     }
     public static Map<Integer,Value> months(EntityManager em,int year,int throughMonth) {
-        if(year<1||year>9999||throughMonth<1||throughMonth>12)throw new ApiException(ErrorCode.VALIDATION_FAILED,"会计年/月不正确");
+        FinancialLedgerReadScope.requirePeriod(year,throughMonth);
         Map<Integer,Value> result=new LinkedHashMap<>();
         for(int month=1;month<=throughMonth;month++)result.put(month,new Value(false,"该月来源尚未完整核对，未发生不能直接认作零"));
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""

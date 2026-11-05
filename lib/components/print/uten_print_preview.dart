@@ -587,6 +587,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   int _contextVersion = 0;
   bool _invalidated = false;
   bool _printing = false;
+  bool _loading = true;
   bool _preparingSourcePdf = false;
   Uint8List? _sourcePdfBytes;
   final _pdfGenerator = IsolatedPrintPdfGenerator();
@@ -628,6 +629,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
       _contextVersion++;
       _invalidated = true;
       _printing = false;
+      _loading = false;
       _preparingSourcePdf = false;
       _sourcePdfBytes = null;
       _table = null;
@@ -794,6 +796,8 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
         _sourcePdfBytes = null;
         _error = humanErrorMessage(error) ?? '加载数据失败，请重试';
       }); // TODO(l10n): 补 arb
+    } finally {
+      if (_isCurrent(version)) setState(() => _loading = false);
     }
   }
 
@@ -841,7 +845,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
   }
 
   void _cancelSourceRead() {
-    if (!_preparingSourcePdf) return;
+    if ((!_loading && !_preparingSourcePdf) || _printing) return;
     _contextVersion++;
     _invalidated = true;
     _pdfGenerator.dispose();
@@ -984,11 +988,17 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
             },
           ),
         ),
-        if (_preparingSourcePdf || _printing)
+        if (_loading || _preparingSourcePdf || _printing)
           UtenBusyOverlay(
-            title: _preparingSourcePdf ? '正在生成原件预览' : '正在准备打印',
+            title: _preparingSourcePdf
+                ? '正在生成原件预览'
+                : _loading
+                ? '正在读取打印内容'
+                : '正在准备打印',
             showDoNotLeaveHint: false,
-            onCancel: _preparingSourcePdf ? _cancelSourceRead : null,
+            onCancel: !_printing && (_loading || _preparingSourcePdf)
+                ? _cancelSourceRead
+                : null,
             cancelLabel: '取消读取',
           ),
       ],

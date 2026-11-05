@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/network/api_client.dart';
@@ -20,6 +21,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../config/finance_requirement_names.dart';
 import 'finance_entry_file_picker.dart';
+import '../shared/finance_workbench_panel.dart';
 
 const _base = '/finance/expense-analysis';
 const _fees = [
@@ -63,24 +65,30 @@ Future<bool> showFinanceExpenseAnalysisDialog(
       (mode == 'note' && lineKey == null) ||
       (mode == 'assignment' && entryId == null) ||
       (mode == 'group' && groupId == null);
-  return await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => UtenDialogFrame(
-          child: SizedBox(
-            width: 980,
-            height: MediaQuery.sizeOf(context).height * .88,
-            child: select
-                ? _Manager(mode: mode, period: period)
-                : FinanceExpenseAnalysisSurface(
-                    mode: mode,
-                    scope: scope,
-                    resumeDraftId: resumeDraftId,
-                  ),
-          ),
-        ),
-      ) ??
-      false;
+  Widget workspace(BuildContext context) => UtenDialogFrame(
+    child: SizedBox(
+      width: 980,
+      height: MediaQuery.sizeOf(context).height * .88,
+      child: select
+          ? _Manager(mode: mode, period: period)
+          : FinanceExpenseAnalysisSurface(
+              mode: mode,
+              scope: scope,
+              resumeDraftId: resumeDraftId,
+            ),
+    ),
+  );
+  final changed = select || mode == 'assignment'
+      ? await showFinanceWorkbenchPanel<bool>(
+          context: context,
+          builder: workspace,
+        )
+      : await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: workspace,
+        );
+  return changed ?? false;
 }
 
 class _Manager extends ConsumerStatefulWidget {
@@ -493,6 +501,11 @@ class _ManagerState extends ConsumerState<_Manager> {
                     : '定位原表项目，保留原顺序',
               ),
             ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在核对费用资料',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),
@@ -778,18 +791,22 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
     try {
       _sent ??= _payload();
       await runFormDraftSubmission(
-        () => scope.run(
-          () => ref
-              .read(apiClientProvider)
-              .post(
-                '$_base/${switch (_mode) {
-                  'note' => 'notes',
-                  'group' => 'groups',
-                  'assignment' => 'assignments',
-                  _ => _mode,
-                }}',
-                body: _sent,
-              ),
+        () => UtenBusyOverlay.run(
+          context,
+          title: '正在保存费用原表资料',
+          action: () => scope.run(
+            () => ref
+                .read(apiClientProvider)
+                .post(
+                  '$_base/${switch (_mode) {
+                    'note' => 'notes',
+                    'group' => 'groups',
+                    'assignment' => 'assignments',
+                    _ => _mode,
+                  }}',
+                  body: _sent,
+                ),
+          ),
         ),
       );
       if (!mounted || !formDraftIdentityIsCurrent || !scope.isCurrent) return;
@@ -997,14 +1014,22 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
       child: Column(
         children: [
           UtenDialogHeader(
-            title: Text(
-              '$_period · ${switch (_mode) {
-                'note' => '备注/差异原因',
-                'labor' => '直接人工/间接人工',
-                'group' => '销售费用分组',
-                'assignment' => '销售费用来源分配',
-                _ => '期间取数口径',
-              }}',
+            title: UtenDialogTitleWithHint(
+              title: Text(
+                '$_period · ${switch (_mode) {
+                  'note' => '备注/差异原因',
+                  'labor' => '直接人工/间接人工',
+                  'group' => '销售费用分组',
+                  'assignment' => '销售费用来源分配',
+                  _ => '期间取数口径',
+                }}',
+              ),
+              info: switch (_mode) {
+                'policy' =>
+                  '请核对期间实际消耗、费用归属，以及部门费用与费用性质、资本化成本是否重复。确认只记录核对结论，不替代来源覆盖和金额守恒。',
+                'labor' => '没有明确410106原始分录时，请先对应职工薪酬费来源。没有工资事实不补0。',
+                _ => null,
+              },
             ),
             showCloseButton: true,
             onClose: _close,
@@ -1032,8 +1057,6 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
                             '职工薪酬费：正向 ${_source['positiveAmount'] ?? '待核'}；红字 ${_source['negativeAmount'] ?? '待核'}；${_source['sourceCount'] ?? 0}笔来源',
                           ),
                           const SizedBox(height: 12),
-                          if (_source['sourceAvailable'] != true)
-                            const Text('没有明确410106原始分录，请先对应职工薪酬费来源。没有工资事实不补0。'),
                           for (final pair in [
                             ('directPositive', '直接人工（正向）'),
                             ('indirectPositive', '间接人工（正向）'),
@@ -1048,9 +1071,8 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
                               for (final source in _items(_source['sources']))
                                 ListTile(
                                   title: Text(
-                                    '${source['date']} ${source['billNo'] ?? ''} ${source['amountLocal']}',
+                                    '${source['date']} ${source['billNo'] ?? ''} ${source['amountLocal']}\n${source['entryId']}',
                                   ),
-                                  subtitle: Text(source['entryId'].toString()),
                                 ),
                             ],
                           ),
@@ -1100,9 +1122,6 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
                           _allocationEditor(),
                         ],
                         if (_mode == 'policy') ...[
-                          const Text(
-                            '请核对期间实际消耗、费用归属，以及部门费用与费用性质、资本化成本是否重复。确认只记录核对结论，不替代来源覆盖和金额守恒。',
-                          ),
                           _check('confirmed', '已核对期间口径并排除重复扣减'),
                           _check('locked', '锁定本期间归属资料'),
                           _input('unlockReason', '解除锁定原因'),
@@ -1113,31 +1132,27 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
                     ),
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                UtenButton(
-                  onPressed: _saving ? null : _close,
-                  child: const Text('关闭'),
+          UtenDialogActions(
+            children: [
+              UtenButton(
+                type: UtenButtonType.secondary,
+                onPressed: _saving ? null : _close,
+                child: const Text('关闭'),
+              ),
+              UtenButton(
+                onPressed: _saving || _loading || _error != null ? null : _save,
+                child: Text(
+                  _saving
+                      ? '保存中…'
+                      : _sent != null
+                      ? '重试原请求'
+                      : '保存',
                 ),
-                const SizedBox(width: 12),
-                UtenButton(
-                  onPressed: _saving || _loading || _error != null
-                      ? null
-                      : _save,
-                  child: Text(
-                    _saving
-                        ? '保存中…'
-                        : _sent != null
-                        ? '重试原请求'
-                        : '保存',
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
+          if (_loading)
+            const UtenBusyOverlay(title: '正在读取费用资料', showDoNotLeaveHint: false),
         ],
       ),
     ),

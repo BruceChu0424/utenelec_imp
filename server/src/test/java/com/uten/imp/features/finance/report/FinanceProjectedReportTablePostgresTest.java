@@ -47,10 +47,10 @@ class FinanceProjectedReportTablePostgresTest {
                 "subcontract_material_returns","subcontract_material_return_items","subcontract_returns","subcontract_return_items",
                 "subcontract_wastes","subcontract_waste_items","subcontract_receipt_material_consumptions","subcontract_loss_fulfillment_allocations","stock_value_events","document_unapprovals",
                 "procurement_receipt_consideration_parts","procurement_iqc_consideration_reversals",
-                "finance_open_item_classification_batches","finance_open_item_classification_parts","v_finance_open_item_classification_current",
+                "finance_open_item_classification_batches","finance_open_item_classification_parts",
                 "finance_payable_statement_adjustments","finance_payable_statement_adjustment_lines",
-                "finance_receipt_classification_batches","finance_receipt_classification_parts","v_finance_receipt_classification_current",
-                "finance_customer_offset_classification_batches","finance_customer_offset_classification_parts","v_finance_customer_offset_classification_current",
+                "finance_receipt_classification_batches","finance_receipt_classification_parts",
+                "finance_customer_offset_classification_batches","finance_customer_offset_classification_parts",
                 "finance_sales_cost_inputs","v_finance_sales_expense_client_facts","v_finance_sales_expense_period_coverage",
                 "finance_material_order_references","finance_plastic_template_inputs",
                 "finance_copper_template_inputs",
@@ -60,6 +60,8 @@ class FinanceProjectedReportTablePostgresTest {
                 "stock_documents","stock_document_items","workshop_material_close_theory_lines","workshop_material_period_closes","workshop_material_close_materials",
                 "workshop_material_period_lines","workshop_material_periods","production_daily_reports","production_daily_report_items","production_execution_segments");
         MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer","fn_business_exact_divide_with_policy","fn_business_exact_divide");
+        com.uten.imp.support.FinanceReportProjectionSchema.receivableClassifications(db);
+        com.uten.imp.support.FinanceReportProjectionSchema.supplierAdvanceReplay(db);
         em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         var access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));when(access.hasAuthority(anyString())).thenReturn(true);
         when(access.nativeReadScope(anyString(),anyString(),any(OwnerScope.class))).thenReturn(new NativeReadScope("1=1",null,Set.of()));

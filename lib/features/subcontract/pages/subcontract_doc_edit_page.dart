@@ -856,6 +856,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       final wr = financeExactDecimal(r.wasteRate.text);
       final remarkText = r.remark.text.trim();
       final line = <String, dynamic>{
+        if ((widget.docType == SubcontractDocType.receipt ||
+                widget.docType == SubcontractDocType.materialReturn) &&
+            (r.documentItemId?.isNotEmpty ?? false))
+          'id': r.documentItemId,
         'goodsId': r.goods!.id,
         'qty': r.qty.text.trim(),
         if (r.colorId != null) 'colorId': r.colorId,

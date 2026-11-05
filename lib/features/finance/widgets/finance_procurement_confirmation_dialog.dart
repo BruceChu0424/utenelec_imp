@@ -1,3 +1,4 @@
+import '../shared/finance_workbench_panel.dart';
 import 'dart:typed_data';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -19,12 +20,159 @@ import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'finance_entry_file_picker.dart';
 import 'finance_source_table.dart';
+import 'finance_durable_command_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 
 const _path = '/finance/procurement-payable-recognitions';
+
+bool _validProcurementPolicy(Map<String, dynamic> policy) {
+  final revision = policy['revision'],
+      reference = policy['sourceReference'],
+      date = policy['effectiveFrom'];
+  return revision is int &&
+      revision >= 0 &&
+      policy['enabled'] is bool &&
+      policy.containsKey('sourceReference') &&
+      (reference == null || reference is String) &&
+      policy.containsKey('effectiveFrom') &&
+      (date == null ||
+          date is String &&
+              RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date) &&
+              DateTime.tryParse(date) != null);
+}
+
+Future<Map<String, dynamic>?> showFinanceProcurementPolicyDialog(
+  BuildContext context, {
+  String? resumeDraftId,
+}) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final epoch = container.read(exportContextEpochProvider);
+  Map<String, dynamic>? initial;
+  if (resumeDraftId == null) {
+    Map<String, dynamic> policy;
+    try {
+      policy = await UtenBusyOverlay.run(
+        context,
+        title: '正在读取首次应付设置',
+        action: () => container.read(apiClientProvider).get('$_path/policy'),
+      );
+      if (!_validProcurementPolicy(policy)) {
+        throw StateError('当前首次应付设置不完整，请重新读取后核对');
+      }
+    } catch (error) {
+      if (context.mounted &&
+          container.read(exportContextEpochProvider) == epoch) {
+        context.appApiError(error, fallback: '首次应付设置读取失败，请重试');
+      }
+      return null;
+    }
+    if (!context.mounted ||
+        container.read(exportContextEpochProvider) != epoch) {
+      return null;
+    }
+    initial = {
+      'expectedRevision': policy['revision'],
+      'enabled': policy['enabled'] == true,
+      'effectiveFrom': policy['effectiveFrom'],
+      'sourceReference': policy['sourceReference'] ?? '',
+    };
+  }
+  if (!context.mounted) return null;
+  return showFinanceDurableCommandDialog(
+    context,
+    operation: FinanceDurableOperation.procurementPolicy,
+    initialBody: initial,
+    resumeDraftId: resumeDraftId,
+    hint:
+        '只影响生效日期后新审核的来源。历史正式应付不重开；已进入新路线的单据沿原路线完成。启用前维护暂估债务、待确认退货资产、正式应付及供应商辅助。',
+    reviewLoader: (api, body, source, target) async {
+      final policy = await api.get('$_path/policy');
+      if (!_validProcurementPolicy(policy)) {
+        throw StateError('当前首次应付设置缺少版本依据');
+      }
+      String route(Object? value) => value == true ? '先对账确认再立应付' : '保持原审核立应付';
+      return FinanceCommandReview(
+        versionPatch: {'expectedRevision': policy['revision']},
+        rows: [
+          ('新审核来源', route(body['enabled']), route(policy['enabled'])),
+          (
+            '生效日期',
+            '${body['effectiveFrom'] ?? '未设置'}',
+            '${policy['effectiveFrom'] ?? '未设置'}',
+          ),
+          (
+            '启用或变更依据',
+            '${body['sourceReference'] ?? ''}',
+            '${policy['sourceReference'] ?? '未设置'}',
+          ),
+        ],
+      );
+    },
+    editorBuilder: (context, editor) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        UtenDropdownField(
+          label: '新审核来源',
+          value: editor.body['enabled'] == true ? 'NEW' : 'LEGACY',
+          enabled: editor.editable,
+          allowClear: false,
+          items: const [
+            UtenDropdownItem(value: 'NEW', label: '先对账确认再立应付'),
+            UtenDropdownItem(value: 'LEGACY', label: '保持原审核立应付'),
+          ],
+          onChanged: (value) {
+            if (value != null) editor.set('enabled', value == 'NEW');
+          },
+        ),
+        const SizedBox(height: 12),
+        FormField<String>(
+          validator: (_) {
+            final value = editor.body['effectiveFrom'];
+            if (editor.body['enabled'] == true &&
+                (value is! String ||
+                    value.compareTo(
+                          ChinaDateTime.formatDate(ChinaDateTime.today()),
+                        ) <
+                        0)) {
+              return '首次启用日期只能为今天或以后；历史正式来源保持原路线';
+            }
+            return null;
+          },
+          builder: (field) => UtenDateField(
+            label: '生效日期',
+            required: editor.body['enabled'] == true,
+            info: '首次启用日期只能为今天或以后；历史正式来源保持原路线。',
+            value: DateTime.tryParse('${editor.body['effectiveFrom'] ?? ''}'),
+            enabled: editor.editable,
+            errorMessage: field.errorText,
+            onChanged: (date) {
+              final value = _day(date);
+              editor.set('effectiveFrom', value);
+              field.didChange(value);
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        UtenInput(
+          label: '启用或变更依据',
+          controller: editor.controller('sourceReference'),
+          enabled: editor.editable,
+          required: true,
+          validator: (value) =>
+              (value ?? '').trim().length <
+                  (editor.body['enabled'] == true ? 8 : 1)
+              ? '请填写完整的启用或变更依据'
+              : null,
+        ),
+      ],
+    ),
+  );
+}
 
 /// Mounted by the existing 委外对账单 / 供应商对账单 toolbar, with real typed selector UUIDs.
 Future<void> showFinanceProcurementConfirmationDialog(
@@ -32,9 +180,8 @@ Future<void> showFinanceProcurementConfirmationDialog(
   required String supplierId,
   required String currencyId,
   String? resumeDraftId,
-}) => showDialog<void>(
+}) => showFinanceWorkbenchPanel<void>(
   context: context,
-  barrierDismissible: false,
   builder: (_) => resumeDraftId != null
       ? _ConfirmationForm(
           supplierId: supplierId,
@@ -147,11 +294,7 @@ class _ConfirmationDirectoryState
 
   Future<void> _policy() async {
     if (!_current || _busy) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const _ConfirmationPolicy(),
-    );
+    await showFinanceProcurementPolicyDialog(context);
     if (_current) await _load(_page);
   }
 
@@ -939,172 +1082,6 @@ class _ConfirmationDetailState extends ConsumerState<_ConfirmationDetail> {
                     ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ConfirmationPolicy extends ConsumerStatefulWidget {
-  const _ConfirmationPolicy();
-  @override
-  ConsumerState<_ConfirmationPolicy> createState() =>
-      _ConfirmationPolicyState();
-}
-
-class _ConfirmationPolicyState extends ConsumerState<_ConfirmationPolicy> {
-  late final ApiClient _api;
-  late final int _epoch;
-  Map<String, dynamic>? _data;
-  bool _busy = false, _unknown = false, _enabled = false;
-  DateTime? _date;
-  String? _error;
-  final _reference = TextEditingController();
-  Map<String, Object?>? _request;
-  bool get _current =>
-      mounted &&
-      _epoch == ref.read(exportContextEpochProvider) &&
-      identical(_api, ref.read(apiClientProvider));
-  @override
-  void initState() {
-    super.initState();
-    _api = ref.read(apiClientProvider);
-    _epoch = ref.read(exportContextEpochProvider);
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _reference.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    setState(() => _busy = true);
-    try {
-      final data = await _api.get('$_path/policy');
-      if (_current) {
-        setState(() {
-          _data = data;
-          _enabled = data['enabled'] == true;
-          _date = DateTime.tryParse('${data['effectiveFrom'] ?? ''}');
-          _reference.text = '${data['sourceReference'] ?? ''}';
-        });
-      }
-    } catch (e) {
-      if (_current) setState(() => _error = _message(e));
-    } finally {
-      if (_current) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _save() async {
-    if (!_current || _busy || _data == null) return;
-    if (!_unknown) {
-      _request = {
-        'expectedRevision': _data!['revision'],
-        'enabled': _enabled,
-        'effectiveFrom': _date == null ? null : _day(_date!),
-        'sourceReference': _reference.text,
-      };
-    }
-    setState(() => _busy = true);
-    final wasUnknown = _unknown;
-    try {
-      await _api.put('$_path/policy', body: _request);
-      if (mounted && _current) Navigator.pop(context);
-    } catch (e) {
-      if (_current) {
-        setState(() {
-          _unknown = wasUnknown || !_rejected(e);
-          _error = _message(e);
-        });
-      }
-    } finally {
-      if (_current) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (ref.watch(exportContextEpochProvider) != _epoch) return _lost(context);
-    final enabled = !_busy && !_unknown;
-    return PopScope(
-      canPop: enabled,
-      child: UtenDialogFrame(
-        maxWidth: 650,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            UtenDialogHeader(
-              title: const Text('首次应付设置'),
-              showCloseButton: true,
-              onClose: enabled ? () => Navigator.pop(context) : null,
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '只影响生效日期后新审核的来源。历史正式应付不重开；关闭后已经进入新路线的单据仍沿原路线完成。启用前须维护暂估债务、待确认退货资产、正式应付的科目与供应商辅助。',
-                  ),
-                  const SizedBox(height: 12),
-                  UtenDropdownField(
-                    label: '新审核来源',
-                    value: _enabled ? 'NEW' : 'LEGACY',
-                    enabled: enabled,
-                    allowClear: false,
-                    items: const [
-                      UtenDropdownItem(value: 'NEW', label: '先对账确认再立应付'),
-                      UtenDropdownItem(value: 'LEGACY', label: '保持原审核立应付'),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _enabled = value == 'NEW');
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  UtenDateField(
-                    label: '生效日期',
-                    value: _date,
-                    enabled: enabled,
-                    onChanged: (d) => setState(() => _date = d),
-                  ),
-                  const SizedBox(height: 12),
-                  UtenInput(
-                    label: '启用或变更依据',
-                    controller: _reference,
-                    enabled: enabled,
-                  ),
-                  if (_error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            UtenDialogActions(
-              children: [
-                TextButton(
-                  onPressed: enabled ? () => Navigator.pop(context) : null,
-                  child: const Text('取消'),
-                ),
-                UtenButton(
-                  onPressed: _busy ? null : _save,
-                  child: Text(_unknown ? '核对并重试原设置' : '保存'),
-                ),
-              ],
             ),
           ],
         ),

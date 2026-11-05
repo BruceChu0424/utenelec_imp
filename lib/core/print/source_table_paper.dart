@@ -14,6 +14,41 @@ const _templates = {
   'otherReceivableStatement',
   'clientStatement',
 };
+const _financialTemplates = {'balanceSheet', 'monthlyProfit', 'annualProfit'};
+const _financialFields = {
+  'columnAlignments',
+  'bodyBands',
+  'textSpans',
+  'keepWithNextRows',
+  'protectCompleteValues',
+};
+const _alignments = {'LEFT', 'CENTER', 'RIGHT'};
+final _rgb = RegExp(r'^[0-9a-fA-F]{6}$');
+
+class SourcePaperBodyBand {
+  const SourcePaperBodyBand(
+    this.row,
+    this.firstColumn,
+    this.lastColumn,
+    this.fill,
+    this.bold,
+  );
+  final int row, firstColumn, lastColumn;
+  final String? fill;
+  final bool bold;
+}
+
+class SourcePaperTextSpan {
+  const SourcePaperTextSpan(
+    this.row,
+    this.column,
+    this.start,
+    this.end,
+    this.color,
+  );
+  final int row, column, start, end;
+  final String color;
+}
 
 Map<String, dynamic> _map(Object? value) {
   if (value is! Map) throw const FormatException('原表纸面资料不完整');
@@ -70,14 +105,23 @@ class SourceTablePaper {
     this.minimumRows,
     this.footer,
     this.landscape,
+    this.financial,
+    this.columnAlignments,
+    this.bodyBands,
+    this.textSpans,
+    this.keepWithNextRows,
   );
   factory SourceTablePaper.parse(
     Object? input, {
     required int expectedColumns,
+    int? expectedBodyRows,
   }) {
     final raw = _map(input);
+    final financial = _financialTemplates.contains(raw['templateKey']);
     if (!{1, 2, '1', '2'}.contains(raw['version']) ||
-        !_templates.contains(raw['templateKey'])) {
+        !(_templates.contains(raw['templateKey']) || financial) ||
+        financial && raw['version'].toString() != '1' ||
+        !financial && _financialFields.any(raw.containsKey)) {
       throw const FormatException('原表纸面版本不匹配');
     }
     if (raw['version'].toString() == '2') {
@@ -154,6 +198,145 @@ class SourceTablePaper {
         }
       }
     }
+    final alignments = <String>[],
+        bands = <SourcePaperBodyBand>[],
+        spans = <SourcePaperTextSpan>[],
+        keep = <int>{};
+    if (financial) {
+      if (minimum != 0) {
+        throw const FormatException('财务原表不补造空白数据行');
+      }
+      if (raw['landscape'] is! bool ||
+          raw.containsKey('protectCompleteValues') &&
+              raw['protectCompleteValues'] != true) {
+        throw const FormatException('财务原表必须完整显示全部文本');
+      }
+      if (raw['fontName'] is! String ||
+          _text(raw['fontName'], maximum: 100).trim().isEmpty) {
+        throw const FormatException('财务原表字体资料不完整');
+      }
+      _number(raw['fontSize'], 8, 32);
+      if (raw.containsKey('columnAlignments')) {
+        for (final value in _list(raw['columnAlignments'])) {
+          if (value is! String || !_alignments.contains(value)) {
+            throw const FormatException('财务原表列对齐方式无效');
+          }
+          alignments.add(value);
+        }
+        if (alignments.length != main) {
+          throw const FormatException('财务原表列对齐未完整对应');
+        }
+      } else {
+        alignments.addAll(List.filled(main, 'LEFT'));
+      }
+      for (final cell in [...headings, ...footer]) {
+        if (cell.containsKey('alignment') &&
+            !_alignments.contains(cell['alignment'])) {
+          throw const FormatException('财务原表单元格对齐方式无效');
+        }
+        if (cell.containsKey('bold') && cell['bold'] is! bool) {
+          throw const FormatException('财务原表字体样式无效');
+        }
+      }
+      final merged = <(int, int), (int, int)>{};
+      for (final merge in merges) {
+        final firstRow = _integer(merge['firstRow'], 0, header),
+            lastRow = _integer(merge['lastRow'], firstRow, header),
+            firstColumn = _integer(merge['firstColumn'], 0, canvas - 1),
+            lastColumn = _integer(merge['lastColumn'], firstColumn, canvas - 1);
+        for (var row = firstRow; row <= lastRow; row++) {
+          for (var column = firstColumn; column <= lastColumn; column++) {
+            if (merged.containsKey((row, column))) {
+              throw const FormatException('财务原表合并范围重叠');
+            }
+            merged[(row, column)] = (firstRow, firstColumn);
+          }
+        }
+      }
+      final anchors = <(int, int)>{};
+      for (final heading in headings) {
+        final position = (
+          _integer(heading['row'], 0, header),
+          _integer(heading['column'], 0, canvas - 1),
+        );
+        if (!anchors.add(position) ||
+            merged.containsKey(position) && merged[position] != position) {
+          throw const FormatException('财务原表抬头与合并位置冲突');
+        }
+      }
+      final maximumRow =
+          (expectedBodyRows ?? maximumCompleteOriginalPrintRows) - 1;
+      final bandCells = <(int, int), (String?, bool)>{};
+      var bandCoverage = 0;
+      final rawBands = raw.containsKey('bodyBands')
+          ? _list(raw['bodyBands'])
+          : const <Object?>[];
+      if (rawBands.length > 4096) throw const FormatException('财务原表填色超过范围');
+      for (final value in rawBands) {
+        final band = _map(value),
+            row = _integer(band['row'], 0, maximumRow),
+            first = _integer(band['firstColumn'], 0, main - 1),
+            last = _integer(band['lastColumn'], first, main - 1),
+            fill = band['fill'];
+        if (band['bold'] is! bool ||
+            fill != null && (fill is! String || !_rgb.hasMatch(fill))) {
+          throw const FormatException('财务原表填色或字体样式无效');
+        }
+        final style = (fill as String?, band['bold'] as bool);
+        bandCoverage += last - first + 1;
+        if (bandCoverage > 4096) {
+          throw const FormatException('财务原表填色超过范围');
+        }
+        for (var column = first; column <= last; column++) {
+          final previous = bandCells[(row, column)];
+          if (previous != null && previous != style) {
+            throw const FormatException('财务原表填色或字体样式冲突');
+          }
+          bandCells[(row, column)] = style;
+          if (bandCells.length > 4096) {
+            throw const FormatException('财务原表填色超过范围');
+          }
+        }
+        bands.add(SourcePaperBodyBand(row, first, last, style.$1, style.$2));
+      }
+      final rawSpans = raw.containsKey('textSpans')
+          ? _list(raw['textSpans'])
+          : const <Object?>[];
+      if (rawSpans.length > 4096) throw const FormatException('财务原表文字样式超过范围');
+      final spanCells = <(int, int), List<SourcePaperTextSpan>>{};
+      for (final value in rawSpans) {
+        final span = _map(value),
+            row = _integer(span['row'], 0, maximumRow),
+            column = _integer(span['column'], 0, main - 1),
+            start = _integer(span['start'], 0, 32766),
+            end = _integer(span['end'], start + 1, 32767),
+            color = span['color'];
+        if (color is! String || !_rgb.hasMatch(color)) {
+          throw const FormatException('财务原表文字颜色无效');
+        }
+        final at = spanCells.putIfAbsent((row, column), () => []);
+        final parsed = SourcePaperTextSpan(row, column, start, end, color);
+        at.add(parsed);
+        spans.add(parsed);
+      }
+      for (final at in spanCells.values) {
+        at.sort((a, b) => a.start.compareTo(b.start));
+        for (var index = 1; index < at.length; index++) {
+          if (at[index].start < at[index - 1].end) {
+            throw const FormatException('财务原表文字样式重叠');
+          }
+        }
+      }
+      final rawKeep = raw.containsKey('keepWithNextRows')
+          ? _list(raw['keepWithNextRows'])
+          : const <Object?>[];
+      if (rawKeep.length > 4096) throw const FormatException('财务原表连排位置超过范围');
+      for (final value in rawKeep) {
+        if (!keep.add(_integer(value, 0, maximumRow))) {
+          throw const FormatException('财务原表连排位置重复');
+        }
+      }
+    }
     return SourceTablePaper._(
       Map.unmodifiable(raw),
       main,
@@ -169,6 +352,11 @@ class SourceTablePaper {
       minimum,
       footer,
       raw['landscape'] == true,
+      financial,
+      List.unmodifiable(alignments),
+      List.unmodifiable(bands),
+      List.unmodifiable(spans),
+      Set.unmodifiable(keep),
     );
   }
   final Map<String, dynamic> raw;
@@ -179,6 +367,33 @@ class SourceTablePaper {
   final Map<int, double> rowHeights;
   final List<Map<String, dynamic>> headings, merges, footer;
   final bool landscape;
+  final bool financial;
+  final List<String> columnAlignments;
+  final List<SourcePaperBodyBand> bodyBands;
+  final List<SourcePaperTextSpan> textSpans;
+  final Set<int> keepWithNextRows;
+}
+
+void _validateFinancialSpans(SourceTablePaper paper, List<List<String>> rows) {
+  if (!paper.financial) return;
+  bool splitPair(String text, int offset) =>
+      offset > 0 &&
+      offset < text.length &&
+      text.codeUnitAt(offset - 1) >= 0xd800 &&
+      text.codeUnitAt(offset - 1) <= 0xdbff &&
+      text.codeUnitAt(offset) >= 0xdc00 &&
+      text.codeUnitAt(offset) <= 0xdfff;
+  for (final span in paper.textSpans) {
+    if (span.row >= rows.length || span.column >= rows[span.row].length) {
+      throw const FormatException('财务原表文字样式未对应原行列');
+    }
+    final text = rows[span.row][span.column];
+    if (span.end > text.length ||
+        splitPair(text, span.start) ||
+        splitPair(text, span.end)) {
+      throw const FormatException('财务原表文字样式未完整对应原文本');
+    }
+  }
 }
 
 Future<String> encodeSourceTablePaper({
@@ -193,11 +408,16 @@ Future<String> encodeSourceTablePaper({
     debugLabel: 'print.source-paper-prepare',
   );
   work.ensureCurrent();
-  SourceTablePaper.parse(layout, expectedColumns: headers.length);
+  final paper = SourceTablePaper.parse(
+    layout,
+    expectedColumns: headers.length,
+    expectedBodyRows: rows.length,
+  );
   if (rows.length > maximumCompleteOriginalPrintRows ||
       rows.any((row) => row.length != headers.length)) {
     throw const FormatException('原表纸面行列不完整或超过预览范围');
   }
+  _validateFinancialSpans(paper, rows);
   final result = StringBuffer('{"layout":')
     ..write(jsonEncode(layout))
     ..write(',"headers":')
@@ -233,12 +453,171 @@ class _Cell {
     this.size,
     this.bold,
     this.alignment,
-    this.border,
-  );
+    this.border, {
+    this.fill,
+    this.spans = const [],
+  });
   final int row, column, lastColumn, rowSpan;
   final String text, alignment;
   final double size;
   final bool bold, border;
+  final String? fill;
+  final List<SourcePaperTextSpan> spans;
+}
+
+class _TextSlice {
+  const _TextSlice(this.start, this.end);
+  final int start, end;
+}
+
+Future<List<_TextSlice>> _wrapFinancialText(
+  String text,
+  double width,
+  double Function(String) measure,
+  UiWorkBudget work,
+) async {
+  final result = <_TextSlice>[];
+  var start = 0, offset = 0, count = 0;
+  var used = 0.0;
+  for (final rune in text.runes) {
+    final character = String.fromCharCode(rune);
+    if (character == '\n') {
+      result.add(_TextSlice(start, offset));
+      offset += character.length;
+      start = offset;
+      used = 0;
+    } else {
+      final advance = measure(character);
+      if (advance > width + .001) {
+        throw const FormatException('财务原表列宽不足完整显示字符');
+      }
+      if (offset > start && used + advance > width) {
+        var end = offset;
+        var carriedWidth = 0.0;
+        // Keep a closing mark with its preceding character when both fit;
+        // punctuation must not become a lone line in a narrow original label.
+        if ('）)]}》】〉」』”’、。，：；！？'.contains(character)) {
+          var previous = offset - 1;
+          if (previous > start &&
+              text.codeUnitAt(previous) >= 0xdc00 &&
+              text.codeUnitAt(previous) <= 0xdfff &&
+              text.codeUnitAt(previous - 1) >= 0xd800 &&
+              text.codeUnitAt(previous - 1) <= 0xdbff) {
+            previous--;
+          }
+          final priorWidth = measure(text.substring(previous, offset));
+          if (previous > start && priorWidth + advance <= width) {
+            end = previous;
+            carriedWidth = priorWidth;
+          }
+        }
+        result.add(_TextSlice(start, end));
+        start = end;
+        used = carriedWidth;
+      }
+      used += advance;
+      offset += character.length;
+    }
+    if (++count % 128 == 0) await work.checkpoint(128);
+  }
+  result.add(_TextSlice(start, text.length));
+  return result;
+}
+
+pw.TextAlign _textAlignment(String alignment) => alignment == 'CENTER'
+    ? pw.TextAlign.center
+    : alignment == 'RIGHT'
+    ? pw.TextAlign.right
+    : pw.TextAlign.left;
+
+pw.RichText _financialCellText(
+  _Cell cell,
+  List<_TextSlice> lines,
+  pw.Font font,
+) {
+  final children = <pw.InlineSpan>[];
+  final spans = List<SourcePaperTextSpan>.of(cell.spans)
+    ..sort((a, b) => a.start.compareTo(b.start));
+  for (var index = 0; index < lines.length; index++) {
+    final line = lines[index];
+    var cursor = line.start;
+    for (final span in spans) {
+      final first = math.max(line.start, span.start),
+          last = math.min(line.end, span.end);
+      if (first >= last) continue;
+      if (cursor < first) {
+        children.add(pw.TextSpan(text: cell.text.substring(cursor, first)));
+      }
+      children.add(
+        pw.TextSpan(
+          text: cell.text.substring(first, last),
+          style: pw.TextStyle(color: PdfColor.fromHex(span.color)),
+        ),
+      );
+      cursor = last;
+    }
+    if (cursor < line.end) {
+      children.add(pw.TextSpan(text: cell.text.substring(cursor, line.end)));
+    }
+    if (index + 1 < lines.length) children.add(const pw.TextSpan(text: '\n'));
+  }
+  return pw.RichText(
+    text: pw.TextSpan(
+      style: pw.TextStyle(
+        font: font,
+        fontSize: cell.size,
+        lineSpacing: 2,
+        color: PdfColors.black,
+        fontWeight: cell.bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+      ),
+      children: children,
+    ),
+    softWrap: false,
+    tightBounds: true,
+    textAlign: _textAlignment(cell.alignment),
+  );
+}
+
+List<_PageRows> _financialPages(
+  SourceTablePaper paper,
+  List<double> y,
+  int footerStart,
+  int rowCount,
+  double availableHeight,
+) {
+  final headerCount = paper.headerRow + 1,
+      bodySpace = availableHeight - y[headerCount];
+  final keep = {for (final row in paper.keepWithNextRows) headerCount + row};
+  final pages = <_PageRows>[];
+  var first = headerCount;
+  if (first == rowCount) return [_PageRows(first, first)];
+  while (first < rowCount) {
+    var last = first;
+    var used = 0.0;
+    while (last < rowCount) {
+      var next = last + 1;
+      while (next < rowCount && keep.contains(next - 1)) {
+        next++;
+      }
+      // Footer merged cells stay together. Keep the last data row with its
+      // full footnote rather than creating a page containing only a footnote.
+      if (last >= footerStart ||
+          next >= footerStart && footerStart < rowCount) {
+        next = rowCount;
+      }
+      final height = y[next] - y[last];
+      if (height > bodySpace + .001) {
+        throw const FormatException('财务原表连排行高超出纸张');
+      }
+      if (used + height > bodySpace + .001) break;
+      used += height;
+      last = next;
+    }
+    if (last == first) throw const FormatException('财务原表行高超出纸张');
+    pages.add(_PageRows(first, last));
+    first = last;
+  }
+  return pages;
 }
 
 class _PageRows {
@@ -263,6 +642,7 @@ Future<Uint8List> renderSourceTablePaper(
   final paper = SourceTablePaper.parse(
     input['layout'],
     expectedColumns: headers.length,
+    expectedBodyRows: _list(input['rows']).length,
   );
   if (paper.raw['version'].toString() == '2') {
     return _renderSourcePageSetup(input, paper, fontBytes);
@@ -275,7 +655,10 @@ Future<Uint8List> renderSourceTablePaper(
       rows.any((row) => row.length != paper.mainColumns)) {
     throw const FormatException('原表纸面行列不完整');
   }
-  final notice = _text(input['notice'], maximum: 4000),
+  _validateFinancialSpans(paper, rows);
+  // Financial headings come from the report's own company/period snapshot.
+  // A client-side caption cannot add a second or differently scoped heading.
+  final notice = paper.financial ? '' : _text(input['notice'], maximum: 4000),
       font = fontBytes == null
           ? pw.Font.helvetica()
           : pw.Font.ttf(ByteData.sublistView(fontBytes));
@@ -294,6 +677,7 @@ Future<Uint8List> renderSourceTablePaper(
   final totalWidth = nominal.fold<double>(0, (a, b) => a + b);
   if (totalWidth <= 0) throw const FormatException('原表没有可见纸面列');
   final scale = math.min(1.0, availableWidth / totalWidth), x = <double>[0];
+  final textScale = paper.financial ? 1.0 : scale;
   for (final width in nominal) {
     x.add(x.last + width * scale);
   }
@@ -309,6 +693,16 @@ Future<Uint8List> renderSourceTablePaper(
   final rowCount = footerStart + footerRows;
   final cells = <_Cell>[],
       work = UiWorkBudget(debugLabel: 'print.source-paper');
+  final bodyStyles = <(int, int), SourcePaperBodyBand>{};
+  for (final band in paper.bodyBands) {
+    for (var column = band.firstColumn; column <= band.lastColumn; column++) {
+      bodyStyles[(band.row, column)] = band;
+    }
+  }
+  final textStyles = <(int, int), List<SourcePaperTextSpan>>{};
+  for (final span in paper.textSpans) {
+    (textStyles[(span.row, span.column)] ??= []).add(span);
+  }
   for (final heading in paper.headings) {
     final row = _integer(heading['row'], 0, paper.headerRow),
         column = _integer(heading['column'], 0, paper.canvasColumns - 1);
@@ -349,9 +743,15 @@ Future<Uint8List> renderSourceTablePaper(
           paper.raw['fontSize'] == null
               ? 10
               : _number(paper.raw['fontSize'], 8, 32),
-          false,
-          _decimalDisplayText.hasMatch(text) ? 'RIGHT' : 'LEFT',
+          bodyStyles[(row, col)]?.bold ?? false,
+          paper.financial
+              ? paper.columnAlignments[col]
+              : _decimalDisplayText.hasMatch(text)
+              ? 'RIGHT'
+              : 'LEFT',
           true,
+          fill: bodyStyles[(row, col)]?.fill,
+          spans: textStyles[(row, col)] ?? const [],
         ),
       );
     }
@@ -381,56 +781,94 @@ Future<Uint8List> renderSourceTablePaper(
     );
   }
   final doc = pw.Document();
-  final metrics = font.getFont(pw.Context(document: doc.document));
+  final rawMeasureContext = pw.Context(document: doc.document);
+  final metrics = font.getFont(rawMeasureContext);
+  final measureContext = paper.financial
+      ? rawMeasureContext.inheritFrom(pw.ThemeData.base())
+      : rawMeasureContext;
   final heights = [
     for (int row = 0; row < rowCount; row++)
-      (paper.rowHeights[row] ?? paper.rowHeight) * scale,
+      (paper.rowHeights[row] ?? paper.rowHeight) * textScale,
   ];
   final display = <_Cell, String>{},
       wrapped = <_Cell>{},
       wrapCache = <String, String>{};
-  // Source heights are minima. A long exact amount wraps at its source font
-  // size instead of losing digits or becoming unreadably small. Row identities
-  // and footer offsets remain unchanged in the shared contract.
-  for (final cell in cells) {
-    if (cell.row <= paper.headerRow ||
-        !_decimalDisplayText.hasMatch(cell.text)) {
-      continue;
-    }
-    final size = cell.size * scale,
-        width = x[cell.lastColumn + 1] - x[cell.column] - 4 * scale;
-    if (width <= 0 ||
-        metrics.stringMetrics(cell.text).advanceWidth * size <= width) {
-      continue;
-    }
-    final key = '${cell.text}:$width:$size';
-    final text = wrapCache.putIfAbsent(key, () {
-      final lines = <String>[];
-      var line = '', used = 0.0;
-      for (final rune in cell.text.runes) {
-        final ch = String.fromCharCode(rune),
-            advance = metrics.stringMetrics(ch).advanceWidth * size;
-        if (line.isNotEmpty && used + advance > width) {
-          lines.add(line);
-          line = '';
-          used = 0;
-        }
-        line += ch;
-        used += advance;
+  final financialLines = <_Cell, List<_TextSlice>>{},
+      financialWrapCache = <(String, double, double), List<_TextSlice>>{};
+  if (paper.financial) {
+    for (final cell in cells) {
+      if (cell.text.isEmpty) continue;
+      final width = x[cell.lastColumn + 1] - x[cell.column] - 4;
+      if (width <= 0) continue;
+      final key = (cell.text, width, cell.size);
+      var lines = financialWrapCache[key];
+      if (lines == null) {
+        lines = await _wrapFinancialText(
+          cell.text,
+          width,
+          (text) => metrics.stringMetrics(text).advanceWidth * cell.size,
+          work,
+        );
+        financialWrapCache[key] = lines;
       }
-      if (line.isNotEmpty) lines.add(line);
-      return lines.join('\n');
-    });
-    display[cell] = text;
-    wrapped.add(cell);
-    final required = text.split('\n').length * size * 1.35 + 4 * scale;
-    final existing = heights
-        .sublist(cell.row, cell.row + cell.rowSpan)
-        .fold<double>(0, (sum, value) => sum + value);
-    if (required > existing) {
-      heights[cell.row + cell.rowSpan - 1] += required - existing;
+      financialLines[cell] = lines;
+      // Measure the same PDF text widget that will be painted. Source heights
+      // are minima; preserve the source font instead of fitting away a tail.
+      final measured = _financialCellText(cell, lines, font)
+        ..layout(measureContext, pw.BoxConstraints(maxWidth: width));
+      final required = measured.box!.height + 2 + (cell.border ? .6 : 0);
+      final existing = heights
+          .sublist(cell.row, cell.row + cell.rowSpan)
+          .fold<double>(0, (sum, value) => sum + value);
+      if (required > existing) {
+        heights[cell.row + cell.rowSpan - 1] += required - existing;
+      }
+      await work.checkpoint(cell.text.length + 1);
     }
-    await work.checkpoint(cell.text.length);
+  } else {
+    // Source heights are minima. A long exact amount wraps at its source font
+    // size instead of losing digits or becoming unreadably small. Row identities
+    // and footer offsets remain unchanged in the shared contract.
+    for (final cell in cells) {
+      if (cell.row <= paper.headerRow ||
+          !_decimalDisplayText.hasMatch(cell.text)) {
+        continue;
+      }
+      final size = cell.size * scale,
+          width = x[cell.lastColumn + 1] - x[cell.column] - 4 * scale;
+      if (width <= 0 ||
+          metrics.stringMetrics(cell.text).advanceWidth * size <= width) {
+        continue;
+      }
+      final key = '${cell.text}:$width:$size';
+      final text = wrapCache.putIfAbsent(key, () {
+        final lines = <String>[];
+        var line = '', used = 0.0;
+        for (final rune in cell.text.runes) {
+          final ch = String.fromCharCode(rune),
+              advance = metrics.stringMetrics(ch).advanceWidth * size;
+          if (line.isNotEmpty && used + advance > width) {
+            lines.add(line);
+            line = '';
+            used = 0;
+          }
+          line += ch;
+          used += advance;
+        }
+        if (line.isNotEmpty) lines.add(line);
+        return lines.join('\n');
+      });
+      display[cell] = text;
+      wrapped.add(cell);
+      final required = text.split('\n').length * size * 1.35 + 4 * scale;
+      final existing = heights
+          .sublist(cell.row, cell.row + cell.rowSpan)
+          .fold<double>(0, (sum, value) => sum + value);
+      if (required > existing) {
+        heights[cell.row + cell.rowSpan - 1] += required - existing;
+      }
+      await work.checkpoint(cell.text.length);
+    }
   }
   final y = <double>[0];
   for (final height in heights) {
@@ -440,9 +878,11 @@ Future<Uint8List> renderSourceTablePaper(
       y.last - y[footerStart] > availableHeight) {
     throw const FormatException('原表抬头或表尾超出一页，请核对源尺寸');
   }
-  final pages = <_PageRows>[];
+  final pages = paper.financial
+      ? _financialPages(paper, y, footerStart, rowCount, availableHeight)
+      : <_PageRows>[];
   int first = 0;
-  while (first < rowCount) {
+  while (!paper.financial && first < rowCount) {
     int last = first;
     double used = 0;
     while (last < rowCount) {
@@ -467,11 +907,17 @@ Future<Uint8List> renderSourceTablePaper(
   for (int index = 0; index < pages.length; index++) {
     final page = pages[index];
     final pieces = <pw.Widget>[];
-    for (int sourceRow = page.from; sourceRow < page.to; sourceRow++) {
+    final sourceRows = paper.financial
+        ? [
+            for (var row = 0; row <= paper.headerRow; row++) row,
+            for (var row = page.from; row < page.to; row++) row,
+          ]
+        : [for (var row = page.from; row < page.to; row++) row];
+    for (final sourceRow in sourceRows) {
       for (final cell in cellsByRow[sourceRow] ?? const <_Cell>[]) {
-        if (cell.row < page.from ||
-            cell.row >= page.to ||
-            x[cell.lastColumn + 1] <= x[cell.column]) {
+        if (x[cell.lastColumn + 1] <= x[cell.column] ||
+            ((!paper.financial || cell.row > paper.headerRow) &&
+                (cell.row < page.from || cell.row >= page.to))) {
           continue;
         }
         final height = y[cell.row + cell.rowSpan] - y[cell.row],
@@ -484,20 +930,37 @@ Future<Uint8List> renderSourceTablePaper(
         pieces.add(
           pw.Positioned(
             left: x[cell.column],
-            top: y[cell.row] - y[page.from],
+            top: paper.financial && cell.row <= paper.headerRow
+                ? y[cell.row]
+                : y[cell.row] -
+                      y[page.from] +
+                      (paper.financial ? y[paper.headerRow + 1] : 0),
             child: pw.Container(
               width: width,
               height: height,
               alignment: alignment,
               padding: pw.EdgeInsets.symmetric(
-                horizontal: 2 * scale,
-                vertical: 1 * scale,
+                horizontal: 2 * textScale,
+                vertical: 1 * textScale,
               ),
-              decoration: cell.border
+              decoration: paper.financial
+                  ? pw.BoxDecoration(
+                      color: cell.fill == null
+                          ? null
+                          : PdfColor.fromHex(cell.fill!),
+                      border: cell.border ? pw.Border.all(width: .4) : null,
+                    )
+                  : cell.border
                   ? pw.BoxDecoration(border: pw.Border.all(width: .4 * scale))
                   : null,
               child: cell.text.trim().isEmpty
                   ? pw.SizedBox()
+                  : paper.financial
+                  ? _financialCellText(
+                      cell,
+                      financialLines[cell] ?? [_TextSlice(0, cell.text.length)],
+                      font,
+                    )
                   : wrapped.contains(cell)
                   ? pw.Text(
                       display[cell]!,

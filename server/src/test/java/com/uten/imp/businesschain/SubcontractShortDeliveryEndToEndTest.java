@@ -201,6 +201,10 @@ class SubcontractShortDeliveryEndToEndTest {
         db.update("UPDATE subcontract_short_delivery_cases SET expected_complete_by = ? WHERE id = ?",BusinessTime.today().plusDays(7),caseId);
         assertNull(shortDeliveries.stockInHoldReason(first.receiptId()),"改回未到期后重新放行");
 
+        // First stock-in committed a durable cost-precision closure. Complete it
+        // through the real worker before submitting another arrival for that source.
+        ReflectionTestUtils.invokeMethod(fixture,"drainCosts",w);
+
         // ⑤ 第二批 5 件：累计 17 仍低于下限 19 → 仓库仍要确认(弹窗说明已判定分批)，但案件只刷新数字、不再通知。
         ApiException again=assertThrows(ApiException.class,()->arrivals.register(arrival(w,itemId,"5",false,"sd-2")));
         assertEquals(ErrorCode.SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED,again.getCode());
@@ -217,7 +221,7 @@ class SubcontractShortDeliveryEndToEndTest {
 
         // ⑥ 接受损耗结案：原订货 20、实际回厂 17、损耗 3 (允许 1 + 超耗 2) 分开记录，不修改合同数量。
         long version2=((Number)c.get("version")).longValue();
-        CaseDetail accepted=shortDeliveries.decide(caseId,new DecisionRequest("ACCEPT_LOSS",null,"委外商确认 3 件加工报废",version2));
+        CaseDetail accepted=stockPrecision(()->shortDeliveries.decide(caseId,new DecisionRequest("ACCEPT_LOSS",null,"委外商确认 3 件加工报废",version2)));
         assertEquals("ACCEPTED_LOSS",accepted.row().status());
         rate("3",accepted.row().lossQty());rate("15",accepted.row().lossPct());
         assertNotNull(accepted.row().wasteId());assertNotNull(accepted.row().wasteBillNo());
@@ -241,6 +245,10 @@ class SubcontractShortDeliveryEndToEndTest {
         assertEquals(0,shortDeliveries.counts().pending());assertEquals(0,shortDeliveries.counts().waiting());
         assertEquals("RECEIVED_PENDING_STOCK",workbenchRow(orderId).displayStage(),"回厂 17 加损耗 3 完成原订货 20 的到货追踪，仍待合格入库");
 
+        // Accepted loss committed a new exact cost target and its durable work.
+        // Publish that real closure before moving the second quality position.
+        ReflectionTestUtils.invokeMethod(fixture,"drainCosts",w);
+
         // ⑥b 第二张收货单 IQC 合格 5 件 → 仓库确认入库(第一张 12 件已在 ④b 解锁后入库)：
         //     合格实收净量 17 + 已接受损耗 3 = 原订货量 20，订货单关闭。
         for(var receipt:List.of(second)){
@@ -251,9 +259,9 @@ class SubcontractShortDeliveryEndToEndTest {
             UUID pass=db.queryForObject("SELECT id FROM procurement_inspection_events WHERE inspection_item_id=? AND action='PASS'",UUID.class,inspection);
             BigDecimal passed=db.queryForObject("SELECT base_qty FROM procurement_inspection_events WHERE id=?",BigDecimal.class,pass);
             fixture.loginAs(keeper);
-            iqcStockIn.confirm("SUBCONTRACT",receipt.receiptId(),new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest(
+            stockPrecision(()->iqcStockIn.confirm("SUBCONTRACT",receipt.receiptId(),new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest(
                     "sc-short-stock-"+receipt.receiptBillNo(),List.of(new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem(
-                            pass,passed,passed,"SC-SHORT-01",w.warehouseId()))));
+                            pass,passed,passed,"SC-SHORT-01",w.warehouseId())))));
         }
         fixture.loginAs(w.superAdminUserId());
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,orderId),"17 件入库后订货单关闭");
@@ -371,6 +379,13 @@ class SubcontractShortDeliveryEndToEndTest {
      * 于是那 60 次一条也取不到,断言必红。这里改成:每轮先抹平退避再投递,按时间兜底等待;
      * 本线程投递时抛出的瞬时冲突不记 attempts,下一轮直接重投。
      */
+    @SuppressWarnings("try")
+    private static <T>T stockPrecision(java.util.function.Supplier<T> operation){
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("stock.value.interval",
+                new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(30,"DOWN")))){return operation.get();}
+        catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
+    }
+
     private void drainOutbox(){
         String pending="SELECT COUNT(*) FROM business_outbox "
                 +"WHERE status<>1 AND event_type LIKE 'SUBCONTRACT_SHORT_DELIVERY_%'";

@@ -83,16 +83,23 @@ class GiftPhysicalConservationEndToEndTest {
     @Test void freeAndChargedReturnsCreditOnlyChargedUnitsAndMirrorOriginalIssueValueOnReverse(){
         F f=fixture();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         UUID source=receipts.detail(receipt).getItems().getFirst().getId();BigDecimal originalValue=value(f);
-        UUID free=returned(f,source,"0","1");returns.approve(free);
+        UUID free=returned(f,source,"0","1");stockSlice(()->returns.approve(free));
         assertThat(stock(f)).isEqualByComparingTo("10");assertThat(ap(free)).isZero();
         assertThat(number("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_id=?",free)).isZero();
         assertThat(number("SELECT returned_qty FROM purchase_receipt_items WHERE id=?",source)).isZero();
         assertThat(number("SELECT gift_returned_qty FROM purchase_receipt_items WHERE id=?",source)).isEqualByComparingTo("1");
         returns.reverse(free);assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo(originalValue);
-        UUID paid=returned(f,source,"1","0");returns.approve(paid);
+        UUID paid=returned(f,source,"1","0");stockSlice(()->returns.approve(paid));
         assertThat(ap(paid)).isEqualByComparingTo("-10");assertThat(stock(f)).isEqualByComparingTo("10");
         returns.reverse(paid);assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo(originalValue);
         assertThat(ap(receipt)).isEqualByComparingTo("100");
+    }
+
+    @SuppressWarnings("try")
+    private void stockSlice(Runnable action){
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(30,"DOWN")))){action.run();}
+        catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
     }
 
     @Test void receiptUnapprovalAndRepeatedCommandsRestoreBothSourceCountersThenNewGenerationPostsExactlyOnce(){

@@ -10,6 +10,24 @@
 import 'master_facet.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 
+/// A server-authorized leaf in the account's cash/bank posting scope.
+class AccountPostingStyle {
+  const AccountPostingStyle({
+    required this.id,
+    required this.code,
+    required this.name,
+  });
+  final String id;
+  final String code;
+  final String name;
+  factory AccountPostingStyle.fromJson(Map<String, dynamic> json) =>
+      AccountPostingStyle(
+        id: json['id'] as String,
+        code: json['code'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+      );
+}
+
 /// 账户类型枚举（与后端 AccountType 对齐）。value 为持久化字符串，label 为中文展示。
 enum AccountType {
   bank('BANK', '银行'),

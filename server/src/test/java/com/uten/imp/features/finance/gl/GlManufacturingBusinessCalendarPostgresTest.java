@@ -88,7 +88,7 @@ class GlManufacturingBusinessCalendarPostgresTest {
         assertThat((BigDecimal)output.get("m1")).isEqualByComparingTo("33.33");
         assertThat(output.get("m3")).isNull();
         assertThat((BigDecimal)output.get("m4")).isZero();
-        assertThat(output.get("basis").toString()).contains("待核实金额");
+        assertThat(output.get("__pending")).isEqualTo(true);
     }
 
     private static void movement(String instant, String amount) {
@@ -102,6 +102,12 @@ class GlManufacturingBusinessCalendarPostgresTest {
         when(result.setParameter(anyString(), any())).thenAnswer(call -> {
             parameters.put(call.getArgument(0),call.getArgument(1)); return result;
         });
+        // This oracle owns the actual business-calendar output SQL only. Other
+        // report authorities explicitly have no facts in this fixture.
+        if(!sql.contains("FROM stock_movements")) {
+            when(result.getResultList()).thenReturn(List.of());
+            return result;
+        }
         when(result.getResultList()).thenAnswer(call -> {
             // Each query opens a fresh connection, so set timezone on that exact connection.
             return named.execute(sql, parameters, statement -> {

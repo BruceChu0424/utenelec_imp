@@ -39,6 +39,7 @@ public class ProcurementPayableRecognitionService implements ProcurementPayableR
     private final FinanceDocumentAccessPolicy access;
     private final ImmutableDocumentStore documents;
     @org.springframework.beans.factory.annotation.Autowired private NativeFinancialPostingAccountPort nativeAccounts;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceOperationJournal operations;
     private static final String POLICY_LOCK="uten:procurement-first-payable-policy";
     private static final Object APPROVAL_CONTEXT=new Object();
     private record Decision(boolean enabled,LocalDate effectiveFrom,long policyVersion) {
@@ -46,6 +47,9 @@ public class ProcurementPayableRecognitionService implements ProcurementPayableR
     }
     private record Account(UUID style,String code,UUID currency,FinancialAuxiliaryValidationPort.Ref auxiliary) { }
     public record PolicyInput(long expectedRevision,boolean enabled,LocalDate effectiveFrom,String sourceReference) { }
+    public record PolicyCommand(UUID requestId,Long expectedRevision,Boolean enabled,LocalDate effectiveFrom,String sourceReference) implements com.uten.imp.features.finance.FinanceOperationJournal.OriginalBodyCommand {
+        public PolicyCommand(UUID id,long revision,boolean enabled,LocalDate from,String reference){this(id,Long.valueOf(revision),Boolean.valueOf(enabled),from,reference);}
+    }
     public record Selected(UUID candidateId,String sourceFingerprint) { }
     public record Submission(UUID requestId,UUID supplierId,UUID currencyId,LocalDate effectiveDate,
             String sourceReference,String counterpartConfirmedBy,LocalDate counterpartConfirmedDate,List<Selected> candidates) { }
@@ -128,11 +132,34 @@ public class ProcurementPayableRecognitionService implements ProcurementPayableR
     }
 
     @Transactional(readOnly=true) public Map<String,Object> policy(){read();return db.queryForMap("SELECT enabled,effective_from AS \"effectiveFrom\",source_reference AS \"sourceReference\",row_version AS revision FROM finance_procurement_ap_policy WHERE singleton");}
+    @Transactional public Map<String,Object> configureCommand(PolicyCommand command){
+        return configureCommand(command,null);
+    }
+    @Transactional public Map<String,Object> configureWire(com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        return configureCommand(operations.decodeOriginal(original,PolicyCommand.class),original);
+    }
+    private Map<String,Object> configureCommand(PolicyCommand command,com.uten.imp.features.finance.FinanceOperationJournal.WireCommand original){
+        write();CurrentAuthorityGuard.requireAll("payment_style:edit");tx.bind();
+        if(command==null)throw invalid("请保留原配置请求");
+        return operations.commandOriginal(command.requestId(),"PROCUREMENT_AP_POLICY_SAVE","PUT","/finance/procurement-payable-recognitions/policy",command,original,()->{
+            if(command.expectedRevision()==null||command.enabled()==null)throw invalid("请明确保留原政策版本和启用选择，本次未写入");
+            return configurePolicy(new PolicyInput(command.expectedRevision(),command.enabled(),command.effectiveFrom(),command.sourceReference()),false);
+        });
+    }
+    @Transactional(readOnly=true) public Map<String,Object> policyReceipt(UUID request){
+        read();return operations.commandReceipt(request,Set.of("PROCUREMENT_AP_POLICY_SAVE"));
+    }
+    @Transactional public Map<String,Object> cancelPolicyCommand(UUID request,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        read();tx.bind();return operations.cancelCommand(request,cancellation,"PROCUREMENT_AP_POLICY_SAVE","PUT","/finance/procurement-payable-recognitions/policy",PolicyCommand.class);
+    }
     @Transactional public Map<String,Object> configure(PolicyInput command){
+        return configurePolicy(command,true);
+    }
+    private Map<String,Object> configurePolicy(PolicyInput command,boolean legacyReplay){
         write();CurrentAuthorityGuard.requireAll("payment_style:edit");tx.bind();policyLock(true);
         if(command==null)throw invalid("请填写生效政策");reference(command.sourceReference());
         var before=db.queryForMap("SELECT * FROM finance_procurement_ap_policy WHERE singleton FOR UPDATE");
-        if(((Number)before.get("row_version")).longValue()==command.expectedRevision()+1
+        if(legacyReplay&&((Number)before.get("row_version")).longValue()==command.expectedRevision()+1
                 &&Boolean.valueOf(command.enabled()).equals(before.get("enabled"))&&Objects.equals(command.effectiveFrom(),date(before.get("effective_from")))
                 &&Objects.equals(command.sourceReference(),before.get("source_reference"))&&current.requireId().equals(before.get("updated_by")))return policy();
         if(command.enabled()){

@@ -47,6 +47,14 @@ public class FinanceBankTransferController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.finance.FinanceDocumentActions documentActions;
+
+    @GetMapping("/{id}/review-operations/{requestId}")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
+    public java.util.Map<String,Object> reviewReceipt(@PathVariable UUID id,@PathVariable UUID requestId){return documentActions.receipt("financeBankTransfer",id,requestId);}
+    @PostMapping("/{id}/review-operations/{requestId}/cancel")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
+    public java.util.Map<String,Object> cancelReview(@PathVariable UUID id,@PathVariable UUID requestId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation request){return documentActions.cancel("financeBankTransfer",id,requestId,request);}
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
@@ -85,7 +93,7 @@ public class FinanceBankTransferController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
     public FinanceBankTransferDetail detail(@PathVariable UUID id) {
-        FinanceBankTransferDetail result = service.detail(id);
+        FinanceBankTransferDetail result = documentActions.reviewedDetail("financeBankTransfer",id,false);
         detailViewAudit.record(
                 "view_finance_bank_transfer_detail",
                 "finance_bank_transfers",
@@ -99,7 +107,7 @@ public class FinanceBankTransferController {
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
     public FinanceBankTransferDetail history(@PathVariable UUID id) {
-        FinanceBankTransferDetail result = service.detailHistory(id);
+        FinanceBankTransferDetail result = documentActions.reviewedDetail("financeBankTransfer",id,true);
         detailViewAudit.recordHistory(
                 "view_finance_bank_transfer_detail",
                 "finance_bank_transfers",
@@ -118,34 +126,26 @@ public class FinanceBankTransferController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
-    public FinanceBankTransferDetail update(@PathVariable UUID id, @Valid @RequestBody FinanceBankTransferSaveRequest req) {
-        return service.update(id, req);
+    public java.util.Map<String,Object> update(@PathVariable UUID id, @Valid @RequestBody com.uten.imp.features.finance.FinanceDocumentActions.UpdateCommand req) {
+        return documentActions.update("financeBankTransfer",id,req);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_bank_transfer:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
+    public java.util.Map<String,Object> delete(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.delete("financeBankTransfer",id,command);
     }
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_bank_transfer:approve')")
-    public FinanceBankTransferDetail approve(@PathVariable UUID id) {
-        FinanceBankTransferDetail result = service.approve(id);
-        // 审计：显式记录"谁审核了这张银行存取款单"（触发器只记 update，业务语义在这里补）。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_bank_transfer_approve", "finance_bank_transfer", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> approve(@PathVariable UUID id,@RequestBody com.uten.imp.features.finance.FinanceDocumentActions.ApprovalCommand command) {
+        return documentActions.approve("financeBankTransfer",id,command);
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('finance_bank_transfer:reverse')")
-    public FinanceBankTransferDetail reverse(@PathVariable UUID id) {
-        FinanceBankTransferDetail result = service.reverse(id);
-        // 审计：显式记录"谁红冲了这张银行存取款单"。
-        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
-                "finance_bank_transfer_reverse", "finance_bank_transfer", String.valueOf(id), "success"));
-        return result;
+    public java.util.Map<String,Object> reverse(@PathVariable UUID id,@RequestBody com.uten.imp.application.port.FinancialDocumentUnapprovalCommandPort.Command command) {
+        return documentActions.unapprove("financeBankTransfer",id,command);
     }
 
     @GetMapping("/{id}/history/rows")

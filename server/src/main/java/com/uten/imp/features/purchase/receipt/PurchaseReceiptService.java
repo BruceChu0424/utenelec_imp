@@ -1,4 +1,6 @@
 package com.uten.imp.features.purchase.receipt;
+
+import com.uten.imp.common.finance.DocumentQuantitySavePlan;
 import com.uten.imp.common.util.EmployeeNameResolver;
 
 import com.uten.imp.common.web.HeaderColumnFilter;
@@ -272,9 +274,30 @@ public class PurchaseReceiptService {
         mutationGuard.verifyUnchanged();
         if(req.isConfirmGiftSemantics()) r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, r);
-        itemRepo.deleteByReceiptId(id);
+        var quantityIntents=new java.util.ArrayList<DocumentQuantitySavePlan.Intent>();
+        int quantityPosition=1;
+        for(ReceiptItemLine line:req.getItems()){
+            int position=line.getLineNo()==null?quantityPosition:line.getLineNo();
+            quantityIntents.add(DocumentQuantitySavePlan.intent(position,DocumentQuantitySavePlan.identity(line.getId(),line.getPlatformFields()==null?null:line.getPlatformFields().sourceRecordId()),
+                    "goods_id",line.getGoodsId(),
+                    "color_id",line.getColorId(),
+                    "unit_id",line.getUnitId(),
+                    "unit_rate",line.getUnitRate(),
+                    "qty",line.getQty(),
+                    "quantity_semantics",r.getQuantitySemantics(),
+                    "gift_qty",line.getGiftQty()==null?BigDecimal.ZERO:line.getGiftQty(),
+                    "order_item_id",line.getOrderItemId(),
+                    "replacement_intent",line.getReplacementIntent(),
+                    "gift_replacement_intent",line.getGiftReplacementIntent()==null?line.getReplacementIntent():line.getGiftReplacementIntent()));
+            quantityPosition++;
+        }
+        var quantityPlan=DocumentQuantitySavePlan.prepare(em,DocumentQuantitySavePlan.Family.PURCHASE_RECEIPT,id,quantityIntents,input->{
+            var unit=lineUnitPolicy.normalizeAndValidate((UUID)input.operands().get("goods_id"),(UUID)input.operands().get("unit_id"),(BigDecimal)input.operands().get("unit_rate"),input.lineNo());
+            return input.units(unit.unitId(),unit.unitRate());
+        });
+        quantityPlan.deleteReplaced(em);
         itemRepo.flush();
-        List<ReceiptItemDto> items = saveItems(r, req.getItems());
+        List<ReceiptItemDto> items = saveItems(r, req.getItems(),quantityPlan);
         applyTotals(r, items);
         return toDetail(r, items);
     }
@@ -662,6 +685,10 @@ public class PurchaseReceiptService {
     }
 
     private List<ReceiptItemDto> saveItems(PurchaseReceipt r, List<ReceiptItemLine> lines) {
+        return saveItems(r,lines,DocumentQuantitySavePlan.empty());
+    }
+
+    private List<ReceiptItemDto> saveItems(PurchaseReceipt r, List<ReceiptItemLine> lines,DocumentQuantitySavePlan.Plan quantityPlan) {
         if (lines == null || lines.stream().anyMatch(java.util.Objects::isNull)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写完整的采购收货明细");
         r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
                 em,"PURCHASE",lines.stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
@@ -688,7 +715,8 @@ public class PurchaseReceiptService {
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
                             l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
-            PurchaseReceiptItem it = new PurchaseReceiptItem();
+            var quantitySaved=quantityPlan.saved(lineNo);
+            PurchaseReceiptItem it = quantitySaved==null?new PurchaseReceiptItem():quantitySaved.entity(em,PurchaseReceiptItem.class);
             it.setReceiptId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
@@ -706,14 +734,14 @@ public class PurchaseReceiptService {
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
-            var quantities=com.uten.imp.common.finance.ProcurementQuantities.of(r.getQuantitySemantics(),l.getQty(),l.getGiftQty(),resolvedUnit.unitRate());
+            var quantities=quantitySaved==null?com.uten.imp.common.finance.ProcurementQuantities.of(r.getQuantitySemantics(),l.getQty(),l.getGiftQty(),resolvedUnit.unitRate()):quantitySaved.procurement(r.getQuantitySemantics(),l.getQty(),l.getGiftQty(),resolvedUnit.unitRate());
             it.setQuantitySemantics(r.getQuantitySemantics());
             it.setQty(quantities.charged());
             it.setGiftQty(com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(l.getGiftQty(),"采购收货赠品数量"));
             it.setChargedBaseQty(quantities.chargedBase());
             it.setGiftBaseQty(quantities.giftBase());
             it.setReplacementIntent(l.getReplacementIntent());
-            it.setGiftReplacementIntent(l.getGiftReplacementIntent()==null?l.getReplacementIntent():l.getGiftReplacementIntent());
+            it.setGiftReplacementIntent(quantitySaved==null?(l.getGiftReplacementIntent()==null?l.getReplacementIntent():l.getGiftReplacementIntent()):quantitySaved.text("gift_replacement_intent"));
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购收货单价"));
             // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
             MoneyPolicy.LineAmounts amounts = quantities.charged().signum()==0

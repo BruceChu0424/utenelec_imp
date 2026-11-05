@@ -2,6 +2,7 @@ import 'package:uuid/uuid.dart';
 
 import '../badges/badge_module.dart';
 import '../../core/router/route_names.dart';
+import '../auth/document_permission_set.dart';
 
 export '../badges/badge_module.dart';
 
@@ -59,6 +60,79 @@ const dailyReportCreateCommandKey = '_dailyReportCreateRequest';
 const dailyReportCreateReceiptKey = '_dailyReportCreateReceipt';
 const dailyReportCreateStateKey = '_dailyReportCreateState';
 const dailyReportReadRecoveryOnlyKey = '_dailyReportReadRecoveryOnly';
+const financeBatchReadRecoveryOnlyKey = '_financeBatchReadRecoveryOnly';
+const financeBatchOriginalAvailableKey = '_financeBatchOriginalAvailable';
+
+class FinanceBatchDraftFamily {
+  const FinanceBatchDraftFamily(this.segment, this.kind, this.permissions);
+  final String segment, kind;
+  final DocumentPermissionSet permissions;
+  String get recoveryForm => '${kind}BatchRecovery';
+  String get editorPath => '/finance/$segment/new';
+}
+
+const financeBatchDraftFamilies = <String, FinanceBatchDraftFamily>{
+  'receipts': FinanceBatchDraftFamily(
+    'receipts',
+    'financeReceipt',
+    DocumentPermissionCatalog.financeReceipt,
+  ),
+  'payments': FinanceBatchDraftFamily(
+    'payments',
+    'financePayment',
+    DocumentPermissionCatalog.financePayment,
+  ),
+  'expenses': FinanceBatchDraftFamily(
+    'expenses',
+    'financeExpense',
+    DocumentPermissionCatalog.financeExpense,
+  ),
+  'incomes': FinanceBatchDraftFamily(
+    'incomes',
+    'financeOtherIncome',
+    DocumentPermissionCatalog.financeOtherIncome,
+  ),
+  'bank-transfers': FinanceBatchDraftFamily(
+    'bank-transfers',
+    'financeBankTransfer',
+    DocumentPermissionCatalog.financeBankTransfer,
+  ),
+};
+
+/// Only an original family/key-bearing batch can enter read-only recovery.
+/// Unsent ordinary drafts and unrelated local records keep their write gate.
+FinanceBatchDraftFamily? financeBatchRecoveryFamily(FormDraft draft) {
+  if (!formDraftRouteIsLocal(draft.route) ||
+      draft.module != BadgeModule.finance ||
+      Uri.parse(draft.route).queryParameters.containsKey('draftForm') ||
+      draft.data['entrySchema'] != 1) {
+    return null;
+  }
+  final path = Uri.parse(draft.route).path;
+  final family = financeBatchDraftFamilies.values
+      .where((family) => family.editorPath == path)
+      .firstOrNull;
+  if (family == null ||
+      draft.permission != family.permissions.create ||
+      draft.draftKind != family.kind) {
+    return null;
+  }
+  final command = draft.data['batchCommand'];
+  final retired = draft.data['batchRetiredReceipt'];
+  final key = command is Map
+      ? command['idempotencyKey']
+      : retired is Map && retired['outcome'] == 'CANCELLED_UNWRITTEN'
+      ? retired['idempotencyKey']
+      : draft.data[financeBatchReadRecoveryOnlyKey] == true &&
+            draft.data[financeBatchOriginalAvailableKey] == true
+      ? draft.data['createIdempotencyKey']
+      : null;
+  if (key is! String || !RegExp(r'^[A-Za-z0-9._:-]{8,120}$').hasMatch(key)) {
+    return null;
+  }
+  return family;
+}
+
 const formDraftUnknownSubmissionKey = '_formDraftHasUnknownSubmission';
 const formDraftRetirementConflictKey = '_formDraftRetirementConflict';
 const formDraftUnknownSubmissionMessage = '提交结果待核对，请先核对提交，原记录不能删除';
@@ -159,6 +233,21 @@ Set<String> unknownFormDraftCommandIdentities(
   Map<String, dynamic> data, {
   required String route,
 }) {
+  final form = Uri.tryParse(route)?.queryParameters['draftForm'];
+  if (const {'financeDocumentReview', 'financeDocumentEdit'}.contains(form)) {
+    final intent = form == 'financeDocumentReview'
+        ? data['intent']
+        : data['editIntent'];
+    final body = intent is Map ? intent['body'] : null;
+    if (intent is Map && body is Map) {
+      return {
+        'finance-document:${intent['operation']}:${intent['documentId']}:${body['requestId']}',
+      };
+    }
+    return hasUnknownFormDraftSubmission(data, route: route)
+        ? {'finance-document:missing-original'}
+        : {};
+  }
   if (const {
         'applicationPayment',
         'applicationPrepaymentFinance',
@@ -279,6 +368,13 @@ class FormDraft {
   String get resumeLocation {
     if (isDailyReportCreateRecoveryDraft(this)) {
       return RoutePath.productionDailyReportCreateRecovery(id);
+    }
+    final batch = financeBatchRecoveryFamily(this);
+    if (batch != null && data[financeBatchReadRecoveryOnlyKey] == true) {
+      return Uri(
+        path: '/finance/${batch.segment}/batch-recovery',
+        queryParameters: {'draftId': id},
+      ).toString();
     }
     final uri = Uri.parse(route);
     return uri

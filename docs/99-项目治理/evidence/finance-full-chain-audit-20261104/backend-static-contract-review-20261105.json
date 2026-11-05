@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-11-05T13:19:37.167776+00:00",
+  "customerPrepayment": {
+    "classification": "old formatting-dependent assertion, no corresponding funds/frozen-account defect identified in the actual source path",
+    "onlyChangedFile": "server/src/test/java/com/uten/imp/features/finance/gl/CustomerPrepaymentGlAccountingContractTest.java",
+    "retainedAndStrengthened": [
+      "original bank debit1 and frozen receipt counter credit-1",
+      "CUSTOMER_PREPAYMENT resolves CUSTOMER_ADVANCE; normal settlement AR_CONTROL",
+      "original currency/client/day bound to counter-style function",
+      "draft/header/approve counterpart style frozen before posting",
+      "offset source debit/source-local and AR credit/target-local, including native frozen-account parts",
+      "absolute FX amount, signed FX direction, nonzero HAVING and ownership/configuration guards"
+    ],
+    "compile": "build/finance-final-audit/backend-contract-overlay-20261105/compile-v3.log: -Xlint:all -proc:none,0 warnings",
+    "result": "build/finance-final-audit/backend-contract-overlay-20261105/customer-prepayment-v5.log:1/1,0 skipped/aborted/failed; test-only overlay and runner-only directories",
+    "isolation": "updated test-only classes + separate freshly compiled runner-only classes + dependency jars only; no Main/resources or old project output directories; cwd=server",
+    "formatTolerance": "Only optional token whitespace around the ternary is regex-tolerant; enum/string literal contents are not stripped or relaxed.",
+    "reusableTestOnlyOverlay": "build/finance-final-audit/backend-contract-overlay-20261105/test-only"
+  },
+  "supplierAdvance": {
+    "classification": "cross-chain product candidate; do not simply replace the old string assertion with a weaker green check",
+    "reviewFacts": [
+      "new V2 no-AP-line payments do not create negative DIRECT_PAYMENT AP ledgers",
+      "approval recognizes a retained finance_supplier_advances asset using the frozen prepayment style and principal amounts",
+      "reversal requires the real symmetric PAYMENT_REV entry, retains asset status=REVERSED and the original actual reversedAt",
+      "monthly freeze always invokes assertNoUnreplayablePaymentReversals",
+      "that guard currently accepts only soft-reversed DIRECT_PAYMENT ledger history and does not recognize the valid new retained advance path"
+    ],
+    "currentlyReferencesNewAssetTable": false,
+    "consequence": "a valid reversed V2 supplier advance can block later/historical AP monthly freeze for the same supplier/currency",
+    "testChangedByThisOwner": false,
+    "mainOrSqlChangedByThisOwner": false,
+    "recommendedOwnerVerification": [
+      "valid V2 advance+real symmetric GL reversal must not be mistaken for missing legacy dates",
+      "missing/mismatched original asset supplier/currency/principal/frozen style/reversal-time or GL proof must still fail closed",
+      "retain old DIRECT_PAYMENT reversal-history protection; do not generally skip all amount_authority_version=2 rows"
+    ],
+    "schemaReview": "V1007 explicitly permits the no-AP-lines positive advance asset and binds its retained facts/status to V2 payment. No trigger creating a surrogate DIRECT_PAYMENT AP ledger was found in the supplier-advance migrations."
+  },
+  "sourceSha256": {
+    "server/src/test/java/com/uten/imp/features/finance/gl/CustomerPrepaymentGlAccountingContractTest.java": "3d8731fc185be5f444547624723d02959107d426ce3735e6ea0b4c5fb18e44da",
+    "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java": "aabac2f9906527846fd186c92c519aba49e7d9fc8351573bf78f4ad859088ed7",
+    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierPrepaymentService.java": "26aa97f86c74e4cb8fb862b4727a802f5b07479ac53e8c4021fd77cae7c89998",
+    "server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementService.java": "dbcdacb3693a4a44f3049a3e46066c58bb9cb93dc3496dd72dab0a774550abfb",
+    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java": "8d11e148066a4f0a5aab0e25365f7abe28a0b21f5f12fdca911540682ef368eb",
+    "server/src/main/java/com/uten/imp/features/finance/gl/GlPostingService.java": "73f690500346b6b6a686d086970d8721e1bebb3a1d3d2eb3bcda1d813731aeac",
+    "server/src/main/resources/db/migration/V1007__supplier_advance_asset_lifecycle.sql": "e2df13f279dc78e2f70081bad003d5faca977f703aaae3dba568c9d135b7e125"
+  },
+  "pdfOutputs": "not received or verified yet"
+}

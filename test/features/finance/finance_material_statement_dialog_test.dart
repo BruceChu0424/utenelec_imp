@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -92,6 +93,23 @@ void main() {
       await t.pumpAndSettle();
       expect(api.posts, hasLength(2));
       expect(jsonEncode(api.posts.last), first);
+      expect(_button(t, '保存草稿').onPressed, isNull);
+      expect(
+        t
+            .widget<UtenInput>(
+              find.byWidgetPredicate(
+                (w) => w is UtenInput && w.label == '期初结余(KG)',
+              ),
+            )
+            .enabled,
+        isFalse,
+      );
+      final frozenHint = find.byWidgetPredicate(
+        (w) => w is UtenFieldHintIcon && w.info == '原请求结果待核，参数已冻结，不能换版本重复发送。',
+      );
+      expect(frozenHint, findsOneWidget);
+      await t.tap(frozenHint);
+      await t.pumpAndSettle();
       expect(find.text('原请求结果待核，参数已冻结，不能换版本重复发送。'), findsOneWidget);
       expect(_field(t, '期初结余(KG)').text, '1.000000000000000000000001');
       expect(t.takeException(), isNull);

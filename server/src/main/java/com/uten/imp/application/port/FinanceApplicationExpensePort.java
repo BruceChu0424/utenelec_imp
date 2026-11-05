@@ -8,6 +8,8 @@ import java.util.*;
 public interface FinanceApplicationExpensePort {
     void verifyInvoice(UUID claimId,UUID invoiceId,Long expectedVersion,String result,String remark);
     java.util.Map<String,Object> detail(UUID claimId);
+    /** For an already-authorized application view; denied native rows are absent, not a failed enclosing command. */
+    Optional<Map<String,Object>> optionalDetail(UUID claimId);
     record Source(UUID id,String billNo,UUID applicantId,String applicantName,UUID departmentId,String title,String status,
             Instant createdAt,UUID currencyId,BigDecimal amount,String fingerprint,Map<String,Object> facts) { }
     Source source(UUID id,boolean forUpdate);

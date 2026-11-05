@@ -36,6 +36,8 @@ final class FinanceNativeStatementSql {
     private static String facts(String headers,String items,String parent,String source,int movementType,int sign,boolean client){
         String party=client?"client":"supplier",table=client?"clients":"suppliers";
         String reverse=reversalDate("document",source,movementType,sign);
+        // Reversing a header preserves its approved item rows. A line removed
+        // while drafting is not an original fact and cannot return on reversal.
         return """
             SELECT COALESCE(item.bill_date,document.bill_date) AS business_date,document.bill_no,document.status,
               %s AS reversed_date,(document.status=-1 AND (%s) IS NULL) AS missing_reversal_date,
@@ -51,7 +53,7 @@ final class FinanceNativeStatementSql {
             LEFT JOIN goods ON goods.id=item.goods_id LEFT JOIN colors color ON color.id=item.color_id
             LEFT JOIN units unit ON unit.id=item.unit_id LEFT JOIN %s party ON party.id=document.%s_id
             LEFT JOIN currencies currency ON currency.id=document.currency_id
-            WHERE ((document.status=1 AND NOT document.is_deleted AND NOT item.is_deleted) OR document.status=-1)
+            WHERE NOT item.is_deleted AND ((document.status=1 AND NOT document.is_deleted) OR document.status=-1)
               AND (CAST(:partyId AS uuid) IS NULL OR document.%s_id=:partyId)
               AND (CAST(:currencyId AS uuid) IS NULL OR document.currency_id=:currencyId)
             """.formatted(reverse,reverse,sign,CurrencyDisplayLabel.sql("currency"),party,source,items,headers,parent,table,party,party);

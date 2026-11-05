@@ -18,6 +18,9 @@ enum PartyMode { none, client, supplier }
 enum ItemMode { settle, allocate, transfer }
 
 class FinanceDocConfig {
+  static const receiptAllocationAmountLabel = '本次分配收款(原币)';
+  static const paymentOriginalAmountLabel = '本次付款(原币)';
+
   const FinanceDocConfig({
     required this.type,
     required this.label,

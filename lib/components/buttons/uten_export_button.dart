@@ -30,6 +30,7 @@ import 'uten_button.dart';
 import '../feedback/uten_dialog.dart';
 import '../feedback/uten_dialog_modules.dart';
 import '../feedback/uten_task_progress_dialog.dart';
+import '../feedback/uten_busy_overlay.dart';
 
 /// A business export may select a template or a group of files before the
 /// shared password dialog. Cancellation never starts an export request.
@@ -491,6 +492,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
   final _dir = TextEditingController();
   String? _error;
   bool _passwordExpanded = false;
+  bool _pickingDirectory = false;
 
   @override
   void initState() {
@@ -514,15 +516,27 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
   }
 
   Future<void> _pickDirectory() async {
+    if (_pickingDirectory) return;
+    setState(() => _pickingDirectory = true);
     final initial = _dir.text.trim().isNotEmpty ? _dir.text.trim() : null;
-    final picked = await FilePicker.platform.getDirectoryPath(
-      initialDirectory: initial,
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        _dir.text = picked;
-        _error = null;
-      });
+    try {
+      final picked = await UtenBusyOverlay.run(
+        context,
+        title: '正在选择保存目录',
+        action: () => UtenBusyOverlay.yieldWhile(
+          () => FilePicker.platform.getDirectoryPath(initialDirectory: initial),
+        ),
+      );
+      if (picked != null && mounted) {
+        setState(() {
+          _dir.text = picked;
+          _error = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) context.appApiError(error, fallback: '选择保存目录失败，请重试');
+    } finally {
+      if (mounted) setState(() => _pickingDirectory = false);
     }
   }
 
@@ -539,6 +553,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
   }
 
   void _submit() {
+    if (_pickingDirectory) return;
     final invalid = _validate();
     if (invalid != null) {
       setState(() => _error = invalid);
@@ -583,12 +598,14 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
       showCloseButton: true,
       title: UtenDialogHeading(
         icon: Icons.file_download_outlined,
-        title: Text(
-          widget.format == 'pdf'
-              ? l10n.exportPdfDialogTitle
-              : l10n.exportDialogTitle,
+        title: UtenDialogTitleWithHint(
+          info: l10n.exportDialogSubtitle(widget.format.toUpperCase()),
+          title: Text(
+            widget.format == 'pdf'
+                ? l10n.exportPdfDialogTitle
+                : l10n.exportDialogTitle,
+          ),
         ),
-        subtitle: Text(l10n.exportDialogSubtitle(widget.format.toUpperCase())),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -654,7 +671,9 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                OutlinedButton(
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  isLoading: _pickingDirectory,
                   onPressed: _pickDirectory,
                   child: Text(l10n.exportBrowse),
                 ),
@@ -674,12 +693,14 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
               }
               _error = null;
             }),
-            title: Text(
-              _passwordExpanded
-                  ? l10n.exportRemovePassword
-                  : l10n.exportSetPassword,
+            title: UtenDialogTitleWithHint(
+              info: l10n.exportPasswordProtectionDescription,
+              title: Text(
+                _passwordExpanded
+                    ? l10n.exportRemovePassword
+                    : l10n.exportSetPassword,
+              ),
             ),
-            subtitle: Text(l10n.exportPasswordProtectionDescription),
             trailing: Icon(
               _passwordExpanded
                   ? Icons.expand_less_rounded

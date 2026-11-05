@@ -21,14 +21,23 @@ final class FinanceChartWorkbookParser {
                 .findFirst().orElseThrow(()->invalid("未找到原表头：科目编码、科目名称"));
         if(!Set.of("","外币名称").contains(text(header,2)))throw invalid("第三列应为外币名称");
         List<SourceRow> rows=new ArrayList<>();List<Issue> issues=new ArrayList<>();Set<String> codes=new HashSet<>();
+        Set<String> currencyLabels=new HashSet<>();
+        for(var source:sheet.rows())if(text(source,0).matches("[0-9]{1,32}")&&!text(source,2).isBlank())currencyLabels.add(text(source,2));
         var groupEnds=new TreeMap<Integer,String>();
         for(var group:FinanceTemplateContract.template("chartCodes").path("classifications"))for(var source:sheet.rows())
             if(text(source,0).equals(group.path("totalLabel").asText()))groupEnds.put(source.index0(),group.path("id").asText());
+        boolean afterSubtotal=false;
         for(var row:sheet.rows()) {
             if(row.index0()<=header.index0())continue;
             String code=text(row,0),label=text(row,1);int line=row.index0()+1;
-            if(code.isEmpty()&&row.cells().stream().allMatch(c->c.col0()<=2))continue; // currency subtotal label
-            if(code.matches(".*小计|合计|总计"))continue;
+            if(row.cells().stream().allMatch(c->c.text().isBlank()))continue;
+            if(code.matches(".*小计|合计|总计")){afterSubtotal=true;continue;}
+            // The original directory has currency-only subtotal labels after
+            // category/overall totals. An unnamed code on an ordinary data row
+            // must instead remain in the preview with its located validation issue.
+            if(code.isEmpty()&&afterSubtotal&&currencyLabels.contains(label)
+                    &&row.cells().stream().allMatch(c->c.col0()==1||c.text().isBlank()))continue;
+            afterSubtotal=false;
             if(!code.matches("[0-9]{1,32}"))issues.add(new Issue(line,"科目编码","代码须为1至32位数字文本"));
             if(row.cell(0)!=null&&row.cell(0).kind()!=DocumentGrid.CellKind.TEXT)
                 issues.add(new Issue(line,"科目编码","科目代码请使用文本单元格，避免前导0或长代码丢失"));

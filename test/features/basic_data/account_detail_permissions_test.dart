@@ -12,6 +12,7 @@ import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:uten_imp/features/basic_data/repositories/master_status_repository.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'dart:async';
+import '../../support/pump_until.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,6 +37,37 @@ final _testAccountServer = StateProvider<String>(
 );
 
 void main() {
+  testWidgets(
+    'editing other account fields preserves a historical posting UUID outside the new candidate scope',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _AccountRepositoryFake();
+      final styles = _PaymentStyleRepositoryFake()
+        ..pending = (Completer<List<PaymentStyleNode>>()..complete([]));
+      await _pumpDetail(
+        tester,
+        repository,
+        {Perm.accountView, Perm.accountEdit},
+        paymentStyleRepository: styles,
+        startEditing: true,
+      );
+      expect(find.text('10201 · 基本户（保留原关联）'), findsOneWidget);
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && widget.controller?.text == '人民币基本户',
+        ),
+        '保留原科目的账户名称',
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(repository.lastUpdate?['styleId'], 'style-bank');
+      expect(repository.lastUpdate?['name'], '保留原科目的账户名称');
+      expect(repository.updateCalls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final stale in [false, true]) {
     testWidgets('账户详情字典预读显示等待且${stale ? '原地址ABA后不再打开旧编辑器' : '不等流水并正常打开编辑器'}', (
       tester,
@@ -212,9 +244,12 @@ void main() {
         startEditing: true,
         settle: false,
       );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => find.byType(MasterEditForm).evaluate().isNotEmpty,
+        reason:
+            'The editor must open while the intentionally held history remains unresolved',
+      );
       expect(repository.statementCalls, 1);
       expect(statement.isCompleted, isFalse);
       expect(find.byType(MasterEditForm), findsOneWidget);
@@ -524,6 +559,19 @@ Future<void> _pumpDetail(
         paymentStyleRepositoryProvider.overrideWithValue(
           paymentStyleRepository ?? _PaymentStyleRepositoryFake(),
         ),
+        accountPostingStylesReaderProvider.overrideWithValue(
+          () async => [
+            for (final style in activeAccountStyleLeaves(
+              await (paymentStyleRepository ?? _PaymentStyleRepositoryFake())
+                  .tree(category: 'ACCOUNT'),
+            ))
+              AccountPostingStyle(
+                id: style.id,
+                code: style.code,
+                name: style.name,
+              ),
+          ],
+        ),
       ],
       child: app,
     ),
@@ -549,6 +597,7 @@ class _AccountRepositoryFake implements AccountRepository {
   String? statementDateFrom;
   String? statementDateTo;
   int updateCalls = 0;
+  Map<String, dynamic>? lastUpdate;
   int deleteCalls = 0;
   Completer<void>? pendingDelete;
   Completer<AccountStatementPage>? pendingStatement;
@@ -568,6 +617,7 @@ class _AccountRepositoryFake implements AccountRepository {
   @override
   Future<AccountDetail> update(String id, Map<String, dynamic> body) async {
     updateCalls++;
+    lastUpdate = Map.of(body);
     return _detail(name: body['name'] as String? ?? '人民币基本户');
   }
 

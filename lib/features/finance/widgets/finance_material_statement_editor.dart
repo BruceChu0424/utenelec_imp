@@ -1514,8 +1514,25 @@ class _MaterialEditorState extends ConsumerState<_MaterialEditor>
           children: [
             UtenDialogSurface(
               child: UtenDialogHeader(
-                title: Text(
-                  '${FinanceRequirementNames.otherReceivableStatement}／${_materialKinds[_kind] ?? _kind}',
+                title: UtenDialogTitleWithHint(
+                  title: Text(
+                    '${FinanceRequirementNames.otherReceivableStatement}／${_materialKinds[_kind] ?? _kind}',
+                  ),
+                  info: _pending != null
+                      ? '原请求结果待核，参数已冻结，不能换版本重复发送。'
+                      : switch (_kind) {
+                          'CONTEXT' =>
+                            '产品名称和规格按财务原文维护；本组货品只作分组标识，真实入料与产物另在“材料／产品对应”逐项选择。原币单位与会计币别分开。',
+                          'GOODS' =>
+                            '原料与成品可以是不同真实货品。委外材料出仓／退料只计重量，成品其他出库才计PCS与加工款。',
+                          'UNIT' =>
+                            '按真实货品、颜色、原单位及原换算率核对；估计单重只作参考，不当实称。基本量的KG/PCS意义须有实际证据。',
+                          'FEE' =>
+                            '只分配同一真实其他应收原分录，不再生成收入或分录。普通回款贷方不当负加工费；跨月补记按实际财务日期，不重复实物。',
+                          'CLOSE' =>
+                            '撤销本次错误维护需另一财务审核；先处理仍引用本组的加工份额。原GL、仓库实物和旧记录保持，当前来源归属释放后可重建。',
+                          _ => null,
+                        },
                 ),
                 showCloseButton: true,
                 onClose: _close,
@@ -1535,26 +1552,6 @@ class _MaterialEditorState extends ConsumerState<_MaterialEditor>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (_kind == 'CONTEXT')
-                        const Text(
-                          '产品名称和规格按财务原文维护；本组货品只作分组标识，真实入料与产物另在“材料／产品对应”逐项选择。原币单位与会计币别分开。',
-                        ),
-                      if (_kind == 'GOODS')
-                        const Text(
-                          '原料与成品可以是不同真实货品。委外材料出仓／退料只计重量，成品其他出库才计PCS与加工款。',
-                        ),
-                      if (_kind == 'UNIT')
-                        const Text(
-                          '按真实货品、颜色、原单位及原换算率核对；估计单重只作参考，不当实称。基本量的KG/PCS意义须有实际证据。',
-                        ),
-                      if (_kind == 'FEE')
-                        const Text(
-                          '只分配同一真实其他应收原分录，不再生成收入或分录。普通回款贷方不当负加工费；跨月补记按实际财务日期，不重复实物。',
-                        ),
-                      if (_kind == 'CLOSE')
-                        const Text(
-                          '撤销本次错误维护需另一财务审核；先处理仍引用本组的加工份额。原GL、仓库实物和旧记录保持，当前来源归属释放后可重建。',
-                        ),
                       if (_evidence?['submission_reason'] != null)
                         Text('原提交依据：${_evidence!['submission_reason']}'),
                       if (_evidence?['decision_reason'] != null)
@@ -1662,11 +1659,10 @@ class _MaterialEditorState extends ConsumerState<_MaterialEditor>
               padding: const EdgeInsets.all(UtenSpacing.s12),
               child: Column(
                 children: [
-                  if (_pending != null) ...[
-                    const Text('原请求结果待核，参数已冻结，不能换版本重复发送。'),
-                    formDraftSubmissionRecoveryAction!,
-                  ],
-                  UtenResponsiveActionWrap(
+                  if (_pending != null) ...[formDraftSubmissionRecoveryAction!],
+                  UtenDialogActions(
+                    padding: EdgeInsets.zero,
+                    showDivider: false,
                     children: [
                       if (!_view)
                         UtenButton(
@@ -1694,6 +1690,11 @@ class _MaterialEditorState extends ConsumerState<_MaterialEditor>
                 ],
               ),
             ),
+            if (_busy)
+              const UtenBusyOverlay(
+                title: '正在核对材料来源资料',
+                showDoNotLeaveHint: false,
+              ),
           ],
         ),
       ),

@@ -212,7 +212,7 @@ class CustomerPrepaymentSummaryPostgresTest {
         jdbc.update("""
                 INSERT INTO sales_shipment_items(id,shipment_id,order_item_id,bill_no,bill_date,goods_id,
                     unit_id,unit_rate,qty,price,amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
-                VALUES(?,?,?,?,DATE '2026-09-07',?,?,?,?,1,?,10,?, ?,?,'Summary goods','MASTER_AT_APPROVAL',now())
+                VALUES(?,?,?,?,DATE '2026-09-07',?,?,1,?,10,?,?,?,'Summary goods','MASTER_AT_APPROVAL',now())
                 """,shipmentItem,shipment,orderItem,shipmentNo,goods,unitId,new BigDecimal(shippedQty),new BigDecimal(invoiceAmount),new BigDecimal(invoiceAmount),"SUM-G-"+suffix);
         confirmShipmentSource(shipment, actorUser, actor);
         ledger(invoice,"SALES_SHIPMENT",shipment,shipmentNo,client,currency,new BigDecimal(invoiceAmount),new BigDecimal(invoiceBalance));

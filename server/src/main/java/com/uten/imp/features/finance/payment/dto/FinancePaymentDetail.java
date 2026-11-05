@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /** 采购付款单详情。 */
 @Getter
-public class FinancePaymentDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class FinancePaymentDetail extends com.uten.imp.features.finance.FinanceReviewMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

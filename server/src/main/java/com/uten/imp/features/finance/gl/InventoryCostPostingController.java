@@ -22,11 +22,15 @@ public class InventoryCostPostingController {
     @GetMapping("/periods") @PreAuthorize("hasAuthority('finance_post:execute')")
     public List<InventoryCostPostingService.PeriodView> periods(@RequestParam String from,@RequestParam String to){return service.periods(from,to);}
     @PutMapping("/policy") @PreAuthorize("hasAuthority('finance_post:execute')")
-    public InventoryCostPostingService.Policy configure(@RequestBody InventoryCostPostingService.PolicyChange request){return service.configure(request);}
+    public java.util.Map<String,Object> configure(@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.WireCommand request){return service.configureWire(request);}
     @PostMapping("/postings/{postingId}/period") @PreAuthorize("hasAuthority('finance_post:execute')")
-    public InventoryCostPostingQueryPort.Posting choose(@PathVariable UUID postingId,@RequestBody InventoryCostPostingService.PeriodChoice request){return service.choosePeriod(postingId,request);}
+    public java.util.Map<String,Object> choose(@PathVariable UUID postingId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.WireCommand request){return service.choosePeriodWire(postingId,request);}
     @PostMapping("/periods/{period}/post") @PreAuthorize("hasAuthority('finance_post:execute')")
-    public InventoryCostPostingService.Posted post(@PathVariable String period){return service.post(period);}
+    public java.util.Map<String,Object> post(@PathVariable String period,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.WireCommand request){return service.postWire(period,request);}
     @PostMapping("/periods/{period}/close") @PreAuthorize("hasAuthority('finance_post:execute')")
-    public void close(@PathVariable String period,@RequestBody InventoryCostPostingService.ClosePeriod request){service.close(period,request);}
+    public java.util.Map<String,Object> close(@PathVariable String period,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.WireCommand request){return service.closeWire(period,request);}
+    @GetMapping("/operations/{requestId}") @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('goods:cost:view')")
+    public java.util.Map<String,Object> receipt(@PathVariable UUID requestId){return service.operationReceipt(requestId);}
+    @PostMapping("/operations/{requestId}/cancel") @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('goods:cost:view')")
+    public java.util.Map<String,Object> cancel(@PathVariable UUID requestId,@RequestBody com.uten.imp.features.finance.FinanceOperationJournal.Cancellation request){return service.cancelCommand(requestId,request);}
 }

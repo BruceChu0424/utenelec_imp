@@ -50,6 +50,23 @@ public class GlReportService {
     private final EntityManager em;
     private final GlReportLineSource lines;
     private final com.uten.imp.features.finance.FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.CompanyBrandingReadPort> branding;
+
+    private ReportTableResponse withStatementContext(ReportTableResponse response,String report,LocalDate dateTo){
+        // Pure query-oracle fixtures construct this service without a Spring
+        // identity provider. Actual application documents require its real one.
+        if(branding==null)return response;
+        var identitySource=branding.getIfAvailable();
+        if(identitySource==null)throw new IllegalStateException("Financial statement company identity is unavailable");
+        var identity=identitySource.currentIdentity();
+        var context=new LinkedHashMap<String,Object>();
+        context.put("report",report);context.put("organizationName",identity.companyName());context.put("organizationVersion",identity.version());
+        context.put("dateFrom",dateTo.withDayOfMonth(1).toString());context.put("dateTo",dateTo.toString());
+        context.put("year",dateTo.getYear());context.put("month",dateTo.getMonthValue());
+        var metadata=new LinkedHashMap<>(response.documentMetadata());metadata.put("financialStatementContext",Map.copyOf(context));
+        return response.withDocumentMetadata(metadata);
+    }
 
     /**
      * Uses the export worker's already established PostgreSQL snapshot. Self invocation here is
@@ -146,7 +163,7 @@ public class GlReportService {
                 ReportColumn.money("yearStart", "年初余额").withUnitLabel("元"),
                 ReportColumn.text("basis", "取数口径", 280));
         List<Map<String,Object>> rows = new FinancialStatementService(em).balance(dateTo);
-        return GlComputedHeaders.apply("gl/balance-sheet",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+        return withStatementContext(GlComputedHeaders.apply("gl/balance-sheet",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE),"gl/balance-sheet",dateTo);
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
@@ -166,12 +183,12 @@ public class GlReportService {
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
     public ReportTableResponse profitAnnual(int year,int throughMonth,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
-        requireMonth(throughMonth);GlReportSourceScopes.assertUnambiguous(em);
+        FinancialLedgerReadScope.requirePeriod(year,throughMonth);GlReportSourceScopes.assertUnambiguous(em);
         List<ReportColumn> cols = FinancialStatementAnnual.columns(year);
         List<Map<String, Object>> rows = new FinancialStatementService(em).profitAnnual(year,throughMonth);
         FinancialStatementAnnual.totals(rows,throughMonth);
         for(var row:rows)row.put("__basis",row.get("basis"));
-        return GlComputedHeaders.apply("gl/profit-annual",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),options);
+        return withStatementContext(GlComputedHeaders.apply("gl/profit-annual",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),options),"gl/profit-annual",java.time.YearMonth.of(year,throughMonth).atEndOfMonth());
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
@@ -183,7 +200,7 @@ public class GlReportService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse profitMonthly(int year, int month) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
-        requireMonth(month);
+        FinancialLedgerReadScope.requirePeriod(year,month);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("item", FinanceTemplateContract.header("monthlyProfit",0), 200),
                 new ReportColumn("lineNo", FinanceTemplateContract.header("monthlyProfit",1), "int", 70),
@@ -209,7 +226,7 @@ public class GlReportService {
             m.put("__pending",!complete||a.get("m"+month)==null);
             rows.add(m);
         }
-        return GlComputedHeaders.apply("gl/profit-monthly",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+        return withStatementContext(GlComputedHeaders.apply("gl/profit-monthly",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE),"gl/profit-monthly",java.time.YearMonth.of(year,month).atEndOfMonth());
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
@@ -257,7 +274,7 @@ public class GlReportService {
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public ReportTableResponse manufacturingExpense(int year,int throughMonth,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
-        requireMonth(throughMonth);
+        FinancialLedgerReadScope.requirePeriod(year,throughMonth);
         var definitions=new ArrayList<>(GlReportLine.MANUFACTURING);definitions.addAll(GlReportLine.LEGACY_MANUFACTURING);
         Map<String,BigDecimal[]> data=lineMonthly(definitions,year);
         data.put("MFG_OUTPUT",finishedInMonthly(year));
@@ -281,7 +298,7 @@ public class GlReportService {
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
     public ReportTableResponse adminExpense(int year,int throughMonth,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
-        requireMonth(throughMonth);
+        FinancialLedgerReadScope.requirePeriod(year,throughMonth);
         GlReportSourceScopes.assertUnambiguous(em);
         var definitions=new ArrayList<>(GlReportLine.ADMIN);definitions.addAll(GlReportLine.LEGACY_ADMIN);
         Map<String,BigDecimal[]> data=lineMonthly(definitions,year);
@@ -310,7 +327,7 @@ public class GlReportService {
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public ReportTableResponse salesExpense(int year,int throughMonth,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
-        requireMonth(throughMonth);
+        FinancialLedgerReadScope.requirePeriod(year,throughMonth);
         var report=FinanceSalesExpenseReport.read(em,lines,year,throughMonth,FinancialStatementRevenue.months(em,access,year,throughMonth));
         return FinanceExpenseReports.filtered(report.columns(),report.rows(),options);
     }
@@ -419,7 +436,7 @@ public class GlReportService {
     private ReportTableResponse buildOperatingPl(int year,int month,int page,int size,Integer maximum,
             com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
-        requireMonth(month);GlReportSourceScopes.assertUnambiguous(em);
+        FinancialLedgerReadScope.requirePeriod(year,month);GlReportSourceScopes.assertUnambiguous(em);
         var candidates=com.uten.imp.features.finance.report.FinanceReportColumnCandidates.current();
         if(candidates!=null)candidates.requireVisibleText(FinanceExpenseReports.operatingColumns(month),java.util.Set.of());
         var definitions=GlReportLine.operatingLines();

@@ -37,7 +37,8 @@ class CostDocumentExportTest {
             var sheet = wb.getSheet("物料明细");
             assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("80N 一开按钮");
             assertThat(sheet.getRow(1).getCell(1).getNumericCellValue()).isEqualTo(.00007);
-            assertThat(sheet.getRow(1).getCell(1).getCellStyle().getDataFormatString()).isEqualTo("General");
+            assertThat(new org.apache.poi.ss.usermodel.DataFormatter(java.util.Locale.ROOT)
+                    .formatCellValue(sheet.getRow(1).getCell(1))).isEqualTo("0.00007");
             assertThat(sheet.getRow(1).getCell(2).getCellType()).isEqualTo(CellType.STRING);
             assertThat(sheet.getRow(1).getCell(2).getStringCellValue()).isEqualTo("1234567890123456.00000000007");
             assertThat(sheet.getRow(1).getCell(3).getCellType()).isEqualTo(CellType.STRING);

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/network/original_command.dart';
+import '../../core/network/business_precision.dart';
 import '../../core/performance/responsive_data_codec.dart';
 import '../../core/performance/json_value_snapshot.dart';
 import '../../core/performance/ui_work_budget.dart';
@@ -357,10 +359,19 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       _permissions.contains(draft.permission) &&
       locationAllowedFor(_permissions, false, Uri.parse(draft.route).path);
 
-  bool _recoveryAllowed(FormDraft draft) =>
+  bool _dailyRecoveryAllowed(FormDraft draft) =>
       !_readOnly &&
       _permissions.contains(Perm.productionDailyReportView) &&
       isDailyReportCreateRecoveryDraft(draft);
+  bool _financeBatchRecoveryAllowed(FormDraft draft) {
+    final family = financeBatchRecoveryFamily(draft);
+    return !_readOnly &&
+        family != null &&
+        _permissions.contains(family.permissions.view);
+  }
+
+  bool _recoveryAllowed(FormDraft draft) =>
+      _dailyRecoveryAllowed(draft) || _financeBatchRecoveryAllowed(draft);
 
   bool _allowed(FormDraft draft) =>
       _normalAllowed(draft) || _recoveryAllowed(draft);
@@ -371,8 +382,21 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   // is available. This does not claim general public active-draft redaction.
   FormDraft _visible(FormDraft draft) {
     final normal = _normalAllowed(draft);
+    final batchFamily = financeBatchRecoveryFamily(draft);
     final data = normal
         ? Map<String, dynamic>.from(draft.data)
+        : batchFamily != null
+        ? <String, dynamic>{
+            financeBatchReadRecoveryOnlyKey: true,
+            financeBatchOriginalAvailableKey: true,
+            'entrySchema': 1,
+            'createIdempotencyKey': draft.data['batchCommand'] is Map
+                ? (draft.data['batchCommand'] as Map)['idempotencyKey']
+                : draft.data['batchRetiredReceipt'] is Map
+                ? (draft.data['batchRetiredReceipt'] as Map)['idempotencyKey']
+                : draft.data['createIdempotencyKey'],
+            formDraftUnknownSubmissionKey: draft.hasUnknownSubmission,
+          }
         : <String, dynamic>{
             dailyReportReadRecoveryOnlyKey: true,
             formDraftUnknownSubmissionKey: draft.hasUnknownSubmission,
@@ -388,7 +412,8 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
     return _removePrivateProtocol(
       FormDraft.fromJson({
         ...draft.toJson(),
-        if (!normal) 'title': '生产日报原提交（只读核对）',
+        if (!normal)
+          'title': batchFamily == null ? '生产日报原提交（只读核对）' : '财务原批次（只读核对）',
         'data': data,
       }),
     );
@@ -456,12 +481,180 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         if (!isActiveFormDraftRecord(json)) return null;
         final draft = FormDraft.fromJson(json);
         if (draft.id != id ||
-            !_recoveryAllowed(draft) ||
+            !_dailyRecoveryAllowed(draft) ||
             !_frozenOwnerMatches(draft.data[dailyReportCreateCommandKey])) {
           return null;
         }
         return draft;
       });
+
+  /// Family-view recovery exposes only the original request to this typed
+  /// owner. Public lists retain no editable financial rows or attachment bytes.
+  Future<FormDraft?> readFinanceBatchRecovery(String id) =>
+      _safeDraftErrors(() async {
+        final generation = _generation, prefix = _prefix, storage = _storage;
+        await _ready;
+        if (_closed ||
+            generation != _generation ||
+            _readOnly ||
+            prefix == null ||
+            storage == null) {
+          throw StateError('当前身份已变化');
+        }
+        _validateId(id);
+        final raw = await storage.read('$prefix$id');
+        if (generation != _generation) throw StateError('登录身份已变化');
+        if (raw == null) return null;
+        final json =
+            await _decodeForGeneration(raw, generation) as Map<String, dynamic>;
+        if (!isActiveFormDraftRecord(json)) return null;
+        final draft = FormDraft.fromJson(json);
+        if (draft.id != id || !_financeBatchRecoveryAllowed(draft)) return null;
+        final owner = draft.data['batchOwner'];
+        if (owner != null && !_frozenOwnerMatches(owner)) return null;
+        return draft;
+      });
+
+  Future<FormDraft> confirmFinanceBatchRecovery(
+    String id, {
+    required String expectedRevision,
+    required Map<String, dynamic> receipt,
+  }) {
+    final generation = _generation, prefix = _prefix, storage = _storage;
+    final ready = _ready;
+    return _serial(() async {
+      await ready;
+      if (_closed ||
+          generation != _generation ||
+          _readOnly ||
+          prefix == null ||
+          storage == null) {
+        throw StateError('当前身份已变化');
+      }
+      _validateId(id);
+      final key = '$prefix$id';
+      final existing = await storage.read(key);
+      if (generation != _generation || existing == null) {
+        throw const FormDraftConflict();
+      }
+      final currentJson =
+          await _decodeForGeneration(existing, generation)
+              as Map<String, dynamic>;
+      if (!isActiveFormDraftRecord(currentJson)) {
+        throw const FormDraftConflict();
+      }
+      final current = FormDraft.fromJson(currentJson);
+      final family = financeBatchRecoveryFamily(current);
+      if (current.id != id ||
+          current.revision != expectedRevision ||
+          family == null ||
+          !_financeBatchRecoveryAllowed(current)) {
+        throw const FormDraftConflict();
+      }
+      final owner = current.data['batchOwner'];
+      if (owner != null && !_frozenOwnerMatches(owner)) {
+        throw const FormDraftConflict();
+      }
+      final active = current.data['batchCommand'];
+      final retired = current.data['batchRetiredReceipt'];
+      final rawCommand = active is Map
+          ? active
+          : retired is Map
+          ? retired['requestBody']
+          : null;
+      if (rawCommand is! Map) throw StateError('原财务批次请求不完整');
+      final command = Map<String, dynamic>.from(rawCommand);
+      final proof = OriginalCommand(
+        actorId: _ownerScope?.userId ?? '',
+        operation: 'FINANCE_BATCH_CREATE',
+        method: 'POST',
+        path: '/finance/${family.segment}/batch',
+        body: command,
+        identityField: 'idempotencyKey',
+        opaqueIdentity: true,
+        detachedBody: true,
+      );
+      await proof.verifyResponsive(
+        receipt,
+        isCurrent: () => generation == _generation,
+      );
+      if (receipt['idempotencyKey'] != command['idempotencyKey'] ||
+          receipt['requestHash'] is! String ||
+          !RegExp(
+            r'^[a-f0-9]{64}$',
+          ).hasMatch(receipt['requestHash'] as String)) {
+        throw StateError('原财务批次来源证明不完整');
+      }
+      final data = Map<String, dynamic>.from(current.data);
+      final acknowledged = <String, dynamic>{
+        ...receipt,
+        'requestBody': command,
+      };
+      if (receipt['outcome'] == 'CANCELLED_UNWRITTEN') {
+        if ((data['createdBatchIds'] as List? ?? const []).isNotEmpty) {
+          throw const FormDraftConflict();
+        }
+        data['batchCommand'] = null;
+        data['batchRetiredReceipt'] = acknowledged;
+        data['batchNeedsReview'] = true;
+      } else {
+        final result = receipt['result'];
+        if (result is! Map ||
+            result['items'] is! List ||
+            (result['items'] as List).isEmpty) {
+          throw StateError('原批次未返回创建单据');
+        }
+        final ids = <String>[];
+        final work = UiWorkBudget(
+          isCurrent: () => generation == _generation,
+          debugLabel: 'finance-batch-receipt',
+        );
+        for (final item in result['items'] as List) {
+          if (item is! Map ||
+              item['id'] is! String ||
+              (item['id'] as String).isEmpty) {
+            throw StateError('原批次创建身份不完整');
+          }
+          ids.add(item['id'] as String);
+          await work.checkpoint();
+        }
+        if (ids.toSet().length != ids.length) throw StateError('原批次创建身份不唯一');
+        data['createdBatchIds'] = ids;
+      }
+      final precision = data[businessPrecisionDraftKey];
+      if (precision != null) {
+        final transport = BusinessPrecisionTransport()..restore(precision);
+        transport.advanceConfirmedRequest(originalReceiptAcknowledged: true);
+        data[businessPrecisionDraftKey] = transport.snapshot();
+      }
+      // A known parent outcome does not erase possibly dispatched file work.
+      final attachments = data['attachments'];
+      final filesRemain =
+          attachments is Map &&
+          (attachments['items'] as List? ?? const []).isNotEmpty;
+      data[formDraftUnknownSubmissionKey] =
+          receipt['outcome'] == 'SUCCEEDED' && filesRemain;
+      data['_formDraftSubmissionPending'] =
+          receipt['outcome'] == 'SUCCEEDED' && filesRemain;
+      final savedJson = {
+        ...currentJson,
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        'revision': const Uuid().v4(),
+        'data': data,
+      };
+      final saved = FormDraft.fromJson(savedJson);
+      if (!await storage.compareAndSet(
+        key,
+        expectedValue: existing,
+        value: await _encodeForGeneration(savedJson, generation),
+      )) {
+        throw const FormDraftConflict();
+      }
+      if (generation != _generation) throw StateError('登录身份或权限已变化');
+      state = [_visible(saved), ...state.where((draft) => draft.id != id)];
+      return saved;
+    });
+  }
 
   bool _frozenOwnerMatches(Object? value) =>
       value is Map &&
@@ -509,7 +702,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       }
       final current = FormDraft.fromJson(currentJson);
       if (current.id != id ||
-          !_recoveryAllowed(current) ||
+          !_dailyRecoveryAllowed(current) ||
           current.revision != expectedRevision) {
         throw const FormDraftConflict();
       }
@@ -625,7 +818,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final frozen = current.data[dailyReportCreateCommandKey];
       if (current.id != id ||
           current.revision != expectedRevision ||
-          !_recoveryAllowed(current) ||
+          !_dailyRecoveryAllowed(current) ||
           !_frozenOwnerMatches(frozen) ||
           frozen is! Map ||
           frozen['bodyJson'] is! String ||
@@ -714,7 +907,7 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       final reportId = current.data['createdReportId'];
       if (current.id != id ||
           current.revision != expectedRevision ||
-          !_recoveryAllowed(current) ||
+          !_dailyRecoveryAllowed(current) ||
           !_frozenOwnerMatches(frozen) ||
           frozen is! Map ||
           parent is! Map ||

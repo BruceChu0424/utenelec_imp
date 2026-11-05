@@ -107,7 +107,8 @@ class PurchaseOrderDetailPeopleNameTest {
                 mock(com.uten.imp.application.port.ProcurementReviewCancellationPort.class),
                 mock(com.uten.imp.application.port.ProcurementOrderSourceRevisionPort.class),
                 mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class),
-                mock(ProcurementMasterDefaultsSyncService.class));
+                mock(ProcurementMasterDefaultsSyncService.class),
+                org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementReferencePricePolicyService.class));
     }
 
     private static PurchaseOrder order(UUID purchaserId, UUID makerId) {

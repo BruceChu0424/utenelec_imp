@@ -16,6 +16,7 @@ abstract final class AccountEndpoints {
   static const facets = '$base/facets';
   static const dict = '$base/dict';
   static const summary = '$base/summary';
+  static const postingStyles = '$base/posting-styles';
   static const balanceAdjustmentBatch =
       '/finance/account-balance-adjustments/batch';
   static const statement = '/finance/reports/account/statement';
@@ -23,6 +24,15 @@ abstract final class AccountEndpoints {
   static String one(String id) => '$base/$id';
   static String warning(String id) => '${one(id)}/warning';
 }
+
+/// Uncached so each owner-guarded reference read uses the current API scope.
+final accountPostingStylesReaderProvider =
+    Provider<Future<List<AccountPostingStyle>> Function()>((ref) {
+      final api = ref.watch(apiClientProvider);
+      return () async => (await api.getList(
+        AccountEndpoints.postingStyles,
+      )).map(AccountPostingStyle.fromJson).toList();
+    });
 
 abstract interface class AccountRepository {
   Future<PagedResult<AccountListItem>> list({

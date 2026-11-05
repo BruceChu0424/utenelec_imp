@@ -89,6 +89,8 @@ class SubcontractToleranceAutoSettleEndToEndTest {
     @Autowired WarehouseArrivalRegistrationService arrivals;
     @Autowired ProcurementInspectionService inspections;
     @Autowired ProcurementIqcStockInService iqcStockIn;
+    @Autowired com.uten.imp.features.stock.valuation.InventoryValueWorkService inventoryValueWork;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     FullChainEndToEndTest fixture;
 
@@ -190,6 +192,30 @@ class SubcontractToleranceAutoSettleEndToEndTest {
 
         // ⑦ 仓库确认入库 —— 修复前这里整笔回滚, 货入不了库。
         BigDecimal onHandBefore = onHand(w.goodsE(), w.warehouseId());
+        String apBefore=db.queryForObject("SELECT md5(COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.id)::text,'[]')) FROM ar_ap_ledger l WHERE l.source_doc_id=?",String.class,receipt.receiptId());
+        var publicationObserved=new java.util.concurrent.atomic.AtomicBoolean();
+        ApiException publicationFailure=assertThrows(ApiException.class,()->
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status->{
+                    iqcStockIn.confirm("SUBCONTRACT",receipt.receiptId(),
+                            new ConfirmRequest("sc-tolerance-stock-in-1",List.of(new ConfirmItem(passEventId,passedQty,passedQty,"SC-TOL-01",w.warehouseId()))));
+                    org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                            new org.springframework.transaction.support.TransactionSynchronization(){
+                                @Override public void beforeCommit(boolean readOnly){
+                                    UUID stagedWaste=(UUID)caseRow(itemId).get("waste_id");
+                                    assertEquals(1,count("SELECT COUNT(*) FROM subcontract_loss_cases WHERE waste_id=?",stagedWaste));
+                                    publicationObserved.set(true);
+                                    throw new ApiException(ErrorCode.CONFLICT,"匿名验收：模拟责任发布后的提交异常");
+                                }
+                            });
+                }));
+        assertEquals(ErrorCode.CONFLICT,publicationFailure.getCode());
+        assertTrue(publicationObserved.get(),"必须在真实责任写入之后触发提交异常");
+        assertEquals(0,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",receipt.receiptId()));
+        assertEquals(0,onHandBefore.compareTo(onHand(w.goodsE(),w.warehouseId())));
+        assertEquals(apBefore,db.queryForObject("SELECT md5(COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.id)::text,'[]')) FROM ar_ap_ledger l WHERE l.source_doc_id=?",String.class,receipt.receiptId()));
+        assertEquals("PENDING_OWNER",caseRow(itemId).get("status"));
+        assertNull(caseRow(itemId).get("waste_id"));
+        assertEquals(0,count("SELECT COUNT(*) FROM subcontract_loss_cases c JOIN subcontract_waste_items i ON i.waste_id=c.waste_id JOIN subcontract_material_issue_items issue ON issue.id=i.material_issue_item_id WHERE issue.order_item_id=?",itemId));
         var confirmed = iqcStockIn.confirm("SUBCONTRACT", receipt.receiptId(),
                 new ConfirmRequest("sc-tolerance-stock-in-1",
                         List.of(new ConfirmItem(passEventId, passedQty, passedQty, "SC-TOL-01", w.warehouseId()))));
@@ -234,8 +260,24 @@ class SubcontractToleranceAutoSettleEndToEndTest {
                 "SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?", BigDecimal.class, wasteId));
         qty("50", db.queryForObject(
                 "SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=?", BigDecimal.class, wasteId));
+        UUID lossCase=db.queryForObject("SELECT id FROM subcontract_loss_cases WHERE waste_id=?",UUID.class,wasteId);
+        assertNotNull(lossCase);
+        assertEquals("MISSING_COST",db.queryForObject("SELECT valuation_status FROM subcontract_loss_case_lines WHERE case_id=?",String.class,lossCase),
+                "责任快照须在本事务最终成本计划之后发布，不能把即将重估的正常损耗当成已定成本");
+        assertNull(db.queryForObject("SELECT unit_book_value_local FROM subcontract_loss_case_lines WHERE case_id=?",BigDecimal.class,lossCase));
+        qty("0",db.queryForObject("SELECT loss_book_value_local FROM subcontract_loss_case_lines WHERE case_id=?",BigDecimal.class,lossCase));
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(material,w.goodsE()));
+        assertTrue(db.queryForObject("SELECT complete FROM v_subcontract_waste_actual_value WHERE waste_item_id=(SELECT waste_item_id FROM subcontract_loss_case_lines WHERE case_id=?)",Boolean.class,lossCase),
+                "真实持久化成本任务完成后，原损耗来源须恢复为可核验的最终成本");
         assertEquals(0, shortDeliveries.list("TOLERANT", null, null, orderId, null, null, 1, 20).getTotal(),
                 "结完之后不再挂在「容差内待结案」等人点一下");
+
+        fixture.loginAs(keeper);
+        var replay=iqcStockIn.confirm("SUBCONTRACT",receipt.receiptId(),
+                new ConfirmRequest("sc-tolerance-stock-in-1",List.of(new ConfirmItem(passEventId,passedQty,passedQty,"SC-TOL-01",w.warehouseId()))));
+        assertTrue(replay.replayed());
+        assertEquals(1,count("SELECT COUNT(*) FROM subcontract_loss_cases WHERE waste_id=?",wasteId));
+        qty("950",onHand(w.goodsE(),w.warehouseId()).subtract(onHandBefore));
 
         // ⑧ 反向: 同一个仓库账号直接走人工自由改量的公开入口, 属主守卫照旧拦死。
         //    正常损耗结案没有给仓库账号额外授予人工改量权。

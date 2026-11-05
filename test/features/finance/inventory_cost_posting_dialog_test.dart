@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -11,6 +14,9 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/widgets/inventory_cost_posting_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import '../../support/finance_command_test_support.dart';
 
 Future<void> _open(
   WidgetTester tester,
@@ -18,9 +24,12 @@ Future<void> _open(
   bool canPost = false,
   double width = 1280,
   StateProvider<Set<String>>? grants,
+  StateProvider<AuthenticatedScope?>? identity,
+  ValueChanged<bool>? onClosed,
   DateTime? from,
   DateTime? to,
 }) async {
+  await prepareFinanceCommandTest();
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -28,6 +37,12 @@ Future<void> _open(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
+        ...financeCommandTestOverrides(
+          permissions: false,
+          identity: identity == null,
+        ),
+        if (identity != null)
+          authenticatedScopeProvider.overrideWith((ref) => ref.watch(identity)),
         currentPermissionsProvider.overrideWith(
           (ref) => grants != null
               ? ref.watch(grants)
@@ -43,18 +58,130 @@ Future<void> _open(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
-          body: InventoryCostPostingDialog(
-            from: from ?? DateTime(2026, 9),
-            to: to ?? DateTime(2026, 9, 29),
+          body: Builder(
+            builder: (context) => onClosed == null
+                ? InventoryCostPostingDialog(
+                    from: from ?? DateTime(2026, 9),
+                    to: to ?? DateTime(2026, 9, 29),
+                  )
+                : TextButton(
+                    onPressed: () async {
+                      onClosed(
+                        await showInventoryCostPostingDialog(
+                          context,
+                          from: from ?? DateTime(2026, 9),
+                          to: to ?? DateTime(2026, 9, 29),
+                        ),
+                      );
+                    },
+                    child: const Text('打开成本过账'),
+                  ),
           ),
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
+  if (onClosed != null) {
+    await tester.tap(find.text('打开成本过账'));
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
+  testWidgets(
+    'pending posting rejects repeated confirmation, stale refresh and close callbacks, and system back keeps its changed result',
+    (tester) async {
+      final api = _Api()..writeGate = Completer<void>();
+      bool? changed;
+      await _open(
+        tester,
+        api,
+        canPost: true,
+        onClosed: (value) => changed = value,
+      );
+      final close = tester
+          .widget<UtenCloseButton>(find.byType(UtenCloseButton))
+          .onPressed!;
+      final post = tester
+          .widget<UtenButton>(find.byKey(const ValueKey('inventory-cost-post')))
+          .onPressed!;
+      final refresh = tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '刷新'))
+          .onPressed!;
+      post();
+      await tester.pumpAndSettle();
+      post();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('inventory-cost-confirm')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('inventory-cost-confirm')));
+      await tester.pump();
+      await tester.pump();
+      expect(api.writes, hasLength(1));
+      final readsBefore = api.reads.length;
+      refresh();
+      post();
+      close();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(api.reads, hasLength(readsBefore));
+      expect(api.writes, hasLength(1));
+      expect(changed, isNull);
+      expect(find.byType(InventoryCostPostingDialog), findsOneWidget);
+      api.writeGate!.complete();
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(changed, isTrue);
+      expect(find.byType(InventoryCostPostingDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'an identity change with the same permissions cannot publish an old read or use captured write controls',
+    (tester) async {
+      final identity = StateProvider<AuthenticatedScope?>(
+        (_) => const AuthenticatedScope(userId: 'cost-owner-one'),
+      );
+      final api = _Api();
+      await _open(tester, api, canPost: true, identity: identity);
+      final post = tester
+          .widget<UtenButton>(find.byKey(const ValueKey('inventory-cost-post')))
+          .onPressed!;
+      api.readGate = Completer<void>();
+      final refresh = tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '刷新'))
+          .onPressed!;
+      refresh();
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(InventoryCostPostingDialog)),
+      );
+      container.read(identity.notifier).state = const AuthenticatedScope(
+        userId: 'cost-owner-two',
+      );
+      await tester.pump();
+      api.readGate!.complete();
+      await tester.pumpAndSettle();
+      post();
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('inventory-cost-confirm')),
+        findsNothing,
+      );
+      expect(api.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'same business day normalizes mixed inputs and picker values without weakening range guard',
     (tester) async {
@@ -209,10 +336,6 @@ void main() {
       await tester.enterText(find.byType(TextFormField), '已核对本期原价值和历史凭证差额');
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();
-      expect(api.writes, isEmpty);
-      expect(find.text('确认启用实际成本过账'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('inventory-cost-confirm')));
-      await tester.pumpAndSettle();
       expect(api.writes.single.$1, '$inventoryCostPostingEndpoint/policy');
       expect(api.writes.single.$2, containsPair('enabled', true));
       expect(api.writes.single.$2, containsPair('expectedVersion', 7));
@@ -264,20 +387,16 @@ void main() {
       final assign = find.widgetWithText(UtenTableCellAction, '指定入账期间');
       await tester.tap(assign);
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+      await tester.tap(find.byType(UtenDropdownField).last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('2026-10').last);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), '后补成本核定本期入账');
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();
-      expect(api.writes, isEmpty);
-      expect(find.textContaining('posting-1'), findsWidgets);
-      await tester.tap(find.byKey(const ValueKey('inventory-cost-confirm')));
-      await tester.pumpAndSettle();
       expect(
         api.writes.single.$1,
-        '$inventoryCostPostingEndpoint/postings/posting-1/period',
+        '$inventoryCostPostingEndpoint/postings/33333333-3333-4333-8333-333333333333/period',
       );
       expect(api.writes.single.$2['targetPeriod'], '2026-10');
     },
@@ -315,8 +434,9 @@ class _Api extends ApiClient {
   final writes = <(String, Map<String, dynamic>)>[];
   bool enabled = true;
   String status = 'READY';
+  Completer<void>? readGate, writeGate;
   Map<String, dynamic> get row => {
-    'postingId': 'posting-1',
+    'postingId': '33333333-3333-4333-8333-333333333333',
     'amountLocal': '9007199254740993.0000007',
     'businessDate': '2026-09-10',
     'sourcePeriod': '2026-09',
@@ -349,7 +469,10 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     reads.add(path);
-    if (path.endsWith('/postings')) return [row];
+    if (path.endsWith('/postings')) {
+      if (readGate != null) await readGate!.future;
+      return [row];
+    }
     if (path.endsWith('/periods')) {
       return [
         {
@@ -375,7 +498,13 @@ class _Api extends ApiClient {
     writes.add((path, map));
     enabled = map['enabled'] == true;
     status = 'READY';
-    return {...map, 'version': 8};
+    return financeCommandTestReceipt(
+      operation: 'INVENTORY_COST_POLICY_SAVE',
+      method: 'PUT',
+      path: path,
+      body: body,
+      result: {...map, 'version': 8},
+    );
   }
 
   @override
@@ -386,7 +515,18 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     writes.add((path, Map<String, dynamic>.from(body! as Map)));
+    if (writeGate != null) await writeGate!.future;
     status = 'POSTED';
-    return {'period': '2026-09', 'newVoucherCount': 1};
+    return financeCommandTestReceipt(
+      operation: path.endsWith('/post')
+          ? 'INVENTORY_COST_POST'
+          : path.endsWith('/close')
+          ? 'INVENTORY_COST_CLOSE'
+          : 'INVENTORY_COST_PERIOD_CHOICE',
+      method: 'POST',
+      path: path,
+      body: body,
+      result: {'period': '2026-09', 'newVoucherCount': 1},
+    );
   }
 }

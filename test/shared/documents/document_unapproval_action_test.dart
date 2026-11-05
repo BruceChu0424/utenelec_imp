@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/documents/document_unapproval.dart';
@@ -195,6 +196,168 @@ void main() {
     },
   );
 
+  testWidgets('cancelled read cannot publish or finish a later retry', (
+    tester,
+  ) async {
+    final api = _AvailabilityApi();
+    var calls = 0;
+    await _pump(tester, api, () => calls++);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    api.holdNext = true;
+    await tester.tap(find.text('反审'));
+    await _paintReadWait(tester);
+    final oldRead = api.held!;
+    final afterStart = api.gets;
+    expect(find.text('正在核对反审条件'), findsOneWidget);
+    // A second button invocation cannot dispatch another capability read.
+    final action = tester.widget<UtenButton>(find.byType(UtenButton).first);
+    expect(action.onPressed, isNull);
+    expect(api.gets, afterStart);
+    await tester.tap(find.text('取消'));
+    await _paintReadWait(tester);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(calls, 0);
+    api.holdNext = true;
+    await tester.tap(find.text('重新核对反审'));
+    await _paintReadWait(tester);
+    final newRead = api.held!;
+    expect(newRead, isNot(same(oldRead)));
+    oldRead.complete(_ready());
+    await _paintReadWait(tester);
+    expect(find.text('正在核对反审条件'), findsOneWidget);
+    expect(calls, 0);
+    newRead.complete(_ready('c'));
+    await _paintReadWait(tester);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(calls, 0);
+    expect(api.posts, 0);
+    await tester.tap(find.text('反审'));
+    await _paintReadWait(tester);
+    expect(calls, 1);
+  });
+
+  testWidgets('completed read removes its mask before the confirmation opens', (
+    tester,
+  ) async {
+    final api = _AvailabilityApi();
+    var callbackMask = true;
+    await _pump(tester, api, () {
+      callbackMask = find.byType(UtenBusyOverlay).evaluate().isNotEmpty;
+      return showDialog<void>(
+        context: tester.element(find.byType(DocumentUnapprovalAction)),
+        builder: (_) => const AlertDialog(title: Text('原业务确认')),
+      );
+    });
+    api.holdNext = true;
+    await tester.tap(find.text('反审'));
+    await _paintReadWait(tester);
+    expect(find.text('正在核对反审条件'), findsOneWidget);
+    api.held!.complete(_ready());
+    await _paintReadWait(tester);
+    expect(callbackMask, isFalse);
+    expect(find.text('原业务确认'), findsOneWidget);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(api.posts, 0);
+  });
+
+  testWidgets('blocked explanation retry waits and cancellation never writes', (
+    tester,
+  ) async {
+    final api = _AvailabilityApi()..reply = _blocked('需先处理下游');
+    var calls = 0;
+    await _pump(tester, api, () => calls++);
+    await tester.tap(find.text('反审'));
+    await _paintReadWait(tester);
+    expect(find.text('暂不能反审'), findsOneWidget);
+    api.holdNext = true;
+    await tester.tap(find.text('重新核对'));
+    await _paintReadWait(tester);
+    expect(find.text('暂不能反审'), findsNothing);
+    expect(find.text('正在核对反审条件'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await _paintReadWait(tester);
+    api.held!.complete(_ready());
+    await _paintReadWait(tester);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(calls, 0);
+    expect(api.posts, 0);
+  });
+
+  testWidgets(
+    'changing reader disposes the user read mask and ignores late data',
+    (tester) async {
+      final api = _AvailabilityApi();
+      var calls = 0;
+      final container = await _pump(tester, api, () => calls++);
+      api.holdNext = true;
+      await tester.tap(find.text('反审'));
+      await _paintReadWait(tester);
+      final held = api.held!;
+      (container.read(sessionProvider.notifier) as _Reader).switchReader();
+      await _paintReadWait(tester);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      held.complete(_blocked('旧身份私有依赖'));
+      await _paintReadWait(tester);
+      expect(find.text('旧身份私有依赖'), findsNothing);
+      expect(calls, 0);
+      expect(api.posts, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('removing the control cancels only its read presentation', (
+    tester,
+  ) async {
+    final visible = ValueNotifier(true);
+    addTearDown(visible.dispose);
+    final api = _AvailabilityApi();
+    var calls = 0;
+    await _pump(tester, api, () => calls++, visible: visible);
+    api.holdNext = true;
+    await tester.tap(find.text('反审'));
+    await _paintReadWait(tester);
+    final held = api.held!;
+    visible.value = false;
+    await _paintReadWait(tester);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    held.complete(_ready());
+    await _paintReadWait(tester);
+    expect(calls, 0);
+    expect(api.posts, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'revision change invalidates old perform without clearing new one',
+    (tester) async {
+      final revision = ValueNotifier(1);
+      addTearDown(revision.dispose);
+      final api = _AvailabilityApi();
+      var calls = 0;
+      await _pump(tester, api, () => calls++, revision: revision);
+      api.holdNext = true;
+      await tester.tap(find.text('反审'));
+      await _paintReadWait(tester);
+      final oldRead = api.held!;
+      revision.value++;
+      await _paintReadWait(tester);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      api.holdNext = true;
+      await tester.tap(find.text('反审'));
+      await _paintReadWait(tester);
+      final newRead = api.held!;
+      oldRead.complete(_ready());
+      await _paintReadWait(tester);
+      expect(find.text('正在核对反审条件'), findsOneWidget);
+      expect(calls, 0);
+      newRead.complete(_ready('d'));
+      await _paintReadWait(tester);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(calls, 1);
+      expect(api.posts, 0);
+    },
+  );
+
   test(
     'confirmation binds the old snapshot and refuses a changed eligible generation',
     () async {
@@ -243,6 +406,13 @@ void main() {
       expect(api.posts, 1);
     },
   );
+}
+
+Future<void> _paintReadWait(WidgetTester tester) async {
+  // Held reads keep the real busy animation running; settling is impossible.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pump();
 }
 
 Future<GoRouter> _pumpBannerRoutes(
@@ -332,7 +502,13 @@ Future<ProviderContainer> _pump(
   _AvailabilityApi api,
   FutureOr<void> Function() command, {
   bool settle = true,
+  ValueNotifier<int>? revision,
+  ValueNotifier<bool>? visible,
 }) async {
+  final currentRevision = revision ?? ValueNotifier(1);
+  final currentVisibility = visible ?? ValueNotifier(true);
+  if (revision == null) addTearDown(currentRevision.dispose);
+  if (visible == null) addTearDown(currentVisibility.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -342,11 +518,16 @@ Future<ProviderContainer> _pump(
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: DocumentUnapprovalAction(
-            family: 'purchaseOrder',
-            documentId: 'original',
-            revision: 'revision1',
-            onPressed: command,
+          body: AnimatedBuilder(
+            animation: Listenable.merge([currentRevision, currentVisibility]),
+            builder: (_, _) => currentVisibility.value
+                ? DocumentUnapprovalAction(
+                    family: 'purchaseOrder',
+                    documentId: 'original',
+                    revision: currentRevision.value,
+                    onPressed: command,
+                  )
+                : const SizedBox(),
           ),
         ),
       ),
@@ -387,6 +568,7 @@ class _AvailabilityApi extends ApiClient {
   Map<String, dynamic> reply = _ready();
   ApiException? failure;
   int posts = 0;
+  int gets = 0;
   bool holdNext = false;
   Completer<Map<String, dynamic>>? held;
   @override
@@ -394,6 +576,7 @@ class _AvailabilityApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    gets++;
     if (holdNext) {
       holdNext = false;
       held = Completer();

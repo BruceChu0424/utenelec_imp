@@ -112,6 +112,20 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         UUID currencyId = baseCurrencyId();
         closedPeriodGuard.requireOpen(
                 waste.supplierId(), currencyId, waste.wasteDate(), "委外损耗责任开案");
+        materialValue.afterWasteCostsPrepared(waste.wasteId(),()->{
+            if(!actor.equals(currentUser.requireId()))throw conflict("损耗财务责任的原经办身份已变化，本次未确认");
+            persistApprovedWaste(waste,actor,currencyId);
+        });
+    }
+
+    private void persistApprovedWaste(ApprovedWaste waste,UUID actor,UUID currencyId){
+        boolean sourceCurrent=Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM subcontract_wastes
+                  WHERE id=:id AND supplier_id=:supplier AND bill_date=:date
+                    AND bill_no=:bill AND status=1 AND NOT is_deleted)
+                """).setParameter("id",waste.wasteId()).setParameter("supplier",waste.supplierId())
+                .setParameter("date",waste.wasteDate()).setParameter("bill",waste.wasteBillNo().trim()).getSingleResult());
+        if(!sourceCurrent)throw conflict("损耗财务责任的原审核单据已变化，本次未确认");
         List<PreparedLine> prepared = new ArrayList<>();
         BigDecimal actualTotal = zero();
         BigDecimal allowedTotal = zero();

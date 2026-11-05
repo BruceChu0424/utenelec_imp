@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../../support/pump_until.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -161,6 +163,25 @@ UtenButton _printButton(WidgetTester tester) =>
 
 void main() {
   testWidgets(
+    'canceling the initial print read removes its wait and never publishes a late paper',
+    (tester) async {
+      final response = Completer<UtenPrintTable>();
+      await _open(tester, loader: () => response.future);
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(find.text('正在读取打印内容'), findsOneWidget);
+      await tester.tap(find.text('取消读取'));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      response.complete(_table);
+      await tester.pumpAndSettle();
+      expect(find.text('旧账号库存'), findsNothing);
+      expect(find.text('预览 · 库存报表'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'a data-scope revision permanently retires an already loaded paper even after ABA',
     (tester) async {
       final container = await _open(tester);
@@ -264,7 +285,13 @@ void main() {
   ) async {
     final repository = _DelayedProjection();
     final container = await _open(tester, repository: repository);
-    await tester.pump();
+    // Work-budget checkpoints may defer the projection under a loaded runner.
+    // Revoke only after its actual held request exists; the busy mask animates.
+    await pumpUntil(
+      tester,
+      () => repository.requested,
+      reason: 'Revoke only after the real projection request is pending',
+    );
     expect(repository.requested, isTrue);
     final original = container.read(_boundary);
     container

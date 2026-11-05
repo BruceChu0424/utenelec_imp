@@ -21,8 +21,8 @@ class FinanceClassificationCorrectionMigrationPostgresTest {
    try(var rows=sql.executeQuery("SELECT fn_finance_payable_classification_exceeds('00000000-0000-0000-0000-000000000001'),fn_finance_receivable_classification_exceeds('00000000-0000-0000-0000-000000000001')")){rows.next();assertThat(rows.getBoolean(1)).isFalse();assertThat(rows.getBoolean(2)).isFalse();}
    assertThatThrownBy(()->sql.execute("SELECT fn_assert_finance_classification_correction('00000000-0000-0000-0000-000000000001')")).hasMessageContaining("Incomplete classification graph receipt");
    for(String kind:new String[]{"SOURCE","AP_PAYMENT","AR_RECEIPT","AP_OFFSET","AR_OFFSET","AP_ADVANCE_TARGET"}){
-    try(var statement=sql.getConnection().prepareStatement("SELECT fn_finance_classification_node_batch(?,?)")){statement.setString(1,kind);statement.setString(2,"00000000-0000-0000-0000-000000000001");try(var rows=statement.executeQuery()){rows.next();assertThat(rows.getObject(1)).isNull();}}
-    assertThatThrownBy(()->{try(var statement=sql.getConnection().prepareStatement("SELECT fn_finance_classification_node_fact(?,?)")){statement.setString(1,kind);statement.setString(2,"00000000-0000-0000-0000-000000000001");statement.execute();}}).hasMessageContaining("Missing actual classification node");
+    try(var statement=sql.getConnection().prepareStatement("SELECT fn_finance_classification_node_batch(?,CAST(? AS uuid))")){statement.setString(1,kind);statement.setString(2,"00000000-0000-0000-0000-000000000001");try(var rows=statement.executeQuery()){rows.next();assertThat(rows.getObject(1)).isNull();}}
+    assertThatThrownBy(()->{try(var statement=sql.getConnection().prepareStatement("SELECT fn_finance_classification_node_fact(?,CAST(? AS uuid))")){statement.setString(1,kind);statement.setString(2,"00000000-0000-0000-0000-000000000001");statement.execute();}}).hasMessageContaining("Missing actual classification node");
    }
   }
  }

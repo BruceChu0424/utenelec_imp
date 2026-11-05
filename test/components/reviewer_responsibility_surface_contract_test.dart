@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/finance/config/finance_requirement_names.dart';
 
 String _source(String path) => File(path).readAsStringSync();
 
@@ -13,13 +15,41 @@ String _between(String source, String start, String end) {
 }
 
 void main() {
+  test(
+    'shipment finance responsibility uses the authoritative template caption',
+    () {
+      final templateContract =
+          jsonDecode(
+                _source(
+                  'server/src/main/resources/finance/template-contract-v1.json',
+                ),
+              )
+              as Map<String, dynamic>;
+      final shipmentReview =
+          (templateContract['templates']
+                  as Map<String, dynamic>)['customerShipmentReview']
+              as Map<String, dynamic>;
+      expect(FinanceRequirementNames.customerShipmentReview, '客户发货审核');
+      expect(
+        FinanceRequirementNames.customerShipmentReview,
+        shipmentReview['entryName'],
+      );
+      expect(shipmentReview['source'], '部门汇总!A6');
+    },
+  );
+
   test('core approval surfaces identify the current reviewer', () {
     final expectedMarkers = <String, List<String>>{
       'lib/features/sales/pages/sales_doc_detail_page.dart': [
         'reviewerResponsibility: true',
       ],
       'lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart':
-          ["actionLabel: '出货财务审核'", "actionLabel: '出货财务退回'"],
+          [
+            // The finance source contract owns the current approval caption;
+            // the rejection remains a separate finance responsibility action.
+            'actionLabel: FinanceRequirementNames.customerShipmentReview',
+            "actionLabel: '出货财务退回'",
+          ],
       'lib/features/warehouse/pages/stock_doc_detail_page.dart': [
         'reviewerResponsibility: true',
       ],

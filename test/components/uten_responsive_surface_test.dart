@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,6 +51,7 @@ void main() {
   testWidgets(
     'history range keeps a short control and the complete dates in its hint on a narrow scaled canvas',
     (tester) async {
+      var changes = 0;
       await _pump(
         tester,
         Scaffold(
@@ -60,15 +63,24 @@ void main() {
                   end: DateTime.utc(2024, 10, 13),
                 ),
               ),
-              onChanged: (_) {},
+              onChanged: (_) => changes++,
             ),
           ),
         ),
         zoom: 2,
       );
-      expect(find.textContaining('2024-01-01'), findsNothing);
-      expect(find.text('选择日期'), findsOneWidget);
-      expect(find.byTooltip('2024-01-01 ~ 2024-10-13'), findsOneWidget);
+      expect(find.textContaining('2024.01.01'), findsNothing);
+      expect(find.text('共287天'), findsOneWidget);
+      expect(find.byTooltip('2024.01.01-2024.10.13'), findsOneWidget);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(319, 799));
+      await mouse.moveTo(tester.getCenter(find.text('共287天')));
+      await tester.pumpAndSettle();
+      expect(find.text('2024.01.01-2024.10.13'), findsOneWidget);
+      expect(changes, 0);
+      await mouse.removePointer();
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );

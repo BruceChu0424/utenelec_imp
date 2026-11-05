@@ -1132,7 +1132,7 @@ void main() {
     await _edit(tester);
     final operations = (fixture.api.commands.single.$2['operations'] as List)
         .cast<Map<String, dynamic>>();
-    expect((operations.last['body'] as Map)['qty'], '7.0');
+    expect((operations.last['body'] as Map)['qty'], '7');
     expect((operations.last['body'] as Map)['summary'], '新备注');
     expect((operations.last['body'] as Map)['componentGoodsId'], 'washer');
   });
@@ -1168,7 +1168,7 @@ void main() {
       'UPDATE',
       'MOVE',
     ]);
-    expect((operations.first['body'] as Map)['qty'], 7);
+    expect((operations.first['body'] as Map)['qty'], '7');
     expect(
       ((operations.last['moves'] as List).single
           as Map<String, dynamic>)['targetParentGoodsId'],
@@ -1294,7 +1294,7 @@ void main() {
           (fixture.api.commands.single.$2['operations'] as List).single as Map;
       expect(operation['goodsId'], 'frame');
       expect(operation['itemId'], 'row-washer');
-      expect((operation['body'] as Map)['qty'], 7.25);
+      expect((operation['body'] as Map)['qty'], '7.25');
       expect((operation['body'] as Map).containsKey('price'), isFalse);
     },
   );
@@ -1560,7 +1560,7 @@ void main() {
       await _edit(tester);
       final operation =
           (fixture.api.commands.single.$2['operations'] as List).single as Map;
-      expect((operation['body'] as Map)['unitWeightGrams'], 2.5);
+      expect((operation['body'] as Map)['unitWeightGrams'], '2.5');
       expect((operation['body'] as Map).containsKey('price'), isFalse);
       await tester.tap(find.text('继续编辑'));
       await tester.pumpAndSettle();

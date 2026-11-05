@@ -63,6 +63,26 @@ class _Repository extends OrderDeliveryRepository {
                 'requiredOperations': ['LASER'],
                 'children': <Map<String, dynamic>>[],
               },
+              {
+                'path': ['module', 'inner'],
+                'goodsId': 'inner-goods',
+                'code': 'I',
+                'name': '内部功能组件',
+                'qtyExact': '1',
+                'childrenState': 'LOADED',
+                'children': [
+                  {
+                    'path': ['module', 'inner', 'leaf'],
+                    'goodsId': 'inner-leaf-goods',
+                    'code': 'L',
+                    'name': '内部激光片',
+                    'qtyExact': '1',
+                    'childrenState': 'NONE',
+                    'requiredOperations': ['LASER'],
+                    'children': <Map<String, dynamic>>[],
+                  },
+                ],
+              },
             ],
           },
           {
@@ -147,6 +167,62 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets(
+    'header search finds a folded grandchild and clearing restores folds and delivery choices',
+    (tester) async {
+      final repository = _Repository();
+      var changes = 0;
+      await _pump(tester, repository, changed: (_) => changes++);
+      await tester.tap(find.text('按BOM层级交付'));
+      await tester.pumpAndSettle();
+      final moduleChoice = find.byKey(const ValueKey('delivery-split-module'));
+      final internalChoice = find.byKey(
+        const ValueKey('delivery-split-module/inner'),
+      );
+      expect(tester.widget<Checkbox>(internalChoice).onChanged, isNull);
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.byKey(const ValueKey('delivery-laser-module/inner/leaf')),
+            )
+            .value,
+        isTrue,
+      );
+      await tester.tap(moduleChoice);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Checkbox>(moduleChoice).value, isTrue);
+      expect(tester.widget<Checkbox>(internalChoice).onChanged, isNotNull);
+      await tester.tap(find.text('全部收起'));
+      await tester.pumpAndSettle();
+      expect(find.text('激光底板'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('master-column-filter-code')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'P');
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      expect(find.text('原产品'), findsWidgets);
+      expect(find.text('模块'), findsWidgets);
+      expect(find.text('激光底板'), findsWidgets);
+      expect(find.text('内部功能组件'), findsNothing);
+      expect(tester.widget<Checkbox>(moduleChoice).value, isTrue);
+      await tester.tap(find.byKey(const ValueKey('master-column-filter-code')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('所有'));
+      await tester.pumpAndSettle();
+      expect(find.text('模块'), findsNothing);
+      expect(find.text('激光底板'), findsNothing);
+      await tester.tap(find.text('全部展开'));
+      await tester.pumpAndSettle();
+      expect(find.text('内部激光片'), findsWidgets);
+      expect(tester.widget<Checkbox>(moduleChoice).value, isTrue);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(changes, 0);
+      expect(repository.previews, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'read-only order scope uses frozen data and preserves missing history',
     (tester) async {

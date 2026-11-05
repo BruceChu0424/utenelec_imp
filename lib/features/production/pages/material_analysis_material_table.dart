@@ -2074,6 +2074,46 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 下拉由有没有筛选桶决定(见 [_materialTableGenericFacetExtractors])，这里
   /// 只负责不给 info；这几列的解释仍在单元格自己的悬浮里(调拨按钮为什么灰、
   /// 「还缺数量」怎么扣的、「下单数量」填的是要覆盖的总量)。
+  String? _materialTableDeliveryRequirements(_MaterialTableRow row) {
+    final paths =
+        row.aggregate?.paths ?? [if (row.material != null) row.material!];
+    final labels = <String>{};
+    if (row.deliveryContext) {
+      labels.add('按下级交付，无需该层组装');
+    } else if (row.product != null) {
+      labels.add(orderDeliveryLabel(row.product!.deliveryPlan));
+    }
+    if (row.aggregate != null && paths.any((path) => path.deliveryContext)) {
+      labels.add('含无需组装层（只读来源）');
+    }
+    if (paths.any((path) => path.deliveryFrontier)) {
+      labels.add('本单交付件');
+    }
+    final operations = <String, int>{};
+    for (final path in paths) {
+      for (final operation in path.deliveryOperations.toSet()) {
+        operations[operation] = (operations[operation] ?? 0) + 1;
+      }
+    }
+    for (final operation in operations.keys.toList()..sort()) {
+      final name = operation == 'LASER' ? '激光打印' : operation;
+      final partial =
+          row.aggregate != null && operations[operation]! < paths.length;
+      labels.add('${partial ? '部分来源需' : '需'}$name');
+    }
+    // The product label summarizes frozen paths. It never enables work on a
+    // structural context row or adds quantities from different units/sources.
+    if (!operations.containsKey('LASER') &&
+        row.product?.deliveryPlan?.processes.any(
+              (entry) =>
+                  entry['required'] == true && entry['operation'] == 'LASER',
+            ) ==
+            true) {
+      labels.add('含必要激光打印');
+    }
+    return labels.isEmpty ? null : labels.join(' · ');
+  }
+
   List<MasterColumnDef<_MaterialTableRow>> _materialTableColumns(
     ThemeData theme, {
     bool revealAssignmentKeys = true,
@@ -2164,21 +2204,9 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'deliveryPlan',
       label: '交付要求',
       width: 190,
-      value: (row) {
-        if (row.deliveryContext) return '按下级交付，无需该层组装';
-        final material = row.material;
-        final operations = material?.deliveryOperations ?? const <String>[];
-        if (operations.isNotEmpty) {
-          return operations
-              .map((value) => value == 'LASER' ? '激光打印' : value)
-              .join('、');
-        }
-        if (material?.deliveryFrontier == true) return '本单交付件';
-        return row.product == null
-            ? null
-            : orderDeliveryLabel(row.product!.deliveryPlan);
-      },
-      info: '交付方式来自销售订单确认的BOM路径。本层不组装时只保留结构上下文；必要加工与下级组件生产继续执行。',
+      value: _materialTableDeliveryRequirements,
+      info:
+          '交付方式来自销售订单确认的冻结BOM，不修改货品工程组装信息。本层不组装时只保留只读结构；必要加工随实际交付件继续执行，不能在上下文行开工。汇总只合并来源标签，不混算数量或单位。',
     ),
     MasterColumnDef(
       key: 'salesRequirements',

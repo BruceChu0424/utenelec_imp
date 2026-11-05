@@ -544,18 +544,29 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             """,UUID.class).setParameter("type",type).setParameter("id",receiptId),UUID.class);
         for(UUID id:eventIds)requireOutputReversible(id);
         var insufficient=em.createNativeQuery("""
-            SELECT source.sales_order_item_id FROM preplan_root_output_events source
+            WITH reversing_source AS (
+              SELECT source.sales_order_item_id,source.analysis_item_id,SUM(source.qty_base) AS base_qty
+              FROM preplan_root_output_events source
+              WHERE source.event_kind='FULFILL' AND source.source_receipt_type=:type AND source.source_receipt_id=:id
+                AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=source.id)
+              GROUP BY source.sales_order_item_id,source.analysis_item_id
+            ), reversing_credit AS (
+              SELECT source.sales_order_item_id,
+                fn_root_fulfilled_source_qty(source.analysis_item_id)
+                  -fn_root_fulfilled_source_qty_with_delta(source.analysis_item_id,-source.base_qty) AS row_qty
+              FROM reversing_source source
+            )
+            SELECT source.sales_order_item_id FROM reversing_credit source
             JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) item ON item.id=source.sales_order_item_id
-            WHERE source.event_kind='FULFILL' AND source.source_receipt_type=:type AND source.source_receipt_id=:id
-              AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=source.id)
             GROUP BY source.sales_order_item_id,item.reserved_qty
-            HAVING item.reserved_qty<SUM(source.qty_base)
+            HAVING item.reserved_qty<SUM(source.row_qty)
             """).setParameter("type",type).setParameter("id",receiptId).getResultList();
         if(!insufficient.isEmpty())throw conflict("根产品供给与销售剩余数量不一致，本次操作没有生效");
     }
     private void requireOutputReversible(UUID eventId){
         var facts=rows("""
-            SELECT output.sales_reservation_id,reservation.consumed_qty,reservation.released_qty,reservation.is_deleted
+            SELECT output.sales_reservation_id,reservation.consumed_qty,reservation.released_qty,reservation.is_deleted,
+              EXISTS(SELECT 1 FROM v_sales_delivery_order_claim_active claim WHERE claim.reservation_id=output.sales_reservation_id)
             FROM preplan_root_output_events output
             JOIN production_material_analysis_materials root ON root.id=output.root_material_id
             JOIN production_material_analysis_items item ON item.root_material_id=root.id AND item.id=output.analysis_item_id AND item.is_deleted=FALSE
@@ -567,6 +578,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         var row=facts.getFirst();
         if(row[0]!=null&&(row[1]==null||decimal(row[1]).signum()!=0||decimal(row[2]).signum()!=0||Boolean.TRUE.equals(row[3])))
             throw conflict("根产品供给已发货或已释放，不能直接反审入库");
+        if(Boolean.TRUE.equals(row[4]))throw conflict("根产品原实物已认领发至加工，请先由仓库实际收回取消发出，再反审来源入库");
     }
 
     private void reverse(UUID eventId,String reason) {

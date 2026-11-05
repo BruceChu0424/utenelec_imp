@@ -488,6 +488,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.serverColumnSearch = false,
     this.serverColumnSearchKeys = const <String>{},
     this.filterContextRows,
+    this.unfilteredRows,
     this.headerFilterScopeDescription,
     this.preserveQueryOnReturn = false,
     this.onRowTap,
@@ -682,6 +683,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// Reintroduce original ancestors/groups after local matching. The owner
   /// defines the business context; paged sources remain server-owned.
   final List<T> Function(List<T> all, List<T> matched)? filterContextRows;
+
+  /// Complete local trees keep every loaded row in [items] for facets/search.
+  /// Only the unfiltered display applies this projection (for example branch
+  /// collapse); matching uses the full source and [filterContextRows] instead.
+  /// Server-paged lists retain their authoritative page semantics.
+  final List<T> Function(List<T> all)? unfilteredRows;
   final String? headerFilterScopeDescription;
 
   /// A revision browser keeps its current filters while opening a child page.
@@ -5404,6 +5411,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   List<MasterColumnDef<T>>? _displayRowsColumns;
   Map<String, String?> _displayRowsFilters = const {};
   Object? _displayRowsContextFilter;
+  Object? _displayRowsUnfilteredProjection;
   Map<String, String> _displayRowsSearches = const {};
   Object? _displayRowsSort;
   List<T> _displayRowsCache = const [];
@@ -5416,6 +5424,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     if (identical(_displayRowsSource, _items) &&
         identical(_displayRowsContextFilter, widget.filterContextRows) &&
+        identical(_displayRowsUnfilteredProjection, widget.unfilteredRows) &&
         identical(_displayRowsColumns, _columns) &&
         _displayRowsSort == sort &&
         mapEquals(_displayRowsFilters, _rowFilters) &&
@@ -5424,6 +5433,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     _displayRowsSource = _items;
     _displayRowsContextFilter = widget.filterContextRows;
+    _displayRowsUnfilteredProjection = widget.unfilteredRows;
     _displayRowsColumns = _columns;
     _displayRowsSort = sort;
     _displayRowsFilters = Map.of(_rowFilters);
@@ -5481,8 +5491,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         return true;
       }).toList();
     }
-    if (!_serverPaged && !identical(rows, source)) {
-      rows = widget.filterContextRows?.call(source, rows) ?? rows;
+    if (!_serverPaged) {
+      final filtered =
+          _columnSearches.isNotEmpty ||
+          _rowFilters.values.any((value) => value != null && value.isNotEmpty);
+      rows = filtered
+          ? widget.filterContextRows?.call(source, rows) ?? rows
+          : widget.unfilteredRows?.call(source) ?? rows;
     }
     final sortKey = _localSortColumn;
     if (sortKey != null && widget.onSortChange == null) {

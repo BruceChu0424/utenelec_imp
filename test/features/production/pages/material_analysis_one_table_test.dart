@@ -57,6 +57,7 @@ part 'material_analysis_view_transition_cases.dart';
 part 'material_analysis_append_quantity_cases.dart';
 part 'material_analysis_handling_density_cases.dart';
 part 'material_analysis_tree_shortcuts_cases.dart';
+part 'material_analysis_delivery_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -272,6 +273,7 @@ void main() {
   materialProductWithdrawalCases();
   materialHandlingDensityCases();
   materialTreeShortcutCases();
+  materialDeliveryCases();
   materialOrderAuthorityCases();
   materialQuantityPresentationCases();
   materialPolicyCases();

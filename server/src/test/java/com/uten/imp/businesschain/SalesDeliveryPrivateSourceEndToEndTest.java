@@ -207,4 +207,66 @@ class SalesDeliveryPrivateSourceEndToEndTest {
         assertThat(db.queryForObject("SELECT root_fulfilled_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,view.products().getFirst().analysisLineId()))
                 .isEqualByComparingTo("5");
     }
+
+    @Test void returnedPrivateProcessingLotCanBeIssuedAgainAndShipsItsOriginalKitOnlyOnce() {
+        var w=fixture.seedWorld("delivery-reissue-"+UUID.randomUUID().toString().substring(0,6));
+        fixture.loginAs(w.superAdminUserId());
+        db.update("UPDATE goods SET source_type='采购',default_supplier_id=? WHERE id=?",w.supplierId(),w.goodsB());
+        support.stock(w,w.goodsE(),"5");
+        var snapshot=boms.snapshot(w.goodsA());
+        var edge=snapshot.root().children().stream().filter(n->n.goodsId().equals(w.goodsB())).findFirst().orElseThrow().path();
+        var request=fixture.orderRequest(w,w.goodsA(),"5","100");
+        request.getItems().getFirst().setDeliveryPlan(new DeliveryPlan(1,DeliveryPlan.Mode.BOM,DeliveryPlan.Packaging.ORIGINAL,
+                List.of(),List.of(new DeliveryPlan.Process(edge,DeliveryPlan.Operation.LASER,true)),snapshot.bomFingerprint()));
+        UUID order=orders.create(request).getId();orders.approve(order);fixture.confirmInitialSalesFinance(order);
+        UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=? AND NOT is_deleted",UUID.class,order);
+        var view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"delivery-reissue-"+order,
+                List.of(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,LocalDate.now(),new BigDecimal("5")))));
+        UUID purchase=ReflectionTestUtils.invokeMethod(fixture,"approvePurchaseForAnalysis",w,view,w.goodsB());
+        fixture.receiveAndPassPurchase(w,purchase,w.goodsB(),new BigDecimal("10"),"delivery-reissue-"+order);
+        fixture.loginAs(w.superAdminUserId());
+        UUID shipment=fixture.createShipment(w,item,w.goodsA(),"5");shipments.confirmSales(shipment,0L);
+        ReflectionTestUtils.invokeMethod(fixture,"confirmShipmentFinance",shipment);
+        var ready=new SalesBomDeliveryEndToEndTest.Ready(w,order,item,shipment);
+        UUID component=support.physical(shipment).stream().filter(c->c.goodsId().equals(w.goodsB())).findFirst().orElseThrow().id();
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","delivery-reissue-"+component);
+        UUID workshop=(UUID)ReflectionTestUtils.getField(assignment,"workshopId"),worker=(UUID)ReflectionTestUtils.getField(assignment,"workerId");
+        var task=processing.get(component);
+        task=processing.assign(component,new DeliveryProcessingContracts.Assignment(task.version(),workshop,worker,UUID.randomUUID()));
+        var issued=shipments.processingWarehouseWork(shipment,component,"ISSUE",new SalesShipmentDeliveryService.ProcessingWarehouseAction(
+                task.version(),w.warehouseId(),"原私有到货实际发出",UUID.randomUUID(),"原私有采购件交至激光车间"));
+        UUID original=db.queryForObject("SELECT source_reservation_id FROM sales_delivery_entitlement_handoffs WHERE component_id=?",UUID.class,component);
+        task=processing.start(component,new DeliveryProcessingContracts.Start(issued.revision(),w.warehouseId(),UUID.randomUUID()));
+        task=processing.cancelStart(component,new DeliveryProcessingContracts.CancelStart(task.version(),UUID.randomUUID()));
+        var returned=shipments.processingWarehouseWork(shipment,component,"CANCEL_ISSUE",new SalesShipmentDeliveryService.ProcessingWarehouseAction(
+                task.version(),w.warehouseId(),"原件未加工退回",UUID.randomUUID(),"未加工的原10件实物已由仓库实际收回"));
+        assertThat(db.queryForObject("SELECT sum(lot.remaining_qty) FROM v_preplan_stock_entitlement_lot_balance lot WHERE lot.stock_reservation_id=?",BigDecimal.class,original))
+                .isEqualByComparingTo("10");
+        assertThat(db.queryForObject("SELECT root_fulfilled_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,view.products().getFirst().analysisLineId())).isZero();
+        issued=shipments.processingWarehouseWork(shipment,component,"ISSUE",new SalesShipmentDeliveryService.ProcessingWarehouseAction(
+                returned.revision(),w.warehouseId(),"同源原件再次发出",UUID.randomUUID(),"重新实际发出恢复的同一原私有批次10件"));
+        assertThat(db.queryForObject("SELECT count(DISTINCT source_reservation_id) FROM sales_delivery_entitlement_handoffs WHERE component_id=?",Integer.class,component)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM sales_delivery_entitlement_handoffs WHERE component_id=?",Integer.class,component)).isEqualTo(2);
+        assertThat(db.queryForObject("""
+                SELECT sum(handoff.quantity) FROM sales_delivery_entitlement_handoffs handoff
+                WHERE handoff.component_id=? AND NOT EXISTS(SELECT 1 FROM sales_delivery_entitlement_restores restored WHERE restored.handoff_id=handoff.id)
+                """,BigDecimal.class,component)).isEqualByComparingTo("10");
+        task=processing.start(component,new DeliveryProcessingContracts.Start(issued.revision(),w.warehouseId(),UUID.randomUUID()));
+        task=processing.report(component,new DeliveryProcessingContracts.Report(task.version(),new BigDecimal("4"),"LASER","本次4件已完成全部激光及检验要求",UUID.randomUUID()));
+        assertThatThrownBy(()->shipments.transitionWarehouseWork(shipment,support.pick(ready))).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("加工");
+        task=processing.report(component,new DeliveryProcessingContracts.Report(task.version(),new BigDecimal("6"),"LASER","剩余6件全部完成并检验，原10件均已完成",UUID.randomUUID()));
+        shipments.processingWarehouseWork(shipment,component,"RECEIVE",new SalesShipmentDeliveryService.ProcessingWarehouseAction(
+                task.version(),w.warehouseId(),"原10件加工合格收回",UUID.randomUUID(),"按原发出数量核对并实际收回完整10件加工成品"));
+        assertThat(support.balance(w.warehouseId(),w.goodsB())).isEqualByComparingTo("10");
+        shipments.transitionWarehouseWork(shipment,support.pick(ready));
+        assertThat(support.balance(w.warehouseId(),w.goodsB())).isZero();assertThat(support.balance(w.warehouseId(),w.goodsE())).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM sales_delivery_entitlement_restores restored JOIN sales_delivery_entitlement_handoffs handoff ON handoff.id=restored.handoff_id WHERE handoff.component_id=?",Integer.class,component)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_reservations WHERE owner_id=? AND owner_type IN('SALES_DELIVERY_COMPONENT_SHIPMENT','SALES_DELIVERY_PROCESSING') AND status=0 AND NOT is_deleted",Integer.class,component)).isZero();
+        assertThat(db.queryForObject("SELECT sum(event.order_qty) FROM sales_delivery_fulfillment_events event JOIN sales_delivery_fulfillment_allocations allocation ON allocation.id=event.allocation_id WHERE allocation.analysis_item_id=? AND event.event_type='FULFILL'",BigDecimal.class,view.products().getFirst().analysisLineId())).isEqualByComparingTo("5");
+        assertThat(db.queryForObject("SELECT root_fulfilled_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,view.products().getFirst().analysisLineId())).isEqualByComparingTo("5");
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_movements WHERE goods_id=? AND direction=1",Integer.class,w.goodsB())).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_type='SALES_SHIPMENT' AND source_doc_id=? AND direction=-1",Integer.class,shipment)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_movements WHERE goods_id IN(?,?,?)",Integer.class,w.goodsA(),w.goodsC(),w.goodsD())).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM preplan_root_output_events WHERE analysis_id=?",Integer.class,view.analysisId())).isZero();
+    }
 }

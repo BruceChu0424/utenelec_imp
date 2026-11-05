@@ -80,12 +80,16 @@ class _DeliveryRow {
     this.depth,
     this.ancestors,
     this.last,
-    this.covered,
-  );
+    this.covered, {
+    this.filtered = false,
+  });
   final OrderDeliveryBomNode node;
   final int depth;
   final List<bool> ancestors;
-  final bool last, covered;
+  final bool last, covered, filtered;
+
+  _DeliveryRow forFilter() =>
+      _DeliveryRow(node, depth, ancestors, last, covered, filtered: true);
 }
 
 class _OrderDeliveryWindow extends ConsumerStatefulWidget {
@@ -219,7 +223,6 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
       bool covered,
     ) {
       result.add(_DeliveryRow(node, depth, ancestors, last, covered));
-      if (_collapsed.contains(node.key)) return;
       final whole = depth == 0
           ? _plan.mode == 'ASSEMBLED'
           : _plan.modeAt(node.path) != 'CHILDREN';
@@ -263,6 +266,21 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
     }
     return result;
   }
+
+  List<_DeliveryRow> _unfilteredRows(List<_DeliveryRow> all) => all.where((
+    row,
+  ) {
+    // Saved orphan settings remain visible even when the current root is folded.
+    if (row.depth == 0) return true;
+    for (var depth = 0; depth < row.node.path.length; depth++) {
+      if (_collapsed.contains(
+        OrderDeliveryPlan.pathKey(row.node.path.take(depth)),
+      )) {
+        return false;
+      }
+    }
+    return true;
+  }).toList();
 
   Iterable<OrderDeliveryBomNode> _all(OrderDeliveryBomNode node) sync* {
     yield node;
@@ -438,6 +456,7 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
                         nullCounts: const {},
                         filters: const {},
                         onFilterChanged: (_, _) {},
+                        unfilteredRows: _unfilteredRows,
                         filterContextRows: (all, matched) {
                           final keys = <String>{};
                           for (final row in matched) {
@@ -455,6 +474,7 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
                           }
                           return all
                               .where((row) => keys.contains(row.node.key))
+                              .map((row) => row.forFilter())
                               .toList();
                         },
                         idOf: (row) => row.node.key,
@@ -475,11 +495,13 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
                               title: row.node.name,
                               depth: row.depth,
                               hasChildren: row.node.hasChildren,
-                              expanded: !_collapsed.contains(row.node.key),
+                              expanded:
+                                  row.filtered ||
+                                  !_collapsed.contains(row.node.key),
                               dotted: true,
                               ancestorContinuations: row.ancestors,
                               isLastChild: row.last,
-                              onToggle: row.node.hasChildren
+                              onToggle: row.node.hasChildren && !row.filtered
                                   ? () => setState(() {
                                       _collapsed.contains(row.node.key)
                                           ? _collapsed.remove(row.node.key)
@@ -588,6 +610,7 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
                                             'CHILDREN',
                                         onChanged:
                                             !_editable ||
+                                                row.covered ||
                                                 _plan.mode == 'ASSEMBLED' ||
                                                 row.node.children.isEmpty
                                             ? null

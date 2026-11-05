@@ -4800,10 +4800,13 @@ public class MaterialAnalysisService {
             // 以前这里回落 suggestion，主档来源为空时 suggestion 是 REVIEW，
             // 掉进采购分支后整行显示「等待下发采购」，与红框「请先选供应方式」
             // 自相矛盾。根供给行(depth=0)另有根路线冻结机制，不在此列。
-            boolean routePending = row.depth() > 0
+            // Only a real physical shortage needs a route. A transparent delivery
+            // parent and an inventory-covered row cannot schedule assembly work.
+            boolean routePending = !row.deliveryContext() && row.depth() > 0
                     && row.confirmedRoute() == null
                     && row.requiredQty() != null
-                    && row.requiredQty().signum() > 0;
+                    && row.requiredQty().signum() > 0
+                    && row.shortageQty() != null && row.shortageQty().signum() > 0;
             routeByLine.put(row.id(), routePending
                     ? MaterialAnalysisFlowStageService.ROUTE_PENDING_INPUT
                     : (row.confirmedRoute() != null

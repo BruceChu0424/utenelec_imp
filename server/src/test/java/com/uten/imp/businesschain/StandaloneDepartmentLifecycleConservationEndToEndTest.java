@@ -59,6 +59,8 @@ import static org.assertj.core.api.Assertions.*;
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class StandaloneDepartmentLifecycleConservationEndToEndTest {
+    private static final String OUTSIDE_FRACTION="0."+"0".repeat(24)+"1";
+    private static final String OUTSIDE_INTEGER="1"+"0".repeat(40);
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -92,11 +94,11 @@ class StandaloneDepartmentLifecycleConservationEndToEndTest {
     }
 
     @Test
-    void independentPlanRejectsLossyQuantityAndInvalidBatchWithoutPersistingAnyDocument() {
+    void independentPlanRejectsOutOfRangeQuantityAndInvalidBatchWithoutPersistingAnyDocument() {
         var world = world("independent-precision");
         long before = planCount(world);
         for (BigDecimal invalid : new BigDecimal[] {null, BigDecimal.ZERO, new BigDecimal("-1"),
-                new BigDecimal("0.00001"), new BigDecimal("1.00005"), new BigDecimal("100000000000000")}) {
+                new BigDecimal(OUTSIDE_FRACTION),new BigDecimal(OUTSIDE_INTEGER)}) {
             var request = manualPlan(world, world.goodsC(), "2");
             request.getItems().getFirst().setQty(invalid);
             // The earlier valid row also has to roll back when a later row is invalid.
@@ -106,14 +108,16 @@ class StandaloneDepartmentLifecycleConservationEndToEndTest {
                     .satisfies(error -> assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
             assertThat(planCount(world)).isEqualTo(before);
         }
-        var accepted = plans.create(manualPlan(world, world.goodsC(), "0.0001"));
-        assertThat(decimal("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted", accepted.getId()))
-                .isEqualByComparingTo("0.0001");
+        for(String raw:List.of("0.00001","1.00005","1e14","0."+"0".repeat(23)+"1","9".repeat(40))) {
+            var accepted=plans.create(manualPlan(world,world.goodsC(),raw));
+            assertThat(db.queryForObject("SELECT qty::text FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",String.class,accepted.getId()))
+                    .isEqualTo(new BigDecimal(raw).toPlainString());
+        }
         assertNoSales(world);
     }
 
     @Test
-    void standaloneUnpricedRequestsAndOrdersRejectLossyQuantitiesBeforePersisting() {
+    void standaloneUnpricedRequestsAndOrdersKeepNativeQuantitiesAndRejectOutOfRangeInputs() {
         var world = world("independent-unpriced");
         UUID material = harness.addSubcontractDirectMaterial(world, world.goodsE(), "1");
         harness.receiveSubcontractMaterial(world, material, "10");
@@ -122,75 +126,141 @@ class StandaloneDepartmentLifecycleConservationEndToEndTest {
         request.setDepartmentId(world.departmentId()); request.setApplicantId(world.employeeId());
         var requested = new com.uten.imp.features.purchase.request.dto.RequestItemLine();
         requested.setGoodsId(world.goodsD()); requested.setUnitId(world.unitId()); requested.setUnitRate(BigDecimal.ONE);
-        requested.setQty(new BigDecimal("1.00005")); request.setItems(List.of(requested));
-        assertThatThrownBy(() -> purchaseRequests.create(request)).isInstanceOf(ApiException.class)
-                .hasMessageContaining("小数最多4位");
-        assertThat(db.queryForObject("SELECT count(*) FROM purchase_requests WHERE maker_id=?", Integer.class, world.employeeId())).isZero();
+        request.setItems(List.of(requested));
 
         var application = new com.uten.imp.features.subcontract.application.dto.ApplicationSaveRequest();
         application.setBillDate(BusinessTime.today()); application.setWarehouseId(world.warehouseId());
         application.setApplicantId(world.employeeId());
         var applicationLine = new com.uten.imp.features.subcontract.application.dto.ApplicationItemLine();
         applicationLine.setGoodsId(world.goodsE()); applicationLine.setUnitId(world.unitId()); applicationLine.setUnitRate(BigDecimal.ONE);
-        applicationLine.setQty(new BigDecimal("1.00005")); application.setItems(List.of(applicationLine));
-        assertThatThrownBy(() -> subcontractApplications.create(application)).isInstanceOf(ApiException.class)
-                .hasMessageContaining("小数最多4位");
-        assertThat(db.queryForObject("SELECT count(*) FROM subcontract_applications WHERE maker_id=?", Integer.class, world.employeeId())).isZero();
+        application.setItems(List.of(applicationLine));
+        for(String invalid:List.of(OUTSIDE_FRACTION,OUTSIDE_INTEGER)) {
+            requested.setQty(new BigDecimal(invalid));applicationLine.setQty(new BigDecimal(invalid));
+            assertThatThrownBy(()->purchaseRequests.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("范围");
+            assertThatThrownBy(()->subcontractApplications.create(application)).isInstanceOf(ApiException.class).hasMessageContaining("范围");
+            assertThat(db.queryForObject("SELECT count(*) FROM purchase_requests WHERE maker_id=?",Integer.class,world.employeeId())).isZero();
+            assertThat(db.queryForObject("SELECT count(*) FROM subcontract_applications WHERE maker_id=?",Integer.class,world.employeeId())).isZero();
+        }
+
+        // Each input fits individually; the physical charged/free sum does not.
+        var validFirst=new com.uten.imp.features.purchase.request.dto.RequestItemLine();
+        validFirst.setGoodsId(world.goodsC());validFirst.setUnitId(world.unitId());validFirst.setUnitRate(BigDecimal.ONE);validFirst.setQty(BigDecimal.ONE);
+        BigDecimal halfOutside=new BigDecimal("5"+"0".repeat(39));
+        requested.setQty(halfOutside);requested.setGiftQty(halfOutside);request.setItems(List.of(validFirst,requested));
+        assertThatThrownBy(()->purchaseRequests.create(request)).isInstanceOf(ApiException.class)
+                .satisfies(error->assertThat(((ApiException)error).getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED))
+                .hasMessageContaining("实物数量");
+        assertThat(db.queryForObject("SELECT count(*) FROM purchase_requests WHERE maker_id=?",Integer.class,world.employeeId())).isZero();
+        requested.setGiftQty(BigDecimal.ZERO);request.setItems(List.of(requested));
 
         requested.setQty(new BigDecimal("2"));
         var validRequest = purchaseRequests.create(request); purchaseRequests.approve(validRequest.getId());
-        assertThatThrownBy(() -> purchaseOrder(world, validRequest.getItems().getFirst().getId(), "1.00005", null))
-                .isInstanceOf(ApiException.class).hasMessageContaining("小数最多4位");
-        assertThatThrownBy(() -> subcontractOrder(world, null, "1.00005", null))
-                .isInstanceOf(ApiException.class).hasMessageContaining("小数最多4位");
+        for(String invalid:List.of(OUTSIDE_FRACTION,OUTSIDE_INTEGER)) {
+            assertThatThrownBy(()->purchaseOrder(world,validRequest.getItems().getFirst().getId(),invalid,null))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("范围");
+            assertThatThrownBy(()->subcontractOrder(world,null,invalid,null))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("范围");
+        }
         for (String table : List.of("purchase_orders", "subcontract_orders")) {
             assertThat(db.queryForObject("SELECT count(*) FROM " + table + " WHERE maker_id=?", Integer.class, world.employeeId())).isZero();
         }
         assertThat(balance(world, material)).isEqualByComparingTo("10");
+        for(String raw:List.of("0.00001","1.00005","1e14")) {
+            requested.setQty(new BigDecimal(raw));applicationLine.setQty(new BigDecimal(raw));
+            var purchased=purchaseRequests.create(request);var applied=subcontractApplications.create(application);
+            var purchase=purchaseOrder(world,null,raw,null);
+            String plain=new BigDecimal(raw).toPlainString();
+            assertThat(db.queryForObject("SELECT qty::text FROM purchase_request_items WHERE request_id=?",String.class,purchased.getId())).isEqualTo(plain);
+            assertThat(db.queryForObject("SELECT qty::text FROM subcontract_application_items WHERE application_id=?",String.class,applied.getId())).isEqualTo(plain);
+            assertThat(db.queryForObject("SELECT qty::text FROM purchase_order_items WHERE order_id=?",String.class,purchase)).isEqualTo(plain);
+            if("1e14".equals(raw)) {
+                int ordersBefore=db.queryForObject("SELECT count(*) FROM subcontract_orders WHERE maker_id=?",Integer.class,world.employeeId());
+                // The number is valid, while this fixture owns only ten actual
+                // input units. Do not invent inventory to bypass kit capacity.
+                assertThatThrownBy(()->subcontractOrder(world,null,raw,null)).isInstanceOf(ApiException.class).hasMessageContaining("直属物料")
+                        .satisfies(error->assertThat(((ApiException)error).getCode()).isEqualTo(ErrorCode.CONFLICT));
+                assertThat(db.queryForObject("SELECT count(*) FROM subcontract_orders WHERE maker_id=?",Integer.class,world.employeeId())).isEqualTo(ordersBefore);
+            } else {
+                var subcontract=subcontractOrder(world,null,raw,null);
+                assertThat(db.queryForObject("SELECT qty::text FROM subcontract_order_items WHERE order_id=?",String.class,subcontract)).isEqualTo(plain);
+            }
+            // The real SQL backstop independently rejects an over-capacity sum.
+            assertThatThrownBy(()->db.update("UPDATE purchase_request_items SET qty=?,gift_qty=? WHERE id=?",halfOutside,halfOutside,purchased.getItems().getFirst().getId()))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class).hasMessageContaining("purchase_request_items_gift_semantics_qty_chk");
+            assertThat(db.queryForObject("SELECT qty::text FROM purchase_request_items WHERE request_id=?",String.class,purchased.getId())).isEqualTo(plain);
+        }
+        assertThat(decimal("SELECT ordered_qty FROM purchase_request_items WHERE id=?",validRequest.getItems().getFirst().getId())).isZero();
+        assertThat(balance(world,material)).isEqualByComparingTo("10");
         assertNoSales(world);
     }
 
     @Test
-    void stockQuantityInputsRejectLossyFactsButPreserveDeclaredSixDecimalUnitConversion() {
+    void stockQuantityInputsKeepExactNativeFactsAndDeclaredUnitConversion() {
         var world = world("independent-stock-precision");
         var request = new com.uten.imp.features.stock.dto.StockDocSaveRequest();
         request.setDocType("OTHER_IN"); request.setBillDate(BusinessTime.today()); request.setWarehouseId(world.warehouseId());
         var line = new com.uten.imp.features.stock.dto.StockDocItemLine();
         line.setGoodsId(world.goodsD()); line.setUnitId(world.unitId()); line.setUnitRate(BigDecimal.ONE);
-        line.setQty(new BigDecimal("1.00005")); request.setItems(List.of(line));
-        assertThatThrownBy(() -> stockDocs.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("小数最多4位");
-        assertThat(db.queryForObject("SELECT count(*) FROM stock_documents WHERE maker_id=?", Integer.class, world.employeeId())).isZero();
+        request.setItems(List.of(line));
+        for(String invalid:List.of(OUTSIDE_FRACTION,OUTSIDE_INTEGER)) {
+            line.setQty(new BigDecimal(invalid));
+            assertThatThrownBy(()->stockDocs.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("范围");
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_documents WHERE maker_id=?",Integer.class,world.employeeId())).isZero();
+        }
+        for(String raw:List.of("0.00001","1.00005","1e14")) {
+            line.setQty(new BigDecimal(raw));var draft=stockDocs.create(request);
+            assertThat(db.queryForObject("SELECT qty::text FROM stock_document_items WHERE doc_id=?",String.class,draft.getId()))
+                    .isEqualTo(new BigDecimal(raw).toPlainString());
+        }
 
         UUID pack = UUID.randomUUID();
         db.update("INSERT INTO units(id,code,name,status) VALUES (?,?,'六位换算包装','使用')", pack, "SIX-" + pack);
         line.setUnitId(pack); line.setUnitRate(new BigDecimal("0.123456")); line.setQty(new BigDecimal("2"));
         var accepted = stockDocs.create(request);
         assertThat(accepted.getItems().getFirst().getQty()).isEqualByComparingTo("2");
-        assertThat(accepted.getItems().getFirst().getBaseQty()).isEqualByComparingTo("0.2469");
+        assertThat(accepted.getItems().getFirst().getBaseQty()).isEqualByComparingTo("0.246912");
         stockDocs.approve(accepted.getId());
-        assertThat(balance(world, world.goodsD())).isEqualByComparingTo("0.2469");
+        assertThat(balance(world, world.goodsD())).isEqualByComparingTo("0.246912");
         assertThat(decimal("SELECT SUM(direction*qty) FROM stock_movements WHERE goods_id=?", world.goodsD()))
-                .isEqualByComparingTo("0.2469");
+                .isEqualByComparingTo("0.246912");
         stockDocs.reverse(accepted.getId());
         assertThat(balance(world, world.goodsD())).isZero();
 
         line.setUnitId(world.unitId()); line.setUnitRate(BigDecimal.ONE); line.setQty(BigDecimal.ZERO);
-        line.setCountQty(new BigDecimal("1.00005")); request.setDocType("CHECK");
-        assertThatThrownBy(() -> stockDocs.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("实盘数量");
+        request.setDocType("CHECK");
+        for(String invalid:List.of(OUTSIDE_FRACTION,OUTSIDE_INTEGER)) {
+            line.setCountQty(new BigDecimal(invalid));
+            assertThatThrownBy(()->stockDocs.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("实盘数量");
+        }
+        line.setCountQty(new BigDecimal("1.00005"));var counted=stockDocs.create(request);
+        assertThat(db.queryForObject("SELECT count_qty::text FROM stock_document_items WHERE doc_id=?",String.class,counted.getId())).isEqualTo("1.00005");
+        assertThat(balance(world,world.goodsD())).isZero();
     }
 
     @Test
-    void orderLinkedShipmentRejectsLossyQuantityBeforeDraftAmountAndSourceQuantityDiverge() {
+    void orderLinkedShipmentRejectsOutOfRangeQuantityAndKeepsFiniteDraftInputsExact() {
         var world = world("linked-shipment-precision");
         harness.receiveSubcontractMaterial(world, world.goodsC(), "5");
         UUID order = ReflectionTestUtils.invokeMethod(harness, "createApprovedOrder", world, world.goodsC(), "5", "100");
         UUID source = db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=? AND NOT is_deleted", UUID.class, order);
         com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest request = ReflectionTestUtils.invokeMethod(
-                harness, "shipmentRequest", world, source, world.goodsC(), "1.00005");
-        assertThatThrownBy(() -> shipments.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("数量");
+                harness, "shipmentRequest", world, source, world.goodsC(), OUTSIDE_FRACTION);
+        assertThatThrownBy(()->shipments.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("数量")
+                .satisfies(error->assertThat(((ApiException)error).getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+        request.getItems().getFirst().setQty(new BigDecimal(OUTSIDE_INTEGER));
+        // Any real native source is smaller than this input. Keep the earlier
+        // reservation-capacity guard authoritative instead of inventing a source.
+        assertThatThrownBy(()->shipments.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("预留")
+                .satisfies(error->assertThat(((ApiException)error).getCode()).isEqualTo(ErrorCode.CONFLICT));
         assertThat(db.queryForObject("SELECT count(*) FROM sales_shipments WHERE client_id=?", Integer.class, world.clientId())).isZero();
         assertThat(decimal("SELECT shipped_qty FROM sales_order_items WHERE id=?", source)).isZero();
         assertThat(balance(world, world.goodsC())).isEqualByComparingTo("5");
+        for(String raw:List.of("0.00001","1.00005")) {
+            request.getItems().getFirst().setQty(new BigDecimal(raw));var draft=shipments.create(request);
+            assertThat(db.queryForObject("SELECT qty::text FROM sales_shipment_items WHERE shipment_id=?",String.class,draft.getId())).isEqualTo(raw);
+        }
+        assertThat(decimal("SELECT shipped_qty FROM sales_order_items WHERE id=?",source)).isZero();
+        assertThat(balance(world,world.goodsC())).isEqualByComparingTo("5");
     }
 
     @Test

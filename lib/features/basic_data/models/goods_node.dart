@@ -2,14 +2,23 @@ import '../../../shared/formatters/exact_decimal.dart';
 import '../../../core/formatters/exact_number_text.dart';
 // 货品主档模型（对应后端 GoodsListItem / GoodsDetail / GoodsFacets）。
 //
-// 数值字段一律走 (json['x'] as num?)?.toInt()/toDouble()，避免 int/double 被后端
-// 序列化成 String（或 null）时直接 cast 崩溃——老库迁移常踩这个坑。
+// 精确十进制文本用于展示和未修改回写；旧数值 API 仅作兼容。
 // price 的精确展示/编辑使用服务端 priceDisplayText；double 仅为旧消费者兼容值；
 // 服务端计算和落库不经过二进制浮点，也不对金额做破坏聚合/约束的字段级随机加密。
 
 import 'master_facet.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/stock_inventory/measurement_hold.dart';
+
+double? _goodsDecimalCompatibility(Object? value) {
+  if (value == null) return null;
+  final text = financeExactDecimal(value);
+  if (text == null) {
+    throw const FormatException('Invalid goods percentage response');
+  }
+  final number = double.tryParse(text);
+  return number?.isFinite == true ? number : null;
+}
 
 /// Where goods.name_en came from (ADR-134): typed by a person, or learned when
 /// sales saved a customer file. null = no English name yet.
@@ -795,10 +804,14 @@ class GoodsDetail {
     // 后端 @JsonProperty 已锁定 cTotal/gTotal；兼容小写兜底（同 mWeight quirk）。
     cTotal: ((json['cTotal'] ?? json['ctotal']) as num?)?.toDouble(),
     gTotal: ((json['gTotal'] ?? json['gtotal']) as num?)?.toDouble(),
-    subcontractAllowedLossPct: (json['subcontractAllowedLossPct'] as num?)
-        ?.toDouble(),
-    purchaseAllowedOverReceiptPct:
-        (json['purchaseAllowedOverReceiptPct'] as num?)?.toDouble(),
+    subcontractAllowedLossPct: _goodsDecimalCompatibility(
+      json['subcontractAllowedLossPctExact'] ??
+          json['subcontractAllowedLossPct'],
+    ),
+    purchaseAllowedOverReceiptPct: _goodsDecimalCompatibility(
+      json['purchaseAllowedOverReceiptPctExact'] ??
+          json['purchaseAllowedOverReceiptPct'],
+    ),
     subcontractAllowedLossPctExact:
         (json['subcontractAllowedLossPctExact'] ??
                 json['subcontractAllowedLossPct'])

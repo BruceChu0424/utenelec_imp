@@ -2927,28 +2927,30 @@ void main() {
     expect(find.text('委外允许损耗'), findsNothing);
     expect(tester.takeException(), isNull);
   });
-  testWidgets(
-    'subcontract loss policy refuses database-rounding input before save',
-    (tester) async {
-      await _pump(tester, _Costs(), purchaseEdit: true);
-      await _more(tester, '委外允许损耗');
-      final input = find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.byType(TextFormField),
-      );
-      await tester.enterText(input, '100.001');
-      await tester.tap(find.text('保存'));
-      await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is Tooltip && (w.message ?? '').contains('最多2位小数'),
-        ),
-        findsWidgets,
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+  for (final invalid in ['100.001', '7.1234567890123456789012345']) {
+    testWidgets(
+      'subcontract loss policy rejects out-of-contract input before save ($invalid)',
+      (tester) async {
+        await _pump(tester, _Costs(), purchaseEdit: true);
+        await _more(tester, '委外允许损耗');
+        final input = find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextFormField),
+        );
+        await tester.enterText(input, invalid);
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(
+          find.byWidgetPredicate(
+            (w) => w is Tooltip && (w.message ?? '').contains('最多24位'),
+          ),
+          findsWidgets,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets('base and cost editing do not grant subcontract loss policy', (
     tester,
   ) async {

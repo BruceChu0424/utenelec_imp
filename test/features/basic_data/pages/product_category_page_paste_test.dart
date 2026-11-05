@@ -427,7 +427,10 @@ void main() {
       ).read(goodsClipboardProvider);
       // A source snapshot is not authorization to write the new record's cost.
       // Enforce permission even when a detail response contains a non-null value.
-      expect(clipboard.goodsList.single.detail.subcontractAllowedLossPct, 7.25);
+      expect(
+        clipboard.goodsList.single.detail.subcontractAllowedLossPctText,
+        '7.25',
+      );
       await tester.tap(find.text('新分类'));
       await tester.pumpAndSettle();
       await _rightClickBlank(tester);
@@ -436,7 +439,8 @@ void main() {
       final body = goods.created.single;
       expect(body['categoryId'], 'target-category');
       if (canViewCost) {
-        expect(body['subcontractAllowedLossPct'], 7.25);
+        // The write contract preserves the source decimal as text.
+        expect(body['subcontractAllowedLossPct'], '7.25');
       } else {
         expect(body, isNot(contains('subcontractAllowedLossPct')));
       }

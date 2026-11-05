@@ -6,10 +6,14 @@ import '../../core/formatters/exact_number_text.dart';
 
 /// Recorded quantities keep all decimal digits, including values beyond the
 /// range in which a double can preserve the document's four decimal places.
-String formatExactQtyWithUnit(String? value, String? unit) {
+String formatExactQtyWithUnit(
+  String? value,
+  String? unit, {
+  bool groupThousands = false,
+}) {
   final exact = financeExactDecimal(value);
   if (exact == null) return '';
-  final number = financeExactTrimmed(exact)!;
+  final number = exactNumberDisplay(exact, groupThousands: groupThousands)!;
   final suffix = unit?.trim() ?? '';
   return suffix.isEmpty ? number : '$number $suffix';
 }

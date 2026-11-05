@@ -1,4 +1,5 @@
 import '../../formatters/quantity_display.dart';
+import '../../formatters/exact_decimal.dart';
 import '../../../core/formatters/exact_number_text.dart';
 // 单货品 KPI 条 (库存面板顶部, ADR-135 §6.3 / review/product.md §1.4):
 // 「库存 12,500 个 · ≈28.9 kg | 单重 2.312 g (可参考 ±1.8%) | 最后入库 09-20 · 最后出库 09-26 |
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_refresh_scope.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -99,7 +101,17 @@ class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip>
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           const Text('货品级分析参考读取失败'),
-          TextButton(onPressed: _load, child: const Text('重试分析参考')),
+          TextButton(
+            onPressed: () async {
+              if (_loading) return;
+              await UtenBusyOverlay.run(
+                context,
+                title: '正在读取货品分析参考',
+                action: _load,
+              );
+            },
+            child: const Text('重试分析参考'),
+          ),
         ],
       );
     }
@@ -159,7 +171,11 @@ List<String> goodsStockKpiParts(
 }) {
   final unit = (insight.unitName ?? unitName ?? '').trim();
   String qty(double v) {
-    final text = formatExactQtyWithUnit(v.toString(), null);
+    final text = formatExactQtyWithUnit(
+      v.toString(),
+      null,
+      groupThousands: true,
+    );
     if (unit.isEmpty) return text;
     return RegExp(r'^[A-Za-z]').hasMatch(unit) ? '$text $unit' : '$text$unit';
   }
@@ -175,7 +191,7 @@ List<String> goodsStockKpiParts(
     final detail = [
       if (tier != null) tier.label,
       if (rel != null && rel.isFinite)
-        '±${(rel * 100).toExactString(minimumFractionDigits: 1)}%',
+        '±${exactNumberDisplay(financeExactMultiplyTexts([rel.toString(), '100']), minimumFractionDigits: 1)}%',
     ].join(' ');
     parts.add(
       '单重 ${formatUnitWeight(unitWeight)}${detail.isEmpty ? '' : ' ($detail)'}',

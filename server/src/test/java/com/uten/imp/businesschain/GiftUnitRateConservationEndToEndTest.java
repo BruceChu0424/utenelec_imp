@@ -56,7 +56,7 @@ class GiftUnitRateConservationEndToEndTest {
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
 
-    @Test void combinedReceiptUsesItsFrozenGiftBaseForClosureFreeReturnAndUnapprovalReplay(){
+    @Test void combinedReceiptUsesItsFrozenGiftBaseForClosureFreeReturnAndUnapprovalReplay() throws Exception {
         F f=fixture();UUID received=receipt(f,"1","1");receipts.approve(received);passAndStock(f,received);
         assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");assertThat(ap(received)).isEqualByComparingTo("10");
         UUID source=receipts.detail(received).getItems().getFirst().getId();
@@ -74,7 +74,16 @@ class GiftUnitRateConservationEndToEndTest {
         var returnDraft=(com.uten.imp.features.purchase.ret.dto.ReturnDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReturn",returned,returnCommand);
         assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         assertThat(((com.uten.imp.features.purchase.ret.dto.ReturnDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReturn",returned,returnCommand)).getId()).isEqualTo(returnDraft.getId());
-        returns.approve(returnDraft.getId());
+        String originalReturnPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM purchase_return_items WHERE return_id=?",String.class,returned);
+        try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(12,"HALF_UP")))){
+            returns.update(returnDraft.getId(),returnRequest(f,source,"0","1"));
+        }
+        assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM purchase_return_items WHERE return_id=?",UUID.class,returnDraft.getId())).isNull();
+        assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM purchase_return_items WHERE return_id=?",String.class,returnDraft.getId())).isEqualTo("12");
+        assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM purchase_return_items WHERE return_id=?",String.class,returned)).isEqualTo(originalReturnPolicy);
+        try(var reviewer=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(0,"DOWN")))){
+            returns.approve(returnDraft.getId());
+        }
         checks.assertThat(stock(f)).as("New return generation uses the same original free base").isEqualByComparingTo("1.00005");
         returns.reverse(returnDraft.getId());assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         checks.assertThat(closed(f)).as("Mirrored return reverse restores fulfillment").isTrue();
@@ -91,7 +100,17 @@ class GiftUnitRateConservationEndToEndTest {
         evidence(fresh,untouched,null,"UNUSED_RECEIPT_UNAPPROVED",Map.of("stockQty","0","stockValue","0","AP","0","closed","false"));
         var replay=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",untouched,command);
         assertThat(replay.getId()).isEqualTo(draft.getId());assertThat(stock(fresh)).isZero();
-        receipts.approve(draft.getId());passAndStock(fresh,draft.getId());
+        String originalReceiptPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM purchase_receipt_items WHERE receipt_id=?",String.class,untouched);
+        try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(12,"HALF_UP")))){
+            receipts.update(draft.getId(),receiptRequest(fresh,"1","1"));
+        }
+        assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId())).isNull();
+        assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM purchase_receipt_items WHERE receipt_id=?",String.class,draft.getId())).isEqualTo("12");
+        assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM purchase_receipt_items WHERE receipt_id=?",String.class,untouched)).isEqualTo(originalReceiptPolicy);
+        try(var reviewer=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(0,"DOWN")))){
+            receipts.approve(draft.getId());
+        }
+        passAndStock(fresh,draft.getId());
         assertThat(stock(fresh)).isEqualByComparingTo("2.0001");assertThat(value(fresh)).isEqualByComparingTo("10");assertThat(ap(draft.getId())).isEqualByComparingTo("10");
         checks.assertThat(closed(fresh)).as("New generation's two real tranches fulfill one promise once").isTrue();
         assertThatThrownBy(()->receipts.approve(draft.getId())).isInstanceOf(com.uten.imp.common.web.ApiException.class);
@@ -168,15 +187,17 @@ class GiftUnitRateConservationEndToEndTest {
         UUID claim=claims.claim("PROCUREMENT_FINANCE_APPROVE",caseId.toString()).claimId();finance.approveBatch(List.of(new BatchDecisionItem(caseId,((Number)approval.get("version")).longValue(),claim)),null,BigDecimal.ONE);harness.loginAs(w.superAdminUserId());
         return new F(w,requestItem,id,db.queryForObject("SELECT id FROM purchase_order_items WHERE order_id=?",UUID.class,id),currency,convertedUnit);
     }
-    private UUID receipt(F f,String charged,String gift){
+    private UUID receipt(F f,String charged,String gift){return receipts.create(receiptRequest(f,charged,gift)).getId();}
+    private com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest receiptRequest(F f,String charged,String gift){
         var request=new com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.w().supplierId());request.setWarehouseId(f.w().warehouseId());
         var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.unit());line.setUnitRate(RATE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
-        return receipts.create(request).getId();
+        return request;
     }
-    private UUID returned(F f,UUID source,String charged,String gift){
+    private UUID returned(F f,UUID source,String charged,String gift){return returns.create(returnRequest(f,source,charged,gift)).getId();}
+    private com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest returnRequest(F f,UUID source,String charged,String gift){
         var request=new com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.w().supplierId());request.setWarehouseId(f.w().warehouseId());
         var line=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.unit());line.setUnitRate(RATE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setReceiptItemId(source);line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
-        return returns.create(request).getId();
+        return request;
     }
     private void passAndStock(F f,UUID receipt){
         harness.loginAs(f.w().superAdminUserId());List<UUID> ids=db.queryForList("SELECT id FROM procurement_inspection_items WHERE receipt_id=? ORDER BY quantity_tranche",UUID.class,receipt);

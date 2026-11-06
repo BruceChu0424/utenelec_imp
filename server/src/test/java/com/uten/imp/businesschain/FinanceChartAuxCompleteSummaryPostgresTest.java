@@ -209,12 +209,21 @@ class FinanceChartAuxCompleteSummaryPostgresTest {
     private JsonNode request(String path,String bearer,int expected) throws Exception {return request("GET",path,null,bearer,expected);}
     private JsonNode request(String method,String path,byte[] payload,String bearer,int expected) throws Exception {
         var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).timeout(Duration.ofSeconds(15));
-        if(bearer!=null)builder.header("Authorization","Bearer "+bearer);if(payload!=null)builder.header("Content-Type","application/json");
+        if(bearer!=null){
+            builder.header("Authorization","Bearer "+bearer);
+        }
+        if(payload!=null){
+            builder.header("Content-Type","application/json");
+        }
+        
         builder.method(method,payload==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(payload));
         var response=http.send(builder.build(),HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as("%s %s",method,path.replaceAll("readSnapshotRevision=[^&]+","readSnapshotRevision=<opaque>")) .isEqualTo(expected);
         JsonNode body=json.readTree(response.body());
-        if(expected==200&&path.contains("/summaries"))assertThat(response.headers().firstValue("X-Uten-Read-Scope-Version")).contains(body.path("readScopeVersion").asText());
+        if(expected==200&&path.contains("/summaries")){
+            assertThat(response.headers().firstValue("X-Uten-Read-Scope-Version")).contains(body.path("readScopeVersion").asText());
+        }
+        
         return body;
     }
     private byte[] chartFile() throws Exception {

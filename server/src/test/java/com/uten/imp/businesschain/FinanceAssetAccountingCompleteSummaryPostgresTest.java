@@ -166,7 +166,15 @@ class FinanceAssetAccountingCompleteSummaryPostgresTest {
         UUID voucher=UUID.randomUUID(),costEntry=UUID.randomUUID(),creditEntry=UUID.randomUUID();
         db.update("INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status) VALUES(?,?,?,?,'MANUAL','MANUAL',1)",voucher,"SUMMARY-GROUP-"+tag,YearMonth.from(asOf).toString(),asOf);
         db.update("INSERT INTO gl_entries(id,voucher_id,line_no,style_id,direction,amount,entry_date,period) VALUES(?,?,1,?,1,1000,?,?),(?,?,2,?,-1,475,?,?),(gen_random_uuid(),?,3,?,-1,525,?,?)",costEntry,voucher,cost,asOf,YearMonth.from(asOf).toString(),creditEntry,voucher,accumulated,asOf,YearMonth.from(asOf).toString(),voucher,clearing,asOf,YearMonth.from(asOf).toString());
-        UUID id=UUID.randomUUID();groups.create(new AssetOpeningGroupContracts.Create(id,source,voucher,asOf,List.of(costEntry,creditEntry),List.of(new AssetOpeningGroupContracts.Member("FIXED_ASSET",draft.id(),3,6,draft.version())),"复用既有真实组接续夹具，不新记GL"));return id;
+        UUID id=UUID.randomUUID();
+        // This fixture explicitly adopts its original source monthly amount79.1666666666667.
+        // The choice is local to this command; no product default or frozen source value changes.
+        var explicitSourceChoice=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+                "money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(13,"HALF_UP")));
+        try(explicitSourceChoice) {
+            groups.create(new AssetOpeningGroupContracts.Create(id,source,voucher,asOf,List.of(costEntry,creditEntry),List.of(new AssetOpeningGroupContracts.Member("FIXED_ASSET",draft.id(),3,6,draft.version())),"复用既有真实组接续夹具，不新记GL"));
+        }
+        return id;
     }
     private UUID style(String category) {UUID id=UUID.randomUUID();db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,?,'使用')",id,"SUMMARY-STYLE-"+id,"摘要夹具科目-"+id,category);return id;}
     private Set<String> seedAssetGroups(UUID actual,int count) {
@@ -181,7 +189,13 @@ class FinanceAssetAccountingCompleteSummaryPostgresTest {
     private List<JsonNode> readAll(String route,String scope,String bearer,Set<String> expected,String table) throws Exception {
         List<String> ordered=expected.isEmpty()?List.of():db.queryForList("SELECT id::text FROM "+table+" WHERE id IN ("+String.join(",",Collections.nCopies(expected.size(),"?"))+") ORDER BY created_at DESC,id DESC",String.class,expected.stream().map(UUID::fromString).toArray());
         var byId=new HashMap<String,Map<String,Object>>();
-        if(!expected.isEmpty())for(var row:db.queryForList("SELECT id::text,status,row_version,actor_id"+(table.equals("finance_asset_opening_groups")?",as_of::text,source_voucher_id,reason":",kind,source_name,source_system,submitted_by")+" FROM "+table+" WHERE id IN ("+String.join(",",Collections.nCopies(expected.size(),"?"))+")",expected.stream().map(UUID::fromString).toArray()))byId.put(row.get("id").toString(),row);
+        if(!expected.isEmpty()){
+            for(var row:db.queryForList("SELECT id::text,status,row_version,actor_id"+(table.equals("finance_asset_opening_groups")?",as_of::text,source_voucher_id,reason":",kind,source_name,source_system,submitted_by")+" FROM "+table+" WHERE id IN ("+String.join(",",Collections.nCopies(expected.size(),"?"))+")",expected.stream().map(UUID::fromString).toArray())){
+            byId.put(row.get("id").toString(),row);
+        }
+        
+        }
+        
         var ids=new LinkedHashSet<String>();var rows=new ArrayList<JsonNode>();String revision=null,data=null,authority=null;
         int pages=Math.max(1,(expected.size()+999)/1000);
         for(int page=1;page<=pages;page++) {
@@ -202,19 +216,40 @@ class FinanceAssetAccountingCompleteSummaryPostgresTest {
                     assertThat(row.path("actorId").asText()).isEqualTo(original.get("actor_id").toString());
                     assertThat(row.path("kind").asText()).isEqualTo(original.get("kind"));assertThat(row.path("sourceName").asText()).isEqualTo(original.get("source_name"));
                     assertThat(row.path("sourceSystem").asText()).isEqualTo(original.get("source_system"));
-                    if(original.get("submitted_by")==null)assertThat(row.get("submittedBy").isNull()).isTrue();
-                    else assertThat(row.path("submittedBy").asText()).isEqualTo(original.get("submitted_by").toString());
+                    if(original.get("submitted_by")==null){
+                        assertThat(row.get("submittedBy").isNull()).isTrue();
+                    }
+                    
+                    else {
+                        assertThat(row.path("submittedBy").asText()).isEqualTo(original.get("submitted_by").toString());
+                    }
+                    
                 }
             }
         }
-        assertThat(ids).containsExactlyElementsOf(ordered);assertThat(ids).containsExactlyInAnyOrderElementsOf(expected);if(expected.size()>=1001)assertThat(rows.getLast().path("id").asText()).isEqualTo(ordered.getLast());return rows;
+        assertThat(ids).containsExactlyElementsOf(ordered);assertThat(ids).containsExactlyInAnyOrderElementsOf(expected);if(expected.size()>=1001){
+            assertThat(rows.getLast().path("id").asText()).isEqualTo(ordered.getLast());
+        }
+        return rows;
     }
     private Map<String,String> fingerprints() {
-        var result=new TreeMap<String,String>();for(String table:List.of("finance_accounting_import_batches","finance_accounting_review_operations","finance_asset_opening_groups","finance_asset_opening_members","finance_asset_opening_entry_claims","finance_template_sources","fixed_assets","gl_entries","gl_vouchers"))result.put(table,db.queryForObject("SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),'[]'::jsonb)::text) FROM "+table+" x",String.class));return result;
+        var result=new TreeMap<String,String>();for(String table:List.of("finance_accounting_import_batches","finance_accounting_review_operations","finance_asset_opening_groups","finance_asset_opening_members","finance_asset_opening_entry_claims","finance_template_sources","fixed_assets","gl_entries","gl_vouchers")){
+            result.put(table,db.queryForObject("SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),'[]'::jsonb)::text) FROM "+table+" x",String.class));
+        }
+        return result;
     }
     private String login(UUID id) throws Exception {String password="SummaryRead-"+tag+"-1!",account=db.queryForObject("SELECT login_account FROM users WHERE id=?",String.class,id);db.update("UPDATE users SET password_hash=?,must_change_password=false WHERE id=?",passwords.encode(password),id);return request("POST","/api/auth/login",json.writeValueAsBytes(Map.of("loginAccount",account,"password",password)),null,200).path("accessToken").asText();}
     private JsonNode request(String path,String bearer,int status) throws Exception{return request("GET",path,null,bearer,status);}
     private JsonNode request(String method,String path,byte[] body,String bearer,int status) throws Exception {
-        var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).timeout(Duration.ofSeconds(15));if(bearer!=null)builder.header("Authorization","Bearer "+bearer);if(body!=null)builder.header("Content-Type","application/json");builder.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(body));var response=http.send(builder.build(),HttpResponse.BodyHandlers.ofByteArray());assertThat(response.statusCode()).as("%s %s",method,path.replaceAll("readSnapshotRevision=[^&]+","readSnapshotRevision=<opaque>")) .isEqualTo(status);JsonNode value=json.readTree(response.body());if(status==200&&path.contains("/summaries"))assertThat(response.headers().firstValue("X-Uten-Read-Scope-Version")).contains(value.path("readScopeVersion").asText());return value;
+        var builder=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).timeout(Duration.ofSeconds(15));if(bearer!=null){
+            builder.header("Authorization","Bearer "+bearer);
+        }
+        if(body!=null){
+            builder.header("Content-Type","application/json");
+        }
+        builder.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(body));var response=http.send(builder.build(),HttpResponse.BodyHandlers.ofByteArray());assertThat(response.statusCode()).as("%s %s",method,path.replaceAll("readSnapshotRevision=[^&]+","readSnapshotRevision=<opaque>")) .isEqualTo(status);JsonNode value=json.readTree(response.body());if(status==200&&path.contains("/summaries")){
+            assertThat(response.headers().firstValue("X-Uten-Read-Scope-Version")).contains(value.path("readScopeVersion").asText());
+        }
+        return value;
     }
 }

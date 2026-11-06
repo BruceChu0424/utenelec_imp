@@ -256,7 +256,13 @@ class InventoryCostPostingBridgePostgresTest {
         assertThat((BigDecimal)row.get("saleAmount")).isEqualByComparingTo("-80");
         assertThat((BigDecimal)row.get("saleCost")).isEqualByComparingTo("-40");
         assertThat(row.get("saleCostExact")).isEqualTo("-40");
-        assertThat(row.get("netProfit")).isNull();assertThat(row.get("manageFee")).isNull();assertThat(row.get("taxFee")).isNull();
+        assertThat(row.get("netProfit")).isNull();assertThat(row.get("taxFee")).isNull();
+        // The original sales-cost template defines this known component as
+        // actual cost x8%; it is separate from a complete/confirmed net profit.
+        assertThat((BigDecimal)row.get("manageFee")).isEqualByComparingTo("-3.20");
+        assertThat(row.get("__inputConfirmed")).isEqualTo(false);
+        assertThat(row.get("__pending")).isEqualTo(true);
+        assertThat(row.get("costState")).isEqualTo("MANAGEMENT_INPUTS_PENDING");
         assertThat(row.get("currencyBasis")).isEqualTo("LOCAL");
     }
     @Test void financeReportAggregatesFrozenLocalAmountsAcrossCurrenciesAndRetainsConfirmedZero(){

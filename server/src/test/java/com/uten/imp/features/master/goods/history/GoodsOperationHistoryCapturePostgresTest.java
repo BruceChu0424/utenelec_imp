@@ -49,6 +49,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID second = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             provenance(db, actor, "/api/master/goods/batch-status", "POST");
             goods(db, first, "first");
             goods(db, second, "second");
@@ -71,6 +72,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID id = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             provenance(db, actor, "/api/master/goods", "POST");
             goods(db, id, "stable");
             db.commit();
@@ -93,6 +95,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID second = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             goods(db, first, "without request");
             db.commit();
             provenance(db, actor, "/api/master/goods", "POST");
@@ -109,6 +112,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID other = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             for (UUID owner : new UUID[]{actor, other}) {
                 provenance(db, owner, "/api/master/goods", "POST");
                 goods(db, UUID.randomUUID(), "actor history");
@@ -130,6 +134,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID id = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             goods(db, id, "original");
             db.commit();
             int initialVersion = count(db, "SELECT version FROM goods WHERE id=?", id);
@@ -153,6 +158,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID id = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             provenance(db, actor, "/api/master/goods", "POST");
             goods(db, id, "created once");
             db.commit();
@@ -176,6 +182,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID id = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             goods(db, id, "original");
             db.commit();
             UUID operation = edit(db, actor, id, "changed");
@@ -197,6 +204,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID id = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             goods(db, id, "large image");
             execute(db, "UPDATE goods SET product_graph1=? WHERE id=?", new byte[2 * 1024 * 1024], id);
             db.commit();
@@ -213,6 +221,7 @@ class GoodsOperationHistoryCapturePostgresTest {
         UUID edge = UUID.randomUUID();
         try (Connection db = database.openConnection()) {
             db.setAutoCommit(false);
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db);
             goods(db, parent, "parent");
             goods(db, component, "component");
             execute(db, "UPDATE goods SET price=10 WHERE id=?", component);
@@ -257,6 +266,7 @@ class GoodsOperationHistoryCapturePostgresTest {
     }
 
     private static void replay(Connection db, UUID actor, UUID operation, boolean undo) throws SQLException {
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db,actor);
         Long version = number(db, "SELECT version FROM goods_operation_history WHERE id=?", operation);
         assertNotNull(version);
         execute(db, "SELECT fn_replay_goods_operation(?,?,?,?)", operation, actor, version, undo);
@@ -268,6 +278,7 @@ class GoodsOperationHistoryCapturePostgresTest {
     }
 
     private static void provenance(Connection db, UUID actor, String path, String method) throws SQLException {
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db,actor);
         execute(db, "SELECT set_config('app.actor_id',?,true),set_config('app.audit_request_id',?,true),set_config('app.audit_request_path',?,true),set_config('app.audit_request_method',?,true)", actor.toString(), UUID.randomUUID().toString(), path, method);
     }
 

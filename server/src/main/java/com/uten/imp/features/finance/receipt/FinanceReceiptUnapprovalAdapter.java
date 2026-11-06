@@ -18,6 +18,15 @@ public class FinanceReceiptUnapprovalAdapter implements DocumentUnapprovalPort {
     @Override public Object detail(UUID id) { return service.detail(id); }
     @Override public Eligibility eligibility(UUID id) { return service.unapprovalEligibility(id); }
     @Override public void reverse(UUID id) { service.reverse(id); }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
+    @Override public List<String> deferredUnapprovalConstraints() {
+        // The original GL/bank reversal and the header-before-lines assembly
+        // need only these native terminal checks deferred until the copy is whole.
+        return List.of("document_unapproval_financial_source_complete",
+            "trg_finance_receipts_kind_lines","trg_guard_receipt_gl_terminal_from_voucher",
+            "trg_guard_receipt_gl_terminal_from_receipt","trg_guard_receipt_flow_terminal_from_receipt",
+            "trg_guard_receipt_flow_terminal_from_flow");
+    }
     @Override public java.util.Map<String,String> generatedHeaderInputs(){return java.util.Map.of("settlement_authority_version","CASE WHEN source.settlement_authority_version IN(1,2) THEN 0 ELSE source.settlement_authority_version END");}
     @Override public void afterDraftCreated(UUID originalId,UUID draftId){service.prepareUnapprovalDraft(originalId,draftId);}
     @Override public TableSnapshot header() { return new TableSnapshot("finance_receipts",null,

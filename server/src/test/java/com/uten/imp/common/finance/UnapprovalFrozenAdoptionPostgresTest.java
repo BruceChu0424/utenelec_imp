@@ -134,8 +134,8 @@ class UnapprovalFrozenAdoptionPostgresTest {
         choose(OTHER_POLICY,reviewer);cloneLine(f,f.newLine(),f.oldLine(),f.draft());immediate();
         String before=row(f.owner(),f.newLine());
         rejected("55000",()->exec("UPDATE purchase_receipt_items SET unapproval_source_item_id=NULL WHERE id=?",f.newLine()));
-        rejected("55000",()->exec("UPDATE purchase_receipt_items SET charged_base_qty=1 WHERE id=?",f.newLine()));
-        rejected("55000",()->exec("UPDATE purchase_receipt_items SET quantity_precision_policy=fn_business_precision_snapshot() WHERE id=?",f.newLine()));
+        rejected("23514","initial successor frozen facts cannot change in its assembly transaction",()->exec("UPDATE purchase_receipt_items SET charged_base_qty=1 WHERE id=?",f.newLine()));
+        rejected("23514","initial successor frozen facts cannot change in its assembly transaction",()->exec("UPDATE purchase_receipt_items SET quantity_precision_policy=fn_business_precision_snapshot() WHERE id=?",f.newLine()));
         assertThat(row(f.owner(),f.newLine())).isEqualTo(before);
     }
 
@@ -204,9 +204,27 @@ class UnapprovalFrozenAdoptionPostgresTest {
     private BigDecimal decimal(Owner o,UUID id,String field) throws Exception {return new BigDecimal(text("SELECT "+field+" FROM "+o.adapter().lines().table()+" WHERE id=?",id));}
     private UUID uuid(String sql,Object...args) throws Exception{return UUID.fromString(text(sql,args));}
     private long number(String sql,Object...args) throws Exception{return Long.parseLong(text(sql,args));}
-    private String text(String sql,Object...args) throws Exception {try(var q=db.prepareStatement(sql)){for(int i=0;i<args.length;i++)q.setObject(i+1,args[i]);try(var r=q.executeQuery()){assertThat(r.next()).isTrue();return r.getString(1);}}}
-    private void exec(String sql,Object...args) throws Exception {try(var q=db.prepareStatement(sql)){for(int i=0;i<args.length;i++)q.setObject(i+1,args[i]);q.execute();}}
-    private void rejected(String state,Sql action) throws Exception {Savepoint point=db.setSavepoint();try{SQLException e=assertThrowsSql(action);assertThat(e.getSQLState()).isEqualTo(state);}finally{db.rollback(point);db.releaseSavepoint(point);}}
+    private String text(String sql, Object... args) throws Exception {
+        try (var q = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                q.setObject(i + 1, args[i]);
+            }
+            try (var r = q.executeQuery()) {
+                assertThat(r.next()).isTrue();
+                return r.getString(1);
+            }
+        }
+    }
+    private void exec(String sql, Object... args) throws Exception {
+        try (var q = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                q.setObject(i + 1, args[i]);
+            }
+            q.execute();
+        }
+    }
+    private void rejected(String state,Sql action) throws Exception {rejected(state,null,action);}
+    private void rejected(String state,String message,Sql action) throws Exception {Savepoint point=db.setSavepoint();try{SQLException e=assertThrowsSql(action);assertThat(e.getSQLState()).isEqualTo(state);if(message!=null)assertThat(e.getMessage()).contains(message);}finally{db.rollback(point);db.releaseSavepoint(point);}}
     private static SQLException assertThrowsSql(Sql action){return Assertions.assertThrows(SQLException.class,action::run);}
     @FunctionalInterface interface Sql{void run() throws Exception;}
 }

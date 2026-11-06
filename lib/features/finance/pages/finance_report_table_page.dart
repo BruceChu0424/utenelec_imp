@@ -1451,7 +1451,7 @@ class _FinanceReportTablePageState
   }
 
   Widget _buildTable() {
-    final data = _acceptedQueryCurrent
+    final data = _acceptedQueryCurrent && _data != null
         ? _data!
         : (_data?.pendingQuery() ?? _reportMetadata.loadingData);
     // 状态列前置（全站口径）：列元数据来自服务端，客户端映射时把「状态」类列

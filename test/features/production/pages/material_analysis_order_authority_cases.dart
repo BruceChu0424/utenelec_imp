@@ -46,6 +46,85 @@ Future<void> _showMaterialSummary(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Map<String, Map<String, dynamic>> _storedPreparationDrafts(
+  WidgetTester tester,
+) {
+  final storage =
+      ProviderScope.containerOf(
+            tester.element(find.byType(ProductionMaterialAnalysisPage)),
+          ).read(formDraftStorageProvider)
+          as MemoryFormDraftStorage;
+  return {
+    for (final entry in storage.records.entries)
+      if (jsonDecode(entry.value) case final Map<String, dynamic> record)
+        if (record['draftKind'] == 'material_preparation') entry.key: record,
+  };
+}
+
+Future<Map<String, dynamic>> _expectOriginalPreparationRetained(
+  WidgetTester tester,
+  _OrderAuthoritySession session, {
+  Map<String, dynamic>? submitted,
+}) async {
+  expect(
+    find.byKey(const Key('material-analysis-material-table')),
+    findsNothing,
+  );
+  expect(
+    find.byKey(const Key('material-analysis-submit-orders')),
+    findsNothing,
+  );
+  expect(find.textContaining('原输入和原请求保留在原账号下'), findsOneWidget);
+  await tester.pump(const Duration(seconds: 1));
+  await tester.pumpAndSettle();
+  final original = _storedPreparationDrafts(tester);
+  expect(original, hasLength(1), reason: '退休编辑器必须在原账号命名空间保留可恢复草稿');
+  final data = Map<String, dynamic>.from(original.values.single['data'] as Map);
+  expect((data['selected'] as Map)[_groupKey('m-2')], isTrue);
+  expect(_records(data['groups']).single['totalText'], '500');
+  expect((data['currentOrder'] as Map)[_groupKey('m-2')], '500');
+  expect(
+    ((_records(data['groups']).single['paths'] as Map)['m-2']
+        as Map)['orderText'],
+    '500',
+    reason: '保留用户原文，不能只留下可重算的浮点估算缓存',
+  );
+  if (submitted != null) {
+    expect(jsonDecode(data['submittedBodyJson'] as String), submitted);
+    expect(data['_formDraftHasUnknownSubmission'], isTrue);
+  }
+  requests.clear();
+  session.switchAccount('first-account');
+  await tester.pumpAndSettle();
+  await tester.pump(const Duration(seconds: 1));
+  await tester.pumpAndSettle();
+  // A-B-A 的 epoch 仍退休旧编辑器；不能靠回到相同 userId 重新采用迟到回包。
+  expect(
+    find.byKey(const Key('material-analysis-material-table')),
+    findsNothing,
+  );
+  expect(
+    find.byKey(const Key('material-analysis-submit-orders')),
+    findsNothing,
+  );
+  expect(_aggregateSubmits(), isEmpty);
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(ProductionMaterialAnalysisPage)),
+  );
+  await tester.runAsync(
+    () => container.read(formDraftsProvider.notifier).ready,
+  );
+  await tester.pumpAndSettle();
+  final restoredOwner = container.read(formDraftsProvider);
+  expect(
+    restoredOwner.where((draft) => draft.draftKind == 'material_preparation'),
+    hasLength(1),
+    reason: '回到原账号可从草稿恢复，原数据不能只留在已隐藏的Widget内存中',
+  );
+  expect(_storedPreparationDrafts(tester).keys, original.keys);
+  return data;
+}
+
 void materialOrderAuthorityCases() {
   testWidgets('整批撤回409保留真实单据并显示失败，不误报成功或自动重试', (tester) async {
     await _pump(
@@ -493,6 +572,8 @@ void materialOrderAuthorityCases() {
         }
       },
     );
+    await tester.enterText(_orderQty('m-2'), '500');
+    await _settleRebuild(tester);
     await _check(tester, _rowCheckbox('m-2'));
     await tester.pumpAndSettle();
     await _submitSelected(tester);
@@ -501,7 +582,7 @@ void materialOrderAuthorityCases() {
       isNotEmpty,
     );
     expect(_aggregateSubmits(), isEmpty);
-    expect(_nodeSelected(tester, 'm-2'), isTrue);
+    await _expectOriginalPreparationRetained(tester, session);
   });
 
   testWidgets('来源办理权限：汇总提交回包途中换账号不套用旧结果或报告假成功', (tester) async {
@@ -515,11 +596,21 @@ void materialOrderAuthorityCases() {
         }
       },
     );
+    await tester.enterText(_orderQty('m-2'), '500');
+    await _settleRebuild(tester);
     await _check(tester, _rowCheckbox('m-2'));
     await tester.pumpAndSettle();
     await _submitSelected(tester);
     expect(_aggregateSubmits(), hasLength(1));
-    expect(_nodeSelected(tester, 'm-2'), isTrue);
+    expect(_notices(tester), isNot(contains('已下达 1 笔')));
+    final submitted = Map<String, dynamic>.from(
+      _aggregateSubmits().single.body!,
+    );
+    await _expectOriginalPreparationRetained(
+      tester,
+      session,
+      submitted: submitted,
+    );
     expect(_notices(tester), isNot(contains('已下达 1 笔')));
   });
 
@@ -530,15 +621,24 @@ void materialOrderAuthorityCases() {
       session: session,
       failOn: const {'/aggregate-orders/submit': 500},
     );
+    await tester.enterText(_orderQty('m-2'), '500');
+    await _settleRebuild(tester);
     await _check(tester, _rowCheckbox('m-2'));
     await tester.pumpAndSettle();
     await _submitSelected(tester);
     expect(_aggregateSubmits(), hasLength(1));
+    final submitted = Map<String, dynamic>.from(
+      _aggregateSubmits().single.body!,
+    );
     session.switchAccount('retry-changed');
     await tester.pumpAndSettle();
-    await _submitSelected(tester);
+    requests.clear();
+    await _expectOriginalPreparationRetained(
+      tester,
+      session,
+      submitted: submitted,
+    );
     expect(_aggregateSubmits(), isEmpty);
-    expect(_notices(tester), contains('重新打开分析核对上次下单结果'));
   });
   testWidgets('来源办理权限：已采用成功回执不会把下次新账号的新下单永久锁死', (tester) async {
     final session = _OrderAuthoritySession();

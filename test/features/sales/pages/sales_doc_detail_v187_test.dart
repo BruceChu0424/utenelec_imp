@@ -79,6 +79,28 @@ void main() {
     }
   }
 
+  testWidgets('finance shipment references require attachment permission', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      type: SalesDocType.shipment,
+      detail: const {
+        'id': 'finance-file-no-attachment-permission',
+        'status': 1,
+        'financeAudit': 1,
+        'items': <Map<String, dynamic>>[],
+      },
+      permissions: const {Perm.salesShipmentFinanceView},
+    );
+    expect(
+      find.byKey(const ValueKey('shipment-attachments-reference')),
+      findsNothing,
+    );
+    expect(find.byType(BusinessAttachmentSection), findsNothing);
+    expect(find.text('添加文件'), findsNothing);
+  });
+
   testWidgets('new shipment shows warehouse actions and hides legacy approve', (
     tester,
   ) async {
@@ -231,7 +253,7 @@ void main() {
 
     expect(find.byKey(const ValueKey('sales-doc-edit')), findsOneWidget);
     expect(find.textContaining('如需修改出货内容，请先财务反审'), findsNothing);
-    // 2026-09-12 拆分：财务反审入口移入财务专用审核页，本页只展示状态横幅。
+    // The finance action stays on its dedicated page; the summary owns status.
     expect(find.byKey(const ValueKey('finance-audit-reverse')), findsNothing);
     _expectSummaryFact(tester, '财务审核', '已审发货');
     _expectSummaryFact(tester, '仓库作业', '待出库');

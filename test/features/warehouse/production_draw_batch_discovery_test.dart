@@ -1470,7 +1470,15 @@ void main() {
         initial: _plastic,
       );
       addTearDown(row.dispose);
-      for (final input in ['', '0', '-1', 'NaN', '1.00001', '1e3']) {
+      for (final input in [
+        '',
+        '0',
+        '-1',
+        'NaN',
+        '0.0000000000000000000000001',
+        '10000000000000000000000000000000000000000',
+        '1e-25',
+      ]) {
         row.quantity.text = input;
         expect(row.quantityError, isNotNull, reason: input);
       }
@@ -1481,6 +1489,13 @@ void main() {
       row.values['warehouseId'] = 'w1';
       expect(row.validationError, isNull);
       expect(row.toJson()['qty'], '12.7500');
+      row.quantity.text = '1e3';
+      expect(row.quantityError, isNull);
+      expect(
+        row.toJson()['qty'],
+        '1e3',
+        reason: 'Finite exact input is retained',
+      );
     },
   );
   test(
@@ -1778,13 +1793,21 @@ void main() {
       // 重量草稿记录 userEdited（手工改过的重量在重开/兜底时不被自动建议覆盖），
       // 序列化契约含该键。
       expect((data['weights'] as Map)['item-normal'], {
-        'kg': 1.25,
+        'kg': '1.25',
+        'kgExact': '1.25',
+        'enteredText': '1.25 kg',
+        'enteredUnit': 'KG',
+        'displayText': '1.25',
+        'displayUnit': 'KG',
         'userEdited': true,
         'qtyFromWeight': false,
         'qtyNote': null,
+        'quantityPendingReason': null,
+        'quantityPrecision': null,
+        'quantityPrecisionSource': null,
       });
       expect(tasks.ordinarySubmissions.single['weights'], [
-        {'itemId': 'item-normal', 'weightKg': 1.25, 'qtyFromWeight': false},
+        {'itemId': 'item-normal', 'weightKg': '1.25', 'qtyFromWeight': false},
       ]);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
@@ -1837,14 +1860,14 @@ void main() {
       await _submit(tester);
       final first = tasks.submissions.single;
       expect(first['weights'], [
-        {'itemId': 'item-normal', 'weightKg': 1.25, 'qtyFromWeight': false},
+        {'itemId': 'item-normal', 'weightKg': '1.25', 'qtyFromWeight': false},
       ]);
       expect(((first['discoveries'] as List).single as Map)['weights'], [
         {
           'goodsId': 'plastic',
           'colorId': 'white',
           'warehouseId': 'w1',
-          'weightKg': 0.85,
+          'weightKg': '0.85',
           'qtyFromWeight': false,
         },
       ]);
@@ -1856,7 +1879,7 @@ void main() {
       expect(tasks.submissions[1]['key'], isNot(first['key']));
       expect(
         ((tasks.submissions[1]['weights'] as List).single as Map)['weightKg'],
-        1.3,
+        '1.3',
       );
       expect(tester.takeException(), isNull);
     },

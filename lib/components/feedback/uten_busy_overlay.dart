@@ -113,7 +113,11 @@ class UtenBusyOverlay extends StatefulWidget {
     // State owner. run() already registers a pending token before insertion.
     // Both kinds share one snapshot before the modal body starts; work created
     // by that body owns a new token and is never hidden by this yield scope.
-    await WidgetsBinding.instance.endOfFrame;
+    final binding = WidgetsBinding.instance;
+    final frame = binding.endOfFrame;
+    // post-frame callers still need the next frame explicitly scheduled.
+    binding.ensureVisualUpdate();
+    await frame;
     // Yield the operations which were already waiting. A newly started task
     // inside the modal (for example password verification) owns its own mask.
     final owners = Set<Object>.of(_active);

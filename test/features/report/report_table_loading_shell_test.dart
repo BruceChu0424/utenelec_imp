@@ -64,6 +64,9 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/production/reports/where-used/material-categories') {
+      return {'items': <Map<String, dynamic>>[]};
+    }
     if (path == '/production/reports/where-used/materials') {
       return {
         'items': [

@@ -22,6 +22,95 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path=pg_catalog,public AS $$
 $$;
 ALTER TABLE sales_return_items ADD COLUMN unapproval_source_item_id uuid;
 
+-- Native receipt account guards consult the draft's real applied lines. Keep
+-- its original header/GL inputs while those lines are assembled at authority 0.
+-- The only consuming entry first proves the actual actor/transaction/line map;
+-- the deferred complete owner always requires the exact original authority.
+-- Never substitute a current default GL identity for an original frozen one.
+DO $stage_proved_financial_receipt_assembly$
+DECLARE definition text;anchor text;
+BEGIN
+ definition:=pg_get_functiondef('fn_unapproval_financial_headers_match(text,jsonb,jsonb,uuid,boolean)'::regprocedure);
+ anchor:=$old$'remark','settlement_authority_version','settlement_channel'$old$;
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
+  RAISE EXCEPTION 'Main financial receipt authority field anchor differs'; END IF;
+ definition:=replace(definition,anchor,$new$'remark','settlement_channel'$new$);
+ anchor:=$old$AND old_header->'amount_authority_version' IS DISTINCT FROM new_header->'amount_authority_version' THEN RETURN false; END IF;$old$;
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
+  RAISE EXCEPTION 'Main financial receipt completion authority anchor differs'; END IF;
+ EXECUTE replace(definition,anchor,$new$AND old_header->'amount_authority_version' IS DISTINCT FROM new_header->'amount_authority_version'
+  OR p_table='finance_receipt_lines'
+     AND old_header->'settlement_authority_version' IS DISTINCT FROM new_header->'settlement_authority_version'
+     AND (NOT p_complete AND old_header->>'settlement_authority_version' IN('1','2')
+       AND new_header->>'settlement_authority_version'='0') IS NOT TRUE THEN RETURN false; END IF;$new$);
+END $stage_proved_financial_receipt_assembly$;
+
+-- An explicitly forced completion must not permit later edits in the same
+-- assembly transaction. Reuse the Main financial strategy and lineage; normal
+-- draft work in a later transaction still follows its existing edit guards.
+CREATE FUNCTION fn_guard_financial_unapproval_initial_header() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+DECLARE profile record;lineage document_unapprovals%ROWTYPE;source_header jsonb;
+ old_header jsonb:=to_jsonb(OLD);new_header jsonb;authority_column text;
+BEGIN
+ SELECT * INTO profile FROM fn_financial_unapproval_owner(NULL) owner WHERE owner.header_table=TG_TABLE_NAME;
+ IF NOT FOUND THEN RAISE EXCEPTION 'unsupported financial header owner' USING ERRCODE='55000'; END IF;
+ SELECT * INTO lineage FROM document_unapprovals WHERE family=profile.family
+  AND draft_id=(old_header->>'id')::uuid AND created_txid=txid_current();
+ IF NOT FOUND THEN IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF; END IF;
+ IF TG_OP='DELETE' THEN
+  RAISE EXCEPTION 'initial financial successor header cannot be deleted' USING ERRCODE='55000'; END IF;
+ new_header:=to_jsonb(NEW);
+ EXECUTE format('SELECT to_jsonb(header) FROM public.%I header WHERE id=$1 AND NOT is_deleted',profile.header_table)
+  INTO source_header USING lineage.original_id;
+ authority_column:=CASE WHEN profile.family='financeReceipt' THEN 'settlement_authority_version' ELSE 'amount_authority_version' END;
+ IF source_header IS NULL OR new_header->>'id' IS DISTINCT FROM old_header->>'id'
+   OR (new_header->>'is_deleted')::boolean IS DISTINCT FROM false
+   OR new_header->>'updated_by' IS DISTINCT FROM lineage.created_by::text
+   OR NOT fn_unapproval_financial_headers_match(profile.item_table,source_header,new_header,lineage.original_id,
+     old_header->>authority_column IS DISTINCT FROM '0')
+   OR fn_imported_business_document(profile.header_table,lineage.original_id) THEN
+  RAISE EXCEPTION 'initial financial successor header differs from its frozen source' USING ERRCODE='55000'; END IF;
+ RETURN NEW;
+END $$;
+
+CREATE FUNCTION fn_guard_financial_unapproval_initial_line() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+DECLARE profile record;lineage document_unapprovals%ROWTYPE;row_facts jsonb;source_policy jsonb;
+BEGIN
+ SELECT * INTO profile FROM fn_financial_unapproval_owner(TG_TABLE_NAME);
+ IF NOT FOUND THEN RAISE EXCEPTION 'unsupported financial line owner' USING ERRCODE='55000'; END IF;
+ row_facts:=CASE WHEN TG_OP='INSERT' THEN to_jsonb(NEW) ELSE to_jsonb(OLD) END;
+ SELECT * INTO lineage FROM document_unapprovals WHERE family=profile.family
+  AND draft_id=(row_facts->>profile.parent_column)::uuid AND created_txid=txid_current();
+ IF NOT FOUND AND TG_OP='UPDATE' THEN
+  SELECT * INTO lineage FROM document_unapprovals WHERE family=profile.family
+   AND draft_id=(to_jsonb(NEW)->>profile.parent_column)::uuid AND created_txid=txid_current();
+ END IF;
+ IF NOT FOUND THEN IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF; END IF;
+ IF TG_OP='DELETE' THEN
+  RAISE EXCEPTION 'initial financial successor line cannot be deleted' USING ERRCODE='55000'; END IF;
+ IF (to_jsonb(NEW)->>profile.parent_column)::uuid IS DISTINCT FROM lineage.draft_id THEN
+  RAISE EXCEPTION 'initial financial successor line cannot change its parent' USING ERRCODE='55000'; END IF;
+ source_policy:=fn_unapproval_financial_line_policy(TG_TABLE_NAME,to_jsonb(NEW));
+ IF TG_OP='INSERT' THEN
+  NEW.business_precision_policy:=source_policy;
+ ELSIF NEW.business_precision_policy IS DISTINCT FROM source_policy THEN
+  RAISE EXCEPTION 'initial financial successor line policy differs from its frozen source' USING ERRCODE='55000'; END IF;
+ RETURN NEW;
+END $$;
+
+DO $guard_initial_financial_assembly$
+DECLARE profile record;
+BEGIN
+ FOR profile IN SELECT * FROM fn_financial_unapproval_owner(NULL) LOOP
+  EXECUTE format('CREATE TRIGGER trg_000_financial_unapproval_initial_header BEFORE UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION fn_guard_financial_unapproval_initial_header()',profile.header_table);
+  EXECUTE format('ALTER TABLE public.%I ENABLE ALWAYS TRIGGER trg_000_financial_unapproval_initial_header',profile.header_table);
+  EXECUTE format('CREATE TRIGGER trg_000_financial_unapproval_initial_line BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION fn_guard_financial_unapproval_initial_line()',profile.item_table);
+  EXECUTE format('ALTER TABLE public.%I ENABLE ALWAYS TRIGGER trg_000_financial_unapproval_initial_line',profile.item_table);
+ END LOOP;
+END $guard_initial_financial_assembly$;
+
 DO $share_unapproval_profiles$
 DECLARE definition text;anchor text;
 BEGIN

@@ -1335,23 +1335,23 @@ public class FinanceReceiptService {
         receipt.setGlAccountStyleId(accountStyle);receipt.setGlCounterStyleId(identity.counterStyle());
         receipt.setGlBankFeeStyleId(identity.bankFeeStyle());receipt.setGlFxStyleId(identity.fxStyle());receipt.setGlFeePaymentStyleId(feeAccountStyle);
     }
-    /** The draft header is staged as V0 while its source rows are assembled.
-     * Keep every adopted bank/rate/fee/line amount; only resolve this new draft's
-     * legal account identities after those rows exist, then restore its actual
-     * original authority family instead of silently upgrading legacy V1 facts. */
+    /** The header needs V0 until its frozen source rows exist. Restore only its
+     * original authority; native bank/GL guards validate the retained identities
+     * from those actual copied rows, without selecting later default accounts. */
     @Transactional
     public void prepareUnapprovalDraft(UUID originalId,UUID draftId){
         FinanceReceipt original=require(originalId),draft=require(draftId);
         if(original.getStatus()==null||original.getStatus()!=STATUS_REVERSED||draft.getStatus()==null||draft.getStatus()!=STATUS_DRAFT)
             throw new ApiException(ErrorCode.CONFLICT,"收款反审续稿代次不正确");
+        var unchanged=em.createNativeQuery("""
+            SELECT EXISTS(SELECT 1 FROM finance_receipts draft JOIN finance_receipts source ON source.id=:original
+            WHERE draft.id=:draft AND draft.status=0 AND source.status=-1
+              AND NOT draft.is_deleted AND NOT source.is_deleted
+              AND draft.settlement_authority_version=CASE WHEN source.settlement_authority_version IN(1,2) THEN 0 ELSE source.settlement_authority_version END
+              AND fn_unapproval_financial_headers_match('finance_receipt_lines',to_jsonb(source),to_jsonb(draft),source.id,false))
+            """).setParameter("draft",draftId).setParameter("original",originalId).getSingleResult();
+        if(!Boolean.TRUE.equals(unchanged))throw new ApiException(ErrorCode.CONFLICT,"反审收款草稿的银行事实与原来源不一致，本次未生成草稿");
         short authority=original.getSettlementAuthorityVersion();if(authority!=SETTLEMENT_AUTHORITY_V1&&authority!=SETTLEMENT_AUTHORITY_V2)return;
-        boolean separate=FEE_SEPARATE.equals(draft.getFeeSettlementMode());
-        var ids=new ArrayList<UUID>();ids.add(draft.getAccountId());if(separate)ids.add(draft.getFeePaymentAccountId());
-        var accounts=loadAccountCurrencySnapshots(ids,false);var receiving=accounts.get(draft.getAccountId());var fee=separate?accounts.get(draft.getFeePaymentAccountId()):null;
-        if(receiving==null||separate&&fee==null)throw new ApiException(ErrorCode.CONFLICT,"收款续稿账户缺少当前有效会计身份");
-        boolean hasFx=lineRepo.findByReceiptIdOrderByLineNoAsc(draftId).stream().map(line->nz(line.getExchangeDiff())).reduce(BigDecimal.ZERO,BigDecimal::add).signum()!=0;
-        var identity=resolveDraftPostingIdentity(draft,nz(draft.getBankFee()).signum()!=0,hasFx);
-        applyDraftPostingIdentity(draft,identity,receiving.styleId(),separate?fee.styleId():null);
         draft.setSettlementAuthorityVersion(authority);receiptRepo.saveAndFlush(draft);
     }
 

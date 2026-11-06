@@ -406,8 +406,7 @@ void main() {
       await pumpUntil(
         tester,
         () => api.results.length == 1,
-        reason:
-            'The original export must actually dispatch before the identity change',
+        reason: 'The first confirmed export must enter its held download',
       );
       expect(api.results, hasLength(1));
       container.read(server.notifier).state = 'https://b.invalid';
@@ -425,8 +424,7 @@ void main() {
       await pumpUntil(
         tester,
         () => api.results.length == 2,
-        reason:
-            'The replacement export must dispatch before the old result is released',
+        reason: 'The new identity must own a distinct held export',
       );
       expect(api.results, hasLength(2));
       api.results.first.completeError(StateError('old request failed'));
@@ -547,7 +545,8 @@ void main() {
       await pumpUntil(
         tester,
         () => api.downloads == 1,
-        reason: 'The held download must start before its reader is withdrawn',
+        reason:
+            'The original export must be in flight before retiring its owner',
       );
       expect(api.downloads, 1);
       current = false;

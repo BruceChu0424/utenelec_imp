@@ -1,6 +1,7 @@
 import 'production_exact_quantity.dart';
 
-/// Transfer capacities and commands use NUMERIC(18,4), never a double round trip.
+/// Transfer capacities and commands retain 40 integer and 24 fractional digits.
+/// Large legacy numbers require their exact original text.
 BigInt? materialTransferUnits(Object? value, {bool positive = false}) {
   final units = productionExactQuantityUnits(value);
   if (units == null ||
@@ -17,7 +18,7 @@ String materialTransferText(BigInt units) =>
 Object materialTransferWire(Object value) {
   final units = materialTransferUnits(value, positive: true);
   if (units == null) {
-    throw const FormatException('数量必须大于0，最多14位整数和4位小数，且保留精确原文');
+    throw const FormatException('数量必须大于0，最多40位整数和24位小数，且保留精确原文');
   }
   return productionQuantityWire(materialTransferText(units));
 }

@@ -226,7 +226,24 @@ void main() {
     expect(api.posts.first.$1, '/stock/weight/params');
 
     await _type(tester, 'weigh-count-gross-0', '11.55');
-    expect(find.textContaining('约 5,000个'), findsOneWidget);
+    final result = tester
+        .widget<Text>(find.byKey(const ValueKey('weigh-count-result')))
+        .data!;
+    final estimated = RegExp(r'^约 ([0-9][0-9,.]*)个(?:\s|$)').firstMatch(result);
+    expect(estimated, isNotNull, reason: result);
+    // 只给 exp/log 的统计推导极窄 IEEE 误差；原重量及样本请求仍精确相等。
+    expect(
+      double.parse(estimated!.group(1)!.replaceAll(',', '')),
+      closeTo(5000, 1e-9),
+    );
+    expect(result, contains('95%'));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('weigh-count-gross-0')))
+          .controller!
+          .text,
+      '11.55',
+    );
     // 没录抽样时「保存抽样」不可点 (独立页只算数, 不过账)。
     final save = find.byKey(const ValueKey('weigh-count-primary'));
     await tester.tap(save);

@@ -200,7 +200,12 @@ void main() {
         final denied = await returnWithPendingRead();
         denied.completeError(ApiException('FORBIDDEN', 'no longer authorized'));
         await tester.pumpAndSettle();
-        expect(tableFinder, findsNothing);
+        // The shared report shell remains available to show the confirmed
+        // rejection, but it must retire every private row and retained window.
+        expect(table().items, isEmpty);
+        expect(table().error, 'no longer authorized');
+        expect(table().isRefreshing, isFalse);
+        expect(table().refreshedPages, isEmpty);
         expect(find.textContaining('FRESH-2-'), findsNothing);
         expect(tester.takeException(), isNull);
         // The rejected route has retired its consumers; the external owner

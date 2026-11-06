@@ -90,15 +90,18 @@ public class DocumentUnapprovalService implements com.uten.imp.application.port.
                     .map(DocumentUnapprovalPort.Reason::message).collect(Collectors.joining("；")));
         if (request.expectedSnapshot() != null && !request.expectedSnapshot().equals(capability.factsSnapshot()))
             throw new ApiException(ErrorCode.CONFLICT,"反审条件在确认期间已变化，请重新核对");
+        for (String constraint : adapter.deferredUnapprovalConstraints()) {
+            if (!constraint.matches("[a-z_][a-z0-9_]{0,62}")) {
+                throw new IllegalStateException("Invalid clone owner constraint");
+            }
+            em.createNativeQuery("SET CONSTRAINTS " + constraint + " DEFERRED").executeUpdate();
+        }
         adapter.reverse(originalId);
         em.flush();
         var draftId = UUID.randomUUID();
         var billNo = numbers.nextNumber(adapter.numberPrefix(originalId));
         copyHeader(adapter, originalId, draftId, billNo);
         var lineIds = planLines(adapter, originalId);
-        if (adapter.inheritsFrozenLineFacts()) {
-            em.createNativeQuery("SET CONSTRAINTS document_unapproval_frozen_source_complete DEFERRED").executeUpdate();
-        }
         // The same transaction registers the complete source map before its
         // frozen details are inherited. Any later failure rolls back the lineage.
         em.createNativeQuery("""

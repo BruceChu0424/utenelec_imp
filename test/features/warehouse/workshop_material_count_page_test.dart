@@ -452,7 +452,7 @@ void main() {
     expect(hint, findsOneWidget);
     await tester.ensureVisible(hint);
     await tester.tap(hint.hitTestable());
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.textContaining('最多 40 位整数、24 位小数'), findsOneWidget);
     expect(repo.savedLines, hasLength(saved));
   });

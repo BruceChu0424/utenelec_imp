@@ -130,8 +130,14 @@ class FeatureDirectoryAndAccessToolsTest {
     @Test
     void withoutKeywordTheReaderGetsTheModulesTheyCanOpen() {
         String reply = reply(warehouseClerk().directory().execute(Map.of()));
-        assertThat(reply).startsWith("你现在能在工作台打开这些模块：").contains("仓库管理", "常用功能")
-                .doesNotContain("钱流管理", "销售管理", "系统管理");
+        // expense:apply opens 各部门申请流程 in the current 钱流管理 hub.
+        // Its entry does not grant any finance report or business-audit access.
+        assertThat(reply).startsWith("你现在能在工作台打开这些模块：").contains("仓库管理", "常用功能", "钱流管理")
+                .doesNotContain("销售管理", "系统管理");
+        assertThat(DIRECTORY.opens(feature("/finance/applications"),
+                Set.of("expense:apply"), false)).isTrue();
+        assertThat(DIRECTORY.opens(feature("/finance/report/detail"),
+                Set.of("expense:apply"), false)).isFalse();
         String everything = reply(tools(Set.of("ai:use"), true, Set.of("SELF")).directory().execute(Map.of("keyword", "  ")));
         assertThat(everything).contains("钱流管理", "销售管理", "系统管理", "仓库管理");
     }

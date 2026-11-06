@@ -405,7 +405,7 @@ void main() {
       size: const Size(375, 812),
     );
 
-    expect(find.text('无权查看出货财务审核'), findsOneWidget);
+    expect(find.text('无权查看客户发货审核'), findsOneWidget);
     expect(api.shipmentQueries, isEmpty);
   });
 

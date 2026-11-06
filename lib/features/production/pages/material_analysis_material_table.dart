@@ -2208,6 +2208,11 @@ abstract class _MaterialAnalysisMaterialTableState
         UtenTreeTableCell.compactMinimumWidthOf(
           context,
           depth: identityMaxDepth,
+          titleWidth:
+              UtenSpacing.s24 +
+              (_bomAggregateByMaterial
+                  ? MaterialTopLevelBadge.widthOf(context) + UtenSpacing.s4
+                  : 0),
         ),
       ),
       value: _materialTableIdentityText,
@@ -2216,6 +2221,8 @@ abstract class _MaterialAnalysisMaterialTableState
       measureWidthOf: _materialTableIdentityMeasureWidth,
       measureWidthScope: (
         Directionality.of(context),
+        _bomAggregateByMaterial,
+        MaterialTopLevelBadge.widthOf(context),
         UtenTreeTableCell.toggleExtentOf(
           context,
           desktop: _materialTableDesktopToggleExtent,
@@ -2632,6 +2639,10 @@ abstract class _MaterialAnalysisMaterialTableState
       title: _materialTableIdentityText(row) ?? '',
       depth: row.depth,
       textScaler: scaler,
+      titleChrome: _bomAggregateByMaterial && row.product != null
+          ? MaterialTopLevelBadge.widthOf(context, textScaler: scaler) +
+                UtenSpacing.s4
+          : 0,
     );
   }
 
@@ -2657,16 +2668,13 @@ abstract class _MaterialAnalysisMaterialTableState
               row.aggregate?.unitName)
           ?.trim();
 
-  /// 数量展示文本 + 行单位（2026-10-10 T9 全站口径）：单位列退役，数量列的
-  /// 只读值统一经 [formatQtyWithUnit] 把单位拼在数字后（`12 个`）。展示原文
-  /// 本就是四位精确数量，这里按四位小数回排、不改数值精度；空值落「—」，
-  /// 解析不出的原文（如「无法确认」）原样返回不带单位。
+  /// 两视图共用原始十进制文本的单位排版，不经 double 丢失来源或分摊末位。
+  /// 空值落「—」，不可核对的原文（如「无法确认」）原样保留。
   String _qtyTextWithUnit(String? text, String? unit) {
     final raw = text?.trim() ?? '';
     if (raw.isEmpty || raw == '—') return '—';
-    final value = double.tryParse(raw);
-    if (value == null) return raw;
-    return formatQtyWithUnit(value, unit, maxDecimals: 4);
+    final formatted = formatExactQtyWithUnit(raw, unit);
+    return formatted.isEmpty ? raw : formatted;
   }
 
   /// 按产品视图的层级连线轮换色（2026-10-10 用户口径「两个颜色换着显示，

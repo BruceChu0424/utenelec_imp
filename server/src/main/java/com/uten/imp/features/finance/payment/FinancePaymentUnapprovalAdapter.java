@@ -18,6 +18,14 @@ public class FinancePaymentUnapprovalAdapter implements DocumentUnapprovalPort {
     @Override public Object detail(UUID id) { return service.detail(id); }
     @Override public Eligibility eligibility(UUID id) { return service.unapprovalEligibility(id); }
     @Override public void reverse(UUID id) { service.reverse(id); }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
+    @Override public List<String> deferredUnapprovalConstraints() {
+        // Reversal appends GL, header and bank facts before its native terminal
+        // checks can observe the whole atomic operation. Other owners stay immediate.
+        return List.of("document_unapproval_financial_source_complete",
+            "trg_payment_v2_header_terminal","trg_payment_v2_line_terminal",
+            "trg_payment_v2_gl_terminal","trg_payment_v2_flow_terminal");
+    }
     @Override public java.util.Map<String,String> generatedHeaderInputs(){return java.util.Map.of("amount_authority_version","CASE WHEN source.amount_authority_version=2 THEN 0 ELSE source.amount_authority_version END");}
     @Override public void afterDraftCreated(UUID originalId,UUID draftId){service.prepareUnapprovalDraft(originalId,draftId);}
     @Override public TableSnapshot header() { return new TableSnapshot("finance_payments",null,

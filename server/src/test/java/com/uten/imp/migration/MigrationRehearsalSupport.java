@@ -33,61 +33,77 @@ public final class MigrationRehearsalSupport {
     public static final String CURRENT_HEAD_VERSION;
     public static final int CURRENT_MIGRATION_COUNT;
 
-    /** 每个迁移文件的 (主版本, 点分段) 版本对，如 V990__ 为 {990,0}、V990_1__ 为 {990,1}。 */
-    private static final java.util.List<int[]> MIGRATION_FILE_VERSIONS = new java.util.ArrayList<>();
+    private static final Pattern VERSIONED_MIGRATION =
+            Pattern.compile("^V([0-9]+(?:[._][0-9]+)*)__.*\\.sql$");
+    private static final Set<String> LEGACY_INTEGER_SCRIPTS = Set.of(
+            "V01__enable_pgcrypto.sql", "V02__departments_positions.sql", "V03__employees.sql",
+            "V04__auth_rbac.sql", "V05__audit.sql", "V06__seed_rbac.sql", "V07__seed_org.sql",
+            "V08__seed_admin.sql", "V09__audit_redact_password.sql");
+    private static final MigrationCatalog MIGRATION_CATALOG;
 
     static {
         try {
-            Path migrationDir = Paths.get(
-                    MigrationRehearsalSupport.class.getResource("/db/migration").toURI());
-            // V990_1/V999_13 一类点分文件（Flyway 版本 990.1/999.13）同样是版本迁移，
-            // 必须数进条数与版本推导；本批之前 V(\d+)__ 漏数点分文件，条数比
-            // flyway_schema_history 实际成功行少。头仍是整数主版本（当前头文件非点分；
-            // 若未来头落在点分文件上，latestSuccessfulVersion 的 "990.1" 形式会在此失配报出）。
-            Pattern versioned = Pattern.compile("V(\\d+)(?:_(\\d+))?__.*\\.sql");
-            int head = 0;
-            int count = 0;
-            try (Stream<Path> files = Files.list(migrationDir)) {
-                for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
-                    Matcher matcher = versioned.matcher(file.getFileName().toString());
-                    if (!matcher.matches()) {
-                        continue;
-                    }
-                    int major = Integer.parseInt(matcher.group(1));
-                    int minor = matcher.group(2) == null ? 0 : Integer.parseInt(matcher.group(2));
-                    count++;
-                    MIGRATION_FILE_VERSIONS.add(new int[] {major, minor});
-                    head = Math.max(head, major);
-                }
-            } catch (IOException failure) {
-                throw new IllegalStateException("无法枚举 db/migration 目录", failure);
-            }
-            if (head <= 0 || count <= 0) {
-                throw new IllegalStateException(
-                        "db/migration 下未发现任何 V*__*.sql，无法推导迁移头");
-            }
-            CURRENT_HEAD_VERSION = Integer.toString(head);
-            CURRENT_MIGRATION_COUNT = count;
+            Path directory = Paths.get(MigrationRehearsalSupport.class.getResource("/db/migration").toURI());
+            MIGRATION_CATALOG = readMigrationCatalog(directory);
+            CURRENT_HEAD_VERSION = MIGRATION_CATALOG.headVersion();
+            CURRENT_MIGRATION_COUNT = MIGRATION_CATALOG.versions().size();
         } catch (Exception failure) {
-            throw new IllegalStateException(
-                    "推导迁移头失败：测试 classpath 必须以目录形式暴露 db/migration", failure);
+            throw new IllegalStateException("推导迁移头失败：测试 classpath 必须以目录形式暴露 db/migration", failure);
         }
     }
 
-    /**
-     * 目录里版本号 {@code <= version} 的迁移文件个数——即 Flyway 迁到
-     * {@code version} 后 {@code flyway_schema_history} 里应有的成功条数
-     * (跳号版本不存在文件，天然数不进去)。分段升级的基线条数以它为准，不再靠人记。
-     */
-    public static int migrationFileCountUpTo(int version) {
-        int total = 0;
-        for (int[] fileVersion : MIGRATION_FILE_VERSIONS) {
-            // 点分版本 990.1 对整数目标只从 991 起计入（990.1 > 990），非点分文件按主版本比较。
-            if (fileVersion[0] < version || (fileVersion[0] == version && fileVersion[1] == 0)) {
-                total++;
+    /** Flyway owns component comparison; the old integer manifest normalized V01 to 1. */
+    static org.flywaydb.core.api.MigrationVersion migrationVersionForScript(String filename) {
+        Matcher matcher = VERSIONED_MIGRATION.matcher(filename);
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException("Not a versioned Flyway script: " + filename);
+        }
+        String token = matcher.group(1);
+        String canonical = token.replace('_', '.');
+        if (LEGACY_INTEGER_SCRIPTS.contains(filename)) {
+            canonical = new java.math.BigInteger(token).toString();
+        } else if (token.length() > 50 || (token.contains("_") && token.contains("."))
+                || !canonical.matches("(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*))*")
+                || (canonical.contains(".") && canonical.endsWith(".0"))) {
+            throw new IllegalArgumentException("Not a canonical Flyway script identity: " + filename);
+        }
+        var value = org.flywaydb.core.api.MigrationVersion.fromVersion(canonical);
+        if (value.compareTo(org.flywaydb.core.api.MigrationVersion.fromVersion("0")) <= 0) {
+            throw new IllegalArgumentException("Migration version is not positive: " + filename);
+        }
+        return value;
+    }
+
+    record MigrationCatalog(java.util.List<org.flywaydb.core.api.MigrationVersion> versions) {
+        MigrationCatalog { versions = java.util.List.copyOf(versions); }
+        String headVersion() {
+            var head = versions.stream().max(java.util.Comparator.naturalOrder()).orElseThrow(
+                    () -> new IllegalStateException("db/migration 下未发现任何 V*__*.sql，无法推导迁移头"));
+            if (head.compareTo(org.flywaydb.core.api.MigrationVersion.fromVersion("0")) <= 0) {
+                throw new IllegalStateException("Migration head is not positive");
+            }
+            return head.getVersion();
+        }
+        int countUpTo(org.flywaydb.core.api.MigrationVersion target) {
+            return (int) versions.stream().filter(version -> version.compareTo(target) <= 0).count();
+        }
+    }
+
+    static MigrationCatalog readMigrationCatalog(Path directory) throws IOException {
+        java.util.List<org.flywaydb.core.api.MigrationVersion> versions = new java.util.ArrayList<>();
+        try (Stream<Path> files = Files.list(directory)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                if (VERSIONED_MIGRATION.matcher(file.getFileName().toString()).matches()) {
+                    versions.add(migrationVersionForScript(file.getFileName().toString()));
+                }
             }
         }
-        return total;
+        return new MigrationCatalog(versions);
+    }
+
+    /** Count every complete Flyway component version at or below the integer target. */
+    public static int migrationFileCountUpTo(int version) {
+        return MIGRATION_CATALOG.countUpTo(org.flywaydb.core.api.MigrationVersion.fromVersion(Integer.toString(version)));
     }
 
     /**
@@ -137,7 +153,7 @@ public final class MigrationRehearsalSupport {
 
     static Snapshot snapshot(Connection connection) throws SQLException {
         return new Snapshot(
-                com.uten.imp.testsupport.FixtureNumbers.integer(latestSuccessfulVersion(connection)),
+                org.flywaydb.core.api.MigrationVersion.fromVersion(latestSuccessfulVersion(connection)),
                 tableRows(connection),
                 scalarText(connection, """
                         SELECT count(*) || '|' ||
@@ -238,7 +254,8 @@ public final class MigrationRehearsalSupport {
             Snapshot before, Snapshot after, String table, long oldCount, Long newCount) {
         // V608 registers exactly one BX namespace and its two prefix ownership rows.
         // A later migration or any other quantity difference remains a failure.
-        return before.schemaVersion() < 608 && after.schemaVersion() >= 608
+        var boundary = org.flywaydb.core.api.MigrationVersion.fromVersion("608");
+        return before.schemaVersion().compareTo(boundary) < 0 && after.schemaVersion().compareTo(boundary) >= 0
                 && Set.of("business_identifier_namespaces", "business_prefix_reservations",
                         "business_prefix_reservation_members").contains(table)
                 && newCount != null && newCount == oldCount + 1;
@@ -377,13 +394,31 @@ public final class MigrationRehearsalSupport {
     }
 
     public static String latestSuccessfulVersion(Connection connection) throws SQLException {
-        return scalarText(connection, """
-                SELECT version
-                FROM flyway_schema_history
-                WHERE success
-                ORDER BY installed_rank DESC
-                LIMIT 1
-                """);
+        org.flywaydb.core.api.MigrationVersion head = null;
+        Set<org.flywaydb.core.api.MigrationVersion> seen = new java.util.HashSet<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT version, script FROM flyway_schema_history WHERE success")) {
+            while (rows.next()) {
+                String rawVersion = rows.getString(1);
+                String script = rows.getString(2);
+                var version = migrationVersionForScript(script);
+                if (!seen.add(version)) {
+                    throw new IllegalStateException("Duplicate semantic Flyway version: " + script);
+                }
+                String originalToken = VERSIONED_MIGRATION.matcher(script).replaceFirst("$1");
+                if (!version.getVersion().equals(rawVersion)
+                        && !(LEGACY_INTEGER_SCRIPTS.contains(script) && originalToken.equals(rawVersion))) {
+                    throw new IllegalStateException("History version does not match its exact script: " + script);
+                }
+                if (head == null || version.compareTo(head) > 0) {
+                    head = version;
+                }
+            }
+        }
+        if (head == null) {
+            throw new IllegalStateException("No successful Flyway migration exists");
+        }
+        return head.getVersion();
     }
 
     static long scalarLong(Connection connection, String sql) throws SQLException {
@@ -482,7 +517,7 @@ public final class MigrationRehearsalSupport {
     }
 
     record Snapshot(
-            int schemaVersion,
+            org.flywaydb.core.api.MigrationVersion schemaVersion,
             Map<String, Long> tableRows,
             String userIdentity,
             Map<String, Long> scopeRows,

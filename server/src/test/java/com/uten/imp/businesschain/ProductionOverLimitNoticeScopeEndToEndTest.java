@@ -43,6 +43,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @AutoConfigureMockMvc
 class ProductionOverLimitNoticeScopeEndToEndTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "goods.bom.actual-usage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(5, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     private static final String PASSWORD="NoticeScope-Only-Test-1!";
     private static final String EVENT="PRODUCTION_OVER_LIMIT_PENDING";
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}

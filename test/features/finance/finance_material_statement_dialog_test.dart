@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -280,7 +281,14 @@ void main() {
       expect(comparisonHeader, findsOneWidget);
       final onClose = t.widget<UtenDialogHeader>(comparisonHeader).onClose;
       expect(onClose, isNotNull);
-      final close = Future<void>.sync(onClose!);
+      final closeButton = find.descendant(
+        of: comparisonHeader,
+        matching: find.byType(UtenCloseButton),
+      );
+      expect(closeButton, findsOneWidget);
+      final closeAction = t.widget<UtenCloseButton>(closeButton).onPressed;
+      expect(closeAction, isNotNull);
+      final close = Future<void>.sync(closeAction!);
       await t.pumpAndSettle();
       await t.tap(find.widgetWithText(FilledButton, '保存草稿'));
       var closed = false;

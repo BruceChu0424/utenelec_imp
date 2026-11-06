@@ -3,6 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 
 void main() {
+  testWidgets('post-frame modal yield schedules its awaited frame', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    var shown = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UtenBusyOverlay.yieldWhile(() async => shown = true);
+    });
+    await tester.pumpAndSettle();
+    expect(shown, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('portal overlay mounts full-screen when visible', (tester) async {
     var show = false;
 

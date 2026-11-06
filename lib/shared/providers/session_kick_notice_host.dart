@@ -74,10 +74,13 @@ class _SessionKickNoticeHostState extends ConsumerState<SessionKickNoticeHost> {
   }
 
   Future<void> _show(SessionKickNotice notice) async {
-    final dialogContext = appNavigatorKey.currentContext ?? context;
     try {
-      await UtenBusyOverlay.yieldWhile(
-        () => showDialog<void>(
+      await UtenBusyOverlay.yieldWhile(() {
+        // Yielding crosses a frame. Recheck the notice and resolve a live
+        // context only after routing or a new login has had time to settle.
+        if (!_isCurrent(notice)) return Future<void>.value();
+        final dialogContext = appNavigatorKey.currentContext ?? context;
+        return showDialog<void>(
           context: dialogContext,
           // 与全站确认框同一入场节奏。
           animationStyle: AnimationStyle(
@@ -112,8 +115,8 @@ class _SessionKickNoticeHostState extends ConsumerState<SessionKickNoticeHost> {
               ),
             );
           },
-        ),
-      );
+        );
+      });
     } finally {
       _showing = false;
       _visibleNotice = null;

@@ -38,6 +38,7 @@ import static com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.amou
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only","uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class AggregateMaterialDirectTransferEndToEndTest {
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -46,6 +47,8 @@ class AggregateMaterialDirectTransferEndToEndTest {
     @AfterEach void after(){SecurityContextHolder.clearContext();}
 
     @Test void oldChildActuallyHandsOverOnlyItsShareToTheSharedParent() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         var c=flow.createWithChild("1");
         List<UUID> plans=issue(c,c.child(),"1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.common(),"MAKE","3",false)))).batches().getFirst();
@@ -91,9 +94,12 @@ class AggregateMaterialDirectTransferEndToEndTest {
         UUID newTarget=db.queryForObject("SELECT demand.id FROM production_material_demands demand JOIN production_execution_segments receiving ON receiving.id=demand.execution_segment_id WHERE receiving.plan_id=? AND receiving.status='WAITING' AND NOT receiving.is_deleted AND NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')",UUID.class,shared.planId());
         flow.fixture.loginAs(worker);transfer(c,source,newTarget,"1","2");
         amount("1",db.queryForObject("SELECT COALESCE(SUM(inherited_received_qty),0) FROM fn_preplan_aggregate_alias_coverage(?)",BigDecimal.class,c.analysis()));
+            }
     }
 
-    @Test void sharedChildActuallyHandsOverToEachOriginalParentWithinOneMemberShare(){
+    @Test void sharedChildActuallyHandsOverToEachOriginalParentWithinOneMemberShare() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
         List<UUID> parents=issue(c,c.common(),"1");
@@ -105,9 +111,12 @@ class AggregateMaterialDirectTransferEndToEndTest {
         assertTrue(direct().candidates(source,c.child(),null).candidates().isEmpty());
         amount("3",db.queryForObject("SELECT SUM(proof.qty_base) FROM preplan_aggregate_direct_transfer_slices proof JOIN preplan_supply_action_allocations allocation ON allocation.id=proof.supply_action_allocation_id JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id WHERE batch.id=?",BigDecimal.class,shared.batchId()));
         for(UUID parent:parents)amount("1",db.queryForObject("SELECT fn_workshop_direct_covered_base_qty(?)",BigDecimal.class,demand(segment(parent))));
+            }
     }
 
-    @Test void oneReportHandsOverToThreeSameWorkshopParentsByExplicitAllocations(){
+    @Test void oneReportHandsOverToThreeSameWorkshopParentsByExplicitAllocations() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         // 共享子件报 3：工人按先急后缓逐个分给三个同车间上层工单 → 三条转送明细、没有送仓明细。
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
@@ -149,9 +158,12 @@ class AggregateMaterialDirectTransferEndToEndTest {
         // (c) 刷新队列照常产生并在提交时排空：本工单家族的学习样本已按本次审核刷新。
         assertEquals(1,db.queryForObject("SELECT count(*) FROM production_bom_learning_samples WHERE execution_root_id=fn_production_execution_cost_scope(?)",Integer.class,source));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_bom_learning_refresh_queue WHERE execution_root_id=fn_production_execution_cost_scope(?)",Integer.class,source));
+            }
     }
 
-    @Test void mixedWorkshopParentsGetTheirShareDirectAndOnlyTheCrossWorkshopShareGoesToTheWarehouse(){
+    @Test void mixedWorkshopParentsGetTheirShareDirectAndOnlyTheCrossWorkshopShareGoesToTheWarehouse() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
         Object other=ReflectionTestUtils.invokeMethod(flow.fixture,"productionAssignment","aggregate-other-"+UUID.randomUUID());
@@ -192,9 +204,12 @@ class AggregateMaterialDirectTransferEndToEndTest {
         // 仓库入库只归到跨车间那一份：三份各收 1，同车间两份没有被入库再占一次。
         List<BigDecimal> received=db.queryForList("SELECT fn_preplan_allocation_received_qty(allocation.id) FROM preplan_supply_action_allocations allocation JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id WHERE batch.id=?",BigDecimal.class,shared.batchId());
         assertEquals(3,received.size());received.forEach(qty->amount("1",qty));
+            }
     }
 
-    @Test void warehouseReceiptOfASharedBatchFillsTheMostUrgentShareFirst(){
+    @Test void warehouseReceiptOfASharedBatchFillsTheMostUrgentShareFirst() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         // V736：仓库入库分给哪个来源与直送同一「先急后缓」次序，不再按随机 UUID。
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
@@ -215,9 +230,12 @@ class AggregateMaterialDirectTransferEndToEndTest {
                 JOIN production_material_analysis_materials material ON material.id=allocation.analysis_material_id
                 JOIN production_material_analysis_items owner ON owner.id=material.analysis_item_id
                 WHERE peg.source_stock_document_id=?""",Integer.class,inbound));
+            }
     }
 
-    @Test void partialParentCannotTakeTheOldChildQuantityRetainedByItsOriginalParent(){
+    @Test void partialParentCannotTakeTheOldChildQuantityRetainedByItsOriginalParent() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         var c=flow.createWithChild("1.5");var initial=flow.analyses.detail(c.analysis());
         var child=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.child())).findFirst().orElseThrow();
         var parent=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.common())&&row.analysisLineId().equals(child.analysisLineId())).findFirst().orElseThrow();
@@ -231,9 +249,12 @@ class AggregateMaterialDirectTransferEndToEndTest {
         var rest=new GroupInput("retained",List.of(parent.materialLineId()),"MAKE",new BigDecimal("0.5"),false,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
         flow.writer.submit(c.analysis(),flow.command(c,List.of(rest)));
         amount("0.5",db.queryForObject("SELECT fn_workshop_direct_remaining_for_source(?,?)",BigDecimal.class,source,target));
+            }
     }
 
-    @Test void oneReportSplitsAtTheMemberLimitAndNormalReceiptDoesNotSpendItsDirectProofAgain(){
+    @Test void oneReportSplitsAtTheMemberLimitAndNormalReceiptDoesNotSpendItsDirectProofAgain() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         var c=flow.createWithChild("1");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","3",false)))).batches().getFirst();
         issue(c,c.common(),"1");UUID source=segment(shared.planId());
@@ -253,9 +274,12 @@ class AggregateMaterialDirectTransferEndToEndTest {
         flow.fixture.loginAs(worker);var remaining=direct().candidates(source,c.child(),null).candidates();assertEquals(1,remaining.size());amount("1",remaining.getFirst().remainingQty());
         transfer(c,source,remaining.getFirst().demandId(),"1","2");
         amount("3",db.queryForObject("SELECT SUM(fn_preplan_allocation_received_qty(allocation.id)) FROM preplan_supply_action_allocations allocation JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id WHERE batch.id=?",BigDecimal.class,shared.batchId()));
+            }
     }
 
-    @Test void sharedWarehouseReceiptCanPartlyFormalizeOnePrivateShareInTheSameTransaction(){
+    @Test void sharedWarehouseReceiptCanPartlyFormalizeOnePrivateShareInTheSameTransaction() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
         var c=flow.createWithChild("2");
         var shared=flow.writer.submit(c.analysis(),flow.command(c,List.of(flow.input(c,c.child(),"MAKE","6",false)))).batches().getFirst();
         issue(c,c.common(),"1");UUID source=segment(shared.planId());flow.receive(c,c.material(),"12");start(source);
@@ -265,6 +289,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         UUID inbound=flow.fixture.finishedInDocForReport(report);flow.fixture.confirmFinishedInboundFully(inbound);
         assertTrue(db.queryForObject("SELECT COUNT(*)>0 FROM preplan_analysis_stock_exact_pegs exact JOIN stock_reservations reservation ON reservation.id=exact.stock_reservation_id WHERE exact.source_stock_document_id=? AND reservation.released_qty>0 AND reservation.released_qty<reservation.qty AND fn_preplan_aggregate_exact_formalized(exact.id)",Boolean.class,inbound));
         amount("3",db.queryForObject("SELECT SUM(qty) FROM preplan_analysis_stock_exact_pegs WHERE source_stock_document_id=?",BigDecimal.class,inbound));
+            }
     }
 
     List<UUID> issue(AggregateMaterialOrderEndToEndTest.Case c,UUID goods,String qty){
@@ -293,6 +318,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         return transfer(c,source,List.of(DailyReportOutputAllocationLine.direct(target,new BigDecimal(quantity))),quantity,used);
     }
     UUID transfer(AggregateMaterialOrderEndToEndTest.Case c,UUID source,List<DailyReportOutputAllocationLine> allocations,String quantity,String used){
+        ReflectionTestUtils.invokeMethod(flow.fixture,"drainCosts",c.world());
         var report=new DailyReportSaveRequest();report.setIdempotencyKey("aggregate-direct-report-"+UUID.randomUUID());report.setBillDate(BusinessTime.today());report.setWarehouseId(c.world().warehouseId());report.setDepartmentId(c.workshop());report.setWorkerIds(List.of(c.worker()));
         var item=new DailyReportItemLine();item.setLineNo(1);item.setExecutionSegmentId(source);item.setPlanItemId(db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,source));item.setGoodsId(c.child());item.setUnitId(c.world().unitId());item.setUnitRate(BigDecimal.ONE);item.setQty(new BigDecimal(quantity));item.setAllocations(allocations);report.setItems(List.of(item));
         var usage=new DailyReportMaterialUsageLine();usage.setDemandId(demand(source));usage.setQtyBase(new BigDecimal(used));report.setMaterialLines(List.of(usage));
@@ -310,6 +336,7 @@ class AggregateMaterialDirectTransferEndToEndTest {
         beans.getBean(com.uten.imp.features.production.quality.ProductionFqcInspectionService.class).decide(inspection,
             new com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest("PASS",qty,null,null,null,"aggregate-pass-"+inspection));
         UUID inbound=db.queryForObject("SELECT DISTINCT doc_id FROM stock_document_items WHERE source_daily_report_item_id=?",UUID.class,ordinaryItem);
+        ReflectionTestUtils.invokeMethod(flow.fixture,"drainCosts",c.world());
         flow.fixture.confirmFinishedInboundFully(inbound);
         return inbound;
     }

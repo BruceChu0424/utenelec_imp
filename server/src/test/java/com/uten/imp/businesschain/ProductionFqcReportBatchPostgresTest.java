@@ -56,6 +56,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 class ProductionFqcReportBatchPostgresTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "goods.bom.actual-usage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(5, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) { FullChainEndToEndTest.registerDataSource(properties); }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -172,6 +180,7 @@ class ProductionFqcReportBatchPostgresTest {
             amount(".25",result.items().getFirst().passQty());
             assertEquals(1,records.facets(null,compound,null,null,null,null,null).get("sourceNo").size());
             assertEquals(0,records.list(null,"10__ "+inspection.reportNo(),null,null,null,null,null,1,20,null,null,null,null,null).total());
+            drainValuation(source);
             quality.decide(source.ids().getLast(),new DecisionRequest("PASS",new BigDecimal(".5"),null,null,null,"header-record-"+UUID.randomUUID()));
             String recordDay=result.items().getFirst().decidedAt().atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate().toString();
             var recordColumns=Map.of("sourceNo",inspection.reportNo(),"goodsName","10%_","passQty",">=0.25","failQty","0","decidedAt",recordDay);
@@ -221,7 +230,9 @@ class ProductionFqcReportBatchPostgresTest {
         var oldSingle = singleRow(source.ids().get(1), "PASS", ".25", null, null);
         var fresh = lotRow(source.ids().get(2), ".5", "0", null);
         UUID lotCommand = quality.decideLot(oldLot.targetId(), originalLot(oldLot)).lotCommandId();
+        drainValuation(source);
         UUID singleCommand = quality.decide(oldSingle.targetId(), originalSingle(oldSingle)).decisionEventId();
+        drainValuation(source);
         clearInvocations(footprints);
         var request = new ReportDecisionRequest(List.of(oldLot, fresh, oldSingle));
         var result = call(source.actor(), request, 200);
@@ -271,6 +282,7 @@ class ProductionFqcReportBatchPostgresTest {
         Source source = source(2);
         var oldLot = lotRow(source.ids().get(1), ".25", "0", null);
         quality.decideLot(oldLot.targetId(), originalLot(oldLot));
+        drainValuation(source);
         var changed = new ReportDecisionItem("LOT", oldLot.targetId(), null, new BigDecimal(".5"), BigDecimal.ZERO,
                 null, null, oldLot.idempotencyKey());
         Map<String, String> before = facts();
@@ -357,7 +369,13 @@ class ProductionFqcReportBatchPostgresTest {
         }
         Object scenario = ReflectionTestUtils.invokeMethod(fixture, "prepare", count, "prestock");
         return new Source(ReflectionTestUtils.invokeMethod(scenario, "reportId"),
-                ReflectionTestUtils.invokeMethod(scenario, "inspections"), SecurityContextHolder.getContext().getAuthentication());
+                ReflectionTestUtils.invokeMethod(scenario, "inspections"), SecurityContextHolder.getContext().getAuthentication(),fixture,scenario);
+    }
+
+    private void drainValuation(Source source) {
+        // A later independent write waits for the original physical/value work;
+        // replay-only assertions keep their unchanged read-only snapshots.
+        ReflectionTestUtils.invokeMethod(source.fixture(),"drainValuationCostWork",source.scenario());
     }
 
     private ReportDecisionItem lotRow(UUID inspection, String pass, String fail, String disposition) {
@@ -407,5 +425,6 @@ class ProductionFqcReportBatchPostgresTest {
     }
     private BigDecimal scalar(String sql, Object arg) { return db.queryForObject(sql, BigDecimal.class, arg); }
     private static void amount(String expected, BigDecimal actual) { assertNotNull(actual); assertEquals(0, new BigDecimal(expected).compareTo(actual)); }
-    private record Source(UUID report, List<UUID> ids, Authentication actor) {}
+    private record Source(UUID report, List<UUID> ids, Authentication actor,
+                          ProductionFqcPreStockBatchEndToEndTest fixture,Object scenario) {}
 }

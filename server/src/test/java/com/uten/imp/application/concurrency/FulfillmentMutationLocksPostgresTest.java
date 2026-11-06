@@ -55,11 +55,19 @@ class FulfillmentMutationLocksPostgresTest {
         POSTGRES.start();
         var ds = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(ds);
-        // Deliberately small SQL schema for lock mechanics, not a migration or finance fixture.
-        jdbc.execute("CREATE TABLE sales_orders(id uuid PRIMARY KEY, revision int NOT NULL DEFAULT 0, is_deleted boolean NOT NULL DEFAULT false, client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid)");
-        jdbc.execute("CREATE TABLE sales_order_items(id uuid PRIMARY KEY,order_id uuid NOT NULL REFERENCES sales_orders(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false, client_goods_name VARCHAR(500), client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb, goods_name_en_snapshot varchar(255), legacy_counter_import_run_id uuid)");
-        jdbc.execute("CREATE TABLE sales_shipments(id uuid PRIMARY KEY,revision int NOT NULL DEFAULT 0,is_deleted boolean NOT NULL DEFAULT false)");
-        jdbc.execute("CREATE TABLE sales_shipment_items(id uuid PRIMARY KEY,shipment_id uuid NOT NULL REFERENCES sales_shipments(id),order_item_id uuid REFERENCES sales_order_items(id),goods_id uuid,color_id uuid,is_deleted boolean NOT NULL DEFAULT false, legacy_counter_import_run_id uuid)");
+        // Column facts come from the actual current catalog, including frozen
+        // delivery plans/components and quantity adoption. Keep the original
+        // private revision counters and three relationship locks below.
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
+                "sales_orders", "sales_order_items", "sales_shipments",
+                "sales_shipment_items", "sales_shipment_delivery_components");
+        jdbc.execute("""
+                ALTER TABLE sales_orders ADD COLUMN revision int NOT NULL DEFAULT 0;
+                ALTER TABLE sales_shipments ADD COLUMN revision int NOT NULL DEFAULT 0;
+                ALTER TABLE sales_order_items ADD FOREIGN KEY(order_id) REFERENCES sales_orders(id);
+                ALTER TABLE sales_shipment_items ADD FOREIGN KEY(shipment_id) REFERENCES sales_shipments(id);
+                ALTER TABLE sales_shipment_items ADD FOREIGN KEY(order_item_id) REFERENCES sales_order_items(id);
+                """);
         // 新建来源登记只凭本事务行版本(xmin)判定, 不依赖审计日志(db-schema-02): 这里刻意没有审计表和触发器。
         jdbc.execute("CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, analysis_no text)");
         var bean = new LocalContainerEntityManagerFactoryBean();

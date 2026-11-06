@@ -18,6 +18,37 @@ Map<String, dynamic> _committedPublicMaterial(Map<String, dynamic> data) {
 }
 
 void materialQuantityPresentationCases() {
+  testWidgets(
+    'quantity unit layout keeps the complete issued decimal and its unit',
+    (tester) async {
+      const exact = '800.000000000000000000000001';
+      await _pump(
+        tester,
+        mutate: (data) {
+          _records(data['supplyActions']).singleWhere(
+            (action) => action['actionId'] == 'act-3',
+          )['quantityFactsExact'] = {
+            'requestedQty': exact,
+            'publicSurplusQty': '0',
+            'safetyReplenishmentQty': '0',
+          };
+          _records(
+            _fixtureMaterial(data, 'm-3')['downstreamReferences'],
+          ).single['quantityFactsExact'] = {
+            'allocatedQty': exact,
+          };
+          return data;
+        },
+      );
+      await _showMaterialSummary(tester);
+      final issued = find.byKey(
+        const ValueKey('material-aggregate-order-g-m-3|本色|unit-1'),
+      );
+      expect(tester.widget<Text>(issued).data, '$exact 个');
+      expect(_aggregateSubmits(), isEmpty, reason: '显示精确原文不能产生写入或重算原金额/数量');
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final scale in [1.0, 1.6]) {
     testWidgets(
       'quantity unit layout auto width includes long unit at scale $scale',

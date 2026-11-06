@@ -3,6 +3,87 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 
 void main() {
+  for (final alreadyApplied in [false, true]) {
+    testWidgets(
+      'external controller clear accepts the same word again after ${alreadyApplied ? 'applied' : 'pending'} search',
+      (tester) async {
+        final controller = TextEditingController();
+        addTearDown(controller.dispose);
+        final inputs = <String>[], changes = <String>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: UtenSearchBar(
+                controller: controller,
+                debounce: const Duration(milliseconds: 100),
+                onInputChanged: inputs.add,
+                onChanged: changes.add,
+              ),
+            ),
+          ),
+        );
+        await tester.enterText(find.byType(TextField), '螺丝');
+        if (alreadyApplied) {
+          await tester.pump(const Duration(milliseconds: 101));
+        }
+        expect(inputs, ['螺丝']);
+        expect(changes, alreadyApplied ? ['螺丝'] : isEmpty);
+        controller.clear();
+        await tester.pump(const Duration(milliseconds: 150));
+        expect(inputs, ['螺丝'], reason: '程序复位不能替宿主重放查询');
+        expect(
+          changes,
+          alreadyApplied ? ['螺丝'] : isEmpty,
+          reason: '外部复位必须撤销旧防抖，不能发布旧仓查询',
+        );
+        await tester.enterText(find.byType(TextField), '螺丝');
+        await tester.pump(const Duration(milliseconds: 101));
+        expect(inputs, ['螺丝', '螺丝']);
+        expect(changes, alreadyApplied ? ['螺丝', '螺丝'] : ['螺丝']);
+      },
+    );
+  }
+
+  testWidgets(
+    'external controller clear retires held IME without replaying it',
+    (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      final inputs = <String>[], changes = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UtenSearchBar(
+              controller: controller,
+              debounce: const Duration(milliseconds: 100),
+              onInputChanged: inputs.add,
+              onChanged: changes.add,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byType(TextField));
+      tester.testTextInput.updateEditingValue(
+        const TextEditingValue(
+          text: 'li',
+          composing: TextRange(start: 0, end: 2),
+          selection: TextSelection.collapsed(offset: 2),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(inputs, isEmpty);
+      expect(changes, isEmpty);
+      controller.clear();
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(inputs, isEmpty);
+      expect(changes, isEmpty);
+      await tester.enterText(find.byType(TextField), 'li');
+      await tester.pump(const Duration(milliseconds: 101));
+      expect(inputs, ['li']);
+      expect(changes, ['li']);
+    },
+  );
+
   testWidgets(
     'Enter applies a pending keyword immediately without a later duplicate',
     (tester) async {

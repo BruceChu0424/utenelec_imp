@@ -433,12 +433,14 @@ class CoverageTests(unittest.TestCase):
         self.assertTrue(allowed["skipped"][0]["permitted"])
         self.assertFalse(runner.audit_cases(plan(), 0, [case], 0)["complete"])
 
-    def test_reviewed_material_smoke_absence_is_bound_to_two_exact_declared_methods(self):
+    def test_reviewed_operator_input_absence_is_bound_to_exact_declared_methods(self):
         expected = {
             "com.uten.imp.features.admin.materialforecast.MaterialForecastRuntimePreparationSmokeTest"
             "#actualProductionLauncherPreparesTheReviewedPayload": "UTEN_RUN_MARKET_PREPARATION_SMOKE",
             "com.uten.imp.businesschain.MaterialForecastManagedRuntimeSmokeTest"
             "#oneBindingAndPortablePolicyWorkAfterRealCollectionRestartAndDatabaseRestore": "UTEN_RUN_MARKET_RUNTIME_SMOKE",
+            "com.uten.imp.businesschain.SalesFinanceInteractiveUatHarnessTest"
+            "#serveRealShipmentAndReceiptApplicationUntilOwnedStopMarker": "UTEN_SALES_FINANCE_INTERACTIVE_UAT",
         }
         self.assertEqual(expected, runner.METHOD_OPTIONAL_GATES)
         for identity, gate in expected.items():
@@ -551,6 +553,7 @@ class CoverageTests(unittest.TestCase):
         sources = set((java / "features/admin/materialforecast").glob("*.java"))
         sources.update((java / "features/master/goods/pricing").glob("*.java"))
         sources.update((java / "businesschain").glob("MaterialForecast*.java"))
+        sources.add(java / "businesschain/SalesFinanceInteractiveUatHarnessTest.java")
         sources.update((java / "features/admin/systemsetting").glob("MaterialForecast*.java"))
         self.assertTrue(sources)
         environment, properties = {}, {}

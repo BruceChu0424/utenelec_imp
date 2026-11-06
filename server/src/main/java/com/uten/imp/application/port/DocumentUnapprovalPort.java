@@ -22,6 +22,10 @@ public interface DocumentUnapprovalPort {
     default List<SourceSnapshot> sources() { return List.of(); }
     /** The database verifies and inherits this family's existing numeric facts. */
     default boolean inheritsFrozenLineFacts() { return false; }
+    /** Exact owner constraints required by its atomic reversal and successor assembly. */
+    default List<String> deferredUnapprovalConstraints() {
+        return inheritsFrozenLineFacts() ? List.of("document_unapproval_frozen_source_complete") : List.of();
+    }
     /** Family-owned assembly inputs, separate from the database-owned frozen facts. */
     default java.util.Map<String,String> generatedLineInputs() { return java.util.Map.of(); }
     /** Domain-owned draft assembly expressions; final authority is restored by

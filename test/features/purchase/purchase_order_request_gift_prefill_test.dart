@@ -195,11 +195,14 @@ void main() {
       final saved = (api.saved!['items'] as List).single as Map;
       expect(saved['unitRate'], exact);
       expect(
-        financeExactDecimalFromUnits(
-          financeExactProductUnits(
-            saved['qty'] as String,
-            saved['unitRate'] as String,
-          )!,
+        financeExactTrimmed(
+          financeExactDecimalFromUnits(
+            financeExactProductUnits(
+              saved['qty'] as String,
+              saved['unitRate'] as String,
+            )!,
+            scale: 48,
+          ),
         ),
         '99999999999900.0001',
       );

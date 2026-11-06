@@ -429,6 +429,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
 
     @Test void paymentSuccessorAssemblesItsCurrentLegalIdentityAfterLinesWhileOriginalReversalKeepsFrozenAccounts(){
         Draft d=create("financePayment","10");actions.approve(d.family(),d.id(),command(review(d)));
+        String sourceLines=financialSourceLines("finance_payment_lines","payment_id",d.id());
         String originalAmounts=db.queryForObject("SELECT jsonb_build_object('bank',account_amount,'local',account_amount_local,'original',amount_original,'book',amount_local,'gl',gl_ap_style_id,'lines',(SELECT jsonb_agg(jsonb_build_object('cash',l.amount_original,'book',l.amount_local,'applied',l.applied_amount_local,'diff',l.exchange_diff) ORDER BY line_no) FROM finance_payment_lines l WHERE l.payment_id=p.id AND NOT l.is_deleted))::text FROM finance_payments p WHERE p.id=?",String.class,d.id());
         String frozen=db.queryForObject("SELECT jsonb_agg(to_jsonb(p) ORDER BY line_no)::text FROM finance_native_cash_debt_parts p WHERE kind='PAYMENT' AND cash_id=?",String.class,d.id());
         UUID previous=db.queryForObject("SELECT system_posting_style_id('AP_CONTROL')",UUID.class),replacement=UUID.randomUUID();
@@ -443,13 +444,14 @@ class FinanceDocumentReviewCommandsPostgresTest {
             assertThat(db.queryForObject("SELECT gl_ap_style_id=fn_finance_native_cash_counter_style('PAYMENT',id,'AP_CONTROL',currency_id,'SUPPLIER',supplier_id,bill_date) FROM finance_payments WHERE id=?",Boolean.class,draft)).isTrue();
             assertThat(db.queryForObject("SELECT gl_ap_style_id FROM finance_payments WHERE id=?",UUID.class,draft)).isNotEqualTo(replacement);
             assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(p) ORDER BY line_no)::text FROM finance_native_cash_debt_parts p WHERE kind='PAYMENT' AND cash_id=?",String.class,d.id())).isEqualTo(frozen);
+            assertThat(financialSourceLines("finance_payment_lines","payment_id",d.id())).isEqualTo(sourceLines);
             String after=db.queryForObject("SELECT jsonb_build_object('bank',account_amount,'local',account_amount_local,'original',amount_original,'book',amount_local,'gl',gl_ap_style_id,'lines',(SELECT jsonb_agg(jsonb_build_object('cash',l.amount_original,'book',l.amount_local,'applied',l.applied_amount_local,'diff',l.exchange_diff) ORDER BY line_no) FROM finance_payment_lines l WHERE l.payment_id=p.id AND NOT l.is_deleted))::text FROM finance_payments p WHERE p.id=?",String.class,d.id());
             assertThat(after).isEqualTo(originalAmounts);
         }finally{db.update("UPDATE system_posting_style_roles SET style_id=? WHERE role_key='AP_CONTROL'",previous);}
     }
 
     @ParameterizedTest @ValueSource(booleans={false,true})
-    void receiptSuccessorResolvesItsOwnCurrentIdentityAfterRowsAndNeverRelabelsOriginalCashFacts(boolean prepayment){
+    void receiptSuccessorRequiresOriginalFrozenIdentityAfterRowsAndNeverRelabelsOriginalCashFacts(boolean prepayment){
         String role=prepayment?"CUSTOMER_ADVANCE":"AR_CONTROL";harness.loginAs(f.world().superAdminUserId());
         UUID configReviewer=harness.createUserWithPerms(f.world(),"anonymous-cash-map-reviewer-"+UUID.randomUUID(),"finance_report:view","finance:view:all","payment_style:edit","finance_post:execute");
         UUID firstStyle=configureReceiptAccount(role,prepayment?"22030951":"11220951",configReviewer);
@@ -464,8 +466,11 @@ class FinanceDocumentReviewCommandsPostgresTest {
             var input=harness.receiptRequest(f.world(),ledger,f.bank(),null,"10","10","0","0",BigDecimal.ONE,BusinessTime.today());
             d=new Draft("financeReceipt",receipts.create(input).getId(),input);
         }
-        actions.approve(d.family(),d.id(),command(review(d)));assertThat(db.queryForObject("SELECT gl_counter_style_id FROM finance_receipts WHERE id=?",UUID.class,d.id())).isEqualTo(firstStyle);
+        var approval=command(review(d));var approved=actions.approve(d.family(),d.id(),approval);
+        assertThat(db.queryForObject("SELECT gl_counter_style_id FROM finance_receipts WHERE id=?",UUID.class,d.id())).isEqualTo(firstStyle);
         String originalMoney=receiptMoney(d.id()),frozen=receiptCashFacts(d.id());
+        String sourceLines=financialSourceLines("finance_receipt_lines","receipt_id",d.id());
+        String originalReceipt=db.queryForObject("SELECT to_jsonb(operation)::text FROM finance_application_operations operation WHERE request_id=?",String.class,approval.requestId());
         UUID laterStyle=configureReceiptAccount(role,prepayment?"22030952":"11220952",configReviewer);assertThat(laterStyle).isNotEqualTo(firstStyle);
         harness.loginAs(f.reviewer());var capability=unapproval.capabilityHttp(d.family(),d.id());assertThat(capability.eligible()).as(capability.reasons().toString()).isTrue();UUID key=UUID.randomUUID();
         var original=new Command(key,key.toString(),"匿名按原冻结来源逆账并显式核对新草稿当前科目",capability.factsSnapshot());
@@ -481,11 +486,41 @@ class FinanceDocumentReviewCommandsPostgresTest {
             assertThat(receiptMoney(d.id())).isEqualTo(originalMoney);assertThat(receiptCashFacts(d.id())).isEqualTo(frozen);assertThat(receiptCount(key)).isZero();
             assertThat(db.queryForObject("SELECT status FROM finance_receipts WHERE id=?",Integer.class,d.id())).isEqualTo(1);
         }finally{doCallRealMethod().when(receiptAdapter).generatedHeaderInputs();}
+        if(prepayment){
+            // Main V1069 requires a faithful original header at completion.
+            // A header-only advance has no copied debt source proving that the
+            // old account is still this draft's legal identity. A later approved
+            // default cannot silently relabel it or consume the original command.
+            String posted=moneyFacts(d);
+            int headers=db.queryForObject("SELECT count(*) FROM finance_receipts",Integer.class);
+            int vouchers=db.queryForObject("SELECT count(*) FROM gl_vouchers",Integer.class);
+            assertThatThrownBy(()->actions.execute(d.family(),d.id(),original)).satisfies(error->{
+                var sql=org.springframework.core.NestedExceptionUtils.getMostSpecificCause(error);
+                assertThat(sql).isInstanceOf(java.sql.SQLException.class);
+                assertThat(((java.sql.SQLException)sql).getSQLState()).isIn("23514","55000");
+            });
+            assertThat(moneyFacts(d)).isEqualTo(posted);
+            assertThat(receiptMoney(d.id())).isEqualTo(originalMoney);
+            assertThat(receiptCashFacts(d.id())).isEqualTo(frozen);
+            assertThat(financialSourceLines("finance_receipt_lines","receipt_id",d.id())).isEqualTo(sourceLines);
+            assertThat(receiptCount(key)).isZero();
+            assertThat(db.queryForObject("SELECT count(*) FROM document_unapprovals WHERE family=? AND original_id=?",Integer.class,d.family(),d.id())).isZero();
+            assertThat(db.queryForObject("SELECT count(*) FROM finance_receipts",Integer.class)).isEqualTo(headers);
+            assertThat(db.queryForObject("SELECT count(*) FROM gl_vouchers",Integer.class)).isEqualTo(vouchers);
+            assertThat(db.queryForObject("SELECT status FROM finance_receipts WHERE id=?",Integer.class,d.id())).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT gl_counter_style_id FROM finance_receipts WHERE id=?",UUID.class,d.id())).isEqualTo(firstStyle);
+            same(actions.receipt(d.family(),d.id(),approval.requestId()),approved);
+            assertThat(db.queryForObject("SELECT to_jsonb(operation)::text FROM finance_application_operations operation WHERE request_id=?",String.class,approval.requestId())).isEqualTo(originalReceipt);
+            return;
+        }
         var result=map(actions.execute(d.family(),d.id(),original));UUID draft=UUID.fromString(map(result.get("result")).get("id").toString());
         assertThat(receiptMoney(d.id())).isEqualTo(originalMoney);assertThat(receiptMoney(draft)).isEqualTo(originalMoney);assertThat(receiptCashFacts(d.id())).isEqualTo(frozen);
         assertThat(db.queryForObject("SELECT settlement_authority_version FROM finance_receipts WHERE id=?",Integer.class,draft)).isEqualTo(2);
         assertThat(db.queryForObject("SELECT gl_counter_style_id=fn_finance_native_cash_counter_style('RECEIPT',id,?,currency_id,'CUSTOMER',client_id,bill_date) FROM finance_receipts WHERE id=?",Boolean.class,role,draft)).isTrue();
-        assertThat(db.queryForObject("SELECT gl_counter_style_id FROM finance_receipts WHERE id=?",UUID.class,draft)).isEqualTo(prepayment?laterStyle:firstStyle);
+        assertThat(db.queryForObject("SELECT gl_counter_style_id FROM finance_receipts WHERE id=?",UUID.class,draft)).isEqualTo(firstStyle);
+        assertThat(financialSourceLines("finance_receipt_lines","receipt_id",d.id())).isEqualTo(sourceLines);
+        same(actions.receipt(d.family(),d.id(),approval.requestId()),approved);
+        assertThat(db.queryForObject("SELECT to_jsonb(operation)::text FROM finance_application_operations operation WHERE request_id=?",String.class,approval.requestId())).isEqualTo(originalReceipt);
         same(actions.execute(d.family(),d.id(),original),result);assertThat(receiptCashFacts(d.id())).isEqualTo(frozen);
         var shown=actions.<FinanceReviewMetadata>reviewedDetail("financeReceipt",draft,false);
         assertThat(actions.approve("financeReceipt",draft,command(shown))).containsEntry("outcome","SUCCEEDED");
@@ -546,6 +581,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     }
     private String receiptMoney(UUID id){return db.queryForObject("SELECT jsonb_build_object('original',amount_original,'local',amount_local,'account',account_amount,'accountLocal',account_amount_local,'rate',exchange_rate,'accountRate',account_exchange_rate,'bankFee',bank_fee,'otherFee',other_fee,'bankBookedAt',bank_booked_at,'bankReference',bank_reference)::text FROM finance_receipts WHERE id=?",String.class,id);}
     private String receiptCashFacts(UUID id){return db.queryForObject("SELECT jsonb_build_object('account',(SELECT jsonb_agg(to_jsonb(c)) FROM finance_native_cash_accounts c WHERE kind='RECEIPT' AND cash_id=?),'parts',(SELECT jsonb_agg(to_jsonb(p)ORDER BY line_no) FROM finance_native_cash_debt_parts p WHERE kind='RECEIPT' AND cash_id=?))::text",String.class,id,id);}
+    private String financialSourceLines(String table,String parent,UUID id){return db.queryForObject("SELECT jsonb_agg(to_jsonb(line) ORDER BY line_no,id)::text FROM "+table+" line WHERE "+parent+"=? AND NOT is_deleted",String.class,id);}
 
     private FinanceReviewMetadata makerReview(Draft d){harness.loginAs(f.world().superAdminUserId());return actions.reviewedDetail(d.family(),d.id(),false);}
     private FinanceDocumentActions.UpdateCommand updateCommand(Draft d,String amount,FinanceReviewMetadata shown)throws Exception{

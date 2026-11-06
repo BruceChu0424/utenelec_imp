@@ -290,6 +290,9 @@ class InventoryCostPostingBridgePostgresTest {
         assertThat(row.get("netProfit")).isNull();
         assertThat((BigDecimal)row.get("manageFee")).as("Original management-cost formula is actual signed cost times 8%").isEqualByComparingTo("-3.20");
         assertThat(row.get("taxFee")).isNull();
+        assertThat(row.get("__inputConfirmed")).isEqualTo(false);
+        assertThat(row.get("__pending")).isEqualTo(true);
+        assertThat(row.get("costState")).isEqualTo("MANAGEMENT_INPUTS_PENDING");
         assertThat(row.get("currencyBasis")).isEqualTo("LOCAL");
     }
     @Test void financeReportAggregatesFrozenLocalAmountsAcrossCurrenciesAndRetainsConfirmedZero(){

@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'finance_requirement_test_ui.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -75,6 +76,12 @@ void main() {
             .onClose,
         isNull,
       );
+      final closeButton = find.descendant(
+        of: find.widgetWithText(UtenDialogHeader, '往来项目分类'),
+        matching: find.byType(UtenCloseButton),
+      );
+      expect(closeButton, findsOneWidget);
+      expect(tester.widget<UtenCloseButton>(closeButton).onPressed, isNull);
       expect(
         tester.widget<TextField>(financeTextField('来源依据')).enabled,
         isFalse,

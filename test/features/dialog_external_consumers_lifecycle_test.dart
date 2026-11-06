@@ -20,6 +20,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../shared/drafts/memory_form_draft_storage.dart';
+import '../support/pump_until.dart';
 
 final _owner = StateProvider<AuthenticatedScope?>(
   (_) => const AuthenticatedScope(userId: 'reader'),
@@ -92,6 +93,13 @@ void main() {
           expect(exited, isTrue);
           for (final controller in controllers) {
             expect(() => controller.addListener(listener), throwsFlutterError);
+          }
+          if (confirm) {
+            await pumpUntil(
+              tester,
+              () => api.writes.length == 1,
+              reason: '弹窗完成退出后，公共任务阶段才发送已捕获的确认请求',
+            );
           }
           expect(api.writes.length, confirm ? 1 : 0);
           if (confirm) {

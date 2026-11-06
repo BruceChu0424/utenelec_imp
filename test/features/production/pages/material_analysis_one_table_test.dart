@@ -21,6 +21,7 @@ import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -43,6 +44,7 @@ import 'package:uten_imp/features/production/widgets/material_preparation_route_
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/widgets/business_precision_dialog.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -220,17 +222,27 @@ Future<void> _onlyRoot(WidgetTester tester) async {
   }
 }
 
-/// 「下单(N)」→ 确认框里点「下达」，等编排跑完；期间发出的请求记在 [requests]。
-Future<void> _submitSelected(WidgetTester tester) async {
-  requests.clear();
-  await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
-  await tester.pumpAndSettle();
+Future<void> _acceptAvailableQuantityChoice(WidgetTester tester) async {
   if (find.text('本次下单是否使用可用数量抵扣？').evaluate().isNotEmpty) {
     await tester.tap(
       find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
     );
     await tester.pumpAndSettle();
   }
+}
+
+/// 编辑结束可能已打开可用数量选择；先完成它再点击真实的下单入口。
+Future<void> _openSubmitConfirmation(WidgetTester tester) async {
+  await _acceptAvailableQuantityChoice(tester);
+  await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+  await tester.pumpAndSettle();
+  await _acceptAvailableQuantityChoice(tester);
+}
+
+/// 「下单(N)」→ 确认框里点「下达」，等编排跑完；期间发出的请求记在 [requests]。
+Future<void> _submitSelected(WidgetTester tester) async {
+  requests.clear();
+  await _openSubmitConfirmation(tester);
   await tester.tap(
     find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );
@@ -240,6 +252,30 @@ Future<void> _submitSelected(WidgetTester tester) async {
     await tester.pump(const Duration(milliseconds: 100));
   }
   await tester.pumpAndSettle();
+}
+
+Future<void> _chooseMaterialAllocationPrecision(WidgetTester tester) async {
+  final dialog = find.byType(BusinessPrecisionDialog);
+  expect(dialog, findsOneWidget);
+  expect(
+    tester.widget<BusinessPrecisionDialog>(dialog).requirement.key,
+    'production.material.aggregate-allocation',
+  );
+  final scale = find.descendant(
+    of: find.byWidgetPredicate(
+      (widget) => widget is UtenInput && widget.label == '保留小数位数',
+    ),
+    matching: find.byType(TextField),
+  );
+  expect(_qtyText(tester, scale), isEmpty, reason: '不得把建议精度当作本次人工选择');
+  await tester.enterText(scale, '24');
+  await tester.tap(find.text('处理方式'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('直接截取，不进位').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('确认本次精度'));
+  await tester.pumpAndSettle();
+  expect(dialog, findsNothing);
 }
 
 /// 编排里真正落库的那些请求(采购/委外 notify、车间 issue-plans)，按发出顺序。
@@ -2217,9 +2253,11 @@ void main() {
     expect(_qtyText(tester, _appendQty('shared-0')), '0');
   });
 
-  testWidgets('多订单按物料汇总：还缺父行=子行之和且为整数，红框下限与平分都是整数(2026-10-06)', (tester) async {
+  testWidgets('多订单按物料汇总：原始分摊与下限保留精确值，除不尽须明确精度且总量守恒', (tester) async {
     await _pump(
       tester,
+      session: _OrderAuthoritySession(),
+      precisionPrompts: true,
       overSupply: true,
       permissions: _overSupplyPermissions,
       mutate: _tailedSharedResiduals,
@@ -2234,19 +2272,18 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // 父行 1000.0002 的最粗守恒整分 = 1000，子行 84/83/833 恰为父行之和；
-    // 整数计量的物料不再把服务端 1e-4 定点分摊的尾巴层层上屏。
+    // 原来源事实不能因单位为个或旧整数展示策略而抹掉 0.0002。
     final parentShortage = find.byKey(
       const ValueKey(
         'material-analysis-net-shortage-AGGREGATE|g-m-2|本色|unit-1',
       ),
     );
     expect(
-      find.descendant(of: parentShortage, matching: find.text('1000 个')),
+      find.descendant(of: parentShortage, matching: find.text('1000.0002 个')),
       findsOneWidget,
-      reason: '还缺父行必须显示整分后的整数合计',
+      reason: '父行必须保持原始三来源精确和',
     );
-    const childShortages = ['84 个', '83 个', '833 个'];
+    const childShortages = ['83.3334 个', '83.3334 个', '833.3334 个'];
     for (var i = 0; i < 3; i++) {
       final cell = find.byKey(
         ValueKey('material-analysis-net-shortage-shared-$i'),
@@ -2254,10 +2291,10 @@ void main() {
       expect(
         find.descendant(of: cell, matching: find.text(childShortages[i])),
         findsOneWidget,
-        reason: '还缺子行 $i 必须显示整分份额 ${childShortages[i]}',
+        reason: '来源 $i 的真实缺口不能被整数展示覆盖',
       );
     }
-    // 红框下限同口径取整：敲 1000 不红（不再逼人输 ≥1000.0002），999 仍红。
+    // 下限与同一份来源事实一致：1000 比真实需要少 0.0002，必须拦下。
     final field = find.byKey(
       const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1'),
     );
@@ -2268,27 +2305,42 @@ void main() {
     await tester.pump();
     expect(
       tester.widget<RequiredCellFrame>(frame).isEmpty(),
-      isFalse,
-      reason: '整分后的下限是 1000，敲 1000 必须放行',
+      isTrue,
+      reason: '1000 不能覆盖真实需要 1000.0002',
     );
-    await tester.enterText(field, '999');
+    await tester.pumpAndSettle();
+    await _chooseMaterialAllocationPrecision(tester);
+    expect(_aggregateSubmits(), isEmpty);
+    await tester.enterText(field, '1000.0002');
     await tester.pump();
-    expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isTrue);
-    // 敲整数总量平分成整数份额，切回按产品看每行的下单数量还是整数。
-    await tester.enterText(field, '1002');
-    await tester.pump();
+    expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isFalse);
+    // 富余 0.9998 分给三来源不能有限除尽；沿用本次明确的 24/DOWN，
+    // 最后一来源承接精确余量，既不改原事实也不改变手输总量。
+    await tester.enterText(field, '1001');
+    await _settlePreview(tester);
     await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
     await tester.pumpAndSettle();
-    const expected = ['84 个', '84 个', '834 个'];
+    const shares = [
+      '83.666666666666666666666666',
+      '83.666666666666666666666666',
+      '833.666666666666666666666668',
+    ];
     for (var i = 0; i < 3; i++) {
       final row = find.byKey(ValueKey('material-table-row-shared-$i'));
       expect(row, findsOneWidget);
       expect(
-        find.descendant(of: row, matching: find.text(expected[i])),
+        find.descendant(of: row, matching: find.text('${shares[i]} 个')),
         findsOneWidget,
-        reason: '总量 1002 必须平分成整数份额 ${expected[i]}(ceil 给足后无富余)',
+        reason: '来源 $i 必须保留本次精度下的完整份额',
       );
     }
+    expect(
+      shares.fold(
+        BigInt.zero,
+        (sum, value) => sum + materialQuantityUnits(value),
+      ),
+      materialQuantityUnits('1001'),
+    );
     await _settlePreview(tester);
   });
 
@@ -2452,11 +2504,10 @@ void main() {
     }
     await tester.pumpAndSettle();
     requests.clear();
-    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
-    await tester.pumpAndSettle();
+    await _openSubmitConfirmation(tester);
     // 主确认框的路线分账说明同料合并：3 行同料只算 1 种采购，不再各下各的。
-    expect(find.textContaining('车间 3 种'), findsOneWidget);
-    expect(find.textContaining('采购 1 种'), findsOneWidget);
+    expect(find.textContaining('车间 3 种', findRichText: true), findsOneWidget);
+    expect(find.textContaining('采购 1 种', findRichText: true), findsOneWidget);
     expect(find.textContaining('本次不会下单'), findsNothing);
     await tester.tap(
       find.descendant(
@@ -3199,11 +3250,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     requests.clear();
-    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
-    await tester.pumpAndSettle();
+    await _openSubmitConfirmation(tester);
     // 混批共用按产品编排的主确认框：3 种顶层车间 + 1 种采购，共 4 种。
-    expect(find.textContaining('车间 3 种'), findsOneWidget);
-    expect(find.textContaining('采购 1 种'), findsOneWidget);
+    expect(find.textContaining('车间 3 种', findRichText: true), findsOneWidget);
+    expect(find.textContaining('采购 1 种', findRichText: true), findsOneWidget);
     await tester.tap(
       find.descendant(
         of: find.byType(AlertDialog),
@@ -3524,12 +3574,13 @@ void main() {
     });
   }
 
-  testWidgets('列定稿为 16 列，销售生产要求与数量列保持完整', (tester) async {
+  testWidgets('列定稿为 17 列，交付要求及原销售生产要求与数量列保持完整', (tester) async {
     await _pump(tester);
-    expect(find.text('表头设置 16/16'), findsOneWidget);
+    expect(find.text('表头设置 17/17'), findsOneWidget);
     for (final label in const [
       '物料办理',
       '物料名称',
+      '交付要求',
       '销售生产要求',
       '编号',
       '颜色',
@@ -3615,11 +3666,23 @@ void main() {
     // 全选下单结束后满屏「可编辑的红 0」会让人以为中间很多行没下成。
     expect(_orderQty('m-sibling'), findsNothing);
     expect(_orderQty('m-covered'), findsNothing);
-    final readonly = find.byWidgetPredicate(
-      (widget) =>
-          widget is Tooltip && (widget.message ?? '').contains('没有要下单的量'),
-    );
-    expect(readonly, findsNWidgets(2));
+    for (final entry in const {
+      'm-sibling': '没有要下单的量',
+      'm-covered': '本批现货已覆盖，无需补缺',
+    }.entries) {
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('material-table-row-${entry.key}')),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Tooltip &&
+                (widget.message ?? '').contains(entry.value),
+          ),
+        ),
+        findsOneWidget,
+        reason: '零需求与现货覆盖必须分别说明真实来源，不只比对相同提示数量',
+      );
+    }
     // 追加格照旧是「还没下达过」的纯文本 0。
     expect(_appendQty('m-sibling'), findsNothing);
     // 有缺口的行不受影响，照旧可填。
@@ -6451,7 +6514,11 @@ void main() {
   testWidgets('父行手填 + 已排满子行追加：第二段仍按权威锚点判纯公共备货，不被段间估算带偏', (tester) async {
     await _pump(
       tester,
-      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      permissions: {
+        ..._overSupplyPermissions,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      overSupply: true,
       mutate: (data) => _withIssuedMakeRow(data),
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-7']),
     );
@@ -7880,6 +7947,7 @@ Future<void> _pump(
   TextScaler? textScaler,
   Set<String> permissions = _permissions,
   _OrderAuthoritySession? session,
+  bool precisionPrompts = false,
   bool projectionOwnerControls = false,
   // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
   // 排在后面的行(以及别的用例 mutate 追加的行)的输入框会找不到。
@@ -8218,6 +8286,7 @@ Future<void> _pump(
     ),
   );
   final api = ApiClient(dio);
+  final precisionNavigator = GlobalKey<NavigatorState>();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -8253,6 +8322,7 @@ Future<void> _pump(
         ),
       ],
       child: MaterialApp(
+        navigatorKey: precisionPrompts ? precisionNavigator : null,
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -8261,12 +8331,23 @@ Future<void> _pump(
           final content = fontFactor == 1
               ? child!
               : UtenDisplayZoomBox(fontFactor: fontFactor, child: child!);
-          return textScaler == null
+          final scaled = textScaler == null
               ? content
               : MediaQuery(
                   data: MediaQuery.of(context).copyWith(textScaler: textScaler),
                   child: content,
                 );
+          return precisionPrompts
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    scaled,
+                    BusinessPrecisionPromptHost(
+                      navigatorContext: () => precisionNavigator.currentContext,
+                    ),
+                  ],
+                )
+              : scaled;
         },
         home: const ProductionMaterialAnalysisPage(
           seed: ProductionMaterialAnalysisSeed(
@@ -8332,8 +8413,8 @@ Map<String, dynamic> _threeSharedBuySources(Map<String, dynamic> data) {
 }
 
 /// 服务端把共享缺口按订单权重 1e-4 定点分摊后的三来源还缺形状：
-/// 83.3334 + 83.3334 + 833.3334 = 1000.0002。按物料汇总的展示与编辑层
-/// 要按最粗守恒粒度整分（2026-10-06 用户口径「优先整数呈现」）。
+/// 83.3334 + 83.3334 + 833.3334 = 1000.0002。来源事实、展示和编辑下限
+/// 均保留原文；新的除不尽分配须由本次显式精度选择决定。
 Map<String, dynamic> _tailedSharedResiduals(Map<String, dynamic> data) {
   _threeSharedBuySources(data);
   const tails = [83.3334, 83.3334, 833.3334];

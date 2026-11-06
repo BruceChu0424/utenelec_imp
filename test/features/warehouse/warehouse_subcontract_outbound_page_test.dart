@@ -179,7 +179,14 @@ void main() {
     final menu = table.rowMenuBuilder!(table.items.first);
     expect((menu.single as UtenMenuItem).label, '查看详情与处理进度');
     expect(find.text('共 3 条'), findsOneWidget);
-    expect(find.byType(Checkbox), findsNothing);
+    // The common output selector must not become a warehouse action grant.
+    await tester.tap(
+      find.byKey(const ValueKey('master-data-table-select-all')),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectable, isFalse);
+    expect(_table(tester).selectedIds, isEmpty);
+    expect(_table(tester).batchActionsBuilder, isNull);
 
     await tester.tap(find.text('EC-1'));
     await tester.pump();

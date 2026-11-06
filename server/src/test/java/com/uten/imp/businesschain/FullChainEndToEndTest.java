@@ -12441,8 +12441,15 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.stock.valuation.ProductionInventoryValueService productionInventoryValues;
     @Autowired private com.uten.imp.features.stock.valuation.SubcontractOwnMaterialCostService subcontractInventoryValues;
 
-    private static List<UUID> costGoods(World world) {
-        return List.of(world.goodsA(), world.goodsB(), world.goodsC(), world.goodsD(), world.goodsE());
+    private List<UUID> costGoods(World world) {
+        var goods = new java.util.LinkedHashSet<>(List.of(world.goodsA(), world.goodsB(), world.goodsC(), world.goodsD(), world.goodsE()));
+        goods.addAll(jdbc.queryForList("""
+                SELECT DISTINCT goods_id FROM stock_value_pools
+                WHERE warehouse_id=? OR warehouse_id IN (
+                    SELECT bin_warehouse_id FROM workshop_bins WHERE source_warehouse_id=?)
+                ORDER BY goods_id
+                """, UUID.class, world.warehouseId(), world.warehouseId()));
+        return List.copyOf(goods);
     }
 
     private void drainCosts(World world) {

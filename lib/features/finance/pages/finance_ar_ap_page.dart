@@ -213,7 +213,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
     try {
       final r = await readScopedPage<ArApLedgerItem>(
         page,
-        idOf:(row)=>row.id,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,

@@ -36,24 +36,68 @@ void main() {
   });
 
   for (final scenario in [
-    (group:'shipment', permission:Perm.salesShipmentFinanceView, path:'/sales/shipments', field:'stage', value:'FINANCE_HISTORY'),
-    (group:'procurement', permission:Perm.financeOrderApprovalView, path:'/finance/procurement-approvals/history', field:'status', value:'HISTORY'),
-    (group:'arrival', permission:Perm.financeOrderApprovalView, path:'/finance/procurement-arrival-exceptions/tasks', field:'status', value:'PROCESSED'),
-    (group:'iqc', permission:Perm.procurementIqcRejectionView, path:'/procurement/iqc-rejections', field:'status', value:'TERMINAL'),
+    (
+      group: 'shipment',
+      permission: Perm.salesShipmentFinanceView,
+      path: '/sales/shipments',
+      field: 'stage',
+      value: 'FINANCE_HISTORY',
+    ),
+    (
+      group: 'procurement',
+      permission: Perm.financeOrderApprovalView,
+      path: '/finance/procurement-approvals/history',
+      field: 'status',
+      value: 'HISTORY',
+    ),
+    (
+      group: 'arrival',
+      permission: Perm.financeOrderApprovalView,
+      path: '/finance/procurement-arrival-exceptions/tasks',
+      field: 'status',
+      value: 'PROCESSED',
+    ),
+    (
+      group: 'iqc',
+      permission: Perm.procurementIqcRejectionView,
+      path: '/procurement/iqc-rejections',
+      field: 'status',
+      value: 'TERMINAL',
+    ),
   ]) {
-    testWidgets('${scenario.group} history selects the completed server query without preloading working rows', (tester) async {
-      final api = _EmptyAuditApi();
-      await tester.pumpWidget(_app(FinanceAuditCenterPage(initialSegment:scenario.group), {scenario.permission}, api:api, emptyCounts:true));
-      await tester.pumpAndSettle();
-      api.requests.clear();
-      await selectFilterSegment(tester,'历史记录');
-      await tester.pumpAndSettle();
-      final rows = api.requests.where((request)=>request.path==scenario.path).toList();
-      expect(rows, hasLength(1));
-      expect(rows.single.query?[scenario.field], scenario.value);
-      expect(api.requests.where((request)=>request.query?['status']=='PENDING' || request.query?['status']=='ACTIVE' || request.query?['financeAudit']==0), isEmpty);
-      expect(tester.takeException(),isNull);
-    });
+    testWidgets(
+      '${scenario.group} history selects the completed server query without preloading working rows',
+      (tester) async {
+        final api = _EmptyAuditApi();
+        await tester.pumpWidget(
+          _app(
+            FinanceAuditCenterPage(initialSegment: scenario.group),
+            {scenario.permission},
+            api: api,
+            emptyCounts: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        api.requests.clear();
+        await selectFilterSegment(tester, '历史记录');
+        await tester.pumpAndSettle();
+        final rows = api.requests
+            .where((request) => request.path == scenario.path)
+            .toList();
+        expect(rows, hasLength(1));
+        expect(rows.single.query?[scenario.field], scenario.value);
+        expect(
+          api.requests.where(
+            (request) =>
+                request.query?['status'] == 'PENDING' ||
+                request.query?['status'] == 'ACTIVE' ||
+                request.query?['financeAudit'] == 0,
+          ),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets('a fast category click adopts the prepared default queue once', (
@@ -597,12 +641,16 @@ class _EmptyConfirmationRepository
 
 class _EmptyAuditApi extends ApiClient {
   _EmptyAuditApi() : super(Dio());
-  final requests = <({String path, Map<String,dynamic>? query})>[];
+  final requests = <({String path, Map<String, dynamic>? query})>[];
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async { requests.add((path:path,query:query));return {'items': <dynamic>[], 'total': 0, 'totalPages': 1, 'page': 1}; }
+  }) async {
+    requests.add((path: path, query: query));
+    return {'items': <dynamic>[], 'total': 0, 'totalPages': 1, 'page': 1};
+  }
+
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {

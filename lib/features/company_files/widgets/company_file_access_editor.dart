@@ -109,7 +109,7 @@ Future<CompanyFilePrincipal?> showCompanyFilePrincipalPicker(
       return UtenEmployeePickerPage(
         page: page.page,
         totalPages: page.totalPages,
-      total: page.total,
+        total: page.total,
         items: [
           for (final row in page.items)
             UtenEmployeePickerItem(

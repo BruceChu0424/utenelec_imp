@@ -461,7 +461,9 @@ class _QualityInspectionRecordsPageState
   @override
   Widget build(BuildContext context) {
     final visibleReadReturn = _load;
-    _activityReturnRead = () async { await Future<void>.sync(visibleReadReturn); };
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
     ref.onPageResume(RouteName.qualityInspectionRecords, visibleReadReturn);
     final allowedDomains = _allowedDomains;
     return Scaffold(

@@ -174,7 +174,7 @@ class _FinanceAssetLedgerPanelState
     try {
       var result = await readScopedPage<FinanceAssetSummary>(
         query.page,
-        idOf:(row)=>row.id,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
@@ -189,8 +189,8 @@ class _FinanceAssetLedgerPanelState
         _query = _query.copyWith(page: result.totalPages.clamp(1, query.page));
         result = await readScopedPage<FinanceAssetSummary>(
           _query.page,
-          idOf:(row)=>row.id,
-        query: cacheQuery,
+          idOf: (row) => row.id,
+          query: cacheQuery,
           currentQuery: () => _cacheQuery,
           fetchPage: (target) => repository.list(
             ledger,

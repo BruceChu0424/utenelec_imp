@@ -20,9 +20,7 @@ void main() {
         SecureStorage(const FlutterSecureStorage()),
       );
       expect(
-        await repository.hasActiveApplicationAt(
-          DateTime.utc(2026, 11, 4),
-        ),
+        await repository.hasActiveApplicationAt(DateTime.utc(2026, 11, 4)),
         isTrue,
       );
       expect(requests, hasLength(1));

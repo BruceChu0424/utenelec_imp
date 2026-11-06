@@ -120,7 +120,7 @@ class _SubcontractLossClaimPanelState
     try {
       final cachedPage = await readScopedPage<SubcontractLossClaimSummary>(
         page,
-        idOf:(row)=>row.id,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,

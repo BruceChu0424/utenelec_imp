@@ -576,7 +576,9 @@ class _WorkshopMaterialReportsPageState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final visibleReadReturn = _refresh;
-    _activityReturnRead = () async { await Future<void>.sync(visibleReadReturn); };
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
     ref.onPageResume(RouteName.workshopMaterialReports, visibleReadReturn);
     return Scaffold(
       appBar: UtenAppBar(

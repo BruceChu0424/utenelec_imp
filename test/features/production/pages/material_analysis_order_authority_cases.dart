@@ -646,7 +646,10 @@ void materialOrderAuthorityCases() {
     );
     expect(_aggregateSubmits(), isEmpty);
     await _expectOriginalPreparationRetained(
-      tester, session, storage: storage, owner: originalOwner,
+      tester,
+      session,
+      storage: storage,
+      owner: originalOwner,
     );
   });
 
@@ -675,7 +678,10 @@ void materialOrderAuthorityCases() {
       _aggregateSubmits().single.body!,
     );
     await _expectOriginalPreparationRetained(
-      tester, session, storage: storage, owner: originalOwner,
+      tester,
+      session,
+      storage: storage,
+      owner: originalOwner,
       submitted: submitted,
     );
     expect(_notices(tester), isNot(contains('已下达 1 笔')));
@@ -738,8 +744,12 @@ void materialOrderAuthorityCases() {
       isTrue,
     );
     await _expectOriginalPreparationRetained(
-      tester, session, storage: storage, owner: originalOwner,
-      submitted: submitted, submittedBodyJson: pendingBody as String,
+      tester,
+      session,
+      storage: storage,
+      owner: originalOwner,
+      submitted: submitted,
+      submittedBodyJson: pendingBody as String,
     );
     expect(_aggregateSubmits(), isEmpty);
   });

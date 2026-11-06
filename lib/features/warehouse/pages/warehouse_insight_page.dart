@@ -1275,7 +1275,9 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
     });
     // 返回即刷新: 从盘点单/库存详情回来时数字可能已变。
     final visibleReadReturn = _refresh;
-    _activityReturnRead = () async { await Future<void>.sync(visibleReadReturn); };
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
     ref.onPageResume(RouteName.warehouseInsights, visibleReadReturn);
     final units = ref.watch(warehouseWeightUnitsPrefsProvider);
     final searchable =

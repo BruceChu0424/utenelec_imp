@@ -117,7 +117,7 @@ class _SupplierSettlementPanelState
     try {
       final cachedPage = await readScopedPage<SupplierSettlementSummary>(
         page,
-        idOf:(row)=>row.id,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,

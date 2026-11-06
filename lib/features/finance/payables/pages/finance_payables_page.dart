@@ -261,7 +261,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     try {
       final cachedPage = await readScopedPage<FinancePayableItem>(
         page,
-        idOf:(row)=>row.id,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
@@ -812,7 +812,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     // 数据即静默重拉当前工作台数据。
     _myLocation ??= currentLocationOr(context, RouteName.finance);
     final visibleReadReturn = _refreshWorkspace;
-    _activityReturnRead = () async { await Future<void>.sync(visibleReadReturn); };
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
     ref.onPageResume(_myLocation!, visibleReadReturn);
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);

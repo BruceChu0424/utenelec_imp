@@ -182,7 +182,7 @@ class _FinanceReconciliationPageState
     try {
       final r = await readScopedPage<ReconciliationItem>(
         page,
-        idOf:(row)=>row.id,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,

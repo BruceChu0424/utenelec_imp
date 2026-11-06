@@ -2394,13 +2394,16 @@ void main() {
       );
     }
     expect(
-      ['84', '84', '834'].fold(
-        BigInt.zero,
-        (sum, value) => sum + materialQuantityUnits(value),
-      ),
+      [
+        '84',
+        '84',
+        '834',
+      ].fold(BigInt.zero, (sum, value) => sum + materialQuantityUnits(value)),
       materialQuantityUnits('1002'),
     );
-    await tester.tap(find.byKey(const ValueKey('material-bom-layout-material')));
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
     await tester.pumpAndSettle();
     // 富余 0.9998 分给三来源不能有限除尽；沿用本次明确的 24/DOWN，
     // 最后一来源承接精确余量，既不改原事实也不改变手输总量。

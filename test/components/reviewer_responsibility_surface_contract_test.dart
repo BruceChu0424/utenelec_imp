@@ -101,7 +101,10 @@ void main() {
       final source = _source(entry.key);
       if (entry.key ==
           'lib/features/finance/pages/finance_doc_detail_page.dart') {
-        expect(source, contains('../widgets/finance_document_review_command.dart'));
+        expect(
+          source,
+          contains('../widgets/finance_document_review_command.dart'),
+        );
         final command = _source(
           'lib/features/finance/widgets/finance_document_review_command.dart',
         );
@@ -131,7 +134,10 @@ void main() {
           command,
           contains('glConfirm && type != FinanceDocType.expense'),
         );
-        expect(source, contains('_reviewDocument(detail, false, glConfirm: true)'));
+        expect(
+          source,
+          contains('_reviewDocument(detail, false, glConfirm: true)'),
+        );
       } else if (source.contains('with NativeReadViewScopeMixin<')) {
         expect(source, contains('native_read_view_scope_mixin.dart'));
         expect(source, contains('showNativeReadReviewerConfirm('));

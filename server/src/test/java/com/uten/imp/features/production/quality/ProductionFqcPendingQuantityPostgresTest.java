@@ -22,6 +22,38 @@ import static org.mockito.Mockito.when;
 class ProductionFqcPendingQuantityPostgresTest {
     @Container static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
 
+    private record SumVector(List<String> quantities,String expected) { }
+
+    @Test void actualSheetSummaryKeepsIntegerZerosZeroAndEveryFractionalDigit() throws Exception {
+        String sql=org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                ProductionFqcInspectionService.class,"sheetSql","TRUE");
+        assertThat(sql).isNotNull();
+        String marker="AS unit_name,";
+        int start=sql.indexOf(marker);assertThat(start).isGreaterThanOrEqualTo(0);start+=marker.length();
+        int end=sql.indexOf("AS qty_text",start);assertThat(end).isGreaterThan(start);
+        String expression=sql.substring(start,end).trim();
+        String statement="SELECT "+expression+" FROM (SELECT value AS reported_qty,0::numeric AS passed_qty,"
+                +"0::numeric AS failed_qty FROM unnest(CAST(? AS numeric[])) source(value)) pending_inspection";
+        try(var connection=DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
+                var query=connection.prepareStatement(statement)){
+            for(var vector:List.of(new SumVector(List.of("0"),"0"),new SumVector(List.of("20"),"20"),
+                    new SumVector(List.of("2000"),"2000"),
+                    new SumVector(List.of("0.000000000000000000000001"),"0.000000000000000000000001"),
+                    new SumVector(List.of("3","3","4","5","5"),"20"),
+                    new SumVector(List.of("1.2300","0.004500"),"1.2345"),new SumVector(List.of(),null))){
+                var values=connection.createArrayOf("numeric",vector.quantities().stream().map(BigDecimal::new).toArray());
+                try{
+                    query.setArray(1,values);
+                    try(var result=query.executeQuery()){
+                        assertThat(result.next()).isTrue();
+                        assertThat(result.getString(1)).as(vector.quantities().toString()).isEqualTo(vector.expected());
+                        assertThat(result.next()).isFalse();
+                    }
+                }finally{values.free();}
+            }
+        }
+    }
+
     @Test void sourcePlanKeepsWholeTensAndTheLastFractionalUnitWithoutRounding() throws Exception {
         var access=mock(ProductionFqcTaskAccessPolicy.class);
         when(access.canAccessQualityPool()).thenReturn(true);

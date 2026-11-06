@@ -582,11 +582,10 @@ public class ProductionFqcInspectionService
                                    ' · ' ORDER BY unit_total.unit_name) AS text
                         FROM (
                             SELECT COALESCE(unit.name, '') AS unit_name,
-                                   rtrim(rtrim(SUM(
+                                   trim_scale(SUM(
                                        pending_inspection.reported_qty
                                        - pending_inspection.passed_qty
-                                       - pending_inspection.failed_qty)::text,
-                                       '0'), '.') AS qty_text
+                                       - pending_inspection.failed_qty))::text AS qty_text
                             FROM production_fqc_inspection_sheet_items pending_item
                             JOIN production_fqc_inspections pending_inspection
                               ON pending_inspection.id = pending_item.inspection_id

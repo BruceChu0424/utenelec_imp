@@ -11,8 +11,8 @@
     "errors": 0,
     "skipped": 0,
     "composition": "Initial main pass results plus latest corrected class/method reports; repeated cases counted once",
-    "initialRunLog": "tmp/delivery-main-integration-final.log",
-    "finalRunLog": "tmp/delivery-main-private-budget-final.log",
+    "initialRunLog": "output/release-ci-20261106/archived-main-tmp/tmp/delivery-main-integration-final.log",
+    "finalRunLog": "output/release-ci-20261106/archived-main-tmp/tmp/delivery-main-private-budget-final.log",
     "latestSuites": [
       {
         "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
@@ -2003,7 +2003,7 @@
         ]
       }
     ],
-    "intermediateReverifiedLog": "tmp/delivery-main-reverified.log",
+    "intermediateReverifiedLog": "output/release-ci-20261106/archived-main-tmp/tmp/delivery-main-reverified.log",
     "finalProcessExitCode": 0,
     "finalBudgetBatchTests": 135
   },
@@ -2013,7 +2013,7 @@
     "actualWindowsGuiFixtureIntegrationPassed": 2,
     "relatedDartAnalysis": "12 files; No issues found",
     "notAddedToOneTotal": true,
-    "mainPageLog": "tmp/bom-delivery-qa/material-analysis-page-main-hint-final-20261105-004147.log"
+    "mainPageLog": "output/release-ci-20261106/archived-main-tmp/tmp/bom-delivery-qa/material-analysis-page-main-hint-final-20261105-004147.log"
   },
   "migrationDirectory": {
     "uniqueFiles": 997,

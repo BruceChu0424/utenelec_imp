@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.materialbin;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.readsnapshot.VersionedSummaryPages;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.AfterEach;
@@ -35,6 +36,7 @@ class WorkshopMaterialSettingsReadPermissionTest {
     private WorkshopMaterialSettingsService settingsService;
     private WorkshopMaterialPositionController stock;
     private WorkshopMaterialPositionQueryService positions;
+    private WorkshopPendingSummaryService summaries;
 
     @BeforeEach void openContext() {
         context = new AnnotationConfigApplicationContext(SecurityConfig.class);
@@ -42,6 +44,7 @@ class WorkshopMaterialSettingsReadPermissionTest {
         settingsService = context.getBean(WorkshopMaterialSettingsService.class);
         stock = context.getBean(WorkshopMaterialPositionController.class);
         positions = context.getBean(WorkshopMaterialPositionQueryService.class);
+        summaries = context.getBean(WorkshopPendingSummaryService.class);
     }
 
     @AfterEach void closeContext() {
@@ -150,6 +153,42 @@ class WorkshopMaterialSettingsReadPermissionTest {
                 .hasMessageContaining("本车间");
     }
 
+    @Test void pendingSummaryRoutesRequireSetupAndPreserveTheSelectedScopeAndRevision() {
+        UUID workshop = UUID.randomUUID();
+        UUID product = UUID.randomUUID();
+        var workshops = List.of(workshop);
+        for (String permission : List.of(WorkshopMaterialPermissions.VIEW,
+                WorkshopMaterialPermissions.REQUEST, "warehouse:view", "stock:view")) {
+            signIn(permission);
+            assertThatThrownBy(() -> settings.summaries(workshops, 2, 37, "original-revision"))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThatThrownBy(() -> settings.product(product, workshops, 37, "original-revision"))
+                    .isInstanceOf(AccessDeniedException.class);
+        }
+        signIn();
+        assertThatThrownBy(() -> settings.summaries(workshops, 2, 37, "original-revision"))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> settings.product(product, workshops, 37, "original-revision"))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(summaries);
+
+        // Exercise the real method-security proxy; only its downstream query port is mocked.
+        signIn(WorkshopMaterialPermissions.SETUP);
+        var row = new WorkshopPendingSummaryService.ProductSummary(product, "PRODUCT", "匿名产品",
+                workshops, List.of("匿名车间"), 1, true, false);
+        var page = new VersionedSummaryPages.Page<>(List.of(row), 2, 37, 38, 2, "all",
+                "scope-version", "original-revision", "data-version");
+        var detail = new VersionedSummaryPages.Snapshot<>(mock(WorkshopMaterialDtos.PendingProduct.class),
+                "scope-version", "original-revision", "data-version");
+        when(summaries.summaries(workshops, 2, 37, "original-revision")).thenReturn(page);
+        when(summaries.product(workshops, product, 37, "original-revision")).thenReturn(detail);
+        assertThat(settings.summaries(workshops, 2, 37, "original-revision")).isSameAs(page);
+        assertThat(settings.product(product, workshops, 37, "original-revision")).isSameAs(detail);
+        verify(summaries).summaries(workshops, 2, 37, "original-revision");
+        verify(summaries).product(workshops, product, 37, "original-revision");
+        verifyNoMoreInteractions(summaries);
+    }
+
     private static void signIn(String... permissions) {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("tester", "unused",
                 Arrays.stream(permissions).map(SimpleGrantedAuthority::new).toList()));
@@ -161,6 +200,7 @@ class WorkshopMaterialSettingsReadPermissionTest {
         @Bean WorkshopMaterialSettingsService settingsService() { return mock(WorkshopMaterialSettingsService.class); }
         @Bean WorkshopMaterialPositionQueryService positions() { return mock(WorkshopMaterialPositionQueryService.class); }
         @Bean WorkshopMachineService machines() { return mock(WorkshopMachineService.class); }
+        @Bean WorkshopPendingSummaryService summaries() { return mock(WorkshopPendingSummaryService.class); }
         @Bean WorkshopMaterialSettingsController settings(WorkshopMaterialSettingsService service) {
             return new WorkshopMaterialSettingsController(service);
         }

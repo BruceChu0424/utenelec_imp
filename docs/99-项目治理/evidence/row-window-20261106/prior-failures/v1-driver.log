@@ -1,0 +1,9 @@
+file:///D:/Projects/uten_imp_worktrees/ci-guard-exact-20261106/tool/loading_web_probe_driver.mjs:25
+async function waitFor(predicate,label){for(let n=0;n<400;n++){const s=await state();if(predicate(s))return s;await sleep(50);}throw new Error('Timed out: '+label);}
+                                                                                                                                     ^
+
+Error: Timed out: complete editable 200
+    at waitFor (file:///D:/Projects/uten_imp_worktrees/ci-guard-exact-20261106/tool/loading_web_probe_driver.mjs:25:134)
+    at async file:///D:/Projects/uten_imp_worktrees/ci-guard-exact-20261106/tool/loading_web_probe_driver.mjs:76:15
+
+Node.js v22.12.0

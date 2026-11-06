@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import 'responsive_json_decoder.dart';
 import 'streaming_download_contract.dart';
+import 'summary_stream_contract.dart';
 import '../performance/ui_work_budget.dart';
 
 /// Keeps UTF-8 and JSON decoding for large responses off the UI executor.
@@ -18,13 +19,21 @@ class ResponsiveJsonTransformer extends BackgroundTransformer {
     RequestOptions options,
     ResponseBody responseBody,
   ) async {
-    if (options.extra[streamingDownloadRequestKey] == true &&
+    final summaryStream = options.extra[summaryStreamRequestKey] == true;
+    if ((options.extra[streamingDownloadRequestKey] == true || summaryStream) &&
         options.responseType == ResponseType.stream &&
         responseBody.statusCode >= 400) {
+      final invalidError = summaryStream
+          ? <String, dynamic>{
+              'code': 'INCOMPLETE_READ_PROTOCOL',
+              'message': '完整列表错误响应无效，请重试',
+            }
+          : <String, dynamic>{'message': '文件下载失败，请核查原任务后重试'};
       final bytes = BytesBuilder(copy: false);
       await for (final chunk in responseBody.stream) {
-        if (bytes.length + chunk.length > maxDownloadErrorBytes) {
-          return <String, dynamic>{'message': '文件下载失败，请核查原任务后重试'};
+        if (bytes.length + chunk.length >
+            (summaryStream ? summaryStreamErrorBytes : maxDownloadErrorBytes)) {
+          return invalidError;
         }
         bytes.add(chunk);
       }
@@ -39,7 +48,7 @@ class ResponsiveJsonTransformer extends BackgroundTransformer {
         if (options.cancelToken?.isCancelled == true) {
           throw options.cancelToken!.cancelError!;
         }
-        return <String, dynamic>{'message': '文件下载失败，请核查原任务后重试'};
+        return invalidError;
       }
     }
     if (options.responseType != ResponseType.json ||

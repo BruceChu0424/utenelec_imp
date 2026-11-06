@@ -363,14 +363,14 @@ public class SalesOrderService {
                        GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) AS available_to_draft,
                        i.price,
                        o.owner_employee_id, CAST(i.delivery_plan AS text)
-                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
-                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id = i.order_id
+                FROM %3$s i
+                JOIN %4$s o ON o.id = i.order_id
                 LEFT JOIN clients shippable_client ON shippable_client.id = o.client_id
                 LEFT JOIN goods shippable_goods ON shippable_goods.id = i.goods_id
                 LEFT JOIN (
                     SELECT si.order_item_id, SUM(si.qty) AS allocated_qty
-                    FROM (SELECT * FROM sales_shipment_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_shipment_items',to_jsonb(archive_origin))) si
-                    JOIN (SELECT * FROM sales_shipments archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_shipments',to_jsonb(archive_origin))) s ON s.id = si.shipment_id
+                    FROM %5$s si
+                    JOIN %6$s s ON s.id = si.shipment_id
                     WHERE COALESCE(si.is_deleted,false) = false
                       AND COALESCE(s.is_deleted,false) = false
                       AND s.status = 0
@@ -382,7 +382,7 @@ public class SalesOrderService {
                   AND COALESCE(o.finance_rejected, false) = false
                   AND COALESCE(o.is_deleted,false) = false AND COALESCE(i.is_deleted,false) = false
                   AND GREATEST(%s - COALESCE(draft.allocated_qty,0), 0) > 0
-                """.formatted(shipmentDraftCapacitySql("i"),shipmentDraftCapacitySql("i")) + " AND " + ownerScope.predicate();
+                """.formatted(shipmentDraftCapacitySql("i"), shipmentDraftCapacitySql("i"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_shipment_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_shipments")) + " AND " + ownerScope.predicate();
         Map<String, Object> parameters = new LinkedHashMap<>();
         if (ownerScope.parameterName() != null) parameters.put(ownerScope.parameterName(), ownerScope.owners());
         if (!keyword.isEmpty()) {
@@ -438,20 +438,19 @@ public class SalesOrderService {
         // V545：待生产/生产中按数量派生（SalesOrderChainSql），部分排产的单同时落两卡。
         String sql = """
                 SELECT
-                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
+                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM %3$s i
                       WHERE i.order_id = o.id AND i.is_deleted = false AND %s)),
-                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
+                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM %3$s i
                       WHERE i.order_id = o.id AND i.is_deleted = false AND %s)),
                   COUNT(*) FILTER (WHERE o.finance_confirmed = true
-                      AND EXISTS (SELECT 1 FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
+                      AND EXISTS (SELECT 1 FROM %3$s i
                       WHERE i.order_id = o.id AND i.is_deleted = false
                         AND COALESCE(i.reserved_qty,0) > 0)),
                   COUNT(*) FILTER (WHERE o.is_closed
                         AND o.bill_date >= CAST(:monthStart AS date))
-                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o
+                FROM %4$s o
                 WHERE o.is_deleted = false AND o.status = 1
-                """.formatted(SalesOrderChainSql.pendingPlanLinePredicate("i"),
-                        SalesOrderChainSql.inProductionLinePredicate("i"))
+                """.formatted(SalesOrderChainSql.pendingPlanLinePredicate("i"), SalesOrderChainSql.inProductionLinePredicate("i"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"))
                 + " AND " + ownerScope.predicate();
         var q = em.createNativeQuery(sql);
         ownerScope.bind(q);

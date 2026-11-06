@@ -1,0 +1,1 @@
+PASS permission readonly contracts; read scope transitions; durable drafts=16; inline preservation=70; process=x64

@@ -39,10 +39,10 @@ final class MaterialAnalysisSalesSourceReader {
             for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT i.id,i.goods_id,i.color_id,i.unit_id,COALESCE(i.deliver_date,o.deliver_date),
                            o.status,o.is_stopped,o.is_closed,o.is_deleted,i.is_deleted,o.finance_confirmed
-                    FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id=i.order_id
+                    FROM %1$s i JOIN %2$s o ON o.id=i.order_id
                     JOIN goods g ON g.id=i.goods_id
                     WHERE i.id IN (:ids) ORDER BY i.id
-                    """).setParameter("ids",batch))) {
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"))).setParameter("ids",batch))) {
                 rows.put((UUID)row[0],Arrays.copyOfRange(row,1,row.length));
             }
         }

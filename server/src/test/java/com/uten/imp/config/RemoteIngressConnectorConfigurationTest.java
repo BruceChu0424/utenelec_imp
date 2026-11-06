@@ -85,7 +85,8 @@ class RemoteIngressConnectorConfigurationTest {
             var servlet = new jakarta.servlet.http.HttpServlet() {
                 @Override protected void doGet(jakarta.servlet.http.HttpServletRequest request,
                                                jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
-                    response.setContentType("application/json");
+                    response.setContentType("ndjson".equals(request.getParameter("format"))
+                            ? "application/x-ndjson" : "application/json");
                     response.getWriter().write("{\"localPort\":"+request.getLocalPort()+",\"data\":\""+"x".repeat(8192)+"\"}");
                 }
             };
@@ -108,6 +109,16 @@ class RemoteIngressConnectorConfigurationTest {
             assertEquals("gzip",remote.headers().firstValue("Content-Encoding").orElseThrow());
             assertTrue(remote.body().length<1024,"Large repeated JSON must not use raw WAN bandwidth");
             try (var zipped = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(remote.body()))) {
+                assertTrue(new String(zipped.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)
+                        .startsWith("{\"localPort\":"+remotePort+","));
+            }
+            var summary=client.send(java.net.http.HttpRequest.newBuilder(
+                    java.net.URI.create("http://127.0.0.1:"+remotePort+"/api/probe?format=ndjson"))
+                    .header("Accept-Encoding","gzip").GET().build(),java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200,summary.statusCode());
+            assertEquals("gzip",summary.headers().firstValue("Content-Encoding").orElseThrow());
+            assertTrue(summary.body().length<1024,"Complete summaries retain the existing compressed transport");
+            try(var zipped=new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(summary.body()))) {
                 assertTrue(new String(zipped.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)
                         .startsWith("{\"localPort\":"+remotePort+","));
             }

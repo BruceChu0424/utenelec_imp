@@ -67,6 +67,19 @@ namespace Uten.Legacy.Desktop.Features.Goods
             cancellationToken.ThrowIfCancellationRequested();
             return await Task.Run(() => GoodsReadContract.ParsePage(json), cancellationToken).ConfigureAwait(false);
         }
+        public async Task<Uten.Legacy.Desktop.Shared.SnapshotPage<GoodsRecord>> CompleteAsync(string categoryId, string keyword,
+            Func<bool> current, CancellationToken cancellationToken)
+        {
+            Demand(GoodsViewPermission);
+            var response = await session.ReadCompleteGoodsSummariesAsync(categoryId, keyword, cancellationToken).ConfigureAwait(false);
+            return await Task.Run(() => Uten.Legacy.Desktop.Shared.CompletePagedSnapshot.ReadCompleteStreamAsync(response, json =>
+            {
+                var page = GoodsReadContract.ParsePage(json);
+                return new Uten.Legacy.Desktop.Shared.SnapshotPage<GoodsRecord> { Items = page.Items, Page = page.Page,
+                    Size = page.Size, Total = page.Total, TotalPages = page.TotalPages, ReadScopeVersion = page.ReadScopeVersion,
+                    ReadDataVersion = page.ReadDataVersion, ReadSnapshotRevision = page.ReadSnapshotRevision };
+            }, item => Guid.Parse(item.Id).ToString("D"), current, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public sealed class GoodsCategory
@@ -177,6 +190,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         public static GoodsPage ParsePage(string json)
         {
             var root = Object(Parse(json));
+            if (OptionalText(root, "type") == "page") root = Object(root["value"]);
             var rows = Array(root, "items", true);
             var items = new List<GoodsRecord>();
             foreach (object row in rows) items.Add(new GoodsRecord(Object(row)));
@@ -262,35 +276,8 @@ namespace Uten.Legacy.Desktop.Features.Goods
             // Quote number tokens before JavaScriptSerializer sees them: financial/quantity
             // lexemes stay exact strings, including trailing zeroes and numbers beyond double.
             // Only pagination metadata is subsequently parsed as integer; no business arithmetic.
-            var text = new StringBuilder(json.Length);
-            bool inString = false, escaped = false;
-            for (int i = 0; i < json.Length; i++)
-            {
-                char current = json[i];
-                if (inString)
-                {
-                    text.Append(current);
-                    if (escaped) escaped = false;
-                    else if (current == '\\') escaped = true;
-                    else if (current == '"') inString = false;
-                    continue;
-                }
-                if (current == '"') { inString = true; text.Append(current); continue; }
-                if (current == '-' || current >= '0' && current <= '9')
-                {
-                    int end = i + 1;
-                    while (end < json.Length && (json[end] == '-' || json[end] == '+' || json[end] == '.'
-                        || json[end] == 'e' || json[end] == 'E' || json[end] >= '0' && json[end] <= '9')) end++;
-                    string number = json.Substring(i, end - i);
-                    if (!Regex.IsMatch(number, @"\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\z", RegexOptions.CultureInvariant))
-                        throw new FormatException("服务端数值字段不是有效 JSON 数字。");
-                    text.Append('"').Append(number).Append('"');
-                    i = end - 1;
-                }
-                else text.Append(current);
-            }
             var serializer = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024, RecursionLimit = 200 };
-            return serializer.DeserializeObject(text.ToString());
+            return serializer.DeserializeObject(ExactJsonNumberText.Quote(json));
         }
     }
 }

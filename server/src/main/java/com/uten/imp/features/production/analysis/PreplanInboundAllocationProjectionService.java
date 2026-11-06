@@ -335,10 +335,10 @@ public class PreplanInboundAllocationProjectionService
                 JOIN procurement_inspection_items inspection
                   ON inspection.id=event.inspection_item_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=inspection.warehouse_id
-                LEFT JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) purchase_item
+                LEFT JOIN %1$s purchase_item
                   ON inspection.receipt_type='PURCHASE'
                  AND purchase_item.id=inspection.receipt_item_id
-                LEFT JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) subcontract_item
+                LEFT JOIN %2$s subcontract_item
                   ON inspection.receipt_type='SUBCONTRACT'
                  AND subcontract_item.id=inspection.receipt_item_id
                 LEFT JOIN LATERAL (
@@ -354,7 +354,7 @@ public class PreplanInboundAllocationProjectionService
                   AND inspection.status <> 'REVERSED'
                   AND event.base_qty-COALESCE(stocked.qty,0) > 0
                 ORDER BY event.occurred_at,event.id
-                """).setParameter("eventIds", passEventIds)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items"))).setParameter("eventIds", passEventIds)
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)).stream()
                 .map(row -> new Slice(
@@ -530,7 +530,7 @@ public class PreplanInboundAllocationProjectionService
                            segment.responsible_employee_id AS responsible_id,
                            responsible.full_name AS responsible_name
                     FROM production_material_analysis_plan_links link
-                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=link.plan_id
+                    JOIN %3$s plan ON plan.id=link.plan_id
                      AND plan.status=1 AND plan.is_deleted=FALSE
                      AND plan.is_canceled=FALSE
                     JOIN production_planning_packages package
@@ -572,9 +572,8 @@ public class PreplanInboundAllocationProjectionService
                 ) exact ON TRUE
                 WHERE allocation.external_item_id IN (:externalItemIds)
                 ORDER BY allocation.external_item_id,%2$s
-                """.formatted(SubcontractComponentCustodyProjection.TRANSFERRED_EVIDENCE,
-                        // 与入库时的真实归属同一次序(先急后缓)：预览给仓库看的去向就是入库后真正落到的去向。
-                        PreplanAnalysisStockPegService.INBOUND_ALLOCATION_ORDER)).setParameter("externalItemIds", externalItemIds)
+                """.formatted(SubcontractComponentCustodyProjection.TRANSFERRED_EVIDENCE, // 与入库时的真实归属同一次序(先急后缓)：预览给仓库看的去向就是入库后真正落到的去向。
+                        PreplanAnalysisStockPegService.INBOUND_ALLOCATION_ORDER, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("externalItemIds", externalItemIds)
                 .setParameter("includeIqcContinuations", includeIqcContinuations))) {
             PreplanCandidate value = PreplanCandidate.from(row);
             result.computeIfAbsent(value.externalItemId(), ignored -> new ArrayList<>())
@@ -603,7 +602,7 @@ public class PreplanInboundAllocationProjectionService
                  AND demand.is_deleted=FALSE
                 JOIN production_planning_packages package ON package.id=demand.package_id
                  AND package.status='CONFIRMED' AND package.is_deleted=FALSE
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=demand.plan_id
+                JOIN %1$s plan ON plan.id=demand.plan_id
                 LEFT JOIN production_execution_segments segment
                   ON segment.id=demand.execution_segment_id
                  AND segment.is_deleted=FALSE
@@ -619,7 +618,7 @@ public class PreplanInboundAllocationProjectionService
                   AND peg.allocated_qty-peg.consumed_qty-peg.released_qty > 0
                 ORDER BY peg.supply_item_id,demand.need_date NULLS LAST,
                          demand.id,peg.id
-                """).setParameter("supplyType", supplyType)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("supplyType", supplyType)
                 .setParameter("orderItemIds", orderItemIds))) {
             FormalCandidate value = FormalCandidate.from(row);
             result.computeIfAbsent(value.orderItemId(), ignored -> new ArrayList<>())
@@ -644,16 +643,16 @@ public class PreplanInboundAllocationProjectionService
                   ON batch.id=item.batch_id
                 JOIN procurement_inspection_items inspection
                   ON inspection.id=item.inspection_item_id
-                LEFT JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) purchase_item
+                LEFT JOIN %1$s purchase_item
                   ON inspection.receipt_type='PURCHASE'
                  AND purchase_item.id=inspection.receipt_item_id
-                LEFT JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) subcontract_item
+                LEFT JOIN %2$s subcontract_item
                   ON inspection.receipt_type='SUBCONTRACT'
                  AND subcontract_item.id=inspection.receipt_item_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=item.warehouse_id
                 WHERE item.batch_id IN (:batchIds)
                 ORDER BY item.position,item.id
-                """).setParameter("batchIds", batchIds)).stream()
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items"))).setParameter("batchIds", batchIds)).stream()
                 .map(row -> new ActualSlice(
                         uuid(row[0]),uuid(row[1]),uuid(row[2]),uuid(row[3]),string(row[4]),
                         uuid(row[5]),uuid(row[6]),decimal(row[7]),uuid(row[8]),uuid(row[9]),
@@ -678,16 +677,16 @@ public class PreplanInboundAllocationProjectionService
                 JOIN procurement_iqc_stock_in_batches batch ON batch.id=item.batch_id
                 JOIN procurement_inspection_items inspection
                   ON inspection.id=item.inspection_item_id
-                LEFT JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) purchase_item
+                LEFT JOIN %1$s purchase_item
                   ON inspection.receipt_type='PURCHASE'
                  AND purchase_item.id=inspection.receipt_item_id
-                LEFT JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) subcontract_item
+                LEFT JOIN %2$s subcontract_item
                   ON inspection.receipt_type='SUBCONTRACT'
                  AND subcontract_item.id=inspection.receipt_item_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=item.warehouse_id
                 WHERE inspection.receipt_item_id IN (:receiptItemIds)
                 ORDER BY batch.confirmed_at,item.id
-                """).setParameter("receiptItemIds", receiptItemIds)).stream()
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items"))).setParameter("receiptItemIds", receiptItemIds)).stream()
                 .map(row -> new ActualSlice(
                         uuid(row[0]),uuid(row[1]),uuid(row[2]),uuid(row[3]),string(row[4]),
                         uuid(row[5]),uuid(row[6]),decimal(row[7]),uuid(row[8]),uuid(row[9]),
@@ -800,7 +799,7 @@ public class PreplanInboundAllocationProjectionService
                 FROM %s allocation
                 JOIN production_material_demands demand
                   ON demand.id=allocation.demand_id
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=demand.plan_id
+                JOIN %2$s plan ON plan.id=demand.plan_id
                 LEFT JOIN production_execution_segments segment
                   ON segment.id=demand.execution_segment_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=demand.warehouse_id
@@ -813,7 +812,7 @@ public class PreplanInboundAllocationProjectionService
                   AND allocation.status='EFFECTIVE'
                 ORDER BY allocation.receipt_item_id,
                          allocation.created_at,allocation.id
-                """.formatted(table))
+                """.formatted(table, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                 .setParameter("receiptItemIds", receiptItemIds)).stream()
                 .map(DirectFormalCandidate::from).toList();
     }
@@ -891,7 +890,7 @@ public class PreplanInboundAllocationProjectionService
                 JOIN stock_reservations target_reservation
                   ON target_reservation.id=formal.target_stock_reservation_id
                  AND target_reservation.demand_id=demand.id
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=demand.plan_id
+                JOIN %1$s plan ON plan.id=demand.plan_id
                 LEFT JOIN production_execution_segments segment
                   ON segment.id=demand.execution_segment_id
                 JOIN production_material_analysis_materials material
@@ -913,7 +912,7 @@ public class PreplanInboundAllocationProjectionService
                       WHERE restore.event_type='RESTORE'
                         AND restore.counter_event_id=formal.id)
                 ORDER BY origin.event_group_id,formal.created_at,formal.id
-                """).setParameter("itemIds", itemIds)).stream()
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("itemIds", itemIds)).stream()
                 .map(row -> new AllocationView(
                         uuid(row[1]),uuid(row[0]),FORMAL_DEMAND,decimal(row[2]),
                         uuid(row[3]),string(row[4]),uuid(row[3]),string(row[4]),

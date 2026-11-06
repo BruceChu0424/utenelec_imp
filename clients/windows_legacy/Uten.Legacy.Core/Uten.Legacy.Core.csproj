@@ -49,6 +49,7 @@
     <Compile Include="MutationReviewLease.cs" />
     <Compile Include="UnitPlatformRead.cs" />
     <Compile Include="GoodsSummaryRead.cs" />
+    <Compile Include="CompleteSummaryRead.cs" />
     <Compile Include="UnitColumnProjectionContract.cs" />
     <Compile Include="UnitPlatformMutationContracts.cs" />
     <Compile Include="UnitPlatformPrerequisites.cs" />

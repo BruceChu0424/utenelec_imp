@@ -56,14 +56,14 @@ public class MaterialAnalysisPlanWithdrawalService {
                 SELECT plan.status, plan.is_deleted, plan.is_canceled, source.source_type,
                        EXISTS(SELECT 1 FROM preplan_aggregate_batches batch
                            WHERE batch.plan_id=plan.id OR batch.anchor_analysis_item_id=source.id)
-                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                FROM %1$s plan
                 JOIN production_material_analysis_items source
                   ON source.id=plan.material_analysis_item_id AND source.analysis_id=plan.material_analysis_id
                 JOIN production_material_analysis_plan_links link
                   ON link.plan_id=plan.id AND link.analysis_id=source.analysis_id AND link.analysis_item_id=source.id
                 WHERE plan.id=:plan AND plan.material_analysis_id=:analysis
                 FOR UPDATE OF plan, source, link
-                """).setParameter("plan", planId).setParameter("analysis", analysisId));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("plan", planId).setParameter("analysis", analysisId));
         if (rows.size() != 1) throw new ApiException(ErrorCode.NOT_FOUND, "当前物料分析没有此生产计划");
         Object[] state = rows.getFirst();
         if ("AGGREGATE_MAKE".equals(state[3]) || Boolean.TRUE.equals(state[4])) {

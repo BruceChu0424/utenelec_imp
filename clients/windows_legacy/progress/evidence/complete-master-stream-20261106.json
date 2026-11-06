@@ -1,0 +1,201 @@
+{
+  "id": "E-WPF-COMPLETE-MASTER-STREAM-20261106",
+  "atUtc": "2026-11-06T23:32:52.407711+00:00",
+  "classification": "existing Goods/Units native read-only complete HTTP protocol; candidate/local verification only",
+  "sourceHead": "0bac0981cb938f1678eb775f5cc8a971d22e79d1",
+  "sourceHashes": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/CompleteSummaryRead.cs",
+      "sha256": "09e95511bfd1a048a4966c13b6bd5f04eb5bd492c9f2f87eb91c7647305e98ff"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/HttpResponseSink.cs",
+      "sha256": "95553b29fc16bef0479b43898b93f6382afeab19ce2c4b4cfff0dd5fe40b066c"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+      "sha256": "1d8a53ac0c890d2bfba9549b46b964a4d50092709024cbe13d4e19b0cb038598"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ManagedHttp11Checks.cs",
+      "sha256": "b8bd7259a367c250674c95089391404f894cc0930435343aa53dc59df5fc5620"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "sha256": "a56f7a6794f2f1024555d8fc61004c3ff829eb62bc524c72f3946384212af38f"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs",
+      "sha256": "b3d673e0c49d38360644a3b9a941025a23376c76e43a219c14431c008f617844"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "sha256": "10965bd90d10afc1c24601bfd8a867f3144e1096a0e6e64dbf8a00d1fe0e1964"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitService.cs",
+      "sha256": "a0646c4614219d775fa4d4a169c9e7d65de136c41f60ee035ec5ab12d0af12df"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "sha256": "7abcedebb440f13ee804034b5255790b854d5851a541ef5b4c4dea4960f720e1"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+      "sha256": "c32fc8332318ca777058039c09891c771ff5887235b6f6b82f6f4245f122bd58"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompleteSummaryTransportChecks.cs",
+      "sha256": "7744c3a251187ba5df21ad686c75f299dd056546550181ee40ad1876f6a12ba3"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj",
+      "sha256": "b3019b59e3f2ab2a10be0a8586e39e9e4ea4fe44d961ef482b49642dc4e30187"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "44cff5d3137d60be1a06a44b9b265e2f17bee5080f81dc4415128b641d2c0674"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "dad5a1fa6c4ec4c223c4c7f242ea89653ffe2433cac1c9d73b1babefcf23b244"
+    },
+    {
+      "path": "contracts/complete-summary-stream-v1.json",
+      "sha256": "5e2c7f0aef1d36f6f3238e86ab0bf70944d15880beeac94efd158a0e4c3f4af3"
+    }
+  ],
+  "protocol": "POST /master/{goods|units}/summaries?complete=true; application/x-ndjson; bounded page frames; complete + matching proof/total + HTTP EOF required",
+  "checks": {
+    "Debug_x86_x64_build_warnAsError": true,
+    "Release_x86_x64_build_warnAsError": true,
+    "PE_x86_x64_Debug_Release": true,
+    "sameFinalSource_stream_perArchitecture": 29,
+    "sameFinalSource_continuousNativeUi_perArchitecture": 25,
+    "sharedFixtureCases": 3,
+    "managedHttp11OriginalSuiteAndNewSink": true,
+    "nativeGoodsRows": 10001,
+    "nativeUnitRows": 501,
+    "listHttpRequestsPerQuery": 1,
+    "scrollHttpRequests": 0,
+    "businessMutationLimit": 500,
+    "maximumCompleteTextBytes": 67108864,
+    "frameByteLimit": "unchanged owning ClientConfiguration.MaxResponseBytes",
+    "originalQueryAndFilters": true,
+    "exactNumericLexemes": true,
+    "retiredReadNotPublished": true,
+    "lastCompleteRowsPreservedOnGoodsCancellation": true,
+    "unknownWritesReplayed": false
+  },
+  "unmigratedOtherBasicMasters": [
+    {
+      "id": "W7-BIZ-020",
+      "status": "todo",
+      "name": "account workspace"
+    },
+    {
+      "id": "W7-BIZ-022",
+      "status": "todo",
+      "name": "client category"
+    },
+    {
+      "id": "W7-BIZ-023",
+      "status": "todo",
+      "name": "colors"
+    },
+    {
+      "id": "W7-BIZ-024",
+      "status": "todo",
+      "name": "currencies"
+    },
+    {
+      "id": "W7-BIZ-031",
+      "status": "todo",
+      "name": "mould category"
+    },
+    {
+      "id": "W7-BIZ-033",
+      "status": "todo",
+      "name": "payment style"
+    },
+    {
+      "id": "W7-BIZ-035",
+      "status": "todo",
+      "name": "settlement method"
+    },
+    {
+      "id": "W7-BIZ-036",
+      "status": "todo",
+      "name": "supplier category"
+    },
+    {
+      "id": "W7-BIZ-038",
+      "status": "todo",
+      "name": "warehouse"
+    }
+  ],
+  "limitations": [
+    "Windows 11 local fixture/UI runner, not Win7 x86/x64 target-PC UAT",
+    "No company-server UAT or real production latency claim",
+    "Whole Goods/Units business migration remains in_progress; all task DoD not done",
+    "Legacy bounded page API retained for compatibility; print/export file sources retain their owning protocol",
+    "No merge/push/deployment/Setup/update ZIP/catalog publication"
+  ],
+  "logs": [
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-build-x64.log",
+      "sha256": "e0d8b052dc68643a334cff2ab84a45e38863ed90fa4217b45f933d5d76f3bbbd"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-build-x86.log",
+      "sha256": "47de3c992246471e20bd920518d884d594217a43d14493fcc1659a061be77196"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-model-x64.log",
+      "sha256": "bfc15d9732e87990804e62549fce9929cf8aef96a248b5fc5f1e4263dd03da3e"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-model-x86.log",
+      "sha256": "1039990aa3fb6386e17d23f5b8da60df49b40f00febbb8dcbb36b79f83ff01e6"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-pe-x64.log",
+      "sha256": "c47a9ee0710847c20f41523507109514bf690e07cea88ca071ab2ad502fad069"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-pe-x86.log",
+      "sha256": "1f9cd606ff20edfc194dc10a8338f3fef65cf3bf391120ee22a47f588ad365cb"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-release-x64.log",
+      "sha256": "05ffc4f495cace8612380e89b6aab19a1f145a421e1e5aebe4dd963b87e69bdc"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-release-x86.log",
+      "sha256": "870df51aff8301cd4f57660b0aa99f76dec491eab2d6fc52afe5150d20bbc542"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-ui-x64.log",
+      "sha256": "42fabc1cb64a4f43d38b6cc3c76952b37fcae63e3068a1ec4565606c65f60a92"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-final-ui-x86.log",
+      "sha256": "162afa3efb29f232a46089eec6c37102aa5f156421e3071be20148e3e0964b32"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-search-x64.log",
+      "sha256": "c9e26062bd4d0b4c1384e7de6ab243d24ca56d75b78818b1d96037c98ae62c3d",
+      "classification": "affected regression before final alias/case-insensitive content-type-only cleanup"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-currency-x64.log",
+      "sha256": "006de5d5a49538b61282b49594e3c062629aed46c80fe926ae7fc40345cd776c",
+      "classification": "affected regression before final alias/case-insensitive content-type-only cleanup"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/wpf-complete-stream-owner-x64.log",
+      "sha256": "13f90c8ea2663018b66a43f20fdb424fdaf0c84516879898b3d00de8004a5a48",
+      "classification": "affected regression before final alias/case-insensitive content-type-only cleanup"
+    }
+  ]
+}

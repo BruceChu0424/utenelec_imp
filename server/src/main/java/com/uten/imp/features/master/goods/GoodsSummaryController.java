@@ -17,7 +17,7 @@ public class GoodsSummaryController {
 
     public GoodsSummaryController(GoodsSummaryReadService summaries) { this.summaries = summaries; }
 
-    @PostMapping("/summaries")
+    @PostMapping(value = "/summaries", params = "!complete")
     @PreAuthorize("hasAuthority('goods:view')")
     public VersionedSummaryPages.Snapshot<GoodsSummaryReadService.Payload> read(
             @Valid @RequestBody GoodsSearchRequest query,
@@ -27,5 +27,14 @@ public class GoodsSummaryController {
         var snapshot = summaries.read(query, readSnapshotRevision);
         response.setHeader("X-Uten-Read-Scope-Version", snapshot.readScopeVersion());
         return snapshot;
+    }
+
+    @PostMapping(value = "/summaries", params = "complete=true", produces = "application/x-ndjson")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public void complete(@Valid @RequestBody GoodsSearchRequest query,
+            @RequestParam(required = false) String readSnapshotRevision,
+            HttpServletRequest request, HttpServletResponse response) throws java.io.IOException {
+        AuditRequestContext.markControlledRead(request);
+        summaries.stream(query, readSnapshotRevision, response);
     }
 }

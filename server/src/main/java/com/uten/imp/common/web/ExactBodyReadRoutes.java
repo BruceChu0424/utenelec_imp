@@ -7,7 +7,8 @@ public final class ExactBodyReadRoutes {
     public static boolean matches(String method, String path) {
         return "POST".equals(method) && path != null && path.matches(
                 "^/api/(?:master/(?:clients|suppliers)/search-context"
-                        + "|master/(?:clients|suppliers|moulds)/summaries"
+                        + "|master/(?:clients|suppliers|moulds|colors|units|currencies|accounts)/summaries"
+                        + "|master/reference-methods/settlement-admin/summaries"
                         + "|business-references/(?:clients|suppliers|goods)/summaries"
                         + "|business-references/(?:clients|suppliers)/(?:search-context|search)"
                         + "|sales/orders/(?:shippable-lines/selection|delivery-preview)"

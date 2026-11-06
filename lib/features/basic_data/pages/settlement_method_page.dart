@@ -1,3 +1,4 @@
+import '../repositories/flat_master_summary_gateway.dart';
 import '../../../components/layout/uten_compact_toolbar.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -213,6 +214,12 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
+        fetchComplete: completeFlatMasterList<SettlementMethodAdminItem>(
+          repository,
+          keyword: keyword,
+          filters: filters,
+        ),
+        idOf: (row) => row.id,
         fetchPage: (target) => repository.settlementAdminPage(
           page: target,
           keyword: keyword,

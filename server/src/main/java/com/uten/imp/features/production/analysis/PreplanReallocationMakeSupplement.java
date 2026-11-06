@@ -26,7 +26,7 @@ final class PreplanReallocationMakeSupplement {
                                FROM preplan_reallocation_make_supplements supplement WHERE supplement.reallocation_id=relation.id),0)),
                        CASE WHEN child.source_type='MAKE_COMPONENT' THEN
                            GREATEST(child.requested_qty-COALESCE((SELECT SUM(item.iqty)
-                               FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item ON item.plan_id=plan.id
+                               FROM %1$s plan JOIN %2$s item ON item.plan_id=plan.id
                                WHERE plan.material_analysis_item_id=child.id AND plan.status=1
                                  AND NOT plan.is_deleted AND NOT item.is_deleted),0),0)
                        ELSE 0 END
@@ -37,7 +37,7 @@ final class PreplanReallocationMakeSupplement {
                 WHERE relation.from_analysis_id=:analysisId AND relation.status IN ('OPEN','PARTIAL')
                   AND material.active AND material.confirmed_route='MAKE' AND child.source_type='MAKE_COMPONENT'
                 ORDER BY relation.created_at,relation.id
-                """).setParameter("analysisId",analysisId))) {
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"))).setParameter("analysisId",analysisId))) {
             result.put((UUID)row[0],new Allowance((UUID)row[1],(UUID)row[2],bd(row[3]),bd(row[4])));
         }
         return result;

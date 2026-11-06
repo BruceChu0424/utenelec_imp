@@ -272,25 +272,17 @@ namespace Uten.Legacy.Desktop.Features.Units
             {
                 var keyword = search.Text;
                 var queryFilters = new Dictionary<string, UnitFilter>(filters, StringComparer.Ordinal);
-                UnitReadSnapshot<UnitPageResult> snapshot = null;
-                var allRows = await CompletePagedSnapshot.ReadAsync<UnitRecord>(async (batch, size, ct) =>
-                {
-                    var response = await service.ListAsync(new UnitQuery(batch, size, keyword, queryFilters), ct).ConfigureAwait(false);
-                    if (!response.IsCurrent(session)) throw new ApiException("READ_SCOPE_CHANGED", "单位读取范围已变化。", 403);
-                    if (snapshot == null) snapshot = response;
-                    return new SnapshotPage<UnitRecord> { Items = response.Value.Items, Page = response.Value.Page,
-                        Size = response.Value.Size, Total = response.Value.TotalElements, TotalPages = response.Value.TotalPages,
-                        ReadScopeVersion = response.Owner.ReadScopeRevision.ToString(CultureInfo.InvariantCulture) };
-                }, item => item.Id,
+                var snapshot = await service.CompleteAsync(new UnitQuery(1, 100, keyword, queryFilters),
                     () => !disposed && request == sequence && session.Generation == ownerGeneration
                         && session.ReadScopeRevision == ownerReadRevision,
-                    token, maximumRows: Int32.MaxValue);
+                    token);
+                var allRows = snapshot.Value.Items;
                 if (disposed || request != sequence || !snapshot.IsCurrent(session)) return;
                 loadedOwner = snapshot.Owner;
                 currentRows = allRows;
                 DisplayRows(allRows);
-                totalElements = snapshot.Value.TotalElements;
-                status.Text = snapshot.Value.TotalElements == 0 ? "没有符合条件的单位。" : "共 " + snapshot.Value.TotalElements.ToString(CultureInfo.InvariantCulture) + " 项";
+                totalElements = snapshot.Value.Total;
+                status.Text = snapshot.Value.Total == 0 ? "没有符合条件的单位。" : "共 " + snapshot.Value.Total.ToString(CultureInfo.InvariantCulture) + " 项";
                 var previousColumns = columnSnapshot;
                 columnSnapshot = null;
                 try

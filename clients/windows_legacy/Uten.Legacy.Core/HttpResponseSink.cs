@@ -44,13 +44,21 @@ namespace Uten.Legacy.Core
             object value;
             return request.Properties.TryGetValue(RequestProperty, out value) ? value as HttpResponseSink : null;
         }
+        internal static HttpResponseSink CompleteSummary(Stream destination, int errorResponseBytes, string path, string query)
+        {
+            if ((path != "/api/master/goods/summaries" && path != "/api/master/units/summaries") || query != "?complete=true")
+                throw new ArgumentException("Only reviewed complete master summary paths can use this sink.");
+            return new HttpResponseSink(destination, -1, CompleteSummaryResponse.MaximumTextBytes, errorResponseBytes, path, query, "POST");
+        }
         internal bool Owns(Uri uri)
         { return uri != null && uri.AbsolutePath == ExpectedPath && uri.Query == ExpectedQuery; }
         internal bool Owns(HttpRequestMessage request)
         { return request != null && request.Method.Method == ExpectedMethod && Owns(request.RequestUri); }
         internal void Complete(long bytes)
         {
-            if (bytes < 1 || bytes > MaximumBytes || ExpectedBytes >= 0 && bytes != ExpectedBytes)
+            var completeSummary = ExpectedMethod == "POST" && ExpectedQuery == "?complete=true"
+                && (ExpectedPath == "/api/master/goods/summaries" || ExpectedPath == "/api/master/units/summaries");
+            if (bytes < 0 || bytes == 0 && !completeSummary || bytes > MaximumBytes || ExpectedBytes >= 0 && bytes != ExpectedBytes)
                 throw new HttpRequestException("下载内容长度与接口合同不一致。");
             Completed = true;
         }

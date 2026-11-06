@@ -95,7 +95,7 @@ public class ProductionReadinessReconciler {
                 FROM production_execution_segments segment
                 JOIN production_planning_packages package ON package.id=segment.package_id
                     AND package.status='CONFIRMED' AND package.execution_model_version=1 AND NOT package.is_deleted
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
+                JOIN %1$s plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
                     AND NOT COALESCE(plan.is_closed,FALSE) AND NOT COALESCE(plan.is_canceled,FALSE)
                     AND NOT COALESCE(plan.is_stopped,FALSE)
                 WHERE (segment.status='WAITING' OR (segment.continuous_supply
@@ -124,7 +124,7 @@ public class ProductionReadinessReconciler {
                           AND source.color_id IS NOT DISTINCT FROM stock.color_id
                           AND fn_preplan_reservation_has_qualified_origin(source.id))))
                 ORDER BY segment.id LIMIT 25
-                """, (rs, row) -> new Candidate(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")), (rs, row) -> new Candidate(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
                         rs.getObject(3, UUID.class)), cursor, cursor);
     }
 

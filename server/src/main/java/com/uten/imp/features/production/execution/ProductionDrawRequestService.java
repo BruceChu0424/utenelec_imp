@@ -150,7 +150,7 @@ public class ProductionDrawRequestService {
         // 单列 native query 的每行是标量 String（不是 Object[]），不能走 objectArrayRows。
         @SuppressWarnings("unchecked")
         List<Object> billNos = em.createNativeQuery(
-                        "SELECT bill_no FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) stock_documents WHERE id IN (:ids)")
+                        ("SELECT bill_no FROM " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents") + " stock_documents WHERE id IN (:ids)"))
                 .setParameter("ids", drawIds)
                 .getResultList();
         String batchNo = billNos.stream()
@@ -197,13 +197,13 @@ public class ProductionDrawRequestService {
                        goods.code, goods.name, segment.planned_qty, segment.start_route,
                        fn_segment_bin_material_state(segment.id)
                 FROM production_execution_segments segment
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id AND NOT plan.is_deleted
+                JOIN %1$s plan ON plan.id=segment.plan_id AND NOT plan.is_deleted
                 JOIN production_planning_packages package ON package.id=segment.package_id AND NOT package.is_deleted
                 LEFT JOIN departments department ON department.id=segment.workshop_department_id
                 LEFT JOIN goods ON goods.id=segment.product_goods_id
                 WHERE segment.id IN (:ids) AND NOT segment.is_deleted
                 ORDER BY segment.id
-                """).setParameter("ids", items.stream().map(Item::segmentId).toList()));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("ids", items.stream().map(Item::segmentId).toList()));
         if (rows.size() != items.size()) throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在或已撤回");
         return rows.stream().map(row -> new Segment(uuid(row[0]), uuid(row[1]), uuid(row[2]),
                 str(row[3]), ((Number) row[4]).longValue(), uuid(row[5]), uuid(row[6]), uuid(row[7]),
@@ -254,9 +254,9 @@ public class ProductionDrawRequestService {
                        fn_production_draw_item_requested_qty(item.id),
                        COALESCE(warehouse.is_line_side, FALSE), demand.id
                 FROM production_planning_package_documents mapping
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=mapping.document_id
+                JOIN %1$s document ON document.id=mapping.document_id
                   AND document.doc_type='DRAW' AND NOT document.is_deleted AND document.status IN (0,1)
-                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item ON item.doc_id=document.id AND NOT item.is_deleted
+                JOIN %2$s item ON item.doc_id=document.id AND NOT item.is_deleted
                 JOIN production_planning_package_document_items item_mapping
                   ON item_mapping.document_item_id=item.id AND item_mapping.document_type='DRAW'
                 JOIN production_material_demands demand ON demand.id=item_mapping.demand_id
@@ -266,7 +266,7 @@ public class ProductionDrawRequestService {
                 LEFT JOIN units unit ON unit.id=item.unit_id
                 WHERE mapping.execution_segment_id IN (:ids) AND mapping.document_type='DRAW'
                 ORDER BY mapping.execution_segment_id, document.warehouse_id, document.id, item.id
-                """).setParameter("ids", segmentIds));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))).setParameter("ids", segmentIds));
         List<Line> lines = new ArrayList<>();
         java.util.Set<UUID> segmentsWithDraws = new java.util.HashSet<>();
         for (Object[] row : rows) {
@@ -389,11 +389,11 @@ public class ProductionDrawRequestService {
     private List<UUID> documentIds(List<UUID> segmentIds) {
         return NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT document.id FROM production_planning_package_documents mapping
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=mapping.document_id AND NOT document.is_deleted
+                JOIN %1$s document ON document.id=mapping.document_id AND NOT document.is_deleted
                   AND document.doc_type='DRAW' AND document.status IN (0,1)
                 WHERE mapping.execution_segment_id IN (:ids) AND mapping.document_type='DRAW'
                 ORDER BY document.id
-                """, UUID.class).setParameter("ids", segmentIds), UUID.class);
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents")), UUID.class).setParameter("ids", segmentIds), UUID.class);
     }
 
     private void lockRows(String table, List<UUID> ids) {

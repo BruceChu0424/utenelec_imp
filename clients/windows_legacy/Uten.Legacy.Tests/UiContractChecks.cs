@@ -213,7 +213,7 @@ namespace Uten.Legacy.Tests
                         window.Show();
                         var table = FindVisual<DataGrid>(view, item => true);
                         PumpUntil(() => table.Items.Count == totalRows && !ReadBusy(view, goods), "All native rows must arrive before the single result is accepted.");
-                        check(handler.ListReads == completeReads && handler.RequestedSizes.All(size => size == 100), "All native rows use equal bounded 100-row batches.");
+                        check(handler.ListReads == 1 && handler.FramesRead == completeReads && handler.RequestedSizes.All(size => size == 100), "All native rows use one HTTP request with equal bounded 100-row frames.");
                         check(FindVisual<Button>(view, button => Equals(button.Content, "上一页") || Equals(button.Content, "下一页")) == null,
                             "Continuous native tables expose no page navigation buttons.");
                         check(table.EnableRowVirtualization && table.EnableColumnVirtualization, "Complete summaries retain native row and column virtualization.");
@@ -222,7 +222,7 @@ namespace Uten.Legacy.Tests
                         {
                             table.ScrollIntoView(table.Items[index % 2 == 0 ? totalRows - 1 : 0]); window.UpdateLayout(); Pump(window);
                         }
-                        check(handler.ListReads == completeReads && ReferenceEquals(source, table.ItemsSource), "Scrolling a complete native result causes no network or ItemsSource replacement.");
+                        check(handler.ListReads == 1 && ReferenceEquals(source, table.ItemsSource), "Scrolling a complete native result causes no network or ItemsSource replacement.");
                         check((goods ? ((GoodsRecord)table.Items[totalRows - 1]).Id : ((UnitRecord)table.Items[totalRows - 1]).Id).EndsWith(totalRows.ToString("D12")), "The final row remains reachable with its server identity.");
                         if (!goods)
                         {
@@ -238,14 +238,14 @@ namespace Uten.Legacy.Tests
                         var search = FindVisual<TextBox>(view, item => true);
                         handler.BeforeList = (uri, token) => SearchReadUiHandler.Parameter(uri, "keyword") == "held" && SearchReadUiHandler.Parameter(uri, "page") == "2" ? held.Task : Task.CompletedTask;
                         search.Text = "held"; RaiseEnter(search);
-                        PumpUntil(() => handler.ListReads == completeReads + (goods ? 5 : 2), "A replacement must wait for its actual bounded tail window.");
+                        PumpUntil(() => handler.ListReads == 2 && handler.FramesRead == completeReads + 1, "A replacement waits for its actual held second frame in the same HTTP request.");
                         check(ReferenceEquals(source, table.ItemsSource), "An incomplete replacement cannot publish its first batch over complete accepted rows.");
                         search.Text = "replacement"; RaiseEnter(search);
                         PumpUntil(() => !ReadBusy(view, goods) && table.Items.Count == totalRows && ShownSearchName(table, goods).Contains("replacement"), "A superseding query must read and publish all its own rows.");
                         int reads = handler.ListReads;
                         held.SetResult(true); PumpFor(60);
                         check(ShownSearchName(table, goods).Contains("replacement") && handler.ListReads == reads, "A retired later batch neither publishes nor dispatches the old query's remaining pages.");
-                        check(reads == completeReads * 2 + (goods ? 5 : 2), "Supersession sends only the owned started window and the complete current query.");
+                        check(reads == 3, "Initial, retired and replacement queries each send one complete HTTP request.");
                         if (goods)
                         {
                             object accepted = table.ItemsSource;
@@ -311,6 +311,7 @@ namespace Uten.Legacy.Tests
         private sealed class SearchReadUiHandler : HttpMessageHandler
         {
             internal int ListReads;
+            internal int FramesRead;
             internal int TotalItems = -1, BusinessWrites;
             internal readonly List<int> RequestedSizes = new List<int>();
             internal string LastQuery, UserId = "fixture-search-owner";
@@ -328,7 +329,7 @@ namespace Uten.Legacy.Tests
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
             {
                 string path = request.RequestUri.AbsolutePath, body;
-                if (request.Method != HttpMethod.Get && !(request.Method == HttpMethod.Post && path == "/api/master/goods/summaries")
+                if (request.Method != HttpMethod.Get && !(request.Method == HttpMethod.Post && (path == "/api/master/goods/summaries" || path == "/api/master/units/summaries"))
                     && !path.EndsWith("/auth/login") && !path.EndsWith("/auth/refresh")) Interlocked.Increment(ref BusinessWrites);
                 var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
                 if (path.EndsWith("/auth/login") || path.EndsWith("/auth/refresh"))
@@ -339,6 +340,37 @@ namespace Uten.Legacy.Tests
                     body = "[{\"id\":\"00000000-0000-4000-8000-000000000001\",\"name\":\"分类甲\",\"code\":\"A\",\"children\":[]},{\"id\":\"00000000-0000-4000-8000-000000000002\",\"name\":\"分类乙\",\"code\":\"B\",\"children\":[]}]";
                 else if (path == "/api/master/units/facets")
                     body = "{\"status\":[{\"value\":\"使用\",\"count\":1},{\"value\":\"禁用\",\"count\":1}]}";
+                else if (path.EndsWith("/summaries", StringComparison.Ordinal) && request.RequestUri.Query == "?complete=true")
+                {
+                    bool goods = path == "/api/master/goods/summaries";
+                    if (request.Method != HttpMethod.Post || !request.Headers.Accept.Any(item => item.MediaType == "application/x-ndjson"))
+                        throw new InvalidOperationException("Complete lists use the reviewed NDJSON POST.");
+                    var query = serializer.Deserialize<Dictionary<string, object>>(await request.Content.ReadAsStringAsync());
+                    var filter = (Dictionary<string, object>)query["filter"];
+                    string keyword = filter.ContainsKey("keyword") ? (string)filter["keyword"] : "";
+                    string category = filter.ContainsKey("categoryId") ? (string)filter["categoryId"] : "";
+                    int total = TotalItems < 0 ? goods ? 20 : 1 : TotalItems;
+                    string marker = keyword + "|" + category + "|" + UserId + "|v" + CommittedVersion;
+                    int batches = Math.Max(1, (total + 99) / 100);
+                    string scope = goods ? "goods-scope" : "unit-scope", data = new string('d', 64), revision = new string('a', 64);
+                    LastQuery = "?page=1&size=100&keyword=" + Uri.EscapeDataString(keyword) + "&categoryId=" + Uri.EscapeDataString(category);
+                    Interlocked.Increment(ref ListReads);
+                    return Ndjson(new DeferredFrameStream(async (page, ct) => {
+                        if (page > batches + 1) return null;
+                        if (page == batches + 1) return serializer.Serialize(new { type = "complete", total, readScopeVersion = scope,
+                            readDataVersion = data, readSnapshotRevision = revision });
+                        var uri = new Uri(request.RequestUri.GetLeftPart(UriPartial.Path) + "?page=" + page + "&size=100&keyword="
+                            + Uri.EscapeDataString(keyword) + "&categoryId=" + Uri.EscapeDataString(category));
+                        var hold = BeforeList; if (hold != null) await hold(uri, ct);
+                        ct.ThrowIfCancellationRequested();
+                        Interlocked.Increment(ref FramesRead); lock (RequestedSizes) RequestedSizes.Add(100);
+                        var rows = Enumerable.Range((page - 1) * 100 + 1, Math.Max(0, Math.Min(100, total - (page - 1) * 100)))
+                            .Select(index => new Dictionary<string, object> { ["id"] = "00000000-0000-4000-8000-" + index.ToString("D12"),
+                                ["code"] = "T" + index, ["name"] = marker, ["status"] = "使用" }).ToArray();
+                        return serializer.Serialize(new { type = "page", value = new { items = rows, page, size = 100, total,
+                            totalPages = (total + 99) / 100, readScopeVersion = scope, readDataVersion = data, readSnapshotRevision = revision } });
+                    }));
+                }
                 else if (path == "/api/master/goods/summaries" || path == "/api/master/units")
                 {
                     bool goodsSummary = path == "/api/master/goods/summaries";
@@ -374,6 +406,45 @@ namespace Uten.Legacy.Tests
                 else return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"code\":\"NOT_FOUND\",\"message\":\"fixture optional metadata unavailable\"}", Encoding.UTF8, "application/json") };
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
             }
+        }
+
+        private static HttpResponseMessage Ndjson(Stream stream)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-ndjson");
+            return response;
+        }
+        private static HttpResponseMessage CompleteFixture(string pageJson)
+        {
+            var json = new System.Web.Script.Serialization.JavaScriptSerializer();
+            var value = json.Deserialize<Dictionary<string, object>>(pageJson);
+            var final = new Dictionary<string, object> { ["type"] = "complete", ["total"] = value["total"],
+                ["readScopeVersion"] = value["readScopeVersion"], ["readDataVersion"] = value["readDataVersion"],
+                ["readSnapshotRevision"] = value["readSnapshotRevision"] };
+            return Ndjson(new MemoryStream(Encoding.UTF8.GetBytes(json.Serialize(new { type = "page", value }) + "\n" + json.Serialize(final) + "\n")));
+        }
+        private sealed class DeferredFrameStream : Stream
+        {
+            private readonly Func<int, CancellationToken, Task<string>> frame;
+            private byte[] current = new byte[0]; private int offset, page = 1;
+            internal DeferredFrameStream(Func<int, CancellationToken, Task<string>> frame) { this.frame = frame; }
+            public override async Task<int> ReadAsync(byte[] buffer, int start, int count, CancellationToken token)
+            {
+                token.ThrowIfCancellationRequested();
+                if (offset == current.Length)
+                {
+                    string value = await frame(page++, token); if (value == null) return 0;
+                    current = Encoding.UTF8.GetBytes(value + "\n"); offset = 0;
+                }
+                int copied = Math.Min(count, current.Length - offset); Array.Copy(current, offset, buffer, start, copied); offset += copied; return copied;
+            }
+            public override bool CanRead => true; public override bool CanSeek => false; public override bool CanWrite => false;
+            public override long Length => throw new NotSupportedException();
+            public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+            public override void Flush() { } public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
 
         internal static void RunGoodsCurrency()
@@ -803,6 +874,7 @@ namespace Uten.Legacy.Tests
                 else if (path.StartsWith("/api/master/goods/", StringComparison.Ordinal))
                     body = Record(int.Parse(path.Substring(path.Length - 12), System.Globalization.CultureInfo.InvariantCulture) - 1);
                 else throw new InvalidOperationException("Unexpected private goods currency UI fixture request.");
+                if (path == "/api/master/goods/summaries" && request.RequestUri.Query == "?complete=true") return Task.FromResult(CompleteFixture(body));
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
             }
         }
@@ -1124,6 +1196,12 @@ namespace Uten.Legacy.Tests
                     var values = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(await request.Content.ReadAsStringAsync());
                     body = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new Dictionary<string, object> {
                         ["id"] = "ffda6731-4bce-4fa1-a5a5-2acf55fd6d01", ["code"] = "U001", ["name"] = values["name"], ["status"] = values["status"] });
+                }
+                else if (path == "/api/master/units/summaries" && request.Method == HttpMethod.Post)
+                {
+                    Interlocked.Increment(ref UnitListReads);
+                    return CompleteFixture("{\"items\":[{\"id\":\"ffda6731-4bce-4fa1-a5a5-2acf55fd6d01\",\"code\":\"U001\",\"name\":\"确认保存单位\",\"status\":\"使用\"}],\"page\":1,\"size\":100,\"total\":1,\"totalPages\":1,\"readScopeVersion\":\""
+                        + Proof + "\",\"readDataVersion\":\"" + new string('d', 64) + "\",\"readSnapshotRevision\":\"" + new string('a', 64) + "\"}");
                 }
                 else if (path == "/api/master/units" && request.Method == HttpMethod.Get)
                 {

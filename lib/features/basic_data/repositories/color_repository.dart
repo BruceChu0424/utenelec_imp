@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import 'flat_master_summary_gateway.dart';
+import 'master_summary_read.dart';
 import '../models/color_node.dart';
 import '../models/master_facet.dart';
 
@@ -38,9 +40,26 @@ abstract interface class ColorRepository {
   Future<void> delete(String id);
 }
 
-class DioColorRepository implements ColorRepository {
+class DioColorRepository
+    implements ColorRepository, FlatMasterSummaryGateway<ColorListItem> {
   DioColorRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<PagedResult<ColorListItem>> completeList({
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) => readCompleteMasterSummary<ColorListItem>(
+    api,
+    path: '${ApiEndpoints.colors}/summaries',
+    filter: masterSummaryFilter(keyword: keyword, filters: filters),
+    sort: sort,
+    order: order,
+    decode: ColorListItem.fromJson,
+    idOf: (row) => row.id,
+  );
 
   @override
   Future<PagedResult<ColorListItem>> list({

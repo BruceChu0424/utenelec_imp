@@ -39,6 +39,7 @@ class _GoodsApi extends ApiClient {
   final int normalCount;
   static const disabledCount = 2414;
   final calls = <_Call>[];
+  final summaryRequests = <String, int>{};
   final attempts = <String, int>{};
   final active = <String, int>{}, peak = <String, int>{};
   final gates = <(String, int, int), Completer<void>>{};
@@ -46,6 +47,50 @@ class _GoodsApi extends ApiClient {
   int generation = 0, businessWrites = 0;
   bool failDisabledThird = false;
   static const exactQty = '90071992547409.123456789012345678901234';
+  @override
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) {
+    final input = Map<String, dynamic>.from(body as Map);
+    final filter = input['filter'] as Map;
+    final category = filter['categoryId'] as String? ?? 'goods-root';
+    final kind = filter['disabledOnly'] == true
+        ? 'disabled'
+        : filter['stubOnly'] == true
+        ? 'stub'
+        : 'normal';
+    final key = '$category/$kind';
+    summaryRequests[key] = (summaryRequests[key] ?? 0) + 1;
+    Stream<Map<String, dynamic>> frames() async* {
+      final first = await post(path, body: input);
+      yield {'type': 'page', 'value': first};
+      for (var page = 2; page <= (first['totalPages'] as int); page++) {
+        yield {
+          'type': 'page',
+          'value': await post(
+            path,
+            body: {...input, 'page': page},
+            query: {'readSnapshotRevision': first['readSnapshotRevision']},
+          ),
+        };
+      }
+      yield {
+        'type': 'complete',
+        for (final key in [
+          'total',
+          'readScopeVersion',
+          'readSnapshotRevision',
+          'readDataVersion',
+        ])
+          key: first[key],
+      };
+    }
+
+    return consume(frames());
+  }
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -273,8 +318,9 @@ void registerGoodsCompleteFirstOpenTests() {
       expect(api.calls.where((c) => c.kind == 'normal'), hasLength(101));
       expect(api.calls.where((c) => c.kind == 'disabled'), hasLength(25));
       expect(api.calls.every((c) => c.size == 100), isTrue);
-      expect(api.peak.values.every((v) => v <= 4), isTrue);
-      expect(api.peak['goods-root/normal'], 4);
+      expect(api.peak.values.every((v) => v == 1), isTrue);
+      expect(api.summaryRequests['goods-root/normal'], 1);
+      expect(api.summaryRequests['goods-root/disabled'], 1);
       for (final kind in ['normal', 'disabled']) {
         final calls = api.calls.where((c) => c.kind == kind).toList();
         expect(calls.first.revision, isNull);
@@ -300,7 +346,6 @@ void registerGoodsCompleteFirstOpenTests() {
     'Goods disabled tail failure is local error with real retry and no prefix while normal remains usable',
     (tester) async {
       final api = _GoodsApi(normalCount: 201)..failDisabledThird = true;
-      api.hold.add(('disabled', 1, 2));
       api.hold.add(('disabled', 2, 25));
       await _mount(tester, api);
       await pumpUntil(
@@ -370,7 +415,7 @@ void registerGoodsCompleteFirstOpenTests() {
       'Goods group held tail retires on $transition and cannot publish or keep reading',
       (tester) async {
         final api = _GoodsApi(normalCount: 201);
-        for (final page in [2, 3, 4, 5]) {
+        for (final page in [2]) {
           api.hold.add(('disabled', 1, page));
         }
         final container = await _mount(tester, api);
@@ -380,7 +425,7 @@ void registerGoodsCompleteFirstOpenTests() {
               api.calls
                   .where((c) => c.kind == 'disabled' && c.attempt == 1)
                   .length ==
-              5,
+              2,
           reason: 'Group did not start its bounded tail',
         );
         final old = api.calls
@@ -399,7 +444,7 @@ void registerGoodsCompleteFirstOpenTests() {
           reason: 'New owner did not replace the old table',
         );
         expect(old.every((c) => c.current!() == false), isTrue);
-        for (final page in [5, 4, 3, 2]) {
+        for (final page in [2]) {
           api.release('disabled', 1, page);
         }
         await tester.pumpAndSettle();
@@ -412,7 +457,7 @@ void registerGoodsCompleteFirstOpenTests() {
                 c.category == 'goods-root' &&
                 c.attempt == 1,
           ),
-          hasLength(5),
+          hasLength(2),
         );
         expect(api.businessWrites, 0);
         expect(tester.takeException(), isNull);

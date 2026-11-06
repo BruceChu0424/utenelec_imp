@@ -289,9 +289,9 @@ public class PurchaseRequestService {
     /** 待财务审核、财务退回待修订订货单对该申请明细的占用量，与工作台同口径。 */
     private java.math.BigDecimal pendingApprovalOrderQty(UUID requestItemId) {
         Object value = em.createNativeQuery("""
-                SELECT pending.pending_physical_qty FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) i
+                SELECT pending.pending_physical_qty FROM %2$s i
                 %s WHERE i.id=:itemId AND NOT i.is_deleted
-                """.formatted(PENDING_ORDER_QUANTITY_JOIN))
+                """.formatted(PENDING_ORDER_QUANTITY_JOIN, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_request_items")))
                 .setParameter("itemId", requestItemId)
                 .getSingleResult();
         return value == null ? java.math.BigDecimal.ZERO

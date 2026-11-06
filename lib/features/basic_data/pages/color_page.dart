@@ -1,3 +1,4 @@
+import '../repositories/flat_master_summary_gateway.dart';
 import '../../../components/layout/uten_compact_toolbar.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 颜色资料管理页（基础资料 · 扁平主档，无分类树）。
@@ -252,6 +253,12 @@ class _ColorPageState extends ConsumerState<ColorPage>
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
+        fetchComplete: completeFlatMasterList<ColorListItem>(
+          repository,
+          keyword: keyword,
+          filters: filters,
+        ),
+        idOf: (row) => row.id,
         fetchPage: (target) =>
             repository.list(page: target, keyword: keyword, filters: filters),
       );

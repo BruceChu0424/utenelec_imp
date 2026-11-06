@@ -73,7 +73,7 @@ public class MrpService {
         Object r = em.createNativeQuery("""
                 WITH RECURSIVE make_tree(goods_id, depth, path) AS (
                     SELECT i.goods_id, 0, ARRAY[]::uuid[]
-                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
+                    FROM %1$s i
                     WHERE i.plan_id = :planId AND i.is_deleted = FALSE
                     UNION ALL
                     SELECT b.component_goods_id, mt.depth + 1, mt.path || b.id
@@ -88,7 +88,7 @@ public class MrpService {
                       AND component.source_type = '自制'
                 )
                 SELECT COALESCE(MAX(depth), 0) FROM make_tree
-                """).setParameter("planId", planId).getSingleResult();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"))).setParameter("planId", planId).getSingleResult();
         return r == null ? 0 : ((Number) r).intValue();
     }
 
@@ -102,9 +102,9 @@ public class MrpService {
      */
     public boolean planGoodsHasBom(UUID planId) {
         Object n = em.createNativeQuery("""
-                SELECT COUNT(*) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
+                SELECT COUNT(*) FROM %1$s i
                 WHERE i.plan_id = :planId AND i.is_deleted = FALSE AND fn_goods_has_bom(i.goods_id)
-                """).setParameter("planId", planId).getSingleResult();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"))).setParameter("planId", planId).getSingleResult();
         return n instanceof Number num && num.longValue() > 0;
     }
 
@@ -148,8 +148,8 @@ public class MrpService {
                          AND NULLIF(component.color_legacy_id, 0) IS NOT NULL)) AS color_bad,
                    1 AS lvl,
                    ARRAY[b.id]::uuid[] AS path
-            FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
-            JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p ON p.id = i.plan_id AND p.is_deleted = false
+            FROM %1$s i
+            JOIN %2$s p ON p.id = i.plan_id AND p.is_deleted = false
             JOIN goods source ON source.id = i.goods_id
             JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
             JOIN goods component ON component.id = b.component_goods_id
@@ -158,7 +158,7 @@ public class MrpService {
              LEFT JOIN colors resolved_color
                     ON resolved_color.id = COALESCE(b.color_id, component.color_id)
             WHERE i.plan_id = :planId AND i.is_deleted = false
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"));
 
     private static final String MRP_SQL = buildMrpSql(PLAN_MRP_SEED);
 
@@ -306,8 +306,8 @@ public class MrpService {
                            (GREATEST(COALESCE(oi.qty,0) - COALESCE(oi.received_qty,0), 0) > 0
                             AND (COALESCE(oi.unit_rate,1) <= 0 OR oi.unit_id IS NULL))
                                AS invalid_rate
-                    FROM (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) oi
-                    JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) o ON o.id = oi.order_id
+                    FROM %1$s oi
+                    JOIN %2$s o ON o.id = oi.order_id
                     WHERE o.status = 1
                       AND o.is_deleted = false
                       AND COALESCE(o.is_stopped, false) = false
@@ -342,14 +342,14 @@ public class MrpService {
                 FROM po_line pl
             ) po ON true
             ORDER BY a.need_date NULLS LAST, g.code, a.color_id NULLS FIRST
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"));
     }
 
     private static final String PLAN_MRP_INPUT_VALIDATION_SQL = buildMrpExpansion(PLAN_MRP_SEED) + """
             , checked AS (
                 SELECT g.code,g.name,
                     (e.invalid_requirement OR g.is_deleted OR u.id IS NULL OR COALESCE(u.is_deleted,true)) AS invalid_requirement,
-                    EXISTS(SELECT 1 FROM (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) oi JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) o ON o.id=oi.order_id
+                    EXISTS(SELECT 1 FROM %1$s oi JOIN %2$s o ON o.id=oi.order_id
                         WHERE o.status=1 AND o.is_deleted=false AND COALESCE(o.is_stopped,false)=false
                           AND o.is_closed=false AND oi.is_deleted=false
                           AND oi.goods_id=e.goods_id AND oi.color_id IS NOT DISTINCT FROM e.color_id
@@ -359,13 +359,13 @@ public class MrpService {
             )
             SELECT code,name,invalid_requirement,invalid_po_rate FROM checked
             WHERE invalid_requirement OR invalid_po_rate LIMIT 1
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"));
 
     private static final String PLAN_BOM_VALIDATION_SQL = buildBomValidationSql("""
             SELECT DISTINCT goods_id
-            FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) production_plan_items
+            FROM %1$s production_plan_items
             WHERE plan_id = :sourceId AND is_deleted = false
-            """);
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items")));
 
     /**
      * BOM 展开虽然有深度/路径护栏，但不能把截断结果当成真实需求。
@@ -450,17 +450,17 @@ public class MrpService {
         requirePlan(planId);
         List<Object[]> rs = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT p.id, p.bill_no, p.status, p.is_closed, p.bill_date, p.delivery_date,
-                       (SELECT COALESCE(SUM(i.qty), 0) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
+                       (SELECT COALESCE(SUM(i.qty), 0) FROM %1$s i
                         WHERE i.plan_id = p.id AND i.is_deleted = false) AS total_qty,
-                       (SELECT COALESCE(SUM(i.iqty), 0) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
+                       (SELECT COALESCE(SUM(i.iqty), 0) FROM %1$s i
                         WHERE i.plan_id = p.id AND i.is_deleted = false) AS inbound_qty,
-                       (SELECT COALESCE(SUM(fn_plan_original_inbound_qty(i.id)), 0) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
+                       (SELECT COALESCE(SUM(fn_plan_original_inbound_qty(i.id)), 0) FROM %1$s i
                         WHERE i.plan_id = p.id AND i.is_deleted = false) AS planned_inbound_qty
                 FROM subplan_links l
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p ON p.id = l.subplan_id
+                JOIN %2$s p ON p.id = l.subplan_id
                 WHERE l.plan_id = :planId AND l.is_deleted = false AND p.is_deleted = false
                 ORDER BY p.bill_date DESC NULLS LAST, p.bill_no
-                """).setParameter("planId", planId));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("planId", planId));
         List<SubplanRef> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             BigDecimal total = r[6] == null ? BigDecimal.ZERO : (BigDecimal) r[6];
@@ -520,11 +520,11 @@ public class MrpService {
         // 幂等/防重复：父计划已有 V1 产生的有效子计划则跳过。
         Number existing = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM subplan_links l
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p ON p.id = l.subplan_id
+                JOIN %1$s p ON p.id = l.subplan_id
                 WHERE l.plan_id = :planId AND l.is_deleted = false
                   AND l.source = 'EXECUTION_V1'
                   AND p.is_deleted = false AND p.status <> -1
-                """).setParameter("planId", planId).getSingleResult();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("planId", planId).getSingleResult();
         if (existing.intValue() > 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -533,9 +533,9 @@ public class MrpService {
 
         // 子计划交货日：父计划最早开工日；无开工日则取父计划交货日。
         Object begin = em.createNativeQuery("""
-                SELECT MIN(plan_begin_date) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) production_plan_items
+                SELECT MIN(plan_begin_date) FROM %1$s production_plan_items
                 WHERE plan_id = :planId AND is_deleted = false
-                """).setParameter("planId", planId).getSingleResult();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"))).setParameter("planId", planId).getSingleResult();
         LocalDate subDelivery = begin != null
                 ? localDate(begin)
                 : plan.getDeliveryDate();

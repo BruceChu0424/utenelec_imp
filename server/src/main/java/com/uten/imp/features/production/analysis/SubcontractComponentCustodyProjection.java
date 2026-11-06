@@ -46,19 +46,15 @@ final class SubcontractComponentCustodyProjection {
                               SELECT 1 FROM subcontract_receipt_material_consumptions original
                               WHERE original.receipt_item_id=candidate.id)))
                     SELECT archive_origin.* FROM selected_actual_receipts archive_origin
-                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
-                      AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
-                      AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))
+                    WHERE %1$s
                 ) actual_item
                 JOIN (SELECT * FROM subcontract_receipts archive_origin
-                      WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
-                        AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
-                        AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) actual_receipt
+                      WHERE %2$s) actual_receipt
                   ON actual_receipt.id=actual_item.receipt_id)
             OR EXISTS(SELECT 1 FROM (VALUES(item.qty),(item.received_qty),(item.returned_qty),
                     (item.issued_qty),(item.material_returned_qty)) original(value)
                       WHERE original.value<>TRUNC(original.value,4))
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_receipt_items","archive_origin"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_receipts","archive_origin"));
     private static final String PLAN_ITEM_HAS_NATIVE_MATERIAL_PRECISION_SQL = """
             line.issued_qty<>TRUNC(line.issued_qty,4) OR EXISTS (
                 SELECT 1 FROM LATERAL (
@@ -66,14 +62,10 @@ final class SubcontractComponentCustodyProjection {
                         SELECT candidate.* FROM subcontract_material_issue_items candidate
                         WHERE candidate.plan_item_id=line.plan_item_id)
                     SELECT archive_origin.* FROM selected_precision_sources archive_origin
-                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
-                      AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
-                      AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))
+                    WHERE %1$s
                 ) evidence
                 JOIN (SELECT * FROM subcontract_material_issues archive_origin
-                      WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
-                        AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
-                        AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue
+                      WHERE %2$s) issue
                   ON issue.id=evidence.issue_id
                 CROSS JOIN LATERAL (VALUES(evidence.qty),(evidence.requested_qty),(evidence.at_supplier_qty),
                     (evidence.consumed_qty),(evidence.returned_qty),(evidence.wasted_qty),(evidence.compensated_qty),
@@ -82,7 +74,7 @@ final class SubcontractComponentCustodyProjection {
                     (evidence.wasted_qty*evidence.unit_rate),(evidence.compensated_qty*evidence.unit_rate)) original(value)
                 WHERE (issue.status IN(1,-1) OR issue.status=0 AND NOT issue.is_deleted AND NOT evidence.is_deleted)
                   AND original.value<>TRUNC(original.value,4))
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_material_issue_items","archive_origin"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_material_issues","archive_origin"));
 
     private static String orderItemStockedBaseSql(boolean legacyOnly) {
         return """
@@ -98,7 +90,7 @@ final class SubcontractComponentCustodyProjection {
                         WHERE candidate.order_item_id = item.id
                     )
                     SELECT archive_origin.* FROM selected_stock_receipt_item archive_origin
-                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)
+                    WHERE %3$s
                 ) receipt_item
                 JOIN LATERAL (
                     WITH selected_stock_receipt AS MATERIALIZED (
@@ -106,22 +98,21 @@ final class SubcontractComponentCustodyProjection {
                         WHERE candidate.id = receipt_item.receipt_id
                     )
                     SELECT archive_origin.* FROM selected_stock_receipt archive_origin
-                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)
+                    WHERE %4$s
                 ) receipt ON receipt.id=receipt_item.receipt_id
                   AND receipt.status=1 AND NOT receipt.is_deleted
                 LEFT JOIN procurement_inspection_items inspection ON inspection.receipt_type='SUBCONTRACT'
                   AND inspection.receipt_item_id=receipt_item.id
                 WHERE receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted%s),0)
               -(%s),0)
-            """.formatted(legacyOnly?" AND receipt_item.material_consumption_version=1":"",
-                legacyOnly?"""
+            """.formatted(legacyOnly?" AND receipt_item.material_consumption_version=1":"", legacyOnly?"""
                     COALESCE((SELECT SUM(receipt_item.returned_qty*COALESCE(receipt_item.unit_rate,1))
                         FROM subcontract_receipt_items receipt_item
                         JOIN subcontract_receipts receipt ON receipt.id=receipt_item.receipt_id
                           AND receipt.status=1 AND NOT receipt.is_deleted
                         WHERE receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted
                           AND receipt_item.material_consumption_version=1),0)
-                    """:"COALESCE(item.returned_qty,0)*COALESCE(item.unit_rate,1)");
+                    """:"COALESCE(item.returned_qty,0)*COALESCE(item.unit_rate,1)", com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_receipt_items","archive_origin"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_receipts","archive_origin"));
     }
 
     /**
@@ -144,7 +135,7 @@ final class SubcontractComponentCustodyProjection {
                         WHERE action.public_surplus_external_item_id IS NOT NULL)
                     )
                     SELECT archive_origin.* FROM selected_stock_order_item archive_origin
-                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)
+                    WHERE %2$s
                 ) item ON item.id=source.order_item_id AND NOT item.is_deleted
                 JOIN LATERAL (
                     WITH selected_stock_order AS MATERIALIZED (
@@ -152,7 +143,7 @@ final class SubcontractComponentCustodyProjection {
                         WHERE candidate.id = item.order_id
                     )
                     SELECT archive_origin.* FROM selected_stock_order archive_origin
-                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)
+                    WHERE %3$s
                 ) document ON document.id=item.order_id
                   AND document.status=1 AND NOT document.is_deleted
                 WHERE source.alloc_qty>0 AND source.application_item_id IN (
@@ -162,7 +153,7 @@ final class SubcontractComponentCustodyProjection {
                     SELECT action.public_surplus_external_item_id
                     WHERE action.public_surplus_external_item_id IS NOT NULL)
             ),0)
-            """.formatted(ORDER_ITEM_STOCKED_BASE_SQL);
+            """.formatted(ORDER_ITEM_STOCKED_BASE_SQL, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_order_items","archive_origin"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("subcontract_orders","archive_origin"));
 
     /**
      * 一个物料节点的委外领料覆盖。
@@ -255,8 +246,8 @@ final class SubcontractComponentCustodyProjection {
                 ), sources AS MATERIALIZED (
                     SELECT source.order_item_id,source.application_item_id,source.alloc_qty
                     FROM subcontract_order_item_sources source
-                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item ON item.id=source.order_item_id AND NOT item.is_deleted
-                    JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) document ON document.id=item.order_id
+                    JOIN %1$s item ON item.id=source.order_item_id AND NOT item.is_deleted
+                    JOIN %2$s document ON document.id=item.order_id
                       AND document.status=1 AND NOT document.is_deleted
                     -- The membership predicate already implies this scope is nonempty. Keep an
                     -- uncorrelated gate so stale statistics cannot evaluate unrelated document
@@ -267,8 +258,8 @@ final class SubcontractComponentCustodyProjection {
                         WHERE relevant.application_item_id IN (SELECT application_item_id FROM live_items))
                 ), stocked AS MATERIALIZED (
                     SELECT item.id AS order_item_id,item.qty AS ordered_qty,COALESCE(item.unit_rate,1) AS order_unit_rate,
-                           %s AS stocked_base,%s AS legacy_stocked_base,%s AS use_actual_precision
-                    FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item
+                           %%s AS stocked_base,%%s AS legacy_stocked_base,%%s AS use_actual_precision
+                    FROM %1$s item
                     WHERE EXISTS (SELECT 1 FROM sources)
                       AND item.id IN (SELECT order_item_id FROM sources)
                 ), source_progress AS MATERIALIZED (
@@ -293,7 +284,7 @@ final class SubcontractComponentCustodyProjection {
                     SELECT responsibility.*
                     FROM preplan_supply_actions action
                     CROSS JOIN LATERAL (
-                """ + SubcontractPublicResponsibilityProjection.OWNERS_FOR_ACTION_SQL + """
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")) + SubcontractPublicResponsibilityProjection.OWNERS_FOR_ACTION_SQL + """
                     ) responsibility
                     WHERE action.route='SUBCONTRACT' AND action.operation_type='SUPPLY'
                       AND action.status<>'CANCELLED' AND action.requested_qty=0 AND action.public_surplus_qty>0
@@ -389,8 +380,8 @@ final class SubcontractComponentCustodyProjection {
                                      AND issue.status=1 AND NOT issue.is_deleted
                                    WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0)+COALESCE((
                                    SELECT SUM(issue_item.qty)
-                                   FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) issue_item
-                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue ON issue.id=issue_item.issue_id
+                                   FROM %1$s issue_item
+                                   JOIN %2$s issue ON issue.id=issue_item.issue_id
                                      AND issue.status=0 AND NOT issue.is_deleted
                                    WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0) AS gross_qty
                         FROM subcontract_material_plan_items plan_item
@@ -401,7 +392,7 @@ final class SubcontractComponentCustodyProjection {
                     ) line
                     JOIN stocked ON stocked.order_item_id=line.order_item_id
                     CROSS JOIN LATERAL (SELECT stocked.use_actual_precision OR (
-                """ + PLAN_ITEM_HAS_NATIVE_MATERIAL_PRECISION_SQL + """
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issues")) + PLAN_ITEM_HAS_NATIVE_MATERIAL_PRECISION_SQL + """
                     ) AS use_actual_precision OFFSET 0) precision_rule
                 ), owner_material_raw AS (
                     -- Material factors stay in numerators until the final ceiling.

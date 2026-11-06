@@ -1,3 +1,4 @@
+import '../repositories/flat_master_summary_gateway.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -335,6 +336,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
+        fetchComplete: completeFlatMasterList<AccountListItem>(
+          repository,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+        idOf: (row) => row.id,
         fetchPage: (target) => repository.list(
           page: target,
           keyword: keyword,

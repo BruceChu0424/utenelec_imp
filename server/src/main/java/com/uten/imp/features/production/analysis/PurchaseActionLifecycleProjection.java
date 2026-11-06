@@ -22,11 +22,10 @@ final class PurchaseActionLifecycleProjection {
                         SELECT candidate.* FROM %s candidate WHERE %s
                     )
                     SELECT archive_origin.* FROM selected archive_origin
-                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
-                      AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
-                      AND NOT fn_imported_business_document('%s',archive_origin.id)
+                    WHERE %s
                 )
-                """.formatted(table, relationship, table);
+                """.formatted(table, relationship,
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate(table,"archive_origin"));
     }
 
     private static final String NATIVE_ORDER_ITEMS = nativeRows("purchase_order_items",

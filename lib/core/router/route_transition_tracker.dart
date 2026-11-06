@@ -7,6 +7,7 @@
 // 某个转场卡住(如 ticker 被 TickerMode 静音)也不会让全站的返回刷新无限推迟。
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -145,12 +146,24 @@ class _TransitionActivity extends StatefulWidget {
 
 class _TransitionActivityState extends State<_TransitionActivity> {
   bool _openingReady = false;
+  ValueListenable<TickerModeData>? _ticker;
 
   @override
   void initState() {
     super.initState();
     _openingReady = _openingComplete;
     _attach(widget);
+    _report();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ticker = TickerMode.getValuesNotifier(context);
+    if (!identical(_ticker, ticker)) {
+      _ticker?.removeListener(_report);
+      _ticker = ticker..addListener(_report);
+    }
     _report();
   }
 
@@ -168,6 +181,7 @@ class _TransitionActivityState extends State<_TransitionActivity> {
 
   @override
   void dispose() {
+    _ticker?.removeListener(_report);
     _detach(widget);
     RouteTransitionTracker.instance._set(this, false);
     super.dispose();
@@ -204,7 +218,11 @@ class _TransitionActivityState extends State<_TransitionActivity> {
         animation.status == AnimationStatus.reverse;
     RouteTransitionTracker.instance._set(
       this,
-      moving(widget.animation) || moving(widget.secondaryAnimation),
+      // A retained shell route can be hidden halfway through its animation.
+      // Its muted ticker cannot settle until that route becomes visible again;
+      // it must not delay another visible page's reads behind the fallback.
+      (_ticker?.value.enabled ?? true) &&
+          (moving(widget.animation) || moving(widget.secondaryAnimation)),
     );
   }
 

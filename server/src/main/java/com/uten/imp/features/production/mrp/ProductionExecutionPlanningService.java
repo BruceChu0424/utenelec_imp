@@ -70,11 +70,11 @@ public class ProductionExecutionPlanningService {
     public boolean fromMaterialAnalysis(UUID planId) {
         Number count = (Number) em.createNativeQuery("""
                         SELECT COUNT(*)
-                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
+                        FROM %1$s production_plans
                         WHERE id = :planId
                           AND material_analysis_id IS NOT NULL
                           AND is_deleted = FALSE
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                 .setParameter("planId", planId)
                 .getSingleResult();
         return count.longValue() > 0;
@@ -303,8 +303,8 @@ public class ProductionExecutionPlanningService {
                                        component.code,
                                        component.name,
                                        component.issue_method
-                                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
-                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p
+                                FROM %1$s i
+                                JOIN %2$s p
                                   ON p.id = i.plan_id
                                  AND p.is_deleted = FALSE
                                 JOIN goods product
@@ -378,16 +378,16 @@ public class ProductionExecutionPlanningService {
                                                   p.delivery_date) NULLS LAST,
                                          COALESCE(i.line_no, 0), i.id,
                                          b.sort_order, b.id
-                                """ + lockClause)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")) + lockClause)
                         .setParameter("planId", planId));
         @SuppressWarnings("unchecked")
         List<UUID> allSourceItemIds = ((List<UUID>) em.createNativeQuery("""
                         SELECT id
-                        FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) production_plan_items
+                        FROM %1$s production_plan_items
                         WHERE plan_id = :planId
                           AND is_deleted = FALSE
                           AND COALESCE(qty, 0) > 0
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items")))
                 .setParameter("planId", planId)
                 .getResultList());
         if (allSourceItemIds.isEmpty()) {
@@ -575,15 +575,15 @@ public class ProductionExecutionPlanningService {
                        i.plan_begin_date, i.plan_end_date, p.worker_id,
                        g.code, g.name, i.updated_at,
                        p.material_analysis_id
-                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) i
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p ON p.id = i.plan_id
+                FROM %1$s i
+                JOIN %2$s p ON p.id = i.plan_id
                                        AND p.is_deleted = FALSE
                 JOIN goods g ON g.id = i.goods_id AND g.is_deleted = FALSE
                 WHERE i.plan_id = :planId AND i.id IN (:ids)
                   AND i.is_deleted = FALSE AND COALESCE(i.qty,0) > 0
                 ORDER BY COALESCE(i.plan_begin_date,p.delivery_date) NULLS LAST,
                          COALESCE(i.line_no,0), i.id
-                """ + lockClause)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")) + lockClause)
                 .setParameter("planId", planId)
                 .setParameter("ids", zeroMaterialCandidatePlanItemIds));
         List<CompleteKitAllocator.ProductLine> result = new ArrayList<>();
@@ -643,10 +643,10 @@ public class ProductionExecutionPlanningService {
         List<Object[]> analysisIdentity = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT material_analysis_id, material_analysis_item_id
-                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
+                        FROM %1$s production_plans
                         WHERE id = :planId AND is_deleted = FALSE
                           AND material_analysis_id IS NOT NULL
-                        """).setParameter("planId", planId));
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("planId", planId));
         UUID analysisId = analysisIdentity.isEmpty()
                 ? null : (UUID) analysisIdentity.getFirst()[0];
         UUID analysisItemId = analysisIdentity.isEmpty()

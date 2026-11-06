@@ -66,8 +66,8 @@ void main() {
     await tester.pumpAndSettle();
     table(type.value).onFilterChanged('sourceDocNo', 'OLD-RETURN-SOURCE');
     await tester.pumpAndSettle();
-    table(type.value).onPageChange!(3);
-    await tester.pumpAndSettle();
+    expect(table(type.value).items, hasLength(41));
+    expect(table(type.value).totalPages, 1);
     expect(find.text('RETURN-3'), findsOneWidget);
     returns.listGate = Completer<void>();
     table(type.value).onRetry!();
@@ -84,6 +84,7 @@ void main() {
         for (final page in [1, 2, 3])
           {
             'page': page,
+            'size': 20,
             'keyword': 'same-query',
             'status': null,
             'billNo': null,
@@ -92,9 +93,12 @@ void main() {
             'dateTo': '2026-10-12',
           },
       ],
-      reason: 'only the new domain foreground and its two successors are read',
+      reason:
+          'Only the new domain complete result is read in bounded equal-size internal batches',
     );
-    expect(table(type.value).items.single.billNo, 'WASTE-1');
+    expect(table(type.value).items, hasLength(41));
+    expect(table(type.value).items.first.billNo, 'WASTE-1');
+    expect(table(type.value).items.last.billNo, 'WASTE-41');
     expect(wastes.lastStatus, isNull);
     expect(wastes.lastBillNo, isNull);
     expect(wastes.lastSourceDocNo, isNull);
@@ -105,8 +109,10 @@ void main() {
       'billNo',
     ]);
     expect(
-      table(type.value).items.single.type,
-      WarehouseDocumentHistoryType.subcontractWaste,
+      table(type.value).items.every(
+        (row) => row.type == WarehouseDocumentHistoryType.subcontractWaste,
+      ),
+      isTrue,
     );
     returns.listGate!.complete();
     await tester.pumpAndSettle();
@@ -383,6 +389,7 @@ class _TypeGateway extends _Gateway {
   }) async {
     queries.add({
       'page': page,
+      'size': size,
       'keyword': keyword,
       'status': status,
       'billNo': billNo,
@@ -398,19 +405,24 @@ class _TypeGateway extends _Gateway {
     await listGate?.future;
     return PagedResult(
       items: [
-        WarehouseDocumentHistorySummary(
-          id: '${type.segment}-$page',
-          type: type,
-          closed: false,
-          itemCount: 1,
-          billNo: '$prefix-$page',
-          status: status ?? '1',
-        ),
+        for (
+          var index = (page - 1) * size;
+          index < 41 && index < page * size;
+          index++
+        )
+          WarehouseDocumentHistorySummary(
+            id: '${type.segment}-${index + 1}',
+            type: type,
+            closed: false,
+            itemCount: 1,
+            billNo: '$prefix-${index + 1}',
+            status: status ?? '1',
+          ),
       ],
       page: page,
-      size: 1,
-      total: 3,
-      totalPages: 3,
+      size: size,
+      total: 41,
+      totalPages: (41 / size).ceil(),
     );
   }
 }

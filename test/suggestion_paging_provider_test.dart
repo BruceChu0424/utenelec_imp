@@ -54,7 +54,7 @@ void main() {
   );
 
   test(
-    'provider keeps server page on refresh and patches likes in place',
+    'provider refreshes a complete scope and patches a tail-row like in place',
     () async {
       final repository = _FakeSuggestionRepository();
       final container = ProviderContainer(
@@ -70,31 +70,54 @@ void main() {
 
       final first = await container.read(suggestionListProvider.future);
       expect(first.page, 1);
-      expect(repository.calls.last, (mine: false, page: 1, size: 20));
+      expect(first.items, hasLength(45));
+      expect(first.total, 45);
+      expect(first.totalPages, 1);
+      expect(first.items.map((item) => item.id), [
+        for (var i = 1; i <= 45; i++) 'suggestion-$i',
+      ]);
+      final completeRead = [
+        for (var page = 1; page <= 3; page++)
+          (mine: false, page: page, size: 20),
+      ];
+      expect(repository.calls, completeRead);
 
       await container.read(suggestionListProvider.notifier).nextPage();
-      expect(container.read(suggestionListProvider).requireValue.page, 2);
-      expect(repository.calls.last, (mine: false, page: 2, size: 20));
+      expect(container.read(suggestionListProvider).requireValue.page, 1);
+      expect(
+        repository.calls,
+        completeRead,
+        reason: 'The local complete result needs no paging read',
+      );
 
       await container.read(suggestionListProvider.notifier).refresh();
-      expect(container.read(suggestionListProvider).requireValue.page, 2);
-      expect(repository.calls.last, (mine: false, page: 2, size: 20));
+      expect(container.read(suggestionListProvider).requireValue.page, 1);
+      expect(
+        container.read(suggestionListProvider).requireValue.items,
+        hasLength(45),
+      );
+      expect(repository.calls, [...completeRead, ...completeRead]);
 
       final id = container
           .read(suggestionListProvider)
           .requireValue
           .items
-          .single
+          .last
           .id;
       await container.read(suggestionListProvider.notifier).toggleLike(id);
       final updated = container
           .read(suggestionListProvider)
           .requireValue
           .items
-          .single;
+          .last;
       expect(updated.likedByMe, isTrue);
       expect(updated.likes, 1);
-      expect(container.read(suggestionListProvider).requireValue.page, 2);
+      expect(container.read(suggestionListProvider).requireValue.page, 1);
+      expect(
+        container.read(suggestionListProvider).requireValue.items,
+        hasLength(45),
+      );
+      expect(repository.calls, [...completeRead, ...completeRead]);
 
       container
           .read(suggestionListProvider.notifier)
@@ -116,16 +139,24 @@ void main() {
           .read(suggestionListProvider)
           .requireValue
           .items
-          .single;
+          .last;
       expect(replied.replyCount, 3);
       expect(replied.replies, isEmpty);
-      expect(container.read(suggestionListProvider).requireValue.page, 2);
+      expect(container.read(suggestionListProvider).requireValue.page, 1);
+      expect(
+        container.read(suggestionListProvider).requireValue.items,
+        hasLength(45),
+      );
 
       container.read(suggestionScopeProvider.notifier).state =
           SuggestionScope.mine;
       final mine = await container.read(suggestionListProvider.future);
       expect(mine.page, 1);
-      expect(repository.calls.last, (mine: true, page: 1, size: 20));
+      expect(mine.items, hasLength(45));
+      expect(repository.calls.skip(6), [
+        for (var page = 1; page <= 3; page++)
+          (mine: true, page: page, size: 20),
+      ]);
     },
   );
 }
@@ -183,23 +214,32 @@ class _FakeSuggestionRepository implements SuggestionRepository {
     bool ascending = true,
   }) async {
     calls.add((mine: mine, page: page, size: size));
-    final suggestion = Suggestion(
-      id: 'suggestion-$page',
-      submitterId: 'user-1',
-      submitterName: '张三',
-      category: SuggestionCategory.process,
-      title: '第 $page 页建议',
-      content: '当前页由服务端返回，不在客户端切全量。',
-      status: SuggestionStatus.submitted,
-      submittedAt: DateTime.utc(2026, 7, 30),
-    );
-    suggestions[suggestion.id] = suggestion;
+    final rows = [
+      for (
+        var index = (page - 1) * size;
+        index < 45 && index < page * size;
+        index++
+      )
+        Suggestion(
+          id: 'suggestion-${index + 1}',
+          submitterId: 'user-1',
+          submitterName: '张三',
+          category: SuggestionCategory.process,
+          title: '建议 ${index + 1}',
+          content: '完整范围由服务端有界分批返回，保留各行原身份与精确状态。',
+          status: SuggestionStatus.submitted,
+          submittedAt: DateTime.utc(2026, 7, 30),
+        ),
+    ];
+    for (final suggestion in rows) {
+      suggestions[suggestion.id] = suggestion;
+    }
     return PagedResult(
-      items: [suggestion],
+      items: rows,
       page: page,
       size: size,
       total: 45,
-      totalPages: 3,
+      totalPages: (45 / size).ceil(),
     );
   }
 

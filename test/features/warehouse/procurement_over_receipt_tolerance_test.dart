@@ -164,6 +164,15 @@ class _ExceptionListApi extends ApiClient {
   _ExceptionListApi() : super(Dio());
 
   @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    expect(path, ApiEndpoints.businessReferenceWarehouses);
+    return const [];
+  }
+
+  @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
@@ -397,42 +406,51 @@ void main() {
     },
   );
 
-  testWidgets('财务超量审批已处理分类保留原异常入口', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final repository = _FinanceStageRepository();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          procurementInboundRepositoryProvider.overrideWithValue(repository),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: FinanceArrivalExceptionTasksPage(embedded: true),
+  for (final embedded in [false, true]) {
+    testWidgets('财务超量审批历史分类保留原异常入口 (embedded=$embedded)', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _FinanceStageRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            procurementInboundRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: FinanceArrivalExceptionTasksPage(
+                embedded: embedded,
+                historyOnly: embedded,
+              ),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(repository.statuses, ['PENDING_FINANCE']);
-    await tester.tap(find.text('已处理'));
-    await tester.pumpAndSettle();
-    expect(repository.statuses, ['PENDING_FINANCE', 'PROCESSED']);
-    expect(
-      find.byKey(const Key('finance-arrival-task-exception-1')),
-      findsOneWidget,
-    );
-    final card = tester.widget<InkWell>(
-      find.descendant(
-        of: find.byKey(const Key('finance-arrival-task-exception-1')),
-        matching: find.byType(InkWell),
-      ),
-    );
-    expect(card.onTap, isNotNull);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pumpAndSettle();
+      if (embedded) {
+        expect(repository.statuses, ['PROCESSED']);
+      } else {
+        expect(repository.statuses, ['PENDING_FINANCE']);
+        await tester.tap(find.text('历史单据'));
+        await tester.pumpAndSettle();
+        expect(repository.statuses, ['PENDING_FINANCE', 'PROCESSED']);
+      }
+      expect(
+        find.byKey(const Key('finance-arrival-task-exception-1')),
+        findsOneWidget,
+      );
+      final card = tester.widget<InkWell>(
+        find.descendant(
+          of: find.byKey(const Key('finance-arrival-task-exception-1')),
+          matching: find.byType(InkWell),
+        ),
+      );
+      expect(card.onTap, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('财务超量到货任务卡按允许超收口径说明', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));

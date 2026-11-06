@@ -89,6 +89,8 @@ class _CandidateHttpTransport implements HttpClientAdapter {
                 ],
                 'hasMore': false,
                 'readScopeVersion': 'fixture-v1',
+                'readSnapshotRevision': 'candidate-snapshot-v1',
+                'readDataVersion': 'candidate-data-v1',
               },
       ),
       status,
@@ -128,6 +130,8 @@ class _CandidateWidgetTransport {
     ],
     'hasMore': false,
     'readScopeVersion': 'fixture-v1',
+    'readSnapshotRevision': 'candidate-snapshot-v1',
+    'readDataVersion': 'candidate-data-v1',
   };
 
   static ApiException missing() =>

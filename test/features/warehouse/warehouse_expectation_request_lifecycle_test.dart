@@ -55,6 +55,15 @@ void main() {
     expect(api.types, ['PURCHASE', 'SUBCONTRACT']);
     api.requests.last.complete(_emptyPage);
     await tester.pumpAndSettle();
+    expect(
+      api.facetReads,
+      0,
+      reason: 'Column candidates are loaded only when their real header opens',
+    );
+    await tester.tap(find.byKey(const ValueKey('master-column-filter-billNo')));
+    await tester.pumpAndSettle();
+    expect(api.facetReads, 1);
+    expect(api.facetForms.single['orderType'], 'SUBCONTRACT');
     api.requests.first.complete(_emptyPage);
     await tester.pumpAndSettle();
     // ADR-149: 分来源计数随徽章汇总带回(与列表同一仓库范围), 列表不再单独请求 type-counts。
@@ -114,6 +123,27 @@ class _DelayedApi extends ApiClient {
   final types = <String?>[];
   var countReads = 0;
   var facetReads = 0;
+  final facetForms = <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>> postForm(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    expect(path, ApiEndpoints.warehouseInboundExpectationFacets);
+    facetReads++;
+    facetForms.add(Map.of(body));
+    return {
+      'field': body['__facetField'],
+      'page': body['__facetPage'],
+      'size': body['__facetSize'],
+      'items': <Object>[],
+      'hasMore': false,
+      'readScopeVersion': 'expectation-fixture-reader',
+      'readSnapshotRevision': 'expectation-fixture-snapshot',
+      'readDataVersion': 'expectation-fixture-data',
+    };
+  }
 
   @override
   Future<Map<String, dynamic>> post(

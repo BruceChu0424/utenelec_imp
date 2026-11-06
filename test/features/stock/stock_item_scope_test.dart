@@ -114,25 +114,26 @@ class _ScopeApi extends ApiClient {
       };
     }
     if (path == '/stock/balances') {
+      final rows = q['colorNull'] == true
+          ? <Map<String, dynamic>>[]
+          : [
+              {
+                'id': 'b1',
+                'warehouseId': 'w1',
+                'goodsId': 'g1',
+                'colorId': q['colorId'] ?? 'red',
+                'qty': 9,
+                'weight': null,
+                'costMasked': true,
+                'amountLocal': 888888,
+              },
+            ];
       return {
-        'items': q['colorNull'] == true
-            ? <Map<String, dynamic>>[]
-            : [
-                {
-                  'id': 'b1',
-                  'warehouseId': 'w1',
-                  'goodsId': 'g1',
-                  'colorId': q['colorId'] ?? 'red',
-                  'qty': 9,
-                  'weight': null,
-                  'costMasked': true,
-                  'amountLocal': 888888,
-                },
-              ],
+        'items': rows,
         'page': 1,
         'size': 50,
-        'total': 99,
-        'totalPages': 2,
+        'total': rows.length,
+        'totalPages': rows.isEmpty ? 0 : 1,
       };
     }
     if (path.endsWith('/ledger')) {

@@ -87,7 +87,7 @@ void main() {
     test(
       '${type.segment}: list, facets and detail bind the same warehouse',
       () async {
-        final api = _HistoryApi();
+        final api = _HistoryApi(rowCount: 41);
         final repository = WarehouseDocumentHistoryRepository(
           api,
           type,
@@ -207,7 +207,7 @@ void main() {
       'history view clears rows and buckets on $change change; late reads stay discarded',
       (tester) async {
         _viewport(tester);
-        final api = _HistoryApi();
+        final api = _HistoryApi(rowCount: 41);
         final container = await _boot(api);
         addTearDown(container.dispose);
         final type = ValueNotifier(
@@ -243,6 +243,7 @@ void main() {
           () => table().facetPageLoaders['billNo']!('', 1),
         );
         expect(firstCandidates!.items.single.value, 'A-BUCKET');
+        expect(firstCandidates.items.single.count, 41);
         table().onFilterChanged('status', '1');
         await tester.pumpAndSettle();
         table().onFilterChanged('billNo', 'OLD-NO');
@@ -251,9 +252,13 @@ void main() {
         await tester.pumpAndSettle();
         table().onSortChange!('billNo', false);
         await tester.pumpAndSettle();
+        expect(table().items, hasLength(41));
+        final completedReads = api.calls.length;
         table().onPageChange!(3);
         await tester.pumpAndSettle();
-        expect(table().currentPage, 3);
+        expect(table().currentPage, 1);
+        expect(table().items, hasLength(41));
+        expect(api.calls, hasLength(completedReads));
 
         final oldFacets = Completer<Map<String, dynamic>>();
         api.facetsGate = oldFacets;
@@ -299,21 +304,25 @@ void main() {
         expect(newRequest.query['dateFrom'], '2026-10-01');
         expect(newRequest.query['dateTo'], '2026-10-12');
 
-        oldRows.complete(_listJson(oldType, 'LATE-OLD', 3));
-        oldFacets.complete(_facetJson('LATE-OLD'));
+        oldRows.complete(_listJson(oldType, 'LATE-OLD', 1, total: 41));
+        oldFacets.complete(_facetJson('LATE-OLD', total: 41));
         await oldCandidateRead;
         await tester.pump();
         expect(table().items, isEmpty);
         expect(table().facets['billNo'], isEmpty);
         final scope = change == 'warehouse' ? 'B' : 'A';
-        newRows.complete(_listJson(type.value, scope, 1));
+        newRows.complete(_listJson(type.value, scope, 1, total: 41));
         await tester.pumpAndSettle();
-        expect(table().items.single.billNo, '$scope-${type.value.segment}-1');
-        expect(table().items.single.type, type.value);
+        expect(table().items, hasLength(41));
+        expect(table().items.first.billNo, '$scope-${type.value.segment}-1');
+        expect(table().items.last.billNo, '$scope-${type.value.segment}-41');
+        expect(table().items.map((row) => row.id).toSet(), hasLength(41));
+        expect(table().items.map((row) => row.type), everyElement(type.value));
         final currentCandidates = await tester.runAsync(
           () => table().facetPageLoaders['billNo']!('', 1),
         );
         expect(currentCandidates!.items.single.value, '$scope-BUCKET');
+        expect(currentCandidates.items.single.count, 41);
         expect(find.text('LATE-OLD'), findsNothing);
         expect(table().currentPage, 1);
         expect(tester.takeException(), isNull);
@@ -426,30 +435,37 @@ void _viewport(WidgetTester tester) {
 Map<String, dynamic> _listJson(
   WarehouseDocumentHistoryType type,
   String scope,
-  int page,
-) => {
+  int page, {
+  int size = 20,
+  int total = 3,
+}) => {
   'items': [
-    {
-      'id': '$scope-${type.segment}-$page',
-      'billNo': '$scope-${type.segment}-$page',
-      'status': 1,
-      'closed': false,
-      'lineCount': 1,
-      'warehouseName': scope,
-    },
+    for (
+      var index = (page - 1) * size;
+      index < total && index < page * size;
+      index++
+    )
+      {
+        'id': '$scope-${type.segment}-${index + 1}',
+        'billNo': '$scope-${type.segment}-${index + 1}',
+        'status': 1,
+        'closed': false,
+        'lineCount': 1,
+        'warehouseName': scope,
+      },
   ],
   'page': page,
-  'size': 1,
-  'total': 3,
-  'totalPages': 3,
+  'size': size,
+  'total': total,
+  'totalPages': (total + size - 1) ~/ size,
 };
 
-Map<String, dynamic> _facetJson(String scope) => {
+Map<String, dynamic> _facetJson(String scope, {int total = 3}) => {
   'billNo': [
-    {'value': '$scope-BUCKET', 'label': '$scope-BUCKET', 'count': 3},
+    {'value': '$scope-BUCKET', 'label': '$scope-BUCKET', 'count': total},
   ],
   'sourceDocNo': [
-    {'value': '$scope-SOURCE', 'label': '$scope-SOURCE', 'count': 3},
+    {'value': '$scope-SOURCE', 'label': '$scope-SOURCE', 'count': total},
   ],
 };
 
@@ -480,7 +496,8 @@ class _Call {
 }
 
 class _HistoryApi extends ApiClient with NativeFacetFakeTransport {
-  _HistoryApi() : super(Dio());
+  _HistoryApi({this.rowCount = 3}) : super(Dio());
+  final int rowCount;
   final calls = <_Call>[];
   Completer<Map<String, dynamic>>? listGate;
   Completer<Map<String, dynamic>>? facetsGate;
@@ -512,13 +529,19 @@ class _HistoryApi extends ApiClient with NativeFacetFakeTransport {
       final gate = listGate;
       listGate = null;
       return gate == null
-          ? _listJson(type, scope, query?['page'] as int? ?? 1)
+          ? _listJson(
+              type,
+              scope,
+              query?['page'] as int? ?? 1,
+              size: query?['size'] as int? ?? 20,
+              total: rowCount,
+            )
           : gate.future;
     }
     if (parts.last == 'facets') {
       final gate = facetsGate;
       facetsGate = null;
-      return gate == null ? _facetJson(scope) : gate.future;
+      return gate == null ? _facetJson(scope, total: rowCount) : gate.future;
     }
     final gate = detailGate;
     detailGate = null;

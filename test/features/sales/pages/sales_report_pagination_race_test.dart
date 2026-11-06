@@ -14,7 +14,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   testWidgets(
-    'sales report keeps new filter results when the previous page arrives late',
+    'sales report keeps new filter results when an old internal refresh batch arrives late',
     (tester) async {
       SharedPreferences.setMockInitialValues(const {});
       final prefs = await SharedPreferences.getInstance();
@@ -43,16 +43,31 @@ void main() {
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(tableFinder);
 
-      // Exercise the real report's pagination callback while its response is
-      // pending, then change its real server-side header filter.
-      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-      await tester.pump();
+      expect(table().items, hasLength(51));
+      expect(api.queries.map((query) => query['page']), [1, 2]);
+      expect(api.queries.map((query) => query['size']), everyElement(50));
+      // Complete reads have no user next-page control. A fresh read still owns
+      // bounded internal batches, and its held continuation can lose a race.
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      api.holdOldContinuation = true;
+      table().onRetry!();
+      final eventTurn = tester.binding.clock.now();
+      // The shared complete reader yields through a zero-duration timer.
+      // Drive that event turn, without advancing the original time budget.
+      await tester.pump(Duration.zero);
+      expect(tester.binding.clock.now(), eventTurn);
       expect(api.queries.last['page'], 2);
-      expect(table().isLoading, isTrue);
+      expect(api.queries.map((query) => query['page']), [1, 2, 1, 2]);
+      expect(table().isRefreshing, isTrue);
+      expect(table().items, hasLength(51));
       table().onFilterChanged('clientName', 'fresh-client');
       await tester.pump();
       expect(api.queries.last['page'], 1);
       expect(api.queries.last['f.clientName'], 'fresh-client');
+      expect(table().items, isEmpty);
 
       api.filteredPage.complete(
         _reportResponse('New query customer', page: 1, totalPages: 1),
@@ -81,6 +96,7 @@ class _DelayedSalesReportApi extends ApiClient {
   final queries = <Map<String, dynamic>>[];
   final oldSecondPage = Completer<Map<String, dynamic>>();
   final filteredPage = Completer<Map<String, dynamic>>();
+  bool holdOldContinuation = false;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -95,7 +111,10 @@ class _DelayedSalesReportApi extends ApiClient {
     if (parameters['f.clientName'] == 'fresh-client') {
       return filteredPage.future;
     }
-    if (parameters['page'] == 2) return oldSecondPage.future;
+    if (parameters['page'] == 2) {
+      if (holdOldContinuation) return oldSecondPage.future;
+      return _reportResponse('Initial tail customer', page: 2, totalPages: 2);
+    }
     return _reportResponse('Original customer', page: 1, totalPages: 2);
   }
 }
@@ -109,7 +128,13 @@ Map<String, dynamic> _reportResponse(
     {'key': 'clientName', 'label': '客户', 'type': 'text', 'width': 220},
   ],
   'rows': [
-    {'__clientId': customer, 'clientName': customer},
+    {'__clientId': '$customer-$page-0', 'clientName': customer},
+    if (totalPages > 1 && page == 1)
+      for (var index = 1; index < 50; index++)
+        {
+          '__clientId': '$customer-$page-$index',
+          'clientName': 'Original sibling customer $index',
+        },
   ],
   'facets': <String, dynamic>{},
   'page': page,

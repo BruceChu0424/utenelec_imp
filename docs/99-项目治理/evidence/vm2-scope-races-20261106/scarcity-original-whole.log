@@ -1,0 +1,65 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_scarcity_display_test.dart
+00:00 +0: scarce reservations decode array response and retain source IDs
+00:00 +1: changing goods ignores late rows
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with text "货品乙": []" (used in a call to "tap()") could not find any
+matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_scarcity_display_test.dart:170:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  changing goods ignores late rows
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +1 -1: changing goods ignores late rows [E]
+  Test failed. See exception logs above.
+  The test description was: changing goods ignores late rows
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:02 +1 -1: changing goods ignores late error
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+The finder "Found 0 widgets with text "货品乙": []" (used in a call to "tap()") could not find any
+matching widgets.
+
+When the exception was thrown, this was the stack:
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2095:7)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_scarcity_display_test.dart:170:20)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  changing goods ignores late error
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +1 -2: changing goods ignores late error [E]
+  Test failed. See exception logs above.
+  The test description was: changing goods ignores late error
+  
+00:03 +1 -2: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_scarcity_display_test.dart: changing goods ignores late error
+  D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_scarcity_display_test.dart: changing goods ignores late rows

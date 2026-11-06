@@ -1,0 +1,56 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: purchase-receipts: list, facets and detail bind the same warehouse
+00:00 +1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: subcontract-receipts: list, facets and detail bind the same warehouse
+00:00 +2: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: subcontract-material-issues: list, facets and detail bind the same warehouse
+00:00 +3: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: subcontract-returns: list, facets and detail bind the same warehouse
+00:00 +4: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: subcontract-material-returns: list, facets and detail bind the same warehouse
+00:00 +5: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: subcontract-wastes: list, facets and detail bind the same warehouse
+00:00 +6: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: production family provider rebuilds for actor, server, warehouse and permissions
+00:00 +7: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history view clears rows and buckets on warehouse change; late reads stay discarded
+00:01 +8: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history view clears rows and buckets on warehouse change; late reads stay discarded
+00:06 +8: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_report_pagination_race_test.dart: sales report keeps new filter results when an old internal refresh batch arrives late
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: <2>
+  Actual: <1>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_report_pagination_race_test.dart:58:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_report_pagination_race_test.dart line 58
+The test description was:
+  sales report keeps new filter results when an old internal refresh batch arrives late
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +8 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history view clears rows and buckets on warehouse change; late reads stay discarded
+00:06 +8 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_report_pagination_race_test.dart: sales report keeps new filter results when an old internal refresh batch arrives late [E]
+  Test failed. See exception logs above.
+  The test description was: sales report keeps new filter results when an old internal refresh batch arrives late
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+00:07 +9 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history view clears rows and buckets on warehouse change; late reads stay discarded
+00:07 +10 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/stock/stock_item_scope_test.dart: no-color zero stock retains master data and exact null scope; changing color replaces range
+00:07 +11 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history view clears rows and buckets on type change; late reads stay discarded
+00:08 +12 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history view clears rows and buckets on type change; late reads stay discarded
+00:09 +13 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/stock/stock_item_scope_test.dart: real instant inventory row navigation retains list warehouse flags and no-color geometry
+00:10 +14 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/stock/stock_item_scope_test.dart: real instant inventory row navigation retains list warehouse flags and no-color geometry
+00:10 +15 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history detail clears physical facts on id change and rejects late object response
+00:11 +16 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/stock/stock_item_scope_test.dart: stock:view detail representative screenshot 1440.0 with large text and masked costs
+00:11 +17 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart: history detail clears physical facts on type change and rejects late object response
+00:11 +18 -1: D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/stock/stock_item_scope_test.dart: stock:view detail representative screenshot 390.0 with large text and masked costs
+00:11 +19 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_report_pagination_race_test.dart: sales report keeps new filter results when an old internal refresh batch arrives late

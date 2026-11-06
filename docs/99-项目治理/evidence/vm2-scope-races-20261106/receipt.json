@@ -1,0 +1,86 @@
+{
+  "baseMain": "9fa7d785a7ddde1f28c424a1b748f717c3d5d99b",
+  "sourceSha256": {
+    "test/features/warehouse/warehouse_history_scope_refresh_test.dart": "c013d5773b184de1a7b54ceb084315a6622c2b38139d183b7f9011d0e749144a",
+    "test/features/sales/pages/sales_report_pagination_race_test.dart": "1f6bbc99efa2a65d4c86680243ed77e29deb7c4b43af0561a90d61c49840f76d",
+    "test/features/stock/stock_item_scope_test.dart": "57cdf4f0bf699cc459532fbe81e2652509b06cce90b87275935df8371e14a697",
+    "test/features/sales/pages/sales_scarcity_display_test.dart": "57524ab162f52466836a436f44eb9b354f962ac4df7456a8c8387e4a3a7ae242"
+  },
+  "rootTargetPathsCheckedNoWipBeforeAndAfter": true,
+  "productionChanges": [],
+  "originalThreeWholes": {
+    "pass": 15,
+    "fail": 5
+  },
+  "optionalScarcityOriginalWhole": {
+    "pass": 1,
+    "fail": 2
+  },
+  "finalFourWholes": {
+    "pass": 23,
+    "fail": 0,
+    "skip": 0,
+    "files": {
+      "D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/warehouse/warehouse_history_scope_refresh_test.dart": {
+        "success": 12
+      },
+      "D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/stock/stock_item_scope_test.dart": {
+        "success": 7
+      },
+      "D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_scarcity_display_test.dart": {
+        "success": 3
+      },
+      "D:/Projects/uten_imp_worktrees/ci-vm2-scope-races-20261106/test/features/sales/pages/sales_report_pagination_race_test.dart": {
+        "success": 1
+      }
+    }
+  },
+  "strictFatalInfos": {
+    "exit": 0,
+    "issues": 0
+  },
+  "cooperativeEventTurn": {
+    "sdkCall": "WidgetTester.pump(Duration.zero)",
+    "virtualClockUnchangedAsserted": true,
+    "productSharedPrimitive": "UiWorkBudget.checkpoint: Future.delayed(Duration.zero)",
+    "existingPanelAndSettleBudgetsUnchanged": true
+  },
+  "preservedAssertions": [
+    "warehouse/actor/server/type identity boundaries and stale row/facet rejection",
+    "warehouse keyword/date retention, header filter/sort reset, native facet counts and detail quantity precision",
+    "server scoped totals and unknown-weight state; masked costs888888 never exposed; global KPI999999 not substituted",
+    "no-color exact null dimension and newer scope defeating late old context",
+    "sales original/new hidden source IDs and new filter winning over late old complete-read continuation",
+    "scarcity old goods late rows/error cannot replace chosen new goods; existing source ID decoder and quantities retained"
+  ],
+  "historicalArtifacts": {
+    "run": 42272933147,
+    "sourceSha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+    "restShards": [
+      1,
+      4,
+      5,
+      6,
+      7
+    ],
+    "failureRows": 96,
+    "files": 35,
+    "rawFullMatrix": "D:\\Projects\\uten_imp_worktrees\\ci-window-close-20261106\\build\\ci-window-close-20261106\\ci-3b7-rest\\full-error-matrix.json",
+    "allDeclaredMachineHashesVerified": true,
+    "allSourceStable": true,
+    "missingOrUnfinished": 0
+  },
+  "evidenceSha256": {
+    "original-three.log": "0a747c9f147c576d2c1d76507db2f15cbd7f7fdbf8ddf4d00fd862a7366ac25f",
+    "original-three.jsonl": "bdad645575d55084a3513df8e1c80e9777f6dd40fb77248e104b97deb40cca56",
+    "scarcity-original-whole.log": "c8192e753444a6b10c0205cee295c48e5e63e64568526c00c24447826769ccd0",
+    "current-three.log": "2885bb6afb300f33402373d76ee682631d7b8ef8da4d09821969790c573e824a",
+    "event-turn-two.log": "6d8938f738e2f2aa0e67bec1e8cfc8fce20a4800f148ff39c40f75a2e3160573",
+    "current-four.log": "322967683a18d42f6ed43d0a8f567ee38a093919b290f503a50e524782b39d0a",
+    "current-four.jsonl": "2e7105eb9fa7e69b8a8d756f89802e5071d8beadf155a82cb30ffbb5a57b30d6",
+    "strict-four.log": "05d01f3396ab37d9d6dd66e121b6bc40fb1235f587e8398ca00ad7812ccd04b7",
+    "final-format.log": "28b583777b79f057de6a9cb40081f7d9f6b5ee5f2fb3d80f02aa2728a6bd7e6e",
+    "historical-3b-vm-rest-summary.json": "4ab2e4a59bddddbb1054ee237dc39c78818d37f5db1e643f6c7f2e02a65d4283",
+    "historical-3b-vm-rest-groups.csv": "db964bdb784f10f007d640e8d3720416f4f7e4525ebc0edadebd631e25a0a91c"
+  }
+}

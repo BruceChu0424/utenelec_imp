@@ -166,7 +166,11 @@ void main() {
             find.byType(UtenCategoryTreeView<ProductCategoryNode>),
           )
           .onToggleSelect!(_category);
-      await tester.pump();
+      final eventTurn = tester.binding.clock.now();
+      // The real picker uses the same complete-reader cooperative event turn.
+      // Keep the pending old goods request and advance no virtual duration.
+      await tester.pump(Duration.zero);
+      expect(tester.binding.clock.now(), eventTurn);
       await tester.tap(find.text('货品乙'));
       await tester.pump();
       await tester.tap(find.text('确定'));

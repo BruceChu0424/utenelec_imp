@@ -1,0 +1,531 @@
+{
+  "run": 42272933147,
+  "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+  "shards": [
+    {
+      "shard": 1,
+      "report": "D:\\Projects\\uten_imp_worktrees\\ci-window-close-20261106\\build\\ci-window-close-20261106\\ci-3b7-rest\\artifact-vm1\\shard-1\\report.json",
+      "reportSha256": "d51953a0582c5e208a940c601a235ac4cbd71bb1d8ba209dc39e12bd1dbca00a",
+      "machineSha256": "b4f586a699db177508dae16bd9eecb226479a7339d5df5773d136ca2ba127e05",
+      "declaredMachineShaVerified": true,
+      "source": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceAfter": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceStable": true,
+      "planHash": "c8bf10697925cb41368a8b64ff5e3f67cbdd2cb4edc41f8d8af6c950d11302c9",
+      "exitCode": 1,
+      "gateComplete": false,
+      "gateError": "Flutter error event; failed/error/cancelled test: paged reportable tasks keep source identity and click order; Flutter error event; failed/error/cancelled test: new reportable search invalidates a pending previous query page; Flutter error event; failed/error/cancelled test: workshop failed ledger criteria and period changes retain controls without publishing old facts; Flutter error event; failed/error/cancelled test: ledger headers query full server scope and page with the same type, exact decimal and date conditions; Flutter error event; failed/error/cancelled test: order list separates drafts, awaiting-finance and finance-rejected",
+      "frameworkDone": {
+        "success": false,
+        "type": "done",
+        "time": 956006
+      },
+      "caseCounts": {
+        "success": 2069,
+        "skipped": 38,
+        "error": 11
+      },
+      "expectedFiles": 226,
+      "observedSuites": 226,
+      "missingExpectedFiles": [],
+      "unexpectedFiles": [],
+      "unfinishedTestCount": 0,
+      "failureOrErrorRows": 11
+    },
+    {
+      "shard": 4,
+      "report": "D:\\Projects\\uten_imp_worktrees\\ci-window-close-20261106\\build\\ci-window-close-20261106\\ci-3b7-rest\\artifact-vm4\\shard-4\\report.json",
+      "reportSha256": "97b384004f4f1ba30f78fe840d0e3ca23f4df7aea50536bc12c00d5ba2cbe836",
+      "machineSha256": "86ac3838b34f27813c3ce3e21511fb03cafab277b7b876dbec8f632aab303342",
+      "declaredMachineShaVerified": true,
+      "source": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceAfter": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceStable": true,
+      "planHash": "c8bf10697925cb41368a8b64ff5e3f67cbdd2cb4edc41f8d8af6c950d11302c9",
+      "exitCode": 1,
+      "gateComplete": false,
+      "gateError": "Flutter error event; failed/error/cancelled test: 导出密码200%保留确认校验，取消不触发导出; Flutter error event; failed/error/cancelled test: a scope revision during a real shared pane print never publishes its late pages; Flutter error event; failed/error/cancelled test: cancel real same-DTO destination navigation preserves page one editor and its complete raw draft; Flutter error event; failed/error/cancelled test: relationship pagination reuses metadata but sorting reloads it; Flutter error event; failed/error/cancelled test: result row opens source detail, BOM, and stock link without losing state",
+      "frameworkDone": {
+        "success": false,
+        "type": "done",
+        "time": 842037
+      },
+      "caseCounts": {
+        "success": 2089,
+        "error": 14,
+        "skipped": 7
+      },
+      "expectedFiles": 229,
+      "observedSuites": 229,
+      "missingExpectedFiles": [],
+      "unexpectedFiles": [],
+      "unfinishedTestCount": 0,
+      "failureOrErrorRows": 14
+    },
+    {
+      "shard": 5,
+      "report": "D:\\Projects\\uten_imp_worktrees\\ci-window-close-20261106\\build\\ci-window-close-20261106\\ci-3b7-rest\\artifact-vm5\\shard-5\\report.json",
+      "reportSha256": "05cca54d95c11e76a4db94488a8be60671bc3cf86f75233a076139ca370fa301",
+      "machineSha256": "d6bd20ec01c34e5d0cbc266466e9d082d82a5966a9a9ae8ac57e6093d187e677",
+      "declaredMachineShaVerified": true,
+      "source": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceAfter": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceStable": true,
+      "planHash": "c8bf10697925cb41368a8b64ff5e3f67cbdd2cb4edc41f8d8af6c950d11302c9",
+      "exitCode": 1,
+      "gateComplete": false,
+      "gateError": "Flutter error event; failed/error/cancelled test: client 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类; Flutter error event; failed/error/cancelled test: supplier 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类; Flutter error event; failed/error/cancelled test: mould 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类; Flutter error event; failed/error/cancelled test: client 减少动画 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类; Flutter error event; failed/error/cancelled test: supplier 省电 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类",
+      "frameworkDone": {
+        "success": false,
+        "type": "done",
+        "time": 807046
+      },
+      "caseCounts": {
+        "success": 1995,
+        "error": 24,
+        "skipped": 6,
+        "failure": 2
+      },
+      "expectedFiles": 229,
+      "observedSuites": 229,
+      "missingExpectedFiles": [],
+      "unexpectedFiles": [],
+      "unfinishedTestCount": 0,
+      "failureOrErrorRows": 26
+    },
+    {
+      "shard": 6,
+      "report": "D:\\Projects\\uten_imp_worktrees\\ci-window-close-20261106\\build\\ci-window-close-20261106\\ci-3b7-rest\\artifact-vm6\\shard-6\\report.json",
+      "reportSha256": "77f26b456e98e2b3bdb1e68e88997ab60ae63fb00a8165b7b47db7e2a49b59d7",
+      "machineSha256": "7c883f4ed082895880aefaaa90e28484f0367c9187b3816dab29cdaf6dd2362e",
+      "declaredMachineShaVerified": true,
+      "source": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceAfter": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceStable": true,
+      "planHash": "c8bf10697925cb41368a8b64ff5e3f67cbdd2cb4edc41f8d8af6c950d11302c9",
+      "exitCode": 1,
+      "gateComplete": false,
+      "gateError": "Flutter error event; failed/error/cancelled test: finance queue clears on identity switch and rejects a late page response; Flutter error event; failed/error/cancelled test: 下达车间页「物料名称」「编号」有表头筛选，且能收敛行; Flutter error event; failed/error/cancelled test: scope invalidation during submit retains original unknown command draft; Flutter error event; failed/error/cancelled test: 类别表头查询其他页的任务，清除后保持工作阶段; Flutter error event; failed/error/cancelled test: 已完成按服务端完整阶段分页，不用当前页状态假筛选",
+      "frameworkDone": {
+        "success": false,
+        "type": "done",
+        "time": 507331
+      },
+      "caseCounts": {
+        "success": 1897,
+        "error": 22,
+        "skipped": 5
+      },
+      "expectedFiles": 229,
+      "observedSuites": 229,
+      "missingExpectedFiles": [],
+      "unexpectedFiles": [],
+      "unfinishedTestCount": 0,
+      "failureOrErrorRows": 22
+    },
+    {
+      "shard": 7,
+      "report": "D:\\Projects\\uten_imp_worktrees\\ci-window-close-20261106\\build\\ci-window-close-20261106\\ci-3b7-rest\\artifact-vm7\\shard-7\\report.json",
+      "reportSha256": "1036b4e4bdfeef7bb13d19dfc0aacdcb3fd6a40bc5c606db944c4936a1c55e40",
+      "machineSha256": "2ba2e9a631c8bb2f6dbea9d411eac05a80f91c026b9e8d4809338d32acfdd241",
+      "declaredMachineShaVerified": true,
+      "source": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceAfter": {
+        "sha": "3b705a7a424669eabe4b5c53c9f7e427d63f5441",
+        "fingerprint": "7e222ab422770cba7fd13780983e5e8b10377d768611eab0393f97e79f93c4af"
+      },
+      "sourceStable": true,
+      "planHash": "c8bf10697925cb41368a8b64ff5e3f67cbdd2cb4edc41f8d8af6c950d11302c9",
+      "exitCode": 1,
+      "gateComplete": false,
+      "gateError": "Flutter error event; failed/error/cancelled test: claimNo header filter and sort hit the backend (2026-09-25); Flutter error event; failed/error/cancelled test: actual chart launcher fills its panel without another dialog card and keeps keyboard/search/result at 1280.0; Flutter error event; failed/error/cancelled test: actual chart launcher fills its panel without another dialog card and keeps keyboard/search/result at 390.0; Flutter error event; failed/error/cancelled test: chart launcher cannot close through a captured callback while import is pending and returns the original changed result; Flutter error event; failed/error/cancelled test: ar-ap ledger warms two following pages and reuses both directions",
+      "frameworkDone": {
+        "success": false,
+        "type": "done",
+        "time": 697664
+      },
+      "caseCounts": {
+        "success": 2139,
+        "error": 23,
+        "skipped": 1
+      },
+      "expectedFiles": 229,
+      "observedSuites": 229,
+      "missingExpectedFiles": [],
+      "unexpectedFiles": [],
+      "unfinishedTestCount": 0,
+      "failureOrErrorRows": 23
+    }
+  ],
+  "groups": [
+    {
+      "shard": 1,
+      "file": "test/features/production/widgets/reportable_plan_line_picker_test.dart",
+      "failureOrErrorCount": 2,
+      "cases": [
+        "paged reportable tasks keep source identity and click order",
+        "new reportable search invalidates a pending previous query page"
+      ]
+    },
+    {
+      "shard": 1,
+      "file": "test/features/production/workshop_material_reports_page_test.dart",
+      "failureOrErrorCount": 2,
+      "cases": [
+        "workshop failed ledger criteria and period changes retain controls without publishing old facts",
+        "ledger headers query full server scope and page with the same type, exact decimal and date conditions"
+      ]
+    },
+    {
+      "shard": 1,
+      "file": "test/features/purchase/purchase_doc_list_finance_segment_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "order list separates drafts, awaiting-finance and finance-rejected"
+      ]
+    },
+    {
+      "shard": 1,
+      "file": "test/features/warehouse/workshop_material_setup_page_test.dart",
+      "failureOrErrorCount": 6,
+      "cases": [
+        "上线准备期间撤销货品查看权限会卸载产品表，刷新不会继续请求",
+        "machine and preparation facts retain raw inputs and their listeners",
+        "上线准备: 一键填入只填空着的勾选行并标黄; 差 20% 也标黄",
+        "上线准备: 按克输入, 超过 5000 克先确认再保存",
+        "上线准备: 改已有 BOM 单重的行带上 BOM 行号; 已填单重的不能清空只选料",
+        "上线准备: 服务端要人确认第二种料时弹框, 确认后带上确认重发"
+      ]
+    },
+    {
+      "shard": 4,
+      "file": "test/components/platform_scale_surfaces_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "导出密码200%保留确认校验，取消不触发导出"
+      ]
+    },
+    {
+      "shard": 4,
+      "file": "test/features/basic_data/pages/master_complete_print_consumers_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "a scope revision during a real shared pane print never publishes its late pages"
+      ]
+    },
+    {
+      "shard": 4,
+      "file": "test/features/basic_data/widgets/master_entity_inline_edit_test.dart",
+      "failureOrErrorCount": 3,
+      "cases": [
+        "cancel real same-DTO destination navigation preserves page one editor and its complete raw draft",
+        "active IME cell survives a pending reload and read success",
+        "pagination requires an explicit decision about unsaved cell changes"
+      ]
+    },
+    {
+      "shard": 4,
+      "file": "test/features/production/where_used_report_page_interaction_test.dart",
+      "failureOrErrorCount": 2,
+      "cases": [
+        "relationship pagination reuses metadata but sorting reloads it",
+        "result row opens source detail, BOM, and stock link without losing state"
+      ]
+    },
+    {
+      "shard": 4,
+      "file": "test/features/stock/stock_count_session_page_test.dart",
+      "failureOrErrorCount": 5,
+      "cases": [
+        "late warehouse stash preserves touched input, new rows and session ABA=false",
+        "盘点相关模式ABA忽略旧页且不覆盖已填数量",
+        "同仓慢旧筛选不能覆盖快新筛选或输入，旧请求失败=false",
+        "同仓慢旧筛选不能覆盖快新筛选或输入，旧请求失败=true",
+        "同仓旧请求先完成仍保留当前请求加载态"
+      ]
+    },
+    {
+      "shard": 4,
+      "file": "test/features/visitor_approval/my_visitors_page_test.dart",
+      "failureOrErrorCount": 2,
+      "cases": [
+        "pending family page keeps the mounted table and appends its rows",
+        "failed family append keeps earlier rows and can retry page two"
+      ]
+    },
+    {
+      "shard": 5,
+      "file": "test/features/basic_data/pages/master_global_flat_search_test.dart",
+      "failureOrErrorCount": 5,
+      "cases": [
+        "client 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类",
+        "supplier 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类",
+        "mould 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类",
+        "client 减少动画 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类",
+        "supplier 省电 搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类"
+      ]
+    },
+    {
+      "shard": 5,
+      "file": "test/features/finance/finance_expense_lifecycle_test.dart",
+      "failureOrErrorCount": 4,
+      "cases": [
+        "expense confirmation hub card reaches the scoped pending deep link",
+        "confirmation refresh signal retains scope and recovers the last pending page",
+        "view-only staff see pending GL work; paging, facets and clearing retain lifecycle",
+        "late pending confirmation response cannot replace completed history"
+      ]
+    },
+    {
+      "shard": 5,
+      "file": "test/features/operations_workbench/workbench_category_count_lifecycle_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "working first-page preparation is adopted by a fast stage click"
+      ]
+    },
+    {
+      "shard": 5,
+      "file": "test/features/payroll/payroll_slip_list_page_test.dart",
+      "failureOrErrorCount": 3,
+      "cases": [
+        "personal salary headers query all pages with exact amounts and preserve the status category",
+        "read category includes downloaded and resets paging on change",
+        "status detail and clear stay in the visible category"
+      ]
+    },
+    {
+      "shard": 5,
+      "file": "test/features/production/pages/production_workshop_tasks_planning_urge_test.dart",
+      "failureOrErrorCount": 6,
+      "cases": [
+        "计划没下单的缺料：状态列品红「等计划下单」、物料列点名、详情里能催",
+        "30 分钟内刚催过：详情按钮灰掉并说几点后能再催，右键菜单也灰",
+        "冷却已过：按钮变「再催一次」，可以再催",
+        "服务端说刚催过(并发/别人刚催)：如实提示，不报错",
+        "计划其实刚下完单(服务端 409)：提示原因并刷新，状态不再是等计划下单",
+        "没有开工权限：看得到缺什么，但没有催计划按钮"
+      ]
+    },
+    {
+      "shard": 5,
+      "file": "test/features/production/production_over_limit_pages_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "status header refines the complete pending group and resets paging"
+      ]
+    },
+    {
+      "shard": 5,
+      "file": "test/personal_list_session_isolation_test.dart",
+      "failureOrErrorCount": 6,
+      "cases": [
+        "payroll switches identity without retaining old data or accepting a late old refresh",
+        "payroll discards late page response when a new filter starts at page one",
+        "payroll refresh supersedes an unfinished initial load",
+        "expense switches identity without retaining old data or accepting a late old refresh",
+        "expense discards late page response when a new filter starts at page one",
+        "expense refresh supersedes an unfinished initial load"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/expense/expense_approval_session_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "finance queue clears on identity switch and rejects a late page response"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/production/pages/material_analysis_bucket_header_filter_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "下达车间页「物料名称」「编号」有表头筛选，且能收敛行"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/production/pages/production_draw_request_page_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "scope invalidation during submit retains original unknown command draft"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/rd_task/rd_task_category_filter_test.dart",
+      "failureOrErrorCount": 2,
+      "cases": [
+        "类别表头查询其他页的任务，清除后保持工作阶段",
+        "已完成按服务端完整阶段分页，不用当前页状态假筛选"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/sales/pages/sales_task_prefetch_test.dart",
+      "failureOrErrorCount": 6,
+      "cases": [
+        "进页预热首个授权大类，选择阶段复用已完成的首屏",
+        "选择可采纳进行中的预热，慢徽章计数不阻塞表格",
+        "非历史首屏预热最多两条并发，完成后继续剩余阶段",
+        "只预热已选大类，保留单据原首屏大小且不读取历史",
+        "仅出货查看权限时不预热订货和其他业务列表",
+        "十万条分页元数据及完整50行预热首屏保留，真实滚动可到末行"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/subcontract/imported_business_archive_test.dart",
+      "failureOrErrorCount": 6,
+      "cases": [
+        "order archive defaults to recent month and all years retains raw0/-1/1",
+        "receipt archive defaults to recent month and all years retains raw0/-1/1",
+        "materialIssue archive defaults to recent month and all years retains raw0/-1/1",
+        "returnDoc archive defaults to recent month and all years retains raw0/-1/1",
+        "materialReturn archive defaults to recent month and all years retains raw0/-1/1",
+        "waste archive defaults to recent month and all years retains raw0/-1/1"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/warehouse/category_table_loading_responsiveness_test.dart",
+      "failureOrErrorCount": 2,
+      "cases": [
+        "denied workshop editor hides rows and retains inputs (prep=true)",
+        "workshop preparation mounts table before the first response"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/warehouse/procurement_over_receipt_tolerance_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "财务超量审批已处理分类保留原异常入口"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/warehouse/warehouse_document_history_page_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "同一历史视图切type且其它条件不变时，不保留旧域行或筛选"
+      ]
+    },
+    {
+      "shard": 6,
+      "file": "test/features/warehouse/warehouse_stock_count_review_navigation_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "真实顶栏箭头先返回原盘点队列并保留范围搜索页码，再返回仓库入口"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/features/expense/expense_list_category_filter_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "claimNo header filter and sort hit the backend (2026-09-25)"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/features/finance/finance_chart_launcher_test.dart",
+      "failureOrErrorCount": 3,
+      "cases": [
+        "actual chart launcher fills its panel without another dialog card and keeps keyboard/search/result at 1280.0",
+        "actual chart launcher fills its panel without another dialog card and keeps keyboard/search/result at 390.0",
+        "chart launcher cannot close through a captured callback while import is pending and returns the original changed result"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/features/finance/finance_paged_cache_callers_test.dart",
+      "failureOrErrorCount": 9,
+      "cases": [
+        "ar-ap ledger warms two following pages and reuses both directions",
+        "account reconciliation warms two following pages and reuses both directions",
+        "quote review warms two following pages and reuses both directions",
+        "sales confirmation warms two following pages and reuses both directions",
+        "procurement approval warms two following pages and reuses both directions",
+        "payables full summary warms two following pages and reuses both directions",
+        "supplier settlement warms two following pages and reuses both directions",
+        "loss claims warms two following pages and reuses both directions",
+        "asset ledger warms two following pages and reuses both directions"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/features/finance/gl_report_line_bindings_dialog_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "retired scope closes safely with picker=true"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/features/purchase/purchase_report_totals_bar_test.dart",
+      "failureOrErrorCount": 5,
+      "cases": [
+        "服务端分页：合计条显示服务端合计，而不是对当前页求和",
+        "375px 视口下合计条可见且不溢出",
+        "834px 视口下合计条可见且不溢出",
+        "1500px 视口下合计条可见且不溢出",
+        "1.5× 字号下合计条可见且不溢出"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/features/report/report_output_selection_callers_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "finance actual report page exports one selected row with its accepted filters"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/features/sales/widgets/sales_batch_ship_panel_paging_test.dart",
+      "failureOrErrorCount": 2,
+      "cases": [
+        "legal full selection includes all 500 with original edited first row",
+        "selection and raw inputs survive evicted pages and submit every chosen row"
+      ]
+    },
+    {
+      "shard": 7,
+      "file": "test/suggestion_paging_provider_test.dart",
+      "failureOrErrorCount": 1,
+      "cases": [
+        "provider keeps server page on refresh and patches likes in place"
+      ]
+    }
+  ],
+  "fullErrorMatrixSha256": "3c85df10de6e595f49849a0de9255c0523b24746bb593e8f70ea198d5d35d490"
+}

@@ -144,6 +144,8 @@ MIGRATOR_APPLICATION_CLASSES = frozenset(
         "com/uten/imp/migration/UtenImpMigrator$MigrationActions.class",
         "com/uten/imp/migration/UtenImpMigrator$MigrationActionsFactory.class",
         "com/uten/imp/migration/AppliedMigrationCompatibilityCallback.class",
+        "com/uten/imp/migration/ExpenseEventMigrationCompatibility.class",
+        "com/uten/imp/migration/ExpenseEventMigrationCompatibility$Plan.class",
         "com/uten/imp/migration/AuditFreshStartGuardCallback.class",
     }
 )

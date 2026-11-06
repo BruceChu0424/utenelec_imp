@@ -204,6 +204,8 @@ class ReleaseFixture(unittest.TestCase):
                 "com/uten/imp/migration/UtenImpMigrator$MigrationActions.class",
                 "com/uten/imp/migration/UtenImpMigrator$MigrationActionsFactory.class",
                 "com/uten/imp/migration/AppliedMigrationCompatibilityCallback.class",
+                "com/uten/imp/migration/ExpenseEventMigrationCompatibility.class",
+                "com/uten/imp/migration/ExpenseEventMigrationCompatibility$Plan.class",
                 "com/uten/imp/migration/AuditFreshStartGuardCallback.class",
             ):
                 jar.writestr(application_class, b"fixture-bytecode")
@@ -342,10 +344,36 @@ class ReleaseFixture(unittest.TestCase):
                 self.assertIn("migrations differ", errors)
                 jar_path.write_bytes(original)
 
+    def test_migrator_jar_requires_each_expense_compatibility_class(self) -> None:
+        self.assertEqual(
+            release_tools.MIGRATOR_APPLICATION_CLASSES,
+            release_guard.MIGRATOR_APPLICATION_CLASSES,
+        )
+        original = self.payload / "server/uten-imp-migrator.jar"
+        for missing_class in (
+            "com/uten/imp/migration/ExpenseEventMigrationCompatibility.class",
+            "com/uten/imp/migration/ExpenseEventMigrationCompatibility$Plan.class",
+        ):
+            with self.subTest(missing=missing_class):
+                tampered = self.root / Path(missing_class).stem / "uten-imp-migrator.jar"
+                tampered.parent.mkdir()
+                with zipfile.ZipFile(original) as source, zipfile.ZipFile(tampered, "w") as target:
+                    for item in source.infolist():
+                        if item.filename != missing_class:
+                            target.writestr(item, source.read(item))
+                with self.assertRaises(release_tools.ReleaseMetadataError):
+                    release_tools.verify_jar_migrations(tampered, self.manifest["flyway"])
+                with self.assertRaises(release_guard.ReleaseGuardError):
+                    release_guard.verify_executable_jar(
+                        tampered, self.info, migration_prefix="db/migration/", migrator=True,
+                    )
+
     def test_migrator_jar_rejects_business_and_web_runtime_classes(self) -> None:
         original = self.payload / "server/uten-imp-migrator.jar"
         for label, forbidden_class in (
             ("business", "com/uten/imp/service/OrderService.class"),
+            ("other-migration-class", "com/uten/imp/migration/LocalRuntimePrivilegesCallback.class"),
+            ("unreviewed-nested-class", "com/uten/imp/migration/ExpenseEventMigrationCompatibility$Other.class"),
             ("spring", "org/springframework/context/ApplicationContext.class"),
             ("servlet", "jakarta/servlet/Servlet.class"),
             ("tomcat", "org/apache/tomcat/Server.class"),

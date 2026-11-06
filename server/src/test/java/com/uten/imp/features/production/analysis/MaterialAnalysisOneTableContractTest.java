@@ -43,7 +43,12 @@ class MaterialAnalysisOneTableContractTest {
                 "BigDecimal internalCovered = activeFutureCoverageQty.subtract(externalFutureCoverageQty)");
         assertThat(service).contains(
                 ".subtract(committedPlanQty.max(BigDecimal.ZERO).subtract(internalCovered)");
-        assertThat(service).contains("committedPlan = committedPlan.max(materialSource.committedPlanQty()");
+        // Only the still-pending private share reduces planning work. Completed
+        // output is already represented by physical/issued coverage; reusing a
+        // plan's original quota would conceal a later genuine replenishment gap.
+        assertThat(service).contains("new MaterialPreparationBudgetReader(em).privateMakePending(analysisId)");
+        assertThat(service).contains("BigDecimal committedPlan = pendingPrivateMake.getOrDefault(row.id(),BigDecimal.ZERO);");
+        assertThat(service).doesNotContain("committedPlan = committedPlan.max(materialSource.committedPlanQty()");
         assertThat(service).contains(".multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));");
 
         // 三条供给路线均可采用精确来源证明允许的公共供给；未定路线不当作已采用。
@@ -78,7 +83,7 @@ class MaterialAnalysisOneTableContractTest {
         assertThat(compact).contains(
                 "sum + _tableShownQty(material, authoritative: authoritative).residual");
         assertThat(compact).contains("residual: preparation.planningUncoveredQty");
-        assertThat(compact).contains("final anchorResidual = _tableAnchorResidual(");
+        assertThat(compact).contains("final anchorResidual = shown.planningUncoveredQty ?? _tableAnchorResidual(");
         assertThat(compact).contains("residual: anchorResidual ?? shown.additionalSupplyRecommendedQty");
         assertThat(compact).contains(": shown.netShortageQty");
         assertThat(compact).doesNotContain(

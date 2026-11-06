@@ -1,0 +1,70 @@
+{
+  "codeIntegrationCommit": "0d29bf39f3b0f308bea332ad9201d6aebe0c70f9",
+  "validation": "full regression plus affected-case reruns; full suite not repeated after final narrow SQL guard patch",
+  "backend": {
+    "classes": 34,
+    "uniqueCases": 334,
+    "passed": 334,
+    "skipped": 0,
+    "fullRunSource": "7c8c6717133f9d84d6ac57909053b250c2161504",
+    "fullRunPassed": 332,
+    "fixedAndRetested": [
+      {
+        "class": "com.uten.imp.businesschain.SubcontractActualReceiptAllowanceEndToEndTest",
+        "case": "cumulativeRoundCreditHasExplicitZeroProofAndMustReverseAfterItsFundingSource",
+        "result": "passed"
+      },
+      {
+        "class": "com.uten.imp.migration.SubcontractActualConsumptionUpgradePostgresTest",
+        "case": "historicalAllowanceConsumptionRetainsItsExactSlicesAndCannotPayForNewActualReceipts",
+        "result": "passed"
+      }
+    ],
+    "finalCostGuardSource": "48a098fdc86237d66e3e1163e62d24cbfcc14a80",
+    "finalUpgradeFixtureSource": "70203b28ae46a9de9ed16a9ba1e6c4722b6933f9"
+  },
+  "frontend": {
+    "firstVmUniquePassed": 117,
+    "afterDraftIntegrationPassed": 21,
+    "analyzeEntrances": 17,
+    "analyzeIssues": 0,
+    "currentChromeExecuted": 0,
+    "currentChrome": "browser test loader stalled; owned runner and children stopped",
+    "priorChromePrecisionPassedSeparate": 5
+  },
+  "native": {
+    "toolTestsPassed": 21,
+    "canonicalChecks": "passed",
+    "taskStatesPreserved": 372,
+    "affectedTasksStillTodo": 10,
+    "win7Uat": false
+  },
+  "baseline": {
+    "commit": "76ed3a78f2235a90be6e2f35e201338489ea1546",
+    "threeRegressionCases": "all failed as expected: fixed padded consumption and normal return wrongly quarantined"
+  },
+  "migrations": [
+    {
+      "file": "V1097__subcontract_actual_receipts_and_base_consumption.sql",
+      "sha256": "d07aad4be61763e74774c3b05feb96ae3616eccb1cf1fe98bb3ce2d6c4cc4f96"
+    },
+    {
+      "file": "V1098__subcontract_finished_target_short_delivery.sql",
+      "sha256": "9328421013271605fc8807f403e74376bcae7eac838c04be0b8989e7daa49f9b"
+    },
+    {
+      "file": "V1099__inherit_subcontract_receipt_consumption_version.sql",
+      "sha256": "69c5f11df44825f00f0137adbc2cdc937af5422ed8041104b0b4d506ae75c2a5"
+    }
+  ],
+  "scope": {
+    "localMainMerge": true,
+    "push": false,
+    "deploy": false,
+    "package": false,
+    "companyDataWrites": false,
+    "companyActualCountVerified": false,
+    "fullCiRun": false
+  },
+  "localEvidenceRoot": "C:\\Users\\bruce\\.codex\\worktrees\\subcontract-actual-receipt-20261106\\uten_imp\\output\\subcontract-actual-receipt-20261106\\integration"
+}

@@ -9,19 +9,18 @@ import 'support/table_cell_geometry.dart';
 void main() {
   for (final (factor, textScale) in [(0.85, 1.0), (2.0, 2.0)]) {
     testWidgets(
-      'pager keeps complete hit targets, counter and exact page factor=$factor',
+      'retired pager cannot expose controls or request data on touch at factor=$factor',
       (tester) async {
         _view(tester, const Size(320, 900));
         final calls = <int>[];
         var loads = 0;
-        var page = 1;
         await tester.pumpWidget(
           _app(
             factor: factor,
             textScale: textScale,
             platform: TargetPlatform.android,
             child: StatefulBuilder(
-              builder: (context, setState) => Scaffold(
+              builder: (context, _) => Scaffold(
                 body: SizedBox(
                   width: 160,
                   height: 100,
@@ -40,11 +39,9 @@ void main() {
                     nullCounts: const {},
                     onFilterChanged: (_, _) {},
                     totalPages: 1000000,
-                    currentPage: page,
                     onLoadMore: () => loads++,
                     onPageChange: (value) async {
                       calls.add(value);
-                      setState(() => page = value);
                     },
                     showFullscreenToggle: false,
                   ),
@@ -54,36 +51,24 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        final initialLoads = loads;
-        expect(find.text('1 / 1000000'), findsOneWidget);
-        final next = find.byKey(const ValueKey('master-table-page-next'));
-        final scroll = Scrollable.of(tester.element(next), axis: Axis.vertical);
-        await tester.scrollUntilVisible(
-          next,
-          80,
-          scrollable: find.byElementPredicate(
-            (element) =>
-                element is StatefulElement && identical(element.state, scroll),
-          ),
-        );
-        await tester.pumpAndSettle();
+        expect(find.text('1 / 1000000'), findsNothing);
         for (final key in [
           'master-table-page-previous',
           'master-table-page-next',
         ]) {
-          final rect = tester.getRect(find.byKey(ValueKey(key)));
-          expect(rect.width, greaterThanOrEqualTo(47.9));
-          expect(rect.height, greaterThanOrEqualTo(47.9));
+          expect(find.byKey(ValueKey(key)), findsNothing);
         }
+        await tester.drag(
+          find.byType(MasterDataTableView<String>),
+          const Offset(0, -120),
+        );
+        await tester.pumpAndSettle();
         expect(
           loads,
-          initialLoads,
+          0,
           reason: 'scrolling the presentation is not a business page request',
         );
-        await tester.tap(next.hitTestable());
-        await tester.pumpAndSettle();
-        expect(calls, [2]);
-        expect(find.text('2 / 1000000'), findsOneWidget);
+        expect(calls, isEmpty);
         expect(tester.takeException(), isNull);
       },
     );

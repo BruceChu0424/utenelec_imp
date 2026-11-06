@@ -18,7 +18,7 @@ import java.util.Objects;
  * 后判定必须拿到新结果); 批量办理循环在服务里显式开窗口。
  *
  * <p>注册在 Spring Security 过滤链之后(主体已解析, 鉴权失败的请求不进来)。窗口由
- * {@link WarehouseTaskScopePort#withScopeCache} 在 finally 里关闭: 处理抛错、异步/流式响应(处理线程一返回
+ * {@link WarehouseTaskScopePort#withQueryScopeCache} 在 finally 里关闭: 处理抛错、异步/流式响应(处理线程一返回
  * 就关, 异步线程本来看不到这个 ThreadLocal)都不会把窗口带进线程池里的下一个请求; 异步与错误分派不再进来
  * ({@link OncePerRequestFilter} 默认)。
  */
@@ -36,7 +36,7 @@ public final class WarehouseScopeReadSnapshotFilter extends OncePerRequestFilter
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         try {
-            scopes.withScopeCache(() -> {
+            scopes.withQueryScopeCache(() -> {
                 try {
                     chain.doFilter(request, response);
                 } catch (IOException | ServletException failure) {
@@ -51,7 +51,7 @@ public final class WarehouseScopeReadSnapshotFilter extends OncePerRequestFilter
         }
     }
 
-    /** 让过滤链的受检异常穿过 {@code Supplier}。 */
+    /** 让过滤链的受检异常穿过只读 {@code ReadQuery}。 */
     private static final class ChainFailure extends RuntimeException {
         ChainFailure(Exception cause) {
             super(cause.getMessage(), cause, false, false);

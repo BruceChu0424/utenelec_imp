@@ -43,10 +43,10 @@ class SubcontractOrderInProgressFilterTest {
 
     @Test
     void includesPendingAndRejectedLiveOrdersOrUnclosedApprovedOrdersBeforePagination() {
-        verifyInProgress(Set.of(UUID.randomUUID()), Set.of(UUID.randomUUID()));
+        verifyInProgress();
     }
 
-    private void verifyInProgress(Set<UUID> pending, Set<UUID> rejected) {
+    private void verifyInProgress() {
         when(repository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
         when(approvals.latestForOrders(eq("SUBCONTRACT"), any())).thenReturn(Map.of());

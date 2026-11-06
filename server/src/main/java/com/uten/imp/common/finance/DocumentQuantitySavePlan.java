@@ -61,14 +61,29 @@ public final class DocumentQuantitySavePlan {
         // Reserve every explicit locator before legacy fallback: a new cloned
         // row may precede the original and must not consume its saved decision.
         var identified=new HashSet<UUID>();
-        for(Intent input:intents)if(input.identity()!=null){
-            if(!stored.containsKey(input.identity()))throw invalid("原明细不属于当前单据，请重新载入后核对");
-            if(!identified.add(input.identity()))throw invalid("同一原明细不能重复保存");
+        for(Intent input:intents){
+            if(input.identity()!=null){
+            if(!stored.containsKey(input.identity())){
+                throw invalid("原明细不属于当前单据，请重新载入后核对");
+            }
+
+            if(!identified.add(input.identity())){
+                throw invalid("同一原明细不能重复保存");
+            }
+
         }
+        }
+
         var selected=new LinkedHashMap<Integer,Saved>();var consumed=new HashSet<UUID>();var positions=new HashSet<Integer>();
         for(Intent raw:intents){
-            if(!positions.add(raw.lineNo()))throw invalid("明细行号重复，请保留输入核对原明细");
-            if(!raw.operands().keySet().equals(family.fields))throw new IllegalArgumentException("Incomplete quantity source operands for "+family);
+            if(!positions.add(raw.lineNo())){
+                throw invalid("明细行号重复，请保留输入核对原明细");
+            }
+
+            if(!raw.operands().keySet().equals(family.fields)){
+                throw new IllegalArgumentException("Incomplete quantity source operands for "+family);
+            }
+
             Saved explicit=raw.identity()==null?null:stored.get(raw.identity());
             var rawOriginals=explicit!=null?List.of(explicit):stored.values().stream()
                 .filter(old->!identified.contains(old.id())&&!consumed.contains(old.id())&&old.matches(raw.operands())).toList();
@@ -76,20 +91,44 @@ public final class DocumentQuantitySavePlan {
             // v1 row must explicitly repair a component that was never recorded;
             // current master defaults are not evidence of that original basis.
             if(family==Family.PURCHASE_ORDER||family==Family.PURCHASE_RECEIPT||family==Family.PURCHASE_RETURN)
-                for(Saved original:rawOriginals)if(original.row.path("quantity_adoption_version").asInt()==1
+                {
+                    for(Saved original:rawOriginals){
+                    if(original.row.path("quantity_adoption_version").asInt()==1
                     &&((original.text("unit_id")==null&&raw.operands().get("unit_id")==null)
                         ||(original.decimal("unit_rate")==null&&raw.operands().get("unit_rate")==null)))
-                    throw invalid("原明细单位/换算率缺少依据，请明确补齐原缺失项后保存");
+                    {
+                        throw invalid("原明细单位/换算率缺少依据，请明确补齐原缺失项后保存");
+                    }
+
+                }
+
+                }
+
             Intent input=Objects.requireNonNull(normalize.apply(raw),"Normalized quantity intent");
             if(input.lineNo()!=raw.lineNo()||!Objects.equals(input.identity(),raw.identity())||!input.operands().keySet().equals(family.fields)
                 ||raw.operands().entrySet().stream().anyMatch(entry->!Set.of("unit_id","unit_rate").contains(entry.getKey())&&!Objects.equals(entry.getValue(),input.operands().get(entry.getKey()))))
-                throw new IllegalArgumentException("Unit normalization cannot change quantity intent identity or sources");
-            if(explicit!=null){if(!consumed.add(explicit.id()))throw invalid("同一原明细不能重复保存");
-                if(explicit.matches(input.operands()))selected.put(input.lineNo(),explicit);continue;}
+                {
+                    throw new IllegalArgumentException("Unit normalization cannot change quantity intent identity or sources");
+                }
+
+            if(explicit!=null){if(!consumed.add(explicit.id())){
+                throw invalid("同一原明细不能重复保存");
+            }
+
+                if(explicit.matches(input.operands())){
+                    selected.put(input.lineNo(),explicit);
+                }
+                continue;}
             var candidates=stored.values().stream().filter(s->!identified.contains(s.id())&&!consumed.contains(s.id())&&s.matches(input.operands())).toList();
-            if(candidates.isEmpty())continue;
+            if(candidates.isEmpty()){
+                continue;
+            }
+
             Saved first=candidates.getFirst();
-            if(candidates.stream().anyMatch(s->!s.sameAdoption(first)))throw invalid("相同输入存在不同的原数量采用，请重新载入并核对原明细");
+            if(candidates.stream().anyMatch(s->!s.sameAdoption(first))){
+                throw invalid("相同输入存在不同的原数量采用，请重新载入并核对原明细");
+            }
+
             Saved match=candidates.stream().filter(s->s.lineNo()==input.lineNo()).findFirst().orElse(first);
             consumed.add(match.id());selected.put(input.lineNo(),match);
         }
@@ -100,9 +139,15 @@ public final class DocumentQuantitySavePlan {
         private Plan(Family family,UUID parent,Map<Integer,Saved> selected){this.family=family;this.parent=parent;this.selected=selected;}
         public Saved saved(int lineNo){return selected.get(lineNo);}
         public void deleteReplaced(EntityManager em){
-            if(family==null)return;var kept=selected.values().stream().map(Saved::id).toList();
+            if(family==null){
+                return;
+            }
+            var kept=selected.values().stream().map(Saved::id).toList();
             var delete=em.createNativeQuery("DELETE FROM "+family.table+" WHERE "+family.parent+"=:parent"+(kept.isEmpty()?"":" AND id NOT IN(:kept)"));
-            delete.setParameter("parent",parent);if(!kept.isEmpty())delete.setParameter("kept",kept);delete.executeUpdate();
+            delete.setParameter("parent",parent);if(!kept.isEmpty()){
+                delete.setParameter("kept",kept);
+            }
+            delete.executeUpdate();
         }
     }
     public static final class Saved {
@@ -136,7 +181,10 @@ public final class DocumentQuantitySavePlan {
         }
         public boolean referenceMatches(EntityManager em){return Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_procurement_reference_price_matches(CAST(:item AS jsonb))").setParameter("item",row.toString()).getSingleResult());}
         public List<SourceSplit> sourceSplits(){var out=new ArrayList<SourceSplit>();for(JsonNode source:row.path("saved_source_splits"))
-            out.add(new SourceSplit(UUID.fromString(source.path("source").asText()),source.path("qty").decimalValue(),source.path("gift").decimalValue()));return List.copyOf(out);}
+            {
+                out.add(new SourceSplit(UUID.fromString(source.path("source").asText()),source.path("qty").decimalValue(),source.path("gift").decimalValue()));
+            }
+            return List.copyOf(out);}
     }
     public record SourceSplit(UUID source,BigDecimal quantity,BigDecimal gift) { }
     private static JsonNode nativeRow(String value){

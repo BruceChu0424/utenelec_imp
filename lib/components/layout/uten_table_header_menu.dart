@@ -26,11 +26,17 @@ class UtenTableHeaderMenu extends StatefulWidget {
     required this.anchorContext,
     required this.onClose,
     required this.child,
+    this.dismissOnOutsideTap = true,
   });
 
   final BuildContext anchorContext;
   final VoidCallback onClose;
   final Widget child;
+
+  /// Root busy masks are outside this menu's TapRegion. Their blocked pointer
+  /// events must not dismiss the owning menu or discard its in-progress input.
+  /// Route, focus and Escape retirement remain owned by the caller.
+  final bool dismissOnOutsideTap;
 
   @override
   State<UtenTableHeaderMenu> createState() => _UtenTableHeaderMenuState();
@@ -108,7 +114,7 @@ class _UtenTableHeaderMenuState extends State<UtenTableHeaderMenu> {
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onTap: widget.onClose,
+              onTap: widget.dismissOnOutsideTap ? widget.onClose : null,
             ),
           ),
           Positioned(
@@ -116,7 +122,9 @@ class _UtenTableHeaderMenuState extends State<UtenTableHeaderMenu> {
             top: openAbove ? null : menuY,
             bottom: openAbove ? viewport.height - menuY : null,
             child: TapRegion(
-              onTapOutside: (_) => widget.onClose(),
+              onTapOutside: widget.dismissOnOutsideTap
+                  ? (_) => widget.onClose()
+                  : null,
               child: Material(
                 key: const Key('uten-table-header-menu'),
                 color: Theme.of(context).colorScheme.surfaceContainerHigh,

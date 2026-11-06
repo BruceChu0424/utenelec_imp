@@ -1,0 +1,25 @@
+{
+  "startedAtUtc": "2026-11-06T15:13:37.036200+00:00",
+  "completedAtUtc": "2026-11-06T15:14:45.814018+00:00",
+  "actualExitCode": 1,
+  "failure": "RuntimeError: Real Chrome renderer probe failed; preserve driver.log",
+  "inputs": {
+    "tool/loading_web_probe.dart": "31b6e22bd3a787429680cd5bbafc3692cdff030ba265c18d2858b09121d8b88c",
+    "tool/loading_web_probe_server.mjs": "4a0e143ee78bd08c61132e0567ba4646dd38de609aa383414a5b42bc234b3a7d",
+    "tool/loading_web_probe_driver.mjs": "4f1f6d87051a71dc94f92f0ab14801360cd8f17fcc424904b9e499c601a94478",
+    "build/loading-probe-final/main.dart.js": "b193375643aee172d8c4fc97ecc4117d5818fdf7bfeeb75e7a08fd459bc031dd"
+  },
+  "sourceDrift": [],
+  "ownedCleanup": {
+    "atUtc": "2026-11-06T15:14:45.812582+00:00",
+    "browserPid": 25404,
+    "serverPid": 23604,
+    "browserStopped": true,
+    "serverStopped": true,
+    "fixtureOnly": true,
+    "companyUat": false,
+    "failure": "RuntimeError: Real Chrome renderer probe failed; preserve driver.log"
+  },
+  "companyApiCalled": false,
+  "formalDistribution": false
+}

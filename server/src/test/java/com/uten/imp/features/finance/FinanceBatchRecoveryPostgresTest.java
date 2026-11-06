@@ -144,10 +144,10 @@ class FinanceBatchRecoveryPostgresTest {
     @Test void cancellationHoldingTheOriginalLockWinsOverAnAlreadyWaitingCreate()throws Exception {
         var command=command(key(),"cancel-first");String suffix=UUID.randomUUID().toString().replace("-","");
         String trigger="zz_batch_cancel_barrier_"+suffix,function="fn_batch_cancel_barrier_"+suffix,barrier="BATCH_CANCEL_TEST:"+suffix;
-        db.execute("CREATE FUNCTION "+function+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(hashtextextended('"+barrier+"',0));RETURN NEW;END $$");
-        db.execute("CREATE TRIGGER "+trigger+" BEFORE INSERT ON finance_batch_entry_commands FOR EACH ROW WHEN(NEW.idempotency_key='"+command.idempotencyKey()+"' AND NEW.outcome='CANCELLED_UNWRITTEN') EXECUTE FUNCTION "+function+"()");
-        try(Connection hold=source.getConnection();var statement=hold.createStatement()) {
-            hold.setAutoCommit(false);statement.execute("SELECT pg_advisory_xact_lock(hashtextextended('"+barrier+"',0))");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE FUNCTION %I() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(hashtextextended(%L,0));RETURN NEW;END $$",function,barrier);
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER %I BEFORE INSERT ON finance_batch_entry_commands FOR EACH ROW WHEN(NEW.idempotency_key=%L AND NEW.outcome='CANCELLED_UNWRITTEN') EXECUTE FUNCTION %I()",trigger,command.idempotencyKey(),function);
+        try(Connection hold=source.getConnection();var statement=hold.prepareStatement("SELECT pg_advisory_xact_lock(hashtextextended(?,0))")) {
+            hold.setAutoCommit(false);statement.setString(1,barrier);try(var row=statement.executeQuery()){assertThat(row.next()).isTrue();}
             try(var workers=Executors.newFixedThreadPool(2)) {
               try {
             var cancelled=workers.submit(()->{auth(actor,false,true);return tx.execute(status->{db.queryForObject("SELECT set_config('application_name','batch-recovery-cancel-barrier',true)",String.class);return service.cancelUnwritten("expenses",command.idempotencyKey(),cancellation(command));});});
@@ -158,7 +158,7 @@ class FinanceBatchRecoveryPostgresTest {
             assertThatThrownBy(()->late.get(20,TimeUnit.SECONDS)).hasCauseInstanceOf(FinanceBatchEntryService.CancelledBatch.class);
               } finally {hold.rollback();}
             }
-        } finally{db.execute("DROP TRIGGER "+trigger+" ON finance_batch_entry_commands");db.execute("DROP FUNCTION "+function+"()");}
+        } finally{com.uten.imp.support.PostgresFixtureDdl.execute(db,"DROP TRIGGER %I ON finance_batch_entry_commands",trigger);com.uten.imp.support.PostgresFixtureDdl.execute(db,"DROP FUNCTION %I()",function);}
         assertThat(documents(command.idempotencyKey())).isZero();verifyNoInteractions(expenses);
     }
 
@@ -217,7 +217,13 @@ class FinanceBatchRecoveryPostgresTest {
     private static void auth(UUID person,boolean write,boolean read) {
         var authorities=new java.util.ArrayList<SimpleGrantedAuthority>();
         for(String permission:List.of("finance_receipt","finance_payment","finance_expense","finance_other_income","finance_bank_transfer")) {
-            if(read)authorities.add(new SimpleGrantedAuthority(permission+":view"));if(write)authorities.add(new SimpleGrantedAuthority(permission+":create"));
+            if(read){
+                authorities.add(new SimpleGrantedAuthority(permission+":view"));
+            }
+            if(write){
+                authorities.add(new SimpleGrantedAuthority(permission+":create"));
+            }
+
         }
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(person,"test",authorities));
     }

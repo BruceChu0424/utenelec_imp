@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/models/supplier_node.dart';
@@ -89,6 +90,7 @@ PagedResult<SupplierListItem> _page(String category, int page) => PagedResult(
   size: 20,
   total: 80,
   totalPages: 4,
+  readScopeVersion: 'business-suppliers-access-v1',
 );
 
 class _Harness extends ConsumerStatefulWidget {
@@ -126,6 +128,7 @@ Future<void> _open(
   WidgetTester tester,
   _Suppliers suppliers, {
   Size size = const Size(1200, 900),
+  bool settle = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -148,8 +151,34 @@ Future<void> _open(
     ),
   );
   await tester.tap(find.text('打开委外商选择'));
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
   expect(find.text('选择委外商'), findsOneWidget);
+}
+
+Future<void> _pumpToRequests(
+  WidgetTester tester,
+  _Suppliers suppliers,
+  int count,
+) async {
+  for (
+    var frame = 0;
+    frame < 30 &&
+        (suppliers.requests.length < count || _picker.evaluate().isEmpty);
+    frame++
+  ) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  expect(suppliers.requests, hasLength(count));
+  expect(
+    _picker,
+    findsOneWidget,
+    reason:
+        'The deferred panel body must be admitted before interacting with its controls.',
+  );
 }
 
 Finder get _picker => find.byType(MasterDataTableView<SupplierListItem>);
@@ -209,62 +238,78 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('supplier append keeps an earlier selection until confirmation', (
-    tester,
-  ) async {
-    final suppliers = _Suppliers();
-    final response = suppliers.hold('A', 2);
-    await _open(tester, suppliers);
-    await tester.tap(find.text('A-委外商1-0'));
-    await tester.pumpAndSettle();
-    expect(find.text('已选择：A-委外商1-0'), findsOneWidget);
-
-    await _edge(tester, top: false, settle: false);
-    await _wheel(tester, 150);
-    await _wheel(tester, 150);
-    expect(suppliers.requests, [('A', 1), ('A', 2)]);
-    expect(_picker, findsOneWidget, reason: 'loading retains the same list');
-    expect(find.text('已选择：A-委外商1-0'), findsOneWidget);
-    response.complete(_page('A', 2));
-    await tester.pumpAndSettle();
-    // The first page remains under the viewport's top until we scroll farther.
-    expect(find.widgetWithText(TextField, '1'), findsOneWidget);
-    await _edge(tester, top: false);
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(TextField, '2'), findsOneWidget);
-    expect(suppliers.requests, [('A', 1), ('A', 2), ('A', 3), ('A', 4)]);
-    await _edge(tester, top: true);
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(TextField, '1'), findsOneWidget);
-    expect(find.text('A-委外商1-0'), findsOneWidget);
-
-    await tester.tap(find.text('确定'));
-    await tester.pumpAndSettle();
-    expect(find.text('A-1-0'), findsOneWidget);
-    expect(suppliers.selectableOnlyFlags, everyElement(isTrue));
-    expect(find.text('添加供应商'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets(
-    'supplier prepend preserves rows and next load skips cached pages',
+    'supplier complete refresh retains the original choice until confirmation',
     (tester) async {
       final suppliers = _Suppliers();
       await _open(tester, suppliers);
-      await tester
-          .widget<MasterDataTableView<SupplierListItem>>(_picker)
-          .onPageChange!(3);
+      await tester.tap(find.text('A-委外商1-0'));
       await tester.pumpAndSettle();
-      expect(find.text('A-委外商3-0'), findsOneWidget);
-      final oldRowTop = tester.getTopLeft(find.text('A-委外商3-0')).dy;
+      expect(find.text('已选择：A-委外商1-0'), findsOneWidget);
+
+      MasterDataTableView<SupplierListItem> table() => tester.widget(_picker);
+      final originalRows = table().items;
+      expect(originalRows, hasLength(80));
+      final before = suppliers.requests.length;
+      final response = suppliers.hold('A', 2);
+      table().onRetry!();
+      await _pumpToRequests(tester, suppliers, before + 2);
+      expect(suppliers.requests.skip(before), [('A', 1), ('A', 2)]);
+      expect(table().items, same(originalRows));
+      expect(find.text('已选择：A-委外商1-0'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
+            .onPressed,
+        isNull,
+      );
+      response.complete(_page('A', 2));
+      await tester.pumpAndSettle();
+      expect(table().items, hasLength(80));
+      expect(table().items.map((item) => item.id).toSet(), hasLength(80));
+      expect(suppliers.requests.skip(before), [
+        ('A', 1),
+        ('A', 2),
+        ('A', 3),
+        ('A', 4),
+      ]);
+      final completeReads = suppliers.requests.length;
+      await _edge(tester, top: false);
+      await tester.pumpAndSettle();
+      expect(find.text('A-委外商4-19'), findsOneWidget);
+      await _edge(tester, top: true);
+      await tester.pumpAndSettle();
+      expect(suppliers.requests, hasLength(completeReads));
+      expect(table().currentPage, 1);
+      expect(table().totalPages, 1);
+      expect(find.widgetWithText(TextField, '1'), findsNothing);
+      expect(find.text('A-委外商1-0'), findsOneWidget);
+
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(find.text('A-1-0'), findsOneWidget);
+      expect(suppliers.selectableOnlyFlags, everyElement(isTrue));
+      expect(find.text('添加供应商'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'supplier local scrolling preserves the complete rows and original choice',
+    (tester) async {
+      final suppliers = _Suppliers();
+      await _open(tester, suppliers);
+      MasterDataTableView<SupplierListItem> table() => tester.widget(_picker);
+      final originalRows = table().items;
+      final originalColumns = table().columns;
+      expect(originalRows, hasLength(80));
+      final before = suppliers.requests.length;
+      await _edge(tester, top: false);
       await _wheel(tester, -150);
       await tester.pumpAndSettle();
       expect(suppliers.requests, [('A', 1), ('A', 2), ('A', 3), ('A', 4)]);
-      expect(
-        tester.getTopLeft(find.text('A-委外商3-0')).dy,
-        closeTo(oldRowTop, 1),
-      );
-      expect(find.widgetWithText(TextField, '3'), findsOneWidget);
+      expect(table().items, same(originalRows));
+      expect(table().columns, same(originalColumns));
 
       await _edge(tester, top: false);
       await _wheel(tester, 150);
@@ -272,7 +317,14 @@ void main() {
       expect(suppliers.requests.last, ('A', 4));
       await _edge(tester, top: true);
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextField, '2'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('A-委外商2-0'),
+        200,
+        scrollable: find.byWidget(_scrollable(tester).widget),
+      );
+      await tester.pumpAndSettle();
+      expect(suppliers.requests, hasLength(before));
+      expect(find.text('A-委外商2-0').hitTestable(), findsOneWidget);
       await tester.tap(find.text('A-委外商2-0'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('确定'));
@@ -283,31 +335,41 @@ void main() {
   );
 
   testWidgets(
-    'supplier failed next page retains page and retries the same page',
+    'supplier incomplete read publishes no prefix and retries the complete scope',
     (tester) async {
       final suppliers = _Suppliers();
       final failed = suppliers.hold('A', 2);
-      await _open(tester, suppliers);
-      await _edge(tester, top: false, settle: false);
-      await _wheel(tester, 150);
+      await _open(tester, suppliers, settle: false);
+      await _pumpToRequests(tester, suppliers, 2);
+      expect(
+        tester.widget<MasterDataTableView<SupplierListItem>>(_picker).items,
+        isEmpty,
+      );
       failed.completeError(StateError('offline'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextField, '1'), findsOneWidget);
-      await _edge(tester, top: false);
-      await _wheel(tester, 150);
-      expect(suppliers.requests, [('A', 1), ('A', 2)]);
-      await expectTableReadFailureDetails(
-        tester,
-        '加载供应商失败，请稍后重试',
-        keyPrefix: 'master-table-page-read',
+      final table = tester.widget<MasterDataTableView<SupplierListItem>>(
+        _picker,
       );
+      expect(table.items, isEmpty);
+      expect(table.error, isNotNull);
+      expect(suppliers.requests, [('A', 1), ('A', 2)]);
+      await expectTableReadFailureDetails(tester, '加载供应商失败，请稍后重试');
       final retried = suppliers.hold('A', 2);
       await tester.tap(find.text('重试'));
-      await tester.pump();
-      expect(suppliers.requests, [('A', 1), ('A', 2), ('A', 2)]);
+      await _pumpToRequests(tester, suppliers, 4);
+      expect(suppliers.requests, [('A', 1), ('A', 2), ('A', 1), ('A', 2)]);
       retried.complete(_page('A', 2));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextField, '1'), findsOneWidget);
+      expect(
+        tester.widget<MasterDataTableView<SupplierListItem>>(_picker).items,
+        hasLength(80),
+      );
+      expect(suppliers.requests.skip(2), [
+        ('A', 1),
+        ('A', 2),
+        ('A', 3),
+        ('A', 4),
+      ]);
       await _edge(tester, top: true);
       expect(find.text('A-委外商1-0'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -319,14 +381,9 @@ void main() {
   ) async {
     final suppliers = _Suppliers();
     final oldResponse = suppliers.hold('A', 2);
-    await _open(tester, suppliers, size: const Size(375, 812));
-    await _edge(tester, top: false, settle: false);
-    await _wheel(tester, 150);
+    await _open(tester, suppliers, size: const Size(375, 812), settle: false);
+    await _pumpToRequests(tester, suppliers, 2);
     expect(suppliers.requests, [('A', 1), ('A', 2)]);
-    // The compact directory header scrolls away with the picker. Bring it
-    // back while the old page is still pending, as an actual user would.
-    await _edge(tester, top: true, settle: false);
-    await _wheel(tester, -300);
     expect(
       find.byIcon(Icons.account_tree_rounded).hitTestable(),
       findsOneWidget,
@@ -335,7 +392,12 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('乙类'));
     await tester.pumpAndSettle();
-    expect(suppliers.requests.last, ('B', 1));
+    expect(suppliers.requests.skip(2), [
+      ('B', 1),
+      ('B', 2),
+      ('B', 3),
+      ('B', 4),
+    ]);
     oldResponse.complete(_page('A', 2));
     await tester.pumpAndSettle();
     expect(find.text('B-委外商1-0'), findsOneWidget);
@@ -344,7 +406,13 @@ void main() {
       find.byType(MasterDataTableView<SupplierListItem>),
     );
     expect(pageWindow.currentPage, 1);
-    expect(pageWindow.totalPages, 4);
+    expect(pageWindow.totalPages, 1);
+    expect(pageWindow.items, hasLength(80));
+    expect(pageWindow.items.every((item) => item.categoryId == 'B'), isTrue);
+    expect(suppliers.requests.where((query) => query.$1 == 'A'), [
+      ('A', 1),
+      ('A', 2),
+    ]);
     await tester.tap(find.text('B-委外商1-0'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确定'));

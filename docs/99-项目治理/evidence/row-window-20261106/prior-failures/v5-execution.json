@@ -1,0 +1,25 @@
+{
+  "startedAtUtc": "2026-11-06T15:39:56.759914+00:00",
+  "completedAtUtc": "2026-11-06T15:42:57.659443+00:00",
+  "actualExitCode": null,
+  "failure": "TimeoutExpired: Command '['D:\\\\Software\\\\Node\\\\node.EXE', 'D:\\\\Projects\\\\uten_imp_worktrees\\\\ci-guard-exact-20261106\\\\tool\\\\loading_web_probe_driver.mjs', 'D:\\\\Projects\\\\uten_imp_worktrees\\\\ci-guard-exact-20261106\\\\build\\\\loading-validation\\\\ci-row-window-browser-v5-20261106']' timed out after 180 seconds",
+  "inputs": {
+    "tool/loading_web_probe.dart": "31b6e22bd3a787429680cd5bbafc3692cdff030ba265c18d2858b09121d8b88c",
+    "tool/loading_web_probe_server.mjs": "4a0e143ee78bd08c61132e0567ba4646dd38de609aa383414a5b42bc234b3a7d",
+    "tool/loading_web_probe_driver.mjs": "9b2243badc1769890afd7a88264e9a49b8982e0bba8a4872e129839f0546b70a",
+    "build/loading-probe-final/main.dart.js": "b193375643aee172d8c4fc97ecc4117d5818fdf7bfeeb75e7a08fd459bc031dd"
+  },
+  "sourceDrift": [],
+  "ownedCleanup": {
+    "atUtc": "2026-11-06T15:42:57.658569+00:00",
+    "browserPid": 55508,
+    "serverPid": 57216,
+    "browserStopped": true,
+    "serverStopped": true,
+    "fixtureOnly": true,
+    "companyUat": false,
+    "failure": "TimeoutExpired: Command '['D:\\\\Software\\\\Node\\\\node.EXE', 'D:\\\\Projects\\\\uten_imp_worktrees\\\\ci-guard-exact-20261106\\\\tool\\\\loading_web_probe_driver.mjs', 'D:\\\\Projects\\\\uten_imp_worktrees\\\\ci-guard-exact-20261106\\\\build\\\\loading-validation\\\\ci-row-window-browser-v5-20261106']' timed out after 180 seconds"
+  },
+  "companyApiCalled": false,
+  "formalDistribution": false
+}

@@ -32,7 +32,10 @@ class DocumentPlatformReadContextTest {
         for(int i=0;i<401;i++){UUID row=UUID.randomUUID();rows.add(row);parents.put(row,parent);}
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
             Query query=mock(Query.class);var requested=new HashSet<UUID>();
-            when(query.setParameter(eq("ids"),any())).thenAnswer(binding->{for(Object id:(Set<?>)binding.getArgument(1))requested.add((UUID)id);return query;});
+            when(query.setParameter(eq("ids"),any())).thenAnswer(binding->{for(Object id:(Set<?>)binding.getArgument(1)){
+                requested.add((UUID)id);
+            }
+            return query;});
             when(query.getResultList()).thenAnswer(read->{memberships.incrementAndGet();return requested.stream().filter(parents::containsKey).map(id->new Object[]{id,parents.get(id)}).toList();});return query;
         });
         when(em.find(eq(Object.class),any(UUID.class),eq(LockModeType.PESSIMISTIC_WRITE))).thenReturn(new Object());

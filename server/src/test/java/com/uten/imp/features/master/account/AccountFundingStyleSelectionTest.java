@@ -38,15 +38,27 @@ class AccountFundingStyleSelectionTest {
         existing.setStyleId(oldStyle);existing.setInitBalance(BigDecimal.ZERO);
         when(repo.findById(existing.getId())).thenReturn(Optional.of(existing));
         when(repo.save(any(Account.class))).thenAnswer(call->{Account value=call.getArgument(0);
-            if(value.getId()==null)value.setId(UUID.randomUUID());return value;});
+            if(value.getId()==null){
+                value.setId(UUID.randomUUID());
+            }
+            return value;});
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
             String sql=call.getArgument(0);var parameters=new java.util.HashMap<String,Object>();
             return mock(Query.class,q->{
                 if(q.getMethod().getName().equals("setParameter")){parameters.put(q.getArgument(0),q.getArgument(1));return q.getMock();}
-                if(q.getMethod().getName().equals("getSingleResult"))return sql.contains("FROM currencies")?1L:0L;
+                if(q.getMethod().getName().equals("getSingleResult")){
+                    return sql.contains("FROM currencies")?1L:0L;
+                }
+
                 if(q.getMethod().getName().equals("getResultList")) {
-                    if(sql.contains("SELECT id, legacy_id"))return List.<Object[]>of(new Object[]{parameters.get("styleId"),null});
-                    if(sql.contains("SELECT code, name, is_deleted"))return List.<Object[]>of(new Object[]{"SK-ORIGINAL","原记账科目",false});
+                    if(sql.contains("SELECT id, legacy_id")){
+                        return List.<Object[]>of(new Object[]{parameters.get("styleId"),null});
+                    }
+
+                    if(sql.contains("SELECT code, name, is_deleted")){
+                        return List.<Object[]>of(new Object[]{"SK-ORIGINAL","原记账科目",false});
+                    }
+
                     return List.of();
                 }
                 return org.mockito.Answers.RETURNS_DEFAULTS.answer(q);

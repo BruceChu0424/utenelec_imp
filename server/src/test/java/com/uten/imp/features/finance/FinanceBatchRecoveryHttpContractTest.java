@@ -16,15 +16,23 @@ class FinanceBatchRecoveryHttpContractTest {
         assertThat(contract.path("maxDocuments").asInt()).isEqualTo(FinanceBatchEntryController.MAX_DOCUMENTS);
         assertThat(FinanceBatchEntryController.Request.class.getDeclaredField("documents").getAnnotation(jakarta.validation.constraints.Size.class).max()).isEqualTo(FinanceBatchEntryController.MAX_DOCUMENTS);
     }
-    @Test void allFamilyReceiptAndCancellationRoutesKeepReadPermissionWithoutRequiringCreate() {
+    @Test void allFamilyReceiptAndCancellationRoutesKeepReadPermissionWithoutRequiringCreate() throws Exception {
         var permissions=Map.of("receipts","finance_receipt:view","payments","finance_payment:view","expenses","finance_expense:view","incomes","finance_other_income:view","bank-transfers","finance_bank_transfer:view");
+        var service=mock(FinanceBatchEntryService.class);var controller=new FinanceBatchEntryController(service);
+        String key="original-request-key";var receipt=Map.<String,Object>of("found",true,"requestId",key);
         for(var family:permissions.entrySet()) {
             String base="/"+family.getKey()+"/batch/operations/{key}";
             var get=java.util.Arrays.stream(FinanceBatchEntryController.class.getDeclaredMethods()).filter(method->method.getAnnotation(GetMapping.class)!=null&&java.util.List.of(method.getAnnotation(GetMapping.class).value()).contains(base)).findFirst().orElseThrow();
             var cancel=java.util.Arrays.stream(FinanceBatchEntryController.class.getDeclaredMethods()).filter(method->method.getAnnotation(PostMapping.class)!=null&&java.util.List.of(method.getAnnotation(PostMapping.class).value()).contains(base+"/cancel")).findFirst().orElseThrow();
             assertThat(get.getAnnotation(PreAuthorize.class).value()).isEqualTo("hasAuthority('"+family.getValue()+"')");
             assertThat(cancel.getAnnotation(PreAuthorize.class).value()).isEqualTo(get.getAnnotation(PreAuthorize.class).value());
+            when(service.receipt(family.getKey(),key)).thenReturn(receipt);
+            assertThat(get.invoke(controller,key)).isSameAs(receipt);
+            verify(service).receipt(family.getKey(),key);
         }
+        verifyNoMoreInteractions(service);
+        assertThat(FinanceBatchEntryController.class.getDeclaredMethod("getTransferResult",String.class)
+                .getAnnotation(io.swagger.v3.oas.annotations.Operation.class).operationId()).isEqualTo("transferResult");
     }
     @Test void aLateCancelledCreateIsStructuredConflictAndNeverAnEmptySuccessfulBatch() {
         var details=Map.<String,Object>of("found",true,"requestId","original-key","idempotencyKey","original-key","actorId",UUID.randomUUID(),"outcome","CANCELLED_UNWRITTEN");

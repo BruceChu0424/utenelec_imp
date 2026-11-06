@@ -81,11 +81,11 @@ public final class VersionedReadSnapshotCache<K> implements AutoCloseable {
     }
 
     private record Entry(Map<String, Object> value, long weight, long createdAt) {}
-    private final class Flight {
+    private static final class Flight {
         private final Thread leader = Thread.currentThread();
         private final Cancellation cancellation;
         private final CompletableFuture<ReadResult> result = new CompletableFuture<>();
-        private Flight(long now) { cancellation = new Cancellation(ticker, now, loadNanos); }
+        private Flight(LongSupplier ticker,long now,long loadNanos) { cancellation = new Cancellation(ticker, now, loadNanos); }
     }
 
     private final Limits limits;
@@ -121,7 +121,7 @@ public final class VersionedReadSnapshotCache<K> implements AutoCloseable {
                 waiters++; flight = pending; leader = false;
             } else {
                 if (flights.size() >= limits.maximumLoads()) throw new CapacityException("Snapshot load capacity reached");
-                flight = new Flight(ticker.getAsLong()); flights.put(key, flight); leader = true;
+                flight = new Flight(ticker,ticker.getAsLong(),loadNanos); flights.put(key, flight); leader = true;
             }
         }
         if (!leader) {

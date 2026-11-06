@@ -31,9 +31,9 @@ public class FinanceDocumentReviewSnapshots implements FinancialDocumentReviewSn
         if(!supports(family)||id==null)throw invalid("财务单据身份无效");
         var adapter=adapters.stream().filter(value->value.family().equals(family)).findFirst().orElseThrow(()->invalid("财务单据核对入口尚未准备好"));
         var header=adapter.header();var lines=adapter.lines();
-        var heads=em.createNativeQuery("SELECT to_jsonb(h)::text,h.xmin::text,to_jsonb(h)->>'version' FROM "+header.table()+" h WHERE id=:id").setParameter("id",id).getResultList();
+        var heads=em.createNativeQuery("SELECT to_jsonb(h)::text,h.xmin::text,CAST(to_jsonb(h)->>'version' AS bigint) FROM "+header.table()+" h WHERE id=:id").setParameter("id",id).getResultList();
         if(heads.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"财务单据不存在");Object[] head=(Object[])heads.getFirst();
-        Long version=head[2]==null?null:Long.valueOf(head[2].toString());
+        Long version=head[2]==null?null:((Number)head[2]).longValue();
         var facts=new ArrayList<String>();facts.add("family="+family);facts.add("id="+id);facts.add("actor="+current.requireId());
         facts.add("header="+head[0]);facts.add("headerXmin="+head[1]);
         String where=" WHERE l."+lines.parentColumn()+"=:id"+(lines.softDeleted()?" AND NOT l.is_deleted":"");

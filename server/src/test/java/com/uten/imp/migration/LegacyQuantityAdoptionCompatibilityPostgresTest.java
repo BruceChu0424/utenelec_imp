@@ -34,16 +34,16 @@ class LegacyQuantityAdoptionCompatibilityPostgresTest {
     @BeforeAll static void migrate() throws Exception {
         PG.start();TestFlyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).load().migrate();
         try(var c=DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());var sql=c.createStatement()) {
-            sql.execute("CREATE ROLE "+RUNTIME+" LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '"+PASSWORD+"'");
-            sql.execute("GRANT USAGE ON SCHEMA public TO "+RUNTIME);
-            sql.execute("GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA public TO "+RUNTIME);
-            sql.execute("GRANT USAGE,SELECT ON SEQUENCE public.audit_log_id_seq TO "+RUNTIME);
+            com.uten.imp.support.PostgresFixtureDdl.execute(c,"CREATE ROLE %I LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD %L",RUNTIME,PASSWORD);
+            com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT USAGE ON SCHEMA public TO %I",RUNTIME);
+            com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA public TO %I",RUNTIME);
+            com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT USAGE,SELECT ON SEQUENCE public.audit_log_id_seq TO %I",RUNTIME);
         }
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void fixture() throws Exception {
         database="legacy_adoption_"+UUID.randomUUID().toString().replace("-","");
-        try(var c=admin();var sql=c.createStatement()){sql.execute("CREATE DATABASE "+database+" TEMPLATE adoption_base");}
+        try(var c=admin();var sql=c.createStatement()){com.uten.imp.support.PostgresFixtureDdl.execute(c,"CREATE DATABASE %I TEMPLATE adoption_base",database);}
         connection=DriverManager.getConnection(url(database),PG.getUsername(),PG.getPassword());connection.setAutoCommit(false);
         db=new JdbcTemplate(new SingleConnectionDataSource(connection,true));run=LegacyFinanceImportFixture.context(db);LegacyFinanceImportFixture.seed(db);
         db.update("INSERT INTO units(legacy_id,code,name) VALUES(900301,'ADOPT-U','Original unit')");
@@ -59,7 +59,7 @@ class LegacyQuantityAdoptionCompatibilityPostgresTest {
     }
     @AfterEach void clean() throws Exception {
         if(connection!=null){connection.rollback();connection.close();}
-        if(database!=null){assertThat(database).startsWith("legacy_adoption_");try(var c=admin();var sql=c.createStatement()){sql.execute("DROP DATABASE "+database+" WITH (FORCE)");}}
+        if(database!=null){assertThat(database).startsWith("legacy_adoption_");try(var c=admin();var sql=c.createStatement()){com.uten.imp.support.PostgresFixtureDdl.execute(c,"DROP DATABASE %I WITH (FORCE)",database);}}
     }
 
     @Test void allFiveProductionLegacySqlEntrypointsKeepOriginalFactsWithoutNewAdoptions() throws Exception {
@@ -167,7 +167,7 @@ class LegacyQuantityAdoptionCompatibilityPostgresTest {
         db.update("INSERT INTO purchase_orders(id,bill_no,bill_date,status,currency_id,exchange_rate,tax_rate) SELECT ?,?,DATE '2026-11-01',0,id,1,0 FROM currencies WHERE is_base_currency AND NOT is_deleted",header,bill);
         connection.commit();
         try(var runtime=DriverManager.getConnection(url(database),RUNTIME,PASSWORD);var sql=runtime.createStatement()) {
-            sql.execute("SET app.legacy_import='true'");sql.execute("SET uten.bootstrap_run_id='"+run+"'");
+            sql.execute("SET app.legacy_import='true'");try(var configure=runtime.prepareStatement("SELECT set_config('uten.bootstrap_run_id',?,false)")){configure.setString(1,run.toString());try(var row=configure.executeQuery()){assertThat(row.next()).isTrue();}}
             try(var insert=runtime.prepareStatement("INSERT INTO purchase_order_items(id,legacy_id,legacy_counter_import_run_id,order_id,bill_no,bill_date,goods_id,unit_id,unit_rate,qty) VALUES(?,?,?,?,?,DATE '2026-11-01',?,?,1,2)")) {
                 insert.setObject(1,UUID.randomUUID());insert.setInt(2,905002);insert.setObject(3,run);insert.setObject(4,header);insert.setString(5,bill);insert.setObject(6,goods);insert.setObject(7,unit);
                 SQLException rejected=org.junit.jupiter.api.Assertions.assertThrows(SQLException.class,insert::executeUpdate);
@@ -191,7 +191,7 @@ class LegacyQuantityAdoptionCompatibilityPostgresTest {
         connection.commit();
         db.queryForObject("SELECT set_config('uten.bootstrap_run_id',?,true)",String.class,run.toString());
         db.execute("SET LOCAL uten.bootstrap_mapping_version='bootstrap-v11'");
-        db.execute("SET LOCAL uten.bootstrap_repository_commit='"+"a".repeat(40)+"'");db.execute("SET LOCAL uten.bootstrap_manifest_sha='"+"b".repeat(64)+"'");
+        db.queryForObject("SELECT set_config('uten.bootstrap_repository_commit',?,true)",String.class,"a".repeat(40));db.queryForObject("SELECT set_config('uten.bootstrap_manifest_sha',?,true)",String.class,"b".repeat(64));
         db.execute("SELECT pg_advisory_xact_lock(hashtextextended('uten:legacy-bootstrap:'||current_database(),0))");
         denied(()->insertSql(family),"23514");
     }

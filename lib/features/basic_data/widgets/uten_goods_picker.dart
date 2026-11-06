@@ -1033,6 +1033,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
     try {
       final result = await readScopedPage<GoodsListItem>(
         requestedPage,
+        idOf: (goods) => goods.id,
         query: _pagingQuery(),
         currentQuery: _pagingQuery,
         useCache: useCache,
@@ -1118,6 +1119,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
           (_globalResolutionQuery != query || _globalResolution == null);
       final result = await readScopedPage<GoodsListItem>(
         requestedPage,
+        idOf: (goods) => goods.id,
         query: _pagingQuery(),
         currentQuery: _pagingQuery,
         useCache: useCache,

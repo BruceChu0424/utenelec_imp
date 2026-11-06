@@ -81,8 +81,14 @@ class WarehouseTaskPageMetadataPostgresTest {
     }
     private String inbound(){return "WITH inbound_rows AS MATERIALIZED(SELECT *,status AS workflow_status,'OTHER'::text AS source_type,nextval('metadata_probe') AS probe FROM metadata_fixture) ";}
     private Map<String,Object> params(String view,String status,String bill){Map<String,Object> p=new HashMap<>();p.put("view",view);p.put("status",status.isEmpty()?null:status);p.put("billNo",bill.isEmpty()?null:bill);p.put("source","ALL");p.put("dateFrom",null);p.put("dateTo",null);return p;}
-    private List<Object[]> rows(String sql,Map<String,Object> p){return db.query(sql,p,(rs,i)->{Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int k=0;k<row.length;k++)row[k]=rs.getObject(k+1);return row;});}
-    private Map<String,Long> buckets(List<Object[]> rows){Map<String,Long> values=new LinkedHashMap<>();for(var row:rows)values.put(String.valueOf(row[0]),((Number)row[1]).longValue());return values;}
+    private List<Object[]> rows(String sql,Map<String,Object> p){return db.query(sql,p,(rs,i)->{Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int k=0;k<row.length;k++){
+        row[k]=rs.getObject(k+1);
+    }
+    return row;});}
+    private Map<String,Long> buckets(List<Object[]> rows){Map<String,Long> values=new LinkedHashMap<>();for(var row:rows){
+        values.put(String.valueOf(row[0]),((Number)row[1]).longValue());
+    }
+    return values;}
     private void restart(){db.getJdbcTemplate().execute("ALTER SEQUENCE metadata_probe RESTART WITH 1");}
     private long probe(){return db.getJdbcTemplate().queryForObject("SELECT last_value FROM metadata_probe",Long.class);}
 }

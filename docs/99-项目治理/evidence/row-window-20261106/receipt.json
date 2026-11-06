@@ -1,0 +1,142 @@
+{
+  "atUtc": "2026-11-06T16:23:32.239173+00:00",
+  "result": "PASS",
+  "runtime": "Actual installed headless Chrome/new; Flutter release JavaScript/CanvasKit; native CDP wheel/pointer/keyboard and Browser window minimize/restore",
+  "productFixCommit": "1f9beae9cfae43b203f1bfd32094316d15e0a00d",
+  "productInputs": {
+    "lib/components/layout/uten_ancestor_row_window.dart": "0641d859ee85ed09a67d0ffbc5bb34df24cf47e5589e03516c06571e55a554dc",
+    "lib/features/basic_data/widgets/master_data_table_view.dart": "9db7ff9f373e23a0c3fcac0630758f43b66d4936c22acff4c6b8c2bd8f17e30d"
+  },
+  "sourceBridge": {
+    "executedProbeSourceSha256": "31b6e22bd3a787429680cd5bbafc3692cdff030ba265c18d2858b09121d8b88c",
+    "finalProbeSourceSha256": "d0d969586149fd23ab903197976274997792bd5d0fb4b2ec726225cbb345cb4e",
+    "change": "Add explicit braces around one existing if body for strict lint; no statement/condition changed.",
+    "recompiledJavascriptSha256": "b193375643aee172d8c4fc97ecc4117d5818fdf7bfeeb75e7a08fd459bc031dd",
+    "byteEqualToActuallyExecutedJavascript": true,
+    "strictFatalInfoAnalysis": "No issues found",
+    "privateBuildTarget": "JavaScript/CanvasKit only; unrelated WebAssembly dry-run not a probe acceptance target; no CI/formal build configuration changed."
+  },
+  "measurements": [
+    {
+      "rows": 200,
+      "width": 1440,
+      "farJumpNewStates": 24,
+      "tailLiveStates": 20
+    },
+    {
+      "rows": 200,
+      "width": 390,
+      "farJumpNewStates": 21,
+      "tailLiveStates": 16
+    },
+    {
+      "rows": 20000,
+      "width": 1440,
+      "farJumpNewStates": 27,
+      "tailLiveStates": 20
+    },
+    {
+      "rows": 20000,
+      "width": 390,
+      "farJumpNewStates": 21,
+      "tailLiveStates": 16
+    }
+  ],
+  "readonlyRows": 36000,
+  "readonlyWheelSamples": 66,
+  "continuousWheelFrames": 55,
+  "actualReadonlyMaximumLiveStates": 26,
+  "businessHttpRequests": 0,
+  "browserExceptions": 0,
+  "pendingInputRetention": {
+    "selection": [
+      0,
+      4
+    ],
+    "focus": true,
+    "sameStateIdentityAcrossScrollResize": true,
+    "rowPlaceholders": 0,
+    "legacyPageCallbacks": 0
+  },
+  "windowRestore": {
+    "before": "minimized",
+    "after": "normal",
+    "sameEditor": true,
+    "focus": true
+  },
+  "ownedCleanup": {
+    "atUtc": "2026-11-06T15:47:22.581714+00:00",
+    "browserPid": 10316,
+    "serverPid": 65248,
+    "browserStopped": true,
+    "serverStopped": true,
+    "fixtureOnly": true,
+    "companyUat": false,
+    "failure": null
+  },
+  "sourceDriftDuringRuntime": [],
+  "screenshots": [
+    {
+      "file": "web-tail-1440.png",
+      "sha256": "fd7e3aae4029966171214e91fbd766573518c3165212949dc3cca7bf7cb1f6cf"
+    },
+    {
+      "file": "web-top-1440.png",
+      "sha256": "b1a8c4ae3893325338868086e4d108476d5358718c45e50678eee637bf54542b"
+    },
+    {
+      "file": "web-tail-720.png",
+      "sha256": "5de5d46b09128c1dfd74041a753c89f902275b2bdee40294a7b28c2de200ca19"
+    },
+    {
+      "file": "web-top-720.png",
+      "sha256": "e75eb79dbed32c806ef8975d49c5abaa1fa3a806bde4c9a2ec30af2f48371829"
+    },
+    {
+      "file": "editable-200-tail-1440.png",
+      "sha256": "a18bd4c733126c0f331a8ef6a3b2045496a46a3a5a85f6e566f7c9e50aa41796"
+    },
+    {
+      "file": "editable-200-top-1440.png",
+      "sha256": "a11832f01f36155e16770ba401f463323bcc68bc064e37cb7807f500d1d663e9"
+    },
+    {
+      "file": "editable-200-tail-390.png",
+      "sha256": "9b0fa93eb31a8e7b2961b40d4630014baf97f3dbea41181e835182f64d58b708"
+    },
+    {
+      "file": "editable-200-top-390.png",
+      "sha256": "05dfeb49e208e56fec7da6ec157a86010271b9fa00483440198e41d56e8d8ea1"
+    },
+    {
+      "file": "editable-20000-tail-1440.png",
+      "sha256": "363b74d4b9e6963dd7d7352b64e86092946cbe8b4152d39ffee85199f66d6264"
+    },
+    {
+      "file": "editable-20000-top-1440.png",
+      "sha256": "fce2550b88ff2b2ae3617397bf9665645dbda1878bbd67c0978cac101ba26244"
+    },
+    {
+      "file": "editable-20000-tail-390.png",
+      "sha256": "c8b2225b599151f53504405663822359c31935d2e11b650dcb6a0265f07a4c4f"
+    },
+    {
+      "file": "editable-20000-top-390.png",
+      "sha256": "dd9ba2416fdaad101dac295fc9fd1789712b4f000d40cad24ed76e805530ef34"
+    }
+  ],
+  "visuallyInspected": [
+    "editable-20000-top-390.png",
+    "editable-20000-tail-390.png",
+    "editable-200-top-1440.png",
+    "editable-200-tail-1440.png"
+  ],
+  "limits": {
+    "nativeFlutterWindowsRestore": false,
+    "imeComposition": false,
+    "experimentalPageFreeze": false,
+    "companyUat": false,
+    "formalPackage": false
+  },
+  "retainedPriorFailures": "docs\\99-项目治理\\evidence\\row-window-20261106\\prior-failures"
+}

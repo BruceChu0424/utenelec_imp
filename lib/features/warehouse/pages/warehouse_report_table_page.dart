@@ -367,7 +367,7 @@ class _WarehouseReportTablePageState
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 按真实服务器分页读取当前条件的前2000行，保留所选重量单位。
+  /// 按真实服务器有界批次完整读取当前筛选结果，保留所选重量单位。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final display = ref.read(warehouseWeightUnitsPrefsProvider).display;

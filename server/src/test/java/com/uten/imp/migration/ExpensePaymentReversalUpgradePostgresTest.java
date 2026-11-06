@@ -145,10 +145,13 @@ class ExpensePaymentReversalUpgradePostgresTest {
             execute(connection,"INSERT INTO expense_claim_events(claim_id,event_type,actor_employee_id,actor_name_snapshot,remark,created_at) VALUES(?,?,?,?,'原历史依据保全',TIMESTAMPTZ '2026-09-23 02:00:00+00')",claim,kind,kind.equals("CREATED")?employee:approver,kind.equals("CREATED")?applicantName:approverName);
     }
     private static void assertNativeTrailAndInvalidKindRejected(Connection connection)throws SQLException {
-        int before=Integer.parseInt(scalar(connection,"SELECT count(*) FROM expense_claim_events"));
+        long before;
+        try(var statement=connection.prepareStatement("SELECT count(*) FROM expense_claim_events");var rows=statement.executeQuery()){
+            assertThat(rows.next()).isTrue();before=rows.getLong(1);
+        }
         String auditBefore=scalar(connection,"SELECT count(*) FROM audit_log WHERE target_type='expense_claim_events'");
         execute(connection,"INSERT INTO expense_claim_events(claim_id,event_type,actor_employee_id,actor_name_snapshot) SELECT id,'PAYMENT_REVERSED',approved_by,'匿名后续办理人' FROM expense_claims LIMIT 1");
-        assertThat(scalar(connection,"SELECT count(*) FROM expense_claim_events")).isEqualTo(Integer.toString(before+1));
+        assertThat(scalar(connection,"SELECT count(*) FROM expense_claim_events")).isEqualTo(Long.toString(Math.addExact(before,1)));
         assertThat(scalar(connection,"SELECT count(*) FROM expense_claim_events WHERE event_type='PAYMENT_REVERSED' AND actor_name_snapshot='匿名后续办理人' AND actor_employee_id IS NOT NULL AND created_at IS NOT NULL AND claim_id IS NOT NULL")).isEqualTo("1");
         // ADR-105's owning NONE/ledger contract keeps this native event trail
         // instead of copying its payload again into the general audit log.
@@ -182,22 +185,34 @@ class ExpensePaymentReversalUpgradePostgresTest {
     private static Flyway flyway(String database,String target,boolean compatible,Callback extra){return configuration(database,target,compatible,extra).load();}
     private static org.flywaydb.core.api.configuration.FluentConfiguration configuration(String database,String target,boolean compatible,Callback extra) {
         var config=com.uten.imp.testsupport.TestFlyway.configure().dataSource(url(database),DB.getUsername(),DB.getPassword()).locations("classpath:db/migration").cleanDisabled(true);
-        if(target!=null)config.target(target);var callbacks=new ArrayList<Callback>();
-        if(compatible)callbacks.add(new AppliedMigrationCompatibilityCallback());else callbacks.add(new WithoutExpenseCompatibility());
-        callbacks.add(new AuditFreshStartGuardCallback());if(extra!=null)callbacks.add(extra);return config.callbacks(callbacks.toArray(Callback[]::new));
+        if(target!=null){
+            config.target(target);
+        }
+        var callbacks=new ArrayList<Callback>();
+        if(compatible){
+            callbacks.add(new AppliedMigrationCompatibilityCallback());
+        }
+        else {
+            callbacks.add(new WithoutExpenseCompatibility());
+        }
+
+        callbacks.add(new AuditFreshStartGuardCallback());if(extra!=null){
+            callbacks.add(extra);
+        }
+        return config.callbacks(callbacks.toArray(Callback[]::new));
     }
     private static final class WithoutExpenseCompatibility implements Callback {
         private final AppliedMigrationCompatibilityCallback delegate=new AppliedMigrationCompatibilityCallback();
-        public boolean supports(Event event,Context context){return !ExpenseEventMigrationCompatibility.supports(event,context)&&delegate.supports(event,context);}
-        public boolean canHandleInTransaction(Event event,Context context){return delegate.canHandleInTransaction(event,context);}
-        public void handle(Event event,Context context){delegate.handle(event,context);}
-        public String getCallbackName(){return "original-compatibility-without-expense-fix";}
+        @Override public boolean supports(Event event,Context context){return !ExpenseEventMigrationCompatibility.supports(event,context)&&delegate.supports(event,context);}
+        @Override public boolean canHandleInTransaction(Event event,Context context){return delegate.canHandleInTransaction(event,context);}
+        @Override public void handle(Event event,Context context){delegate.handle(event,context);}
+        @Override public String getCallbackName(){return "original-compatibility-without-expense-fix";}
     }
     private record FailAfterMigration(String version) implements Callback {
-        public boolean supports(Event event,Context context){return event==Event.AFTER_EACH_MIGRATE&&context.getMigrationInfo()!=null&&context.getMigrationInfo().getVersion().getVersion().equals(version);}
-        public boolean canHandleInTransaction(Event event,Context context){return true;}
-        public void handle(Event event,Context context){throw new FlywayException("expense-compat-rollback-proof");}
-        public String getCallbackName(){return "zz-expense-compat-rollback-proof";}
+        @Override public boolean supports(Event event,Context context){return event==Event.AFTER_EACH_MIGRATE&&context.getMigrationInfo()!=null&&context.getMigrationInfo().getVersion().getVersion().equals(version);}
+        @Override public boolean canHandleInTransaction(Event event,Context context){return true;}
+        @Override public void handle(Event event,Context context){throw new FlywayException("expense-compat-rollback-proof");}
+        @Override public String getCallbackName(){return "zz-expense-compat-rollback-proof";}
     }
     private static String cloneDatabase(String label)throws SQLException {
         String database="expense_"+label+"_"+UUID.randomUUID().toString().replace("-","");
@@ -206,10 +221,22 @@ class ExpensePaymentReversalUpgradePostgresTest {
     private static String url(String database){return DB.getJdbcUrl().replace("/"+DB.getDatabaseName(),"/"+database);}
     private static Connection connection(String database)throws SQLException{return DriverManager.getConnection(url(database),DB.getUsername(),DB.getPassword());}
     private static void execute(Connection connection,String sql,Object...args)throws SQLException {
-        try(var statement=connection.prepareStatement(sql)){for(int index=0;index<args.length;index++)statement.setObject(index+1,args[index]);statement.execute();}
+        try(var statement=connection.prepareStatement(sql)){for(int index=0;index<args.length;index++){
+            statement.setObject(index+1,args[index]);
+        }
+        statement.execute();}
     }
     private static String scalar(Connection connection,String sql,Object...args)throws SQLException {
-        try(var statement=connection.prepareStatement(sql)){for(int index=0;index<args.length;index++)statement.setObject(index+1,args[index]);try(var rows=statement.executeQuery()){assertThat(rows.next()).isTrue();return rows.getString(1);}}
+        try(var statement=connection.prepareStatement(sql)){for(int index=0;index<args.length;index++){
+            statement.setObject(index+1,args[index]);
+        }
+        try(var rows=statement.executeQuery()){assertThat(rows.next()).isTrue();return rows.getString(1);}}
     }
-    private static String sqlState(Throwable failure){for(Throwable next=failure;next!=null;next=next.getCause())if(next instanceof SQLException sql)return sql.getSQLState();return null;}
+    private static String sqlState(Throwable failure){for(Throwable next=failure;next!=null;next=next.getCause()){
+        if(next instanceof SQLException sql){
+        return sql.getSQLState();
+    }
+
+    }
+    return null;}
 }

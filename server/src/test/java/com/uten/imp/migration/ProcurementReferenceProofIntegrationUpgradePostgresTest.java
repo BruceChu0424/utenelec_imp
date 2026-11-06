@@ -120,9 +120,18 @@ class ProcurementReferenceProofIntegrationUpgradePostgresTest {
     private static void migrate(PostgreSQLContainer database,String target){
         var config=TestFlyway.configure().dataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword())
                 .locations(System.getProperty("uten.test.reference-integration.locations","classpath:db/migration")).cleanDisabled(true).outOfOrder(false);
-        if(target!=null)config.target(target);assertThat(config.load().migrate().success).isTrue();
+        if(target!=null){
+            config.target(target);
+        }
+        assertThat(config.load().migrate().success).isTrue();
     }
     private static Connection connect(PostgreSQLContainer database)throws SQLException{return DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());}
-    private static void execute(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);s.execute();}}
-    private static String value(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);try(var r=s.executeQuery()){assertThat(r.next()).isTrue();return r.getString(1);}}}
+    private static void execute(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){
+        s.setObject(i+1,args[i]);
+    }
+    s.execute();}}
+    private static String value(Connection c,String sql,Object...args)throws SQLException{try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){
+        s.setObject(i+1,args[i]);
+    }
+    try(var r=s.executeQuery()){assertThat(r.next()).isTrue();return r.getString(1);}}}
 }

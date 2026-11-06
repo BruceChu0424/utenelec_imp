@@ -35,11 +35,40 @@ public class InventoryBusinessValueSupport {
         else openings.startEmptyCycle(new com.uten.imp.application.port.InventoryOpeningPort.EmptyCycle(context,key,recorded,reason));
     }
     public EventContext context(String kind,UUID event,UUID doc,UUID item,UUID actor,OffsetDateTime at) {
-        if(actor==null) actor=db.queryForObject("SELECT nullif(current_setting('app.actor_id',true),'')::uuid",Map.of(),UUID.class);
-        if(actor==null)throw conflict("库存成本记账缺少实际责任账号");
-        UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=:id",Map.of("id",actor),UUID.class);
-        if(employee==null)throw conflict("库存成本责任账号尚未关联员工");
-        return new EventContext(event,kind,doc,item,1,actor,employee,kind+":"+event,at);
+        return contexts(List.of(new ContextInput(kind,event,doc,item,actor,at))).getFirst();
+    }
+
+    record ContextInput(String kind,UUID event,UUID document,UUID item,UUID actor,OffsetDateTime at) { }
+    private record ActorIdentity(UUID actor,UUID knownUser,UUID employee) { }
+
+    /** Resolve this invocation's real transaction actor and employee in bounded reads; never cache an identity. */
+    List<EventContext> contexts(List<ContextInput> inputs) {
+        List<EventContext> result=new ArrayList<>(inputs.size());
+        for(int start=0;start<inputs.size();start+=100){
+            var batch=inputs.subList(start,Math.min(start+100,inputs.size()));
+            var actors=db.query("""
+                    SELECT COALESCE(requested.actor_id,nullif(current_setting('app.actor_id',true),'')::uuid) AS actor_id,
+                        person.id AS known_user,person.employee_id
+                    FROM unnest(CAST(:actors AS uuid[])) WITH ORDINALITY requested(actor_id,position)
+                    LEFT JOIN users person ON person.id=COALESCE(requested.actor_id,
+                        nullif(current_setting('app.actor_id',true),'')::uuid)
+                    ORDER BY requested.position
+                    """,Map.of("actors",new org.springframework.jdbc.support.SqlArrayValue("uuid",
+                        batch.stream().map(ContextInput::actor).toArray())),
+                    (row,index)->new ActorIdentity(row.getObject("actor_id",UUID.class),row.getObject("known_user",UUID.class),row.getObject("employee_id",UUID.class)));
+            if(actors.size()!=batch.size())throw new IllegalStateException("Cost identity read lost an original source");
+            for(int index=0;index<batch.size();index++){
+                var input=batch.get(index);var identity=actors.get(index);
+                if(identity.actor()==null)throw conflict("库存成本记账缺少实际责任账号");
+                // Retain the original queryForObject failure for a missing user:
+                // corrupt source identity is not a recoverable employee choice.
+                if(identity.knownUser()==null)throw new org.springframework.dao.EmptyResultDataAccessException(1);
+                if(identity.employee()==null)throw conflict("库存成本责任账号尚未关联员工");
+                result.add(new EventContext(input.event(),input.kind(),input.document(),input.item(),1,
+                        identity.actor(),identity.employee(),input.kind()+":"+input.event(),input.at()));
+            }
+        }
+        return List.copyOf(result);
     }
     public EventContext context(String kind,UUID fact,UUID actor) {
         return context(kind,fact,fact,fact,actor,db.queryForObject("SELECT transaction_timestamp()",Map.of(),OffsetDateTime.class));

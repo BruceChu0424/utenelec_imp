@@ -7450,6 +7450,9 @@ class FullChainEndToEndTest {
     }
 
     private void runProductionPrefixRace(World w,UUID firstActor,Runnable prefix,Runnable firstCommand,UUID secondActor,Runnable secondCommand) throws Exception {
+        // The race begins after the preceding committed cost phase, and still
+        // exercises the original two live business transactions and lock wait.
+        drainCosts(w);
         var held=new java.util.concurrent.CountDownLatch(1); var release=new java.util.concurrent.CountDownLatch(1);
         var waiterPid=new java.util.concurrent.atomic.AtomicInteger();
         try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
@@ -7481,6 +7484,7 @@ class FullChainEndToEndTest {
                 assertEquals(ErrorCode.CONFLICT,error.getCode());assertTrue(error.getMessage().contains("本次操作未生效"));
                 // Only a complete source-drift rollback is retryable here; a
                 // database deadlock, quantity error or authorization failure fails the test.
+                drainCosts(w);
                 loginAs(secondActor);secondCommand.run();
             }
         } finally {release.countDown();loginAs(w.superAdminUserId());}
@@ -8567,11 +8571,18 @@ class FullChainEndToEndTest {
                 from gl_entries entry join gl_vouchers voucher on voucher.id=entry.voucher_id
                 where voucher.source_type='RECEIPT' and voucher.source_doc_id=?
                 """,receiptId).compareTo(BigDecimal.ZERO),"外币收款AUTO凭证借贷平衡");
-        assertEquals(0,bigDecimalFor("""
-                select amount from gl_entries
-                where source_doc_type='RECEIPT' and source_doc_id=?
-                  and summary='收款汇兑损益'
-                """,receiptId).compareTo(new BigDecimal("120")),
+        UUID frozenFxStyle=jdbc.queryForObject("SELECT gl_fx_style_id FROM finance_receipts WHERE id=?",UUID.class,receiptId);
+        assertNotNull(frozenFxStyle,"有汇兑收益的原收款必须冻结其科目UUID");
+        var fxEntries=jdbc.queryForList("""
+                SELECT entry.id,entry.line_no,entry.style_id,entry.direction,entry.amount
+                FROM gl_entries entry JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id
+                WHERE entry.source_doc_type='RECEIPT' AND entry.source_doc_id=? AND entry.style_id=?
+                  AND voucher.source_type='RECEIPT' AND voucher.source_doc_id=? AND voucher.status=1
+                  AND NOT entry.is_deleted AND NOT voucher.is_deleted
+                """,receiptId,frozenFxStyle,receiptId);
+        assertEquals(1,fxEntries.size(),"按原收款与冻结科目选唯一已入账FX事实，不按可变摘要猜用途");
+        assertEquals(-1,((Number)fxEntries.getFirst().get("direction")).intValue(),"原FX行必须是收益贷方");
+        assertEquals(0,((BigDecimal)fxEntries.getFirst().get("amount")).compareTo(new BigDecimal("120")),
                 "外币收款AUTO凭证冻结汇兑收益120");
         // USD account (same currency as 到账) accumulates the 原币 actually received, not the local
         assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
@@ -12443,17 +12454,38 @@ class FullChainEndToEndTest {
 
     private List<UUID> costGoods(World world) {
         var goods = new java.util.LinkedHashSet<>(List.of(world.goodsA(), world.goodsB(), world.goodsC(), world.goodsD(), world.goodsE()));
-        goods.addAll(jdbc.queryForList("""
+        goods.addAll(costGoodsInWarehouse(world.warehouseId()));
+        return List.copyOf(goods);
+    }
+
+    private List<UUID> costGoodsInWarehouse(UUID warehouse) {
+        return jdbc.queryForList("""
                 SELECT DISTINCT goods_id FROM stock_value_pools
                 WHERE warehouse_id=? OR warehouse_id IN (
                     SELECT bin_warehouse_id FROM workshop_bins WHERE source_warehouse_id=?)
                 ORDER BY goods_id
-                """, UUID.class, world.warehouseId(), world.warehouseId()));
-        return List.copyOf(goods);
+                """, UUID.class, warehouse, warehouse);
     }
 
     private void drainCosts(World world) {
         InventoryValueWorkTestSupport.drain(inventoryValueWork, jdbc, costGoods(world));
+    }
+
+    private enum FixtureCostDocument {
+        SHIPMENT("SELECT warehouse_id FROM sales_shipments WHERE id=?"),
+        WAREHOUSE("SELECT warehouse_id FROM stock_documents WHERE id=?");
+        private final String warehouseSql;
+        FixtureCostDocument(String warehouseSql){this.warehouseSql=warehouseSql;}
+    }
+
+    /** The fixture disables polling, so its next serial business stage drives the real committed work. */
+    private void advanceCommittedCostsForDocument(FixtureCostDocument family, UUID document) {
+        for (UUID warehouse : jdbc.queryForList(family.warehouseSql, UUID.class, document)) {
+            var goods = costGoodsInWarehouse(warehouse);
+            if (!goods.isEmpty()) InventoryValueWorkTestSupport.drain(inventoryValueWork, jdbc, goods);
+        }
+        // An absent document or a warehouse without a value pool has no durable
+        // cost work here; the original business call still validates the object.
     }
 
     private void drainCostsWithFreshRunnerWithoutSession(World world){
@@ -12474,7 +12506,9 @@ class FullChainEndToEndTest {
         World w=seedWorld("actual-cost-target");loginAs(w.superAdminUserId());receiveOpeningInputsForA(w,"20");
         UUID plan=approvedPlan(w,w.goodsA(),"20","20");issueReadyPlanAndMaterials(w,plan);
         UUID planItem=planItemIdFor(plan,w.goodsA()),orderItem=orderItemIdOfPlan(plan);
-        UUID firstReport=reportAndApprove(w,planItem,orderItem,w.goodsA(),"5");confirmFinishedInboundFully(finishedInDocForReport(firstReport));
+        UUID firstReport=reportAndApprove(w,planItem,orderItem,w.goodsA(),"5");
+        confirmFinishedInboundFully(finishedInDocForReport(firstReport));
+        drainCostsWithFreshRunnerWithoutSession(w);
         var consumption=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
         consumption.setIdempotencyKey("actual-target-consumption-"+plan);consumption.setReason("实际确认整批材料耗用");
         var lines=new ArrayList<com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line>();
@@ -12599,6 +12633,7 @@ class FullChainEndToEndTest {
     /** Known opening inventory is a fixture input, recorded through the real warehouse service. */
     private void receiveOpeningInputsForA(World w, String plannedOutput) {
         loginAs(w.superAdminUserId());
+        drainCosts(w);
         var request = new com.uten.imp.features.stock.dto.StockDocSaveRequest();
         request.setDocType("OTHER_IN");
         request.setBillDate(LocalDate.of(2026,1,1));
@@ -12692,6 +12727,7 @@ class FullChainEndToEndTest {
     }
     /** Warehouse confirms outbound in one step（V582 起 PENDING_PICK→SHIPPED，PICKING/PICKED/EXCEPTION 中间态整体删除）。 */
     void shipThroughWarehouse(UUID shipmentId) {
+        advanceCommittedCostsForDocument(FixtureCostDocument.SHIPMENT, shipmentId);
         confirmShipmentFinance(shipmentId);
         WarehouseWorkTransitionRequest t = new WarehouseWorkTransitionRequest();
         t.setTargetStatus("SHIPPED");
@@ -12960,6 +12996,9 @@ class FullChainEndToEndTest {
             UUID executionSegmentId,UUID salesAllocationId,String qty,boolean finalReport,String failedQty,
             UUID warehouseActor,UUID qualityActor,
             List<com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine> explicitMaterialUse) {
+        // Finish earlier committed revisions before creating this new report.
+        // Work produced by this report is left observable for its owning test.
+        drainCosts(w);
         Map<String, Object> segmentReportingScope = jdbc.queryForMap("""
                 select workshop_department_id, responsible_employee_id
                 from production_execution_segments
@@ -13515,6 +13554,7 @@ class FullChainEndToEndTest {
      * E2E 链按报工量全额点收（accepted = 报工申报量）后自动审核入账。
      */
     void confirmFinishedInboundFully(UUID finishedInId) {
+        advanceCommittedCostsForDocument(FixtureCostDocument.WAREHOUSE, finishedInId);
         // ADR-148：仓库按实物交接批点收，一批一个实收数。
         var lots = jdbc.queryForList("""
                 select source.output_lot_id as lot_id, sum(item.qty) as qty

@@ -56,4 +56,25 @@ public final class ObservedSqlDataSource extends DriverManagerDataSource {
                     catch (InvocationTargetException failure) { throw failure.getCause(); }
                 });
     }
+
+    /** Delegates to the same live pool; unlike a Mockito spy it copies no mutable pool fields. */
+    public static final class Pooled extends org.springframework.jdbc.datasource.DelegatingDataSource implements AutoCloseable {
+        private final com.zaxxer.hikari.HikariDataSource owned;
+        private final java.util.concurrent.atomic.AtomicReference<ObservedSqlDataSource> observer=new java.util.concurrent.atomic.AtomicReference<>();
+        public Pooled(com.zaxxer.hikari.HikariDataSource owned) { super(owned);this.owned=owned; }
+        public AutoCloseable observe(ObservedSqlDataSource next) {
+            java.util.Objects.requireNonNull(next);
+            if(!observer.compareAndSet(null,next)) { throw new IllegalStateException("A pool observation is already active"); }
+            return ()->{ if(!observer.compareAndSet(next,null)) { throw new IllegalStateException("Pool observation owner changed"); } };
+        }
+        @Override public Connection getConnection() throws SQLException {
+            var current=observer.get();var connection=super.getConnection();
+            return current==null?connection:current.observeConnection(connection);
+        }
+        @Override public Connection getConnection(String user,String password) throws SQLException {
+            var current=observer.get();var connection=super.getConnection(user,password);
+            return current==null?connection:current.observeConnection(connection);
+        }
+        @Override public void close() { owned.close(); }
+    }
 }

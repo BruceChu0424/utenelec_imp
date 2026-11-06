@@ -312,4 +312,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('a newer terminal request retires the earlier row geometry', (
+    tester,
+  ) async {
+    final key = GlobalKey<_HarnessState>();
+    await tester.pumpWidget(_app(key, virtualized: true));
+    await tester.pumpAndSettle();
+    key.currentState!.update(count: 80, request: 1);
+    await tester.pump();
+    key.currentState!.update(count: 125, request: 2);
+    await tester.pumpAndSettle();
+    expect(find.text('ROW-124').hitTestable(), findsOneWidget);
+    final scroll = Scrollable.of(tester.element(find.text('ROW-124'))).position;
+    scroll.jumpTo(0);
+    await tester.pumpAndSettle();
+    key.currentState!.update();
+    await tester.pumpAndSettle();
+    expect(find.text('ROW-0').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

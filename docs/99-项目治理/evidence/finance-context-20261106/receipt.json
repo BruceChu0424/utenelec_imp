@@ -1,0 +1,90 @@
+{
+  "atUtc": "2026-11-06T17:13:11.611881+00:00",
+  "problem": "Mockito-spied Hikari source copied lazy mutable pool fields. Spring destruction closed its uninitialized original and set the shared shutdown flag, while the actual initialized pool in the spy retained four connections. The old cleanup accepted isClosed=true and released the clone.",
+  "oldActualBoundary": {
+    "reviewClosedFlag": true,
+    "reviewPhysicalConnections": 4,
+    "spiedOriginalPool": "uninitialized",
+    "ordinarySupplierPhysicalConnections": 0,
+    "unexpectedHikariClosedConnectionWarnings": 4,
+    "naturalBoundaryCases": 3
+  },
+  "sharedFix": "FinanceScopedChain delegates database leases to existing MigratedSchemaContextInitializer; Spring dependency destruction retires pools before the lease. No class-owned lease map/manual pool-close duplicate. One SQL-observation caller delegates to the exact actual Hikari pool without copying it. Boundary evidence refuses closed flags with live physical connections and never reopens retired contexts.",
+  "migration": {
+    "registerCallers": 28,
+    "annotatedCallers": 28,
+    "missingAnnotations": 0,
+    "allUseSharedEntry": true
+  },
+  "validation": {
+    "wholeReview": 54,
+    "wholeSupplier": 7,
+    "wholeFailures": 0,
+    "wholeErrors": 0,
+    "wholeSkipped": 0,
+    "physicalConnectionsAfterBothClasses": 0,
+    "unexpectedHikariClosedConnectionWarnings": 0,
+    "ownerObservationAndMigratedCleanupUnitCases": 12,
+    "unitFailures": 0,
+    "nativeJavacWarnings": 0,
+    "schemaAudit": {
+      "files": 7,
+      "actualCatalogRelations": 810,
+      "tableDeclarations": 0,
+      "dynamicDdl": 0,
+      "parseFailures": 0,
+      "violations": 0,
+      "columnDebt": 0
+    }
+  },
+  "expectedNegativeLogs": "Existing deliberate lock-refusal (55P03) and synthetic bootstrap-account warnings remain preserved; no global no-warning claim, logging level/validation/pool size/timeout/wait changed.",
+  "sources": [
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentReviewCommandsPostgresTest.java",
+      "sha256": "6b30cefa5df05c9a1c6886c5bcc360131b28059e62bd44c9ea4866e21c364b90"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceScopedChain.java",
+      "sha256": "6c38589d3b8cec39f78b9e7b1df491a66cbb2fccaf5a00ff3c549a5655b82f74"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceScopedChainDatabase.java",
+      "sha256": "62712d5eb5a120479193ed21c391cb5e993c23259b1a98a10de9679507538f08"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceScopedChainDatabaseCleanupTest.java",
+      "sha256": "be2cdd0ddc56c368c84abc6827477e32c9f31bde05f734d472e7adcf03e04904"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceScopedChainDatabaseTest.java",
+      "sha256": "6871401f3a63826a185392603f16fdd24b9b9137fba9f755637525154a6fbd1e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/support/ObservedSqlDataSource.java",
+      "sha256": "4d665e28fbe0e3cd7f8e5e33eef9cb6aeb11f6b091c23e33b994f496935bd1e7"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/support/ObservedSqlPoolTest.java",
+      "sha256": "a05caf27f297e5332f650eb09b9de2639681be270975c2fd375d42082116903d"
+    }
+  ],
+  "originalLogs": [
+    {
+      "path": "build\\ci-guard-20261106\\pool-lifecycle\\old-boundary-observed.log",
+      "sha256": "1f4da1a4c54ac82a7185f3d9582a4fc6f20b9e60090ce87880b6ddeb8f31cd26"
+    },
+    {
+      "path": "build\\ci-guard-20261106\\codeql-fix\\review-supplier-whole-group.log",
+      "sha256": "f7d53a4f41662cc693d4c793bd989d7fd35240b8520a3889b7b19b0549020249"
+    },
+    {
+      "path": "build\\ci-guard-20261106\\pool-lifecycle\\current-boundary-whole.log",
+      "sha256": "0dd0bb11b3f755e79cba54894d4ca6f8907cfaf11127c4108d489b0db2039402"
+    },
+    {
+      "path": "build\\ci-guard-20261106\\pool-lifecycle\\current-complete-owner-unit.log",
+      "sha256": "f8ed7f50a2aafbcfb547047357a51db0adaf77146d5f4d121cdb95e60d07f7a4"
+    }
+  ],
+  "remoteCiClaim": false
+}

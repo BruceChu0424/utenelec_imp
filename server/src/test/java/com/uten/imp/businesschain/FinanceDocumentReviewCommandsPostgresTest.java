@@ -56,6 +56,7 @@ import static org.mockito.Mockito.*;
  "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
  "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @FinanceScopedChain
+@org.springframework.context.annotation.Import(FinanceDocumentReviewCommandsPostgresTest.PoolObservation.class)
 class FinanceDocumentReviewCommandsPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FinanceScopedChainDatabase.register(registry,FinanceDocumentReviewCommandsPostgresTest.class);}
     @Autowired AutowireCapableBeanFactory beans;
@@ -63,7 +64,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     @Autowired ObjectMapper json;
     @Autowired TransactionTemplate transaction;
     @Autowired jakarta.persistence.EntityManagerFactory entityManagers;
-    @MockitoSpyBean(name="dataSource") javax.sql.DataSource dataSource;
+    @Autowired javax.sql.DataSource dataSource;
     @Autowired TxSessionVars variables;
     @Autowired FinanceDocumentActions actions;
     @Autowired FinanceReceiptService receipts;
@@ -176,7 +177,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
         UUID successor=UUID.fromString(map(reversed.get("result")).get("id").toString());
         assertThat(map(reversed.get("result")).get("unapprovalOriginalId").toString()).isEqualTo(d.id().toString());
         String undone=moneyFacts(d);same(reverseHttp(d,reverse,generic),reversed);same(actions.receipt(family,d.id(),reverseId),reversed);
-        same(actions.cancel(family,d.id(),reverseId,cancellation(d,reverseId,"FINANCE_DOCUMENT_UNAPPROVE",reversePath,reverse)),reversed);
+        same(actions.cancel(family,d.id(),reverseId,cancellation(reverseId,"FINANCE_DOCUMENT_UNAPPROVE",reversePath,reverse)),reversed);
         assertThat(businessAudits(d,"reverse")).isEqualTo(1);assertThat(businessAudits(d,"approve")).isEqualTo(1);
         assertThat(db.queryForList("SELECT DISTINCT actor_id FROM v_audit_log_all WHERE action IN (?,?) AND target_type=? AND target_id=?",UUID.class,permission(d)+"_approve",permission(d)+"_reverse",permission(d),d.id().toString())).containsExactly(f.reviewer());
         assertThat(moneyFacts(d)).isEqualTo(undone);
@@ -234,7 +235,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
 
     @Test void receiptInsertFailureRollsBackActualApprovalAndTheSameOriginalRequestCanThenCommitOnce(){
         Draft d=create("financeExpense","10");var original=command(review(d));String before=moneyFacts(d);
-        db.execute("CREATE FUNCTION fixture_reject_review_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id='"+original.requestId()+"'::uuid THEN RAISE EXCEPTION 'anonymous review receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_review_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_review_receipt()");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE FUNCTION fixture_reject_review_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id=%L::uuid THEN RAISE EXCEPTION 'anonymous review receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_review_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_review_receipt()",original.requestId());
         try{assertThatThrownBy(()->approveHttp(d,original)).hasMessageContaining("review receipt failure");assertThat(moneyFacts(d)).isEqualTo(before);assertThat(receiptCount(original.requestId())).isZero();assertThat(businessAudits(d,"approve")).isZero();}
         finally{db.execute("DROP TRIGGER fixture_reject_review_receipt ON finance_application_operations;DROP FUNCTION fixture_reject_review_receipt()");}
         var saved=approveHttp(d,original);same(approveHttp(d,original),saved);same(actions.receipt(d.family(),d.id(),original.requestId()),saved);assertThat(businessAudits(d,"approve")).isEqualTo(1);
@@ -245,7 +246,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
         Draft d=create("financeExpense","10");var approval=command(review(d));approveHttp(d,approval);
         var capability=unapproval.capabilityHttp(d.family(),d.id());UUID id=UUID.randomUUID();
         var original=new Command(id,id.toString(),"匿名核对反审事务审计",capability.factsSnapshot());String before=moneyFacts(d);
-        db.execute("CREATE FUNCTION fixture_reject_reverse_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id='"+id+"'::uuid THEN RAISE EXCEPTION 'anonymous reverse receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_reverse_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_reverse_receipt()");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE FUNCTION fixture_reject_reverse_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id=%L::uuid THEN RAISE EXCEPTION 'anonymous reverse receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_reverse_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_reverse_receipt()",id);
         try{
             assertThatThrownBy(()->reverseHttp(d,original,generic)).hasMessageContaining("reverse receipt failure");
             assertThat(moneyFacts(d)).isEqualTo(before);assertThat(receiptCount(id)).isZero();assertThat(businessAudits(d,"reverse")).isZero();assertThat(businessAudits(d,"approve")).isEqualTo(1);
@@ -280,7 +281,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
         transaction.executeWithoutResult(status->{variables.bind();db.update("UPDATE finance_expenses SET updated_at=updated_at WHERE id=?",d.id());});
         conflict(()->actions.glConfirm(d.id(),stale));assertThat(receiptCount(stale.requestId())).isZero();assertThat(confirmationAudits(d)).isZero();assertThat(confirmationMoney(d)).isEqualTo(facts);
         var current=command(actions.reviewedDetail(d.family(),d.id(),false));
-        db.execute("CREATE FUNCTION fixture_reject_gl_confirm_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id='"+current.requestId()+"'::uuid THEN RAISE EXCEPTION 'anonymous GL confirmation receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_gl_confirm_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_gl_confirm_receipt()");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE FUNCTION fixture_reject_gl_confirm_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id=%L::uuid THEN RAISE EXCEPTION 'anonymous GL confirmation receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_gl_confirm_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_gl_confirm_receipt()",current.requestId());
         try{assertThatThrownBy(()->actions.glConfirm(d.id(),current)).hasMessageContaining("GL confirmation receipt failure");assertThat(receiptCount(current.requestId())).isZero();assertThat(confirmationAudits(d)).isZero();assertThat(db.queryForObject("SELECT gl_status FROM finance_expenses WHERE id=?",Integer.class,d.id())).isEqualTo(1);}
         finally{db.execute("DROP TRIGGER fixture_reject_gl_confirm_receipt ON finance_application_operations;DROP FUNCTION fixture_reject_gl_confirm_receipt()");}
         var saved=actions.glConfirm(d.id(),current);same(actions.receipt(d.family(),d.id(),current.requestId()),saved);assertThat(confirmationAudits(d)).isEqualTo(1);assertThat(confirmationMoney(d)).isEqualTo(facts);
@@ -351,7 +352,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     @Test void deletionReceiptFailureRollsBackTheDraftAndItsAuditAndPrecisionCannotChangeAfterSuccess()throws Exception{
         Draft d=create("financeExpense","10");var original=command(makerReview(d));String money=moneyFacts(d);
         var down=Map.of("anonymous.delete.intent",new BusinessPrecisionContext.Choice(24,"DOWN"));var up=Map.of("anonymous.delete.intent",new BusinessPrecisionContext.Choice(24,"HALF_UP"));
-        db.execute("CREATE FUNCTION fixture_reject_deletion_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id='"+original.requestId()+"'::uuid THEN RAISE EXCEPTION 'anonymous deletion receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_deletion_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_deletion_receipt()");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE FUNCTION fixture_reject_deletion_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.request_id=%L::uuid THEN RAISE EXCEPTION 'anonymous deletion receipt failure';END IF;RETURN NEW;END;$$;CREATE TRIGGER fixture_reject_deletion_receipt BEFORE INSERT ON finance_application_operations FOR EACH ROW EXECUTE FUNCTION fixture_reject_deletion_receipt()",original.requestId());
         try(var precision=BusinessPrecisionContext.use(down)){assertThatThrownBy(()->actions.delete(d.family(),d.id(),original)).hasMessageContaining("deletion receipt failure");assertThat(moneyFacts(d)).isEqualTo(money);assertThat(deletionAudits(d)).isZero();assertThat(receiptCount(original.requestId())).isZero();}
         finally{db.execute("DROP TRIGGER fixture_reject_deletion_receipt ON finance_application_operations;DROP FUNCTION fixture_reject_deletion_receipt()");}
         Map<String,Object> saved;try(var precision=BusinessPrecisionContext.use(down)){saved=actions.delete(d.family(),d.id(),original);}assertThat(deletionAudits(d)).isEqualTo(1);same(actions.receipt(d.family(),d.id(),original.requestId()),saved);
@@ -360,13 +361,13 @@ class FinanceDocumentReviewCommandsPostgresTest {
     }
 
     @Test void originalApprovalAndUnapprovalCanBeSealedWithReadRightsAndLateRequestsNeverTouchMoney(){
-        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(d,original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
+        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
         loginReadOnly();String before=moneyFacts(d);var stopped=actions.cancel(d.family(),d.id(),original.requestId(),cancel);
         assertThat(stopped).containsEntry("outcome","CANCELLED_UNWRITTEN");same(actions.receipt(d.family(),d.id(),original.requestId()),stopped);
         forbidden(()->actions.approve(d.family(),d.id(),original));harness.loginAs(f.reviewer());same(actions.approve(d.family(),d.id(),original),stopped);assertThat(moneyFacts(d)).isEqualTo(before);
         var fresh=command(review(d));actions.approve(d.family(),d.id(),fresh);var capability=unapproval.capabilityHttp(d.family(),d.id());UUID reverseId=UUID.randomUUID();
         var reverse=new Command(reverseId,reverseId.toString(),"匿名只封口原反审不另逆账",capability.factsSnapshot());
-        var reverseCancel=cancellation(d,reverseId,"FINANCE_DOCUMENT_UNAPPROVE",unapprovePath(d),reverse);
+        var reverseCancel=cancellation(reverseId,"FINANCE_DOCUMENT_UNAPPROVE",unapprovePath(d),reverse);
         loginReadOnly();before=moneyFacts(d);var reverseStopped=actions.cancel(d.family(),d.id(),reverseId,reverseCancel);
         harness.loginAs(f.reviewer());same(actions.execute(d.family(),d.id(),reverse),reverseStopped);assertThat(moneyFacts(d)).isEqualTo(before);
         assertThat(db.queryForObject("SELECT count(*) FROM document_unapprovals WHERE original_id=?",Integer.class,d.id())).isZero();
@@ -379,7 +380,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
         BigInteger integer=new BigInteger("12345678901234567890123456789012345678901234567890");
         Map<String,Object> saved=transaction.execute(status->{variables.bind();return journal.command(id,"FINANCE_DOCUMENT_APPROVE","POST",approvePath(d),command,()->Map.of("amountOriginal",big,"amountLocal",tiny,"longInteger",integer,"nested",Map.of("amount",big)));});
         var repeated=transaction.execute(status->{variables.bind();return journal.command(id,"FINANCE_DOCUMENT_APPROVE","POST",approvePath(d),command,()->{throw new AssertionError("Original result must not run twice");});});
-        for(var result:List.of(saved,repeated,actions.receipt(d.family(),d.id(),id),actions.cancel(d.family(),d.id(),id,cancellation(d,id,"FINANCE_DOCUMENT_APPROVE",approvePath(d),command)))){
+        for(var result:List.of(saved,repeated,actions.receipt(d.family(),d.id(),id),actions.cancel(d.family(),d.id(),id,cancellation(id,"FINANCE_DOCUMENT_APPROVE",approvePath(d),command)))){
             var values=map(result.get("result"));assertThat(values.get("amountOriginal")).isInstanceOf(BigDecimal.class);assertThat((BigDecimal)values.get("amountOriginal")).isEqualByComparingTo(big);
             assertThat((BigDecimal)values.get("amountLocal")).isEqualByComparingTo(tiny);assertThat(values.get("longInteger")).isEqualTo(integer);
             assertThat((BigDecimal)map(values.get("nested")).get("amount")).isEqualByComparingTo(big);
@@ -450,7 +451,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
 
     @ParameterizedTest @ValueSource(booleans={false,true})
     void actualApprovalAndUnwrittenCancellationSerializeInBothCommitOrders(boolean cancelFirst)throws Exception{
-        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(d,original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
+        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
         var entered=new CountDownLatch(1);var release=new CountDownLatch(1);var once=new AtomicBoolean();var pool=Executors.newFixedThreadPool(2);
         doAnswer(invocation->{Object result=invocation.callRealMethod();if(original.requestId().equals(invocation.getArgument(1))&&once.compareAndSet(false,true)){entered.countDown();await(release);}return result;})
             .when(journal).execute(isNull(),eq(original.requestId()),eq("FINANCE_DOCUMENT_APPROVE"),any(),any(),any());
@@ -467,7 +468,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     }
 
     @Test void receiptsAndCancellationKeepOwnerReadScopeAndRejectImpersonatedCancellationWithoutLeakingBodies(){
-        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(d,original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);var saved=actions.approve(d.family(),d.id(),original);
+        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);var saved=actions.approve(d.family(),d.id(),original);
         harness.loginAs(f.world().superAdminUserId());assertThat(actions.receipt(d.family(),d.id(),original.requestId())).containsEntry("found",false);forbidden(()->actions.cancel(d.family(),d.id(),original.requestId(),cancel));
         UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,f.reviewer());
         loginReadOnly();same(actions.receipt(d.family(),d.id(),original.requestId()),saved);same(actions.cancel(d.family(),d.id(),original.requestId(),cancel),saved);forbidden(()->actions.approve(d.family(),d.id(),original));
@@ -591,9 +592,9 @@ class FinanceDocumentReviewCommandsPostgresTest {
         var statistics=entityManagers.unwrap(org.hibernate.SessionFactory.class).getStatistics();boolean previous=statistics.isStatisticsEnabled();statistics.setStatisticsEnabled(true);statistics.clear();
         clearInvocations(expenses);harness.loginAs(f.reviewer());statistics.clear();
         var observer=new com.uten.imp.support.ObservedSqlDataSource();
-        doAnswer(call->observer.observeConnection((java.sql.Connection)call.callRealMethod())).when(dataSource).getConnection();
+        var observed=(com.uten.imp.support.ObservedSqlDataSource.Pooled)dataSource;
         long started=System.nanoTime();FinanceExpenseDetail shown;
-        try{shown=actions.reviewedDetail(d.family(),id,false);}finally{statistics.setStatisticsEnabled(previous);doCallRealMethod().when(dataSource).getConnection();}
+        try(var scope=observed.observe(observer)){shown=actions.reviewedDetail(d.family(),id,false);}finally{statistics.setStatisticsEnabled(previous);}
         long elapsed=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started),prepared=statistics.getPrepareStatementCount();
         long reloads=mockingDetails(expenses).getInvocations().stream().filter(call->call.getMethod().getName().equals("detail")&&id.equals(call.getArgument(0))).count();
         System.out.println("FINANCE_REVIEW_ROWS="+count+";elapsedMs="+elapsed+";jdbcExecutions="+observer.statements.get()+";hibernatePreparedStatements="+prepared+";domainDetailReloads="+reloads);
@@ -663,7 +664,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     }
     private FinanceReviewMetadata review(Draft d){harness.loginAs(f.reviewer());return actions.reviewedDetail(d.family(),d.id(),false);}
     private static FinanceDocumentActions.ApprovalCommand command(FinanceReviewMetadata shown){return new FinanceDocumentActions.ApprovalCommand(UUID.randomUUID(),shown.getApprovalVersion(),shown.getApprovalSnapshot());}
-    private FinanceOperationJournal.Cancellation cancellation(Draft d,UUID id,String operation,String path,Object body){return new FinanceOperationJournal.Cancellation(id,f.reviewer(),operation,"POST",path,json.valueToTree(body),Map.of());}
+    private FinanceOperationJournal.Cancellation cancellation(UUID id,String operation,String path,Object body){return new FinanceOperationJournal.Cancellation(id,f.reviewer(),operation,"POST",path,json.valueToTree(body),Map.of());}
     private void loginReadOnly(){UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,f.reviewer());var user=new AuthUser(f.reviewer(),employee,"anonymous-review-reader",Set.of("finance_expense:view","finance:view:all"),false,true,false);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));}
     private String moneyFacts(Draft d){return header(d)+db.queryForObject("SELECT jsonb_build_object('bank',(SELECT balance_current FROM accounts WHERE id=?),'other',(SELECT balance_current FROM accounts WHERE id=?),'flows',(SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM finance_reconciliations x WHERE source_doc_id=?),'gl',(SELECT COALESCE(jsonb_agg(to_jsonb(v) ORDER BY v.id),'[]'::jsonb) FROM gl_vouchers v WHERE source_doc_id=?),'ledger',(SELECT COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.id),'[]'::jsonb) FROM ar_ap_ledger l WHERE source_doc_id=?))::text",String.class,f.bank(),f.otherBank(),d.id(),d.id(),d.id());}
     private String header(Draft d){return db.queryForObject("SELECT to_jsonb(h)::text FROM "+TABLES.get(d.family())+" h WHERE id=?",String.class,d.id());}
@@ -704,4 +705,17 @@ class FinanceDocumentReviewCommandsPostgresTest {
     private static void await(CountDownLatch gate){try{if(!gate.await(20,TimeUnit.SECONDS))throw new AssertionError("review gate timeout");}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}}
     private static void conflict(Runnable action){assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));}
     private static void forbidden(Runnable action){assertThatThrownBy(action::run).satisfies(error->{if(error instanceof ApiException api)assertThat(api.getCode()).isEqualTo(ErrorCode.FORBIDDEN);else assertThat(error).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);});}
+
+    @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods=false)
+    static class PoolObservation {
+        @org.springframework.context.annotation.Bean
+        static org.springframework.beans.factory.config.BeanPostProcessor observeOwnedPool() {
+            return new org.springframework.beans.factory.config.BeanPostProcessor() {
+                @Override public Object postProcessAfterInitialization(Object bean,String name) {
+                    return name.equals("dataSource")&&bean instanceof com.zaxxer.hikari.HikariDataSource pool
+                        ?new com.uten.imp.support.ObservedSqlDataSource.Pooled(pool):bean;
+                }
+            };
+        }
+    }
 }

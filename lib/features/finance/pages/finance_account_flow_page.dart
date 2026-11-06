@@ -357,7 +357,7 @@ class _FinanceAccountFlowPageState
   /// 导出查询参数（与 _load 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => {..._readQuery}..remove('size');
 
-  /// 按真实服务器分页读取当前条件的前2000行，保留余额原有入账顺序。
+  /// 按真实服务器有界批次完整读取当前筛选结果，保留余额原有入账顺序。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration, view = _view;

@@ -128,7 +128,10 @@ public class FinanceOperationJournal {
     private Map<String,Object> commandOriginal(UUID request,String operation,String method,String path,Object body,WireCommand original,Supplier<?> work,Consumer<String> authorizeReplay){
         if(!COMMAND_OPERATIONS.contains(operation)||!(Set.of("PUT","POST").contains(method)||"FINANCE_DOCUMENT_DELETE".equals(operation)&&"DELETE".equals(method))||path==null
                 ||!(path.startsWith("/finance/")||operation.equals("FINANCE_DOCUMENT_UNAPPROVE")&&path.matches("/documents/finance(?:Receipt|Payment|Expense|OtherIncome|BankTransfer)/[0-9a-f-]{36}/unapprove")))
-            throw new IllegalArgumentException("Unknown finance command");
+            {
+                throw new IllegalArgumentException("Unknown finance command");
+            }
+
         var bodies=originalBodies(body,original,body.getClass());
         var payload=new LinkedHashMap<String,Object>();payload.put("method",method);payload.put("path",path);payload.put("requestBody",bodies.hashBody());
         var receiptPayload=new LinkedHashMap<>(payload);receiptPayload.put("requestBody",bodies.receiptBody());
@@ -136,14 +139,20 @@ public class FinanceOperationJournal {
         var choices=precise?validatedChoices(BusinessPrecisionContext.choices()):null;
         if(precise){payload.put("precisionChoices",choices);receiptPayload.put("precisionChoices",choices);}
         var result=outcome(decode(encode(execute(null,request,operation,payload,authorizeReplay,()->{
-            if(!precise)return envelope(request,operation,receiptPayload,"SUCCEEDED",work.get());
+            if(!precise){
+                return envelope(request,operation,receiptPayload,"SUCCEEDED",work.get());
+            }
+
             try(var scope=BusinessPrecisionContext.use(choices)){
                 Object value=work.get();var receipt=envelope(request,operation,receiptPayload,"SUCCEEDED",value);
                 receipt.put("precisionContext",Map.of("available",true,"choices",choices,"usedChoices",BusinessPrecisionContext.usedChoices()));
                 return receipt;
             }catch(RuntimeException error){throw error;}catch(Exception error){throw new IllegalStateException("原数值选择上下文无法恢复",error);}
         }))));
-        if(original!=null)requireOriginalReceipt(result,original.body());return result;
+        if(original!=null){
+            requireOriginalReceipt(result,original.body());
+        }
+        return result;
     }
 
     /** Seal the exact original identity under the same lock. It either returns
@@ -152,12 +161,18 @@ public class FinanceOperationJournal {
         return cancelCommand(routedRequest,cancellation,operation,method,path,bodyType,ignored->{});
     }
     public Map<String,Object> cancelCommand(UUID routedRequest,Cancellation cancellation,String operation,String method,String path,Class<?> bodyType,Consumer<String> authorizeReplay){
-        if(!COMMAND_OPERATIONS.contains(operation))throw new IllegalArgumentException("Unknown finance command");
+        if(!COMMAND_OPERATIONS.contains(operation)){
+            throw new IllegalArgumentException("Unknown finance command");
+        }
+
         boolean raw=OriginalBodyCommand.class.isAssignableFrom(bodyType);OriginalBodies bodies;
         if(raw){
             requireCancellationIdentity(routedRequest,cancellation,operation,method,path);
             var original=cancellation.requestBody();
-            try{if(original==null||!original.isObject()||!routedRequest.equals(UUID.fromString(original.path("requestId").asText())))throw new IllegalArgumentException();}
+            try{if(original==null||!original.isObject()||!routedRequest.equals(UUID.fromString(original.path("requestId").asText()))){
+                throw new IllegalArgumentException();
+            }
+            }
             catch(Exception error){throw invalid("取消核对缺少原配置请求编号");}
             Object typed=null;try{typed=decodeOriginal(new WireCommand(original),bodyType);}catch(ApiException invalidOriginal){/* Invalid original intent still can be sealed without any default. */}
             bodies=originalBodies(typed,new WireCommand(original),bodyType);
@@ -169,10 +184,16 @@ public class FinanceOperationJournal {
         if(precise){payload.put("precisionChoices",choices);receiptPayload.put("precisionChoices",choices);}
         var result=outcome(decode(encode(execute(null,routedRequest,operation,payload,authorizeReplay,()->{
             var receipt=envelope(routedRequest,operation,receiptPayload,"CANCELLED_UNWRITTEN",Map.of("cancelled",true));
-            if(precise)receipt.put("precisionContext",Map.of("available",true,"choices",choices,"usedChoices",Map.of()));
+            if(precise){
+                receipt.put("precisionContext",Map.of("available",true,"choices",choices,"usedChoices",Map.of()));
+            }
+
             return receipt;
         }))));
-        if(raw)requireOriginalReceipt(result,cancellation.requestBody());return result;
+        if(raw){
+            requireOriginalReceipt(result,cancellation.requestBody());
+        }
+        return result;
     }
     private void requireOriginalReceipt(Map<String,Object> result,JsonNode original){
         try{if(!encode(canonical(original)).equals(encode(canonical(com.uten.imp.common.finance.FinancialJsonResults.tree(json,encode(result.get("requestBody")))))))throw conflict("原配置回执正文与本次完整原请求不一致");}

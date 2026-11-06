@@ -11,89 +11,119 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/production/models/reportable_plan_line.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/reportable_plan_line_picker.dart';
+import '../../../support/uten_test_actions.dart';
 
 void main() {
-  testWidgets('paged reportable tasks keep source identity and click order', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(900, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final requests = <int>[];
-    final first = _recovery(
-      id: 'rework-page-one',
-      disposition: 'REWORK',
-      maxReportQty: 2,
-      requiresMaterial: false,
-    );
-    final second = {
-      ..._recovery(
-        id: 'sales-page-two',
+  testWidgets(
+    'complete reportable tasks keep source identity and click order',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final requests = <int>[];
+      final first = _recovery(
+        id: 'rework-page-one',
         disposition: 'REWORK',
         maxReportQty: 2,
         requiresMaterial: false,
-      ),
-      'fqcRecoveryAuthorizationId': null,
-      'fqcRecoveryDispositionCode': null,
-      'orderItemId': 'order-page-two',
-      'executionSegmentSalesAllocationId': 'allocation-page-two',
-    };
-    final api = _pagedApi((request) async {
-      final page = request.queryParameters['page'] as int;
-      requests.add(page);
-      expectSync(request.queryParameters['size'], 100);
-      return {
-        'items': [page == 1 ? first : second],
-        'page': page,
-        'size': 100,
-        'total': 101,
-        'totalPages': 2,
-      };
-    });
-    List<ReportablePlanLine>? selected;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          productionDailyReportRepositoryProvider.overrideWithValue(
-            ProductionDailyReportRepository(api),
-          ),
-        ],
-        child: MaterialApp(
-          home: _PickerHost(onSelected: (value) => selected = value),
+      );
+      final second = {
+        ..._recovery(
+          id: 'sales-page-two',
+          disposition: 'REWORK',
+          maxReportQty: 2,
+          requiresMaterial: false,
         ),
-      ),
-    );
-    await tester.tap(find.text('选择来源'));
-    await tester.pumpAndSettle();
-    final rows = _reportableTable(tester).rowsController!;
-    final next = rows.loadNextPage();
-    await tester.pumpAndSettle();
-    await next;
-    await tester.pumpAndSettle();
-    expect(requests, [1, 2]);
-    expect(rows.items, hasLength(2));
-    for (final id in ['sales-page-two', 'rework-page-one']) {
-      final row = find.textContaining('SJ-$id');
-      await tester.ensureVisible(row);
+        'fqcRecoveryAuthorizationId': null,
+        'fqcRecoveryDispositionCode': null,
+        'orderItemId': 'order-page-two',
+        'executionSegmentSalesAllocationId': 'allocation-page-two',
+      };
+      final api = _pagedApi((request) async {
+        final page = request.queryParameters['page'] as int;
+        requests.add(page);
+        expectSync(request.queryParameters['size'], 100);
+        return {
+          'items': page == 1
+              ? [
+                  first,
+                  for (var index = 1; index < 100; index++)
+                    _recovery(
+                      id: 'filler-$index',
+                      disposition: 'REWORK',
+                      maxReportQty: 2,
+                      requiresMaterial: false,
+                    ),
+                ]
+              : [second],
+          'page': page,
+          'size': 100,
+          'total': 101,
+          'totalPages': 2,
+        };
+      });
+      List<ReportablePlanLine>? selected;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionDailyReportRepositoryProvider.overrideWithValue(
+              ProductionDailyReportRepository(api),
+            ),
+          ],
+          child: MaterialApp(
+            home: _PickerHost(onSelected: (value) => selected = value),
+          ),
+        ),
+      );
+      await tester.tap(find.text('选择来源'));
       await tester.pumpAndSettle();
-      await tester.tap(row);
+      final rows = _reportableTable(tester).rowsController!;
+      expect(requests, [1, 2]);
+      expect(rows.items, hasLength(101));
+      expect(_reportableTable(tester).totalPages, 1);
+      final controller = utenTestTableBodyController(
+        tester,
+        find.byType(MasterDataTableView<ReportablePlanLine>),
+      );
+      final vertical = find.byWidgetPredicate(
+        (widget) => widget is Scrollable && widget.controller == controller,
+      );
+      for (final id in ['sales-page-two', 'rework-page-one']) {
+        controller.jumpTo(
+          id == 'sales-page-two' ? controller.position.maxScrollExtent : 0,
+        );
+        await tester.pumpAndSettle();
+        final row = find.textContaining('SJ-$id');
+        await tester.scrollUntilVisible(
+          row,
+          id == 'sales-page-two' ? 500 : -500,
+          scrollable: vertical,
+        );
+        await tester.ensureVisible(row);
+        await tester.pumpAndSettle();
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+      }
+      expect(requests, [
+        1,
+        2,
+      ], reason: 'Scrolling the complete result performs no read');
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
-    }
-    await tester.tap(find.widgetWithText(UtenButton, '确定'));
-    await tester.pumpAndSettle();
-    expect(selected?.map((row) => row.planNo), [
-      'SJ-sales-page-two',
-      'SJ-rework-page-one',
-    ]);
-    expect(
-      selected?.first.executionSegmentSalesAllocationId,
-      'allocation-page-two',
-    );
-    expect(selected?.last.fqcRecoveryAuthorizationId, 'rework-page-one');
-    expect(tester.takeException(), isNull);
-  });
+      expect(selected?.map((row) => row.planNo), [
+        'SJ-sales-page-two',
+        'SJ-rework-page-one',
+      ]);
+      expect(
+        selected?.first.executionSegmentSalesAllocationId,
+        'allocation-page-two',
+      );
+      expect(selected?.last.fqcRecoveryAuthorizationId, 'rework-page-one');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-    'new reportable search invalidates a pending previous query page',
+    'new reportable search invalidates a pending complete previous query',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(900, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -101,12 +131,13 @@ void main() {
       final requests = <(int, String?)>[];
       Map<String, dynamic> response(String id, int page) => {
         'items': [
-          _recovery(
-            id: id,
-            disposition: 'REWORK',
-            maxReportQty: 2,
-            requiresMaterial: false,
-          ),
+          for (var index = 0; index < (page == 1 ? 100 : 1); index++)
+            _recovery(
+              id: index == 0 ? id : '$id-$index',
+              disposition: 'REWORK',
+              maxReportQty: 2,
+              requiresMaterial: false,
+            ),
         ],
         'page': page,
         'size': 100,
@@ -131,22 +162,26 @@ void main() {
         ),
       );
       await tester.tap(find.text('选择来源'));
-      await tester.pumpAndSettle();
-      final next = _reportableTable(tester).rowsController!.loadNextPage();
-      await tester.pump();
-      await tester.pump();
+      for (var frame = 0; frame < 200 && requests.length < 2; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(requests, [(1, null), (2, null)]);
+      expect(pendingPage.isCompleted, isFalse);
+      expect(_reportableTable(tester).items, isEmpty);
       final search = find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
             widget.decoration?.hintText == '计划号 / 产品 / 订单号 / 客户',
       );
       await tester.enterText(search, 'new');
-      pendingPage.complete(response('old-late', 2));
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
-      await next;
       expect(requests, [(1, null), (2, null), (1, 'new'), (2, 'new')]);
-      expect(find.textContaining('SJ-new-first'), findsOneWidget);
+      expect(_reportableTable(tester).items, hasLength(101));
+      expect(pendingPage.isCompleted, isFalse);
+      pendingPage.complete(response('old-late', 2));
+      await tester.pumpAndSettle();
+      expect(find.text('SJ-new-first\nSEG-001'), findsOneWidget);
       expect(find.textContaining('SJ-old-late'), findsNothing);
       expect(_reportableTable(tester).currentPage, 1);
       expect(tester.takeException(), isNull);

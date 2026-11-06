@@ -139,7 +139,7 @@ void main() {
         final recent = recentMonthDateRange();
         expect(api.listQueries.single, {
           'page': 1,
-          'size': 20,
+          'size': 100,
           'originScope': 'LEGACY',
           'dateFrom': ChinaDateTime.formatDate(recent.start),
           'dateTo': ChinaDateTime.formatDate(recent.end),
@@ -156,7 +156,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(api.listQueries.last, {
           'page': 1,
-          'size': 20,
+          'size': 100,
           'originScope': 'LEGACY',
         });
         final table = tester
@@ -167,6 +167,8 @@ void main() {
               ),
             );
         expect(table.items.map((row) => row.status), [0, -1, 1]);
+        expect(table.totalPages, 1);
+        expect(table.currentPage, 1);
         expect(
           table.items.every((row) => row.billDate == '2014-10-28'),
           isTrue,
@@ -312,7 +314,7 @@ class _ArchiveApi extends ApiClient {
               },
         ],
         'page': 1,
-        'size': 20,
+        'size': query?['size'],
         'total': visible ? 3 : 0,
         'totalPages': visible ? 1 : 0,
       };

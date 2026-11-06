@@ -38,7 +38,11 @@ void main() {
     MasterDataTableView<RdTaskRow> table() =>
         tester.widget(find.byType(MasterDataTableView<RdTaskRow>));
     expect(find.byKey(const Key('rd-task-category-filter')), findsNothing);
-    expect(table().items.single.category, 'BOM');
+    expect(table().items, hasLength(101));
+    expect(table().items.every((row) => row.category == 'BOM'), isTrue);
+    expect(api.queries.map((query) => query['page']), [1, 2]);
+    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    expect(table().totalPages, 1);
     expect(table().facets.containsKey('status'), isFalse);
     expect(
       table().facets['category']!.map((bucket) => bucket.value),
@@ -72,7 +76,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('已完成按服务端完整阶段分页，不用当前页状态假筛选', (tester) async {
+  testWidgets('已完成读取完整服务端阶段，不用当前批状态假筛选', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({});
@@ -101,20 +105,26 @@ void main() {
       'DONE',
       'CANCELED',
     ]);
-    expect(table().items.map((row) => row.status), ['DONE', 'CANCELED']);
-    expect(table().totalPages, 2);
+    final statuses = [
+      for (var index = 0; index < 102; index++)
+        index.isEven ? 'DONE' : 'CANCELED',
+    ];
+    expect(table().items.map((row) => row.status), statuses);
+    expect(api.queries.map((query) => query['page']), [1, 2]);
+    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    expect(table().totalPages, 1);
     expect(table().items.map((row) => table().columns.first.value(row)), [
-      'BOM维护 · 已完成',
-      'BOM维护 · 已取消',
+      for (final status in statuses)
+        status == 'DONE' ? 'BOM维护 · 已完成' : 'BOM维护 · 已取消',
     ]);
     final before = api.queries.length;
     // 旧状态偏好或旧回调不能再触发当页裁剪。
     table().onFilterChanged('status', '已完成');
     await tester.pumpAndSettle();
     expect(api.queries, hasLength(before));
-    expect(table().items.map((row) => row.status), ['DONE', 'CANCELED']);
+    expect(table().items.map((row) => row.status), statuses);
     expect(table().filters['status'], isNull);
-    expect(table().totalPages, 2);
+    expect(table().totalPages, 1);
     expect(tester.takeException(), isNull);
   });
 }
@@ -132,36 +142,32 @@ class _RecordingRdApi extends ApiClient {
     final parameters = Map<String, dynamic>.from(query ?? const {});
     queries.add(parameters);
     final category = parameters['category'] as String? ?? 'BOM';
+    final page = parameters['page'] as int;
+    final size = parameters['size'] as int;
+    final done = parameters['status'] == 'done';
+    final total = parameters.containsKey('category') ? 1 : (done ? 102 : 101);
+    final start = (page - 1) * size;
     return {
       'items': [
-        {
-          'id': 'task-$category',
-          'taskNo': 'RD-$category',
-          'title': '跨页类别查询',
-          'category': category,
-          'status': switch (parameters['status']) {
-            'in_progress' => 'IN_PROGRESS',
-            'done' => 'DONE',
-            _ => 'OPEN',
-          },
-          'priority': 'NORMAL',
-          'rowVersion': 1,
-        },
-        if (parameters['status'] == 'done')
+        for (var index = start; index < total && index < start + size; index++)
           {
-            'id': 'task-canceled-$category',
-            'taskNo': 'RD-CANCELED-$category',
-            'title': '已取消任务',
+            'id': 'task-$category-$index',
+            'taskNo': 'RD-$category-$index',
+            'title': '跨页类别查询',
             'category': category,
-            'status': 'CANCELED',
+            'status': switch (parameters['status']) {
+              'in_progress' => 'IN_PROGRESS',
+              'done' => index.isEven ? 'DONE' : 'CANCELED',
+              _ => 'OPEN',
+            },
             'priority': 'NORMAL',
             'rowVersion': 1,
           },
       ],
       'page': parameters['page'],
       'size': parameters['size'],
-      'total': parameters.containsKey('category') ? 1 : 21,
-      'totalPages': parameters.containsKey('category') ? 1 : 2,
+      'total': total,
+      'totalPages': (total / size).ceil(),
     };
   }
 }

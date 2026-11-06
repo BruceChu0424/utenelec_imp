@@ -18,6 +18,7 @@ import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import '../../support/table_read_status.dart';
+import '../../support/versioned_summary_test_response.dart';
 
 late SharedPreferences _preferences;
 
@@ -226,6 +227,34 @@ class _ReportApi extends ApiClient {
   int reportCalls = 0;
   Map<String, dynamic>? lastQuery;
   final candidateQueries = <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    expect(path, '/business-references/clients/summaries');
+    final request = Map<String, dynamic>.from(body! as Map);
+    final filter = Map<String, dynamic>.from(request['filter'] as Map);
+    candidateQueries.add(filter);
+    expect(request['size'], 100);
+    return versionedSummaryTestResponse(
+      [
+        if (filter['selectableOnly'] != true)
+          {
+            'id': 'hidden-customer',
+            'name': '已隐藏历史客户',
+            'categoryId': 'client-root',
+            'status': '使用',
+          },
+      ],
+      request,
+      revision: 'a' * 64,
+      dataVersion: 'b' * 64,
+    );
+  }
 
   @override
   Future<Map<String, dynamic>> get(

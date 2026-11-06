@@ -31,6 +31,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
+import '../../support/versioned_summary_test_response.dart';
 
 void main() {
   testWidgets(
@@ -61,6 +62,7 @@ void main() {
       expect(field().initialId, 'supplier-1');
       expect(field().initialName, '甲供应商');
       expect(api.lastPutBody, isNull);
+      expect(api.writeCalls, 0);
       expect(tester.takeException(), isNull);
     },
   );
@@ -749,6 +751,32 @@ class _PaymentApi extends ApiClient {
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
   }) async {
+    if (path == '/business-references/suppliers/summaries') {
+      final request = Map<String, dynamic>.from(body! as Map);
+      final filter = Map<String, dynamic>.from(request['filter'] as Map);
+      supplierQueries.add(filter);
+      expect(request['size'], 100);
+      return versionedSummaryTestResponse(
+        [
+          if (filter['selectableOnly'] != true)
+            {
+              'id': 'supplier-1',
+              'name': '甲供应商',
+              'categoryId': 'supplier-root',
+              'status': '使用',
+            },
+          {
+            'id': 'supplier-2',
+            'name': '可选供应商',
+            'categoryId': 'supplier-root',
+            'status': '使用',
+          },
+        ],
+        request,
+        revision: 'a' * 64,
+        dataVersion: 'b' * 64,
+      );
+    }
     writeCalls++;
     throw StateError('未预期的付款POST：$path');
   }

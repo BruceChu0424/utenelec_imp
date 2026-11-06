@@ -96,6 +96,114 @@ class FinanceUnapprovalEligibilityEndToEndTest {
     @Autowired com.uten.imp.features.sales.shipment.SalesShipmentService shipments;
     @Autowired com.uten.imp.features.finance.receivables.CustomerPrepaymentOffsetService offsets;
     @Autowired com.uten.imp.features.finance.payables.SupplierSettlementService supplierStatements;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+
+    @Test void unchangedFinancialClonesKeepTheirActualSourcePolicyAcrossDifferentReviewers() throws Exception {
+        Fixture f=fixture("frozen-policy");
+        var creator=java.util.Map.of("money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP"));
+        var reverser=java.util.Map.of("money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(17,"DOWN"));
+        UUID payment,receipt;
+        var paymentInput=payment(f,"25");
+        paymentInput.getItems().getFirst().setAmountOriginal(new BigDecimal("10"));
+        var secondPaymentLine=new com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput();
+        secondPaymentLine.setAppliedLedgerId(payable(f));secondPaymentLine.setSupplierId(f.world().supplierId());
+        secondPaymentLine.setAmountOriginal(new BigDecimal("15"));
+        paymentInput.setItems(List.of(paymentInput.getItems().getFirst(),secondPaymentLine));
+        FinanceReceiptSaveRequest receiptInput;
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(creator)) {
+            payment=seedApprove(f,()->payments.create(paymentInput).getId(),payments::approve).getId();
+            var ar=salesReceivable(f);
+            receiptInput=ReflectionTestUtils.invokeMethod(harness,"receiptRequest",f.world(),ar.ledger(),f.bank(),null,
+                    "40","40","0","0",BigDecimal.ONE,BusinessTime.today());
+            receiptInput.setCurrencyId(f.currency());
+            receiptInput.getItems().getFirst().setCurrencyId(f.currency());
+            receipt=seedApprove(f,()->receipts.create(receiptInput).getId(),receipts::approve).getId();
+        }
+        for(var owner:List.of(new String[]{"financePayment","finance_payment_lines","payment_id",payment.toString()},
+                new String[]{"financeReceipt","finance_receipt_lines","receipt_id",receipt.toString()})) {
+            UUID original=UUID.fromString(owner[3]);
+            String source=financialLinesSnapshot(owner[1],owner[2],original);
+            String policy=db.queryForObject("SELECT DISTINCT business_precision_policy::text FROM "+owner[1]+" WHERE "+owner[2]+"=? AND NOT is_deleted",String.class,original);
+            assertThat(policy).contains("HALF_UP").contains("4");
+            harness.loginAs(f.reviewer());
+            try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(reverser)) {
+                new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+                    unapproval.unapprove(owner[0],original,command("policy-"+original));
+                    UUID draft=db.queryForObject("SELECT draft_id FROM document_unapprovals WHERE family=? AND original_id=?",UUID.class,owner[0],original);
+                    String cloned=db.queryForObject("SELECT to_jsonb(line)::text FROM "+owner[1]+" line WHERE "+owner[2]+"=? AND NOT is_deleted ORDER BY line_no,id LIMIT 1",String.class,draft);
+                    assertThat(db.queryForObject("SELECT DISTINCT business_precision_policy::text FROM "+owner[1]+" WHERE "+owner[2]+"=? AND NOT is_deleted",String.class,draft)).isEqualTo(policy);
+                    assertThat(db.queryForObject("SELECT fn_unapproval_financial_line_policy(?,?::jsonb)::text",String.class,owner[1],cloned)).isEqualTo(policy);
+                    for(String patch:List.of("{\"unapproval_source_item_id\":null}","{\"unapproval_source_item_id\":\""+UUID.randomUUID()+"\"}",
+                            "{\"id\":\""+UUID.randomUUID()+"\"}","{\"updated_by\":\""+UUID.randomUUID()+"\"}",
+                            "{\"amount_original\":999}","{\"applied_ledger_id\":\""+UUID.randomUUID()+"\"}",
+                            "{\"balance_before_original\":1}","{\"business_precision_policy\":{\"version\":1,\"choices\":{}}}")) {
+                        rejectCloneProof(owner[1],cloned,patch);
+                    }
+                    rejectIncompleteFinancialClone(owner[1],owner[2],draft);
+                });
+            }
+            assertThat(financialLinesSnapshot(owner[1],owner[2],original)).isEqualTo(source);
+            UUID draft=db.queryForObject("SELECT draft_id FROM document_unapprovals WHERE family=? AND original_id=?",UUID.class,owner[0],original);
+            String cloned=db.queryForObject("SELECT to_jsonb(line)::text FROM "+owner[1]+" line WHERE "+owner[2]+"=? AND NOT is_deleted ORDER BY line_no,id LIMIT 1",String.class,draft);
+            assertThatThrownBy(()->db.queryForObject("SELECT fn_unapproval_financial_line_policy(?,?::jsonb)",Object.class,owner[1],cloned))
+                    .hasMessageContaining("same-transaction");
+            assertThatThrownBy(()->db.update("UPDATE "+owner[1]+" SET unapproval_source_item_id=NULL WHERE "+owner[2]+"=? AND NOT is_deleted",draft))
+                    .hasMessageContaining("source identity is immutable");
+            // An actual later edit is a new calculation, not an inherited copy.
+            // Keep the original source untouched while the new row adopts the
+            // editor's explicit selection and can be approved normally.
+            try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(reverser)) {
+                harness.loginAs(f.world().superAdminUserId());
+                if(owner[0].equals("financePayment")) {
+                    paymentInput.setExpectedVersion(payments.detail(draft).getVersion());
+                    paymentInput.setAmountOriginal(new BigDecimal("26"));
+                    paymentInput.setAccountAmount(new BigDecimal("26"));
+                    paymentInput.getItems().getFirst().setAmountOriginal(new BigDecimal("11"));
+                    payments.update(draft,paymentInput);
+                    harness.loginAs(f.reviewer());payments.approve(draft);
+                } else {
+                    receiptInput.setExpectedVersion(receipts.detail(draft).getVersion());
+                    receiptInput.setAmountOriginal(new BigDecimal("41"));
+                    receiptInput.setAccountAmount(new BigDecimal("41"));
+                    receiptInput.getItems().getFirst().setAmountOriginal(new BigDecimal("41"));
+                    receipts.update(draft,receiptInput);
+                    harness.loginAs(f.reviewer());receipts.approve(draft);
+                }
+            }
+            assertThat(db.queryForObject("SELECT DISTINCT business_precision_policy::text FROM "+owner[1]+" WHERE "+owner[2]+"=? AND NOT is_deleted",String.class,draft)).contains("DOWN").contains("17");
+            assertThat(financialLinesSnapshot(owner[1],owner[2],original)).isEqualTo(source);
+        }
+    }
+
+    private String financialLinesSnapshot(String table,String parent,UUID id) {
+        return db.queryForObject("SELECT jsonb_agg(to_jsonb(line) ORDER BY line_no,id)::text FROM "+table+" line WHERE "+parent+"=? AND NOT is_deleted",String.class,id);
+    }
+
+    private void rejectIncompleteFinancialClone(String table,String parent,UUID draft) {
+        db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+            var savepoint=connection.setSavepoint();
+            try(var remove=connection.prepareStatement("DELETE FROM "+table+" WHERE id=(SELECT id FROM "+table+" WHERE "+parent+"=? AND NOT is_deleted ORDER BY line_no,id LIMIT 1)")) {
+                remove.setObject(1,draft);assertThat(remove.executeUpdate()).isEqualTo(1);
+                try(var check=connection.createStatement()) {
+                    try { check.execute("SET CONSTRAINTS document_unapproval_financial_source_complete IMMEDIATE");throw new AssertionError("Incomplete financial clone committed"); }
+                    catch(java.sql.SQLException rejected) { assertThat(rejected.getSQLState()).isEqualTo("23514");assertThat(rejected.getMessage()).contains("incomplete original line map"); }
+                }
+            } finally { connection.rollback(savepoint);connection.releaseSavepoint(savepoint); }
+            return null;
+        });
+    }
+
+    private void rejectCloneProof(String table,String line,String patch) {
+        db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+            var savepoint=connection.setSavepoint();
+            try(var query=connection.prepareStatement("SELECT fn_unapproval_financial_line_policy(?,?::jsonb||?::jsonb)")) {
+                query.setString(1,table);query.setString(2,line);query.setString(3,patch);
+                try { query.execute();throw new AssertionError("Invalid frozen financial source was accepted: "+patch); }
+                catch(java.sql.SQLException rejected) { assertThat(rejected.getSQLState()).isIn("55000","23514"); }
+            } finally { connection.rollback(savepoint);connection.releaseSavepoint(savepoint); }
+            return null;
+        });
+    }
 
     @Test void allFiveReadyPreflightsAreReadOnlyAndMatchActualAtomicUnapproval() {
         Fixture f=fixture("all-five");

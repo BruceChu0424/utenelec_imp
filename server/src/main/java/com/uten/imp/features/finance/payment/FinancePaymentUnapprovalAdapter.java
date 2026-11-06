@@ -23,6 +23,7 @@ public class FinancePaymentUnapprovalAdapter implements DocumentUnapprovalPort {
     @Override public Object detail(UUID id) { return service.detail(id); }
     @Override public Eligibility eligibility(UUID id) { return service.unapprovalEligibility(id); }
     @Override public void reverse(UUID id) { service.reverse(id); }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
     @Override public TableSnapshot header() { return new TableSnapshot("finance_payments",null,
         List.of("bill_date","supplier_id","account_id","counterpart_account_id","currency_id","exchange_rate","amount_original","amount_local","account_currency_id","account_exchange_rate","account_amount","account_amount_local","bank_fee_account_amount","bank_fee_local","bank_reference","bank_booked_at","gl_account_style_id","gl_ap_style_id","gl_fx_style_id","gl_bank_fee_style_id","payment_method_id","payment_method_legacy_id","invoice_no","operator_name","operator_id","maker_id","source_remark","remark","create_request_hash"),true,false); }
     @Override public TableSnapshot lines() { return new TableSnapshot("finance_payment_lines","payment_id",

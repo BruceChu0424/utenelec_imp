@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/pages/expense_list_page.dart';
@@ -134,11 +135,18 @@ String? _rowIdentity<T>(
   return (stableKey ? records.rowKeyOf : records.idOf)?.call(record);
 }
 
-Future<void> _confirmDelete(WidgetTester tester) async {
+Future<void> _confirmDelete(
+  WidgetTester tester, {
+  bool waitForCompletion = true,
+}) async {
   await tester.tap(find.textContaining('删除所选草稿 ('));
   await tester.pumpAndSettle();
   await tester.tap(find.text('确认删除'));
-  await tester.pumpAndSettle();
+  if (waitForCompletion) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
 }
 
 void main() {
@@ -311,8 +319,11 @@ void main() {
             _table<ExpenseClaim>(tester).onSelectedIdsChanged!({'draft-1'});
           }
           await tester.pump();
-          await _confirmDelete(tester);
+          await _confirmDelete(tester, waitForCompletion: false);
           expect(api.detailReads, ['draft-1']);
+          expect(api.detailGate!.isCompleted, isFalse);
+          expect(find.byType(UtenBusyOverlay), findsOneWidget);
+          expect(api.deletes, isEmpty);
           if (changeIdentity) {
             final element = kind == _Kind.daily
                 ? tester.element(find.byType(ProductionDailyReportListPage))
@@ -326,7 +337,9 @@ void main() {
           } else {
             _table<ExpenseClaim>(tester).onFilterChanged('category', 'TRAVEL');
           }
-          await tester.pumpAndSettle();
+          await tester.pump();
+          expect(api.detailGate!.isCompleted, isFalse);
+          expect(api.deletes, isEmpty);
           api.detailGate!.complete();
           await tester.pumpAndSettle();
           expect(api.deletes, isEmpty);

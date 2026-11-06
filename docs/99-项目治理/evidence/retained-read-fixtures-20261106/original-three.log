@@ -1,0 +1,260 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: mine expense retries a failed next page
+00:00 +0 -1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: mine expense retries a failed next page [E]
+  ApiException(INVALID_PAGINATION): 分页信息异常，请刷新后重新读取完整结果
+  package:uten_imp/shared/paging/complete_paged_snapshot.dart 62:7   loadCompletePagedResult
+  ===== asynchronous gap ===========================
+  dart:async                                                         _Completer.completeError
+  package:riverpod/src/core/element.dart 127:11                      ElementWithFuture.onError
+  package:riverpod/src/core/element.dart 98:9                        ElementWithFuture.onValue
+  package:riverpod/src/core/element.dart 275:7                       ElementWithFuture._handleAsync.callOnError
+  package:riverpod/src/core/element.dart 246:18                      ElementWithFuture.handleFuture.<fn>.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                         Future.catchError
+  package:riverpod/src/core/element.dart 243:12                      ElementWithFuture.handleFuture.<fn>
+  package:riverpod/src/core/element.dart 282:35                      ElementWithFuture._handleAsync
+  package:riverpod/src/core/element.dart 212:12                      ElementWithFuture.handleFuture
+  package:riverpod/src/providers/async_notifier.dart 91:12           $AsyncNotifierProviderElement.handleCreate
+  package:riverpod/src/providers/async_notifier/orphan.dart 37:47    AsyncNotifier.runBuild
+  package:riverpod/src/core/provider/notifier_provider.dart 570:43   $ClassProviderElement.create
+  package:riverpod/src/core/element.dart 751:28                      ProviderElement.buildState
+  package:riverpod/src/core/element.dart 587:7                       ProviderElement.mount
+  package:riverpod/src/core/element.dart 704:9                       ProviderElement.flush
+  package:riverpod/src/core/provider/provider.dart 119:24            $ProviderBaseImpl._addListener
+  package:riverpod/src/core/provider_container.dart 1141:26          ProviderContainer.listen
+  test\features\expense\async_paginated_lists_retry_test.dart 38:21  main.<fn>
+  
+00:00 +0 -1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: approval expense retries a failed next page
+00:00 +0 -2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: approval expense retries a failed next page [E]
+  ApiException(INVALID_PAGINATION): 分页信息异常，请刷新后重新读取完整结果
+  package:uten_imp/shared/paging/complete_paged_snapshot.dart 62:7   loadCompletePagedResult
+  ===== asynchronous gap ===========================
+  dart:async                                                         _Completer.completeError
+  package:riverpod/src/core/element.dart 127:11                      ElementWithFuture.onError
+  package:riverpod/src/core/element.dart 98:9                        ElementWithFuture.onValue
+  package:riverpod/src/core/element.dart 275:7                       ElementWithFuture._handleAsync.callOnError
+  package:riverpod/src/core/element.dart 246:18                      ElementWithFuture.handleFuture.<fn>.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                         Future.catchError
+  package:riverpod/src/core/element.dart 243:12                      ElementWithFuture.handleFuture.<fn>
+  package:riverpod/src/core/element.dart 282:35                      ElementWithFuture._handleAsync
+  package:riverpod/src/core/element.dart 212:12                      ElementWithFuture.handleFuture
+  package:riverpod/src/providers/async_notifier.dart 91:12           $AsyncNotifierProviderElement.handleCreate
+  package:riverpod/src/providers/async_notifier/orphan.dart 37:47    AsyncNotifier.runBuild
+  package:riverpod/src/core/provider/notifier_provider.dart 570:43   $ClassProviderElement.create
+  package:riverpod/src/core/element.dart 751:28                      ProviderElement.buildState
+  package:riverpod/src/core/element.dart 587:7                       ProviderElement.mount
+  package:riverpod/src/core/element.dart 704:9                       ProviderElement.flush
+  package:riverpod/src/core/provider/provider.dart 119:24            $ProviderBaseImpl._addListener
+  package:riverpod/src/core/provider_container.dart 1141:26          ProviderContainer.listen
+  test\features\expense\async_paginated_lists_retry_test.dart 27:21  main.<fn>
+  
+00:00 +0 -2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: payroll retries a failed next page
+00:00 +0 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: payroll retries a failed next page [E]
+  ApiException(INVALID_PAGINATION): 分页信息异常，请刷新后重新读取完整结果
+  package:uten_imp/shared/paging/complete_paged_snapshot.dart 62:7   loadCompletePagedResult
+  ===== asynchronous gap ===========================
+  dart:async                                                         _Completer.completeError
+  package:riverpod/src/core/element.dart 127:11                      ElementWithFuture.onError
+  package:riverpod/src/core/element.dart 98:9                        ElementWithFuture.onValue
+  package:riverpod/src/core/element.dart 275:7                       ElementWithFuture._handleAsync.callOnError
+  package:riverpod/src/core/element.dart 246:18                      ElementWithFuture.handleFuture.<fn>.<fn>
+  ===== asynchronous gap ===========================
+  dart:async                                                         Future.catchError
+  package:riverpod/src/core/element.dart 243:12                      ElementWithFuture.handleFuture.<fn>
+  package:riverpod/src/core/element.dart 282:35                      ElementWithFuture._handleAsync
+  package:riverpod/src/core/element.dart 212:12                      ElementWithFuture.handleFuture
+  package:riverpod/src/providers/async_notifier.dart 91:12           $AsyncNotifierProviderElement.handleCreate
+  package:riverpod/src/providers/async_notifier/orphan.dart 37:47    AsyncNotifier.runBuild
+  package:riverpod/src/core/provider/notifier_provider.dart 570:43   $ClassProviderElement.create
+  package:riverpod/src/core/element.dart 751:28                      ProviderElement.buildState
+  package:riverpod/src/core/element.dart 587:7                       ProviderElement.mount
+  package:riverpod/src/core/element.dart 704:9                       ProviderElement.flush
+  package:riverpod/src/core/provider/provider.dart 119:24            $ProviderBaseImpl._addListener
+  package:riverpod/src/core/provider_container.dart 1141:26          ProviderContainer.listen
+  test\features\expense\async_paginated_lists_retry_test.dart 60:15  main.<fn>
+  
+00:01 +0 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: UNAUTHORIZED retires retained rows through a later retry
+00:01 +1 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: FORBIDDEN retires retained rows through a later retry
+00:01 +2 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: READ_SCOPE_CHANGED retires retained rows through a later retry
+00:01 +3 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: SESSION_CHANGED retires retained rows through a later retry
+00:01 +4 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: SESSION_STATE_UNAVAILABLE retires retained rows through a later retry
+00:01 +5 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 建议列表 server A-B-A期间不复活旧值，迟到B响应不能覆盖A新读
+00:07 +6 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: plans restrict selection to drafts and retain one atomic batch
+00:08 +7 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: plans restrict selection to drafts and retain one atomic batch
+00:10 +7 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 建议列表 同查询403清除已读行及重试期间保留值
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: Future already completed
+
+When the exception was thrown, this was the stack:
+#1      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart:224:25)
+<asynchronous suspension>
+#2      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 2 frames from dart:async and package:stack_trace)
+
+The test description was:
+  建议列表 同查询403清除已读行及重试期间保留值
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:10 +7 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: plans restrict selection to drafts and retain one atomic batch
+00:10 +7 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 建议列表 同查询403清除已读行及重试期间保留值 [E]
+  Test failed. See exception logs above.
+  The test description was: 建议列表 同查询403清除已读行及重试期间保留值
+  
+00:11 +8 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 工资条 server A-B-A期间不复活旧值，迟到B响应不能覆盖A新读
+00:12 +9 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: plan hides multi-select without delete permission
+00:12 +10 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 工资条 permissions A-B-A期间不复活旧值，迟到B响应不能覆盖A新读
+00:13 +11 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 工资条 permissions A-B-A期间不复活旧值，迟到B响应不能覆盖A新读
+00:14 +12 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: expense hides multi-select without delete permission
+00:14 +13 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 工资条 同查询403清除已读行及重试期间保留值
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following StateError was thrown running a test:
+Bad state: Future already completed
+
+When the exception was thrown, this was the stack:
+#1      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart:224:25)
+<asynchronous suspension>
+#2      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 2 frames from dart:async and package:stack_trace)
+
+The test description was:
+  工资条 同查询403清除已读行及重试期间保留值
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:16 +13 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: daily drafts clear filters and recheck status before deletion
+00:16 +13 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 工资条 同查询403清除已读行及重试期间保留值 [E]
+  Test failed. See exception logs above.
+  The test description was: 工资条 同查询403清除已读行及重试期间保留值
+  
+00:17 +14 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/models/retained_async_page_reader_boundary_test.dart: 建议手动刷新旧回执不能写入新服务器代次
+00:17 +15 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: expense selects only own drafts and sends checked versions
+00:21 +16 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: daily delete rejects a draft outside the writable owner scope
+00:22 +17 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: daily rechecks selection after detail GET
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _confirmDelete (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:141:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:314:11)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  daily rechecks selection after detail GET
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:36 +17 -6: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: daily rechecks selection after detail GET [E]
+  Test failed. See exception logs above.
+  The test description was: daily rechecks selection after detail GET
+  
+00:36 +17 -6: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: daily rechecks identity after detail GET
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _confirmDelete (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:141:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:314:11)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  daily rechecks identity after detail GET
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:44 +17 -7: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: daily rechecks identity after detail GET [E]
+  Test failed. See exception logs above.
+  The test description was: daily rechecks identity after detail GET
+  
+00:44 +17 -7: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: expense rechecks selection after detail GET
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _confirmDelete (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:141:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:314:11)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  expense rechecks selection after detail GET
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:53 +17 -8: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: expense rechecks selection after detail GET [E]
+  Test failed. See exception logs above.
+  The test description was: expense rechecks selection after detail GET
+  
+00:53 +17 -8: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: expense rechecks identity after detail GET
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      _confirmDelete (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:141:3)
+<asynchronous suspension>
+#3      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart:314:11)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  expense rechecks identity after detail GET
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:58 +17 -9: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: expense rechecks identity after detail GET [E]
+  Test failed. See exception logs above.
+  The test description was: expense rechecks identity after detail GET
+  
+00:58 +17 -9: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: expense version change is refused before destructive request
+00:59 +18 -9: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: approval expense retries a failed next page
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: mine expense retries a failed next page
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/expense/async_paginated_lists_retry_test.dart: payroll retries a failed next page
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/draft_list_bulk_delete_test.dart: daily rechecks identity after detail GET
+  ... and 5 more

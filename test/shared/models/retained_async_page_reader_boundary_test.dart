@@ -203,26 +203,35 @@ void main() {
     testWidgets('$name 同查询403清除已读行及重试期间保留值', (tester) async {
       final api = _Api(payroll);
       final container = await _mount(tester, api);
-      if (payroll) {
-        container.invalidate(payrollListProvider);
-      } else {
-        container.invalidate(suggestionListProvider);
-      }
+      var deniedSettled = false;
+      final deniedRead =
+          (payroll
+                  ? container.read(payrollListProvider.notifier).refresh()
+                  : container.read(suggestionListProvider.notifier).refresh())
+              .whenComplete(() => deniedSettled = true);
       await tester.pump();
+      expect(api.requests, hasLength(2));
       api.requests.last.completeError(
         ApiException('FORBIDDEN', 'denied', httpStatus: 403),
       );
       await tester.pumpAndSettle();
+      expect(deniedSettled, isTrue);
+      await deniedRead;
       expect(_visible(tester, payroll), isEmpty);
-      if (payroll) {
-        container.invalidate(payrollListProvider);
-      } else {
-        container.invalidate(suggestionListProvider);
-      }
+      // The authority failure stays retired until the shared owner is retried.
+      var retrySettled = false;
+      final retry =
+          (payroll
+                  ? container.read(payrollListProvider.notifier).refresh()
+                  : container.read(suggestionListProvider.notifier).refresh())
+              .whenComplete(() => retrySettled = true);
       await tester.pump();
+      expect(api.requests, hasLength(3));
       expect(_visible(tester, payroll), isEmpty);
       api.requests.last.complete(api.result('AFTER-RETRY'));
       await tester.pumpAndSettle();
+      expect(retrySettled, isTrue);
+      await retry;
       expect(_visible(tester, payroll), ['AFTER-RETRY']);
       expect(tester.takeException(), isNull);
     });

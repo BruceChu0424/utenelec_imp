@@ -1,0 +1,50 @@
+{
+  "baseMain": "bb8094bfca40e570b5433c5b5abe7b404e380aa4",
+  "files": {
+    "test/features/expense/async_paginated_lists_retry_test.dart": "6f9e60c409f0806256e398aa1026c1f5721e20d58eb374bc58cfb4e359501957",
+    "test/shared/models/retained_async_page_reader_boundary_test.dart": "1f1589f52f27ad84444b026686179b81ad52dc2dfda96eb963e7a20b3bd9e31d",
+    "test/shared/draft_list_bulk_delete_test.dart": "cb5c25c1cf3e1ae7e5caac03115cdf6c1ca05f2edaee2f8abed13f576a563526"
+  },
+  "originalThreeWholes": {
+    "pass": 18,
+    "fail": 9,
+    "completed": true
+  },
+  "finalThreeWholes": {
+    "pass": 27,
+    "fail": 0,
+    "skip": 0,
+    "completed": true
+  },
+  "strictFatalInfos": {
+    "exit": 0,
+    "issues": 0
+  },
+  "productionChanges": [],
+  "preservedChecks": [
+    "No partial continuation publishes as a complete list",
+    "Explicit retry rereads bounded internal batches from batch1; sizes stay equal",
+    "403 clears retained rows and explicit shared-owner retry preserves empty state until fresh success",
+    "Identity/selection change during held detail GET produces zero destructive requests",
+    "Existing atomic batch, permission, status, expectedVersion and failed selection checks retained"
+  ],
+  "evidenceSha256": {
+    "original-three.log": "90ced179824e62140995af6404c1d33e44524439f4d4a772272df4cba87b1617",
+    "original-three.jsonl": "b7e1b0f963555d42a4acaa813a9713d102022ba57091ff5a74c083772a105cd4",
+    "current-v2-three.log": "a8071c2ccf21d02fd4fa17acc99d0d530129448a643585c89b11184a72cc579e",
+    "current-v2-three.jsonl": "b94a25dfaa6a50b8cbf804ff52c42a5b2857c9ce777864cd3e421672cc994eed",
+    "final-strict.log": "fe43f5921c0030a1f6ab5edcaaf92e18f1cbea18c94b529f22eaf0724e804066"
+  },
+  "intermediateLocalRun": {
+    "log": "build\\ci-vm-readers-20261106\\current-three.log",
+    "source": "build\\ci-vm-readers-20261106\\current-v1-source\\retained_async_page_reader_boundary_test.dart",
+    "statusAtReceipt": "22 passed; pending framework frame while awaiting refresh before pumping; not counted as pass",
+    "sourcePreserved": true
+  },
+  "notChanged": [
+    "timeouts",
+    "production paging or permission logic",
+    "gate rules and exclusions",
+    "baseline fingerprints"
+  ]
+}

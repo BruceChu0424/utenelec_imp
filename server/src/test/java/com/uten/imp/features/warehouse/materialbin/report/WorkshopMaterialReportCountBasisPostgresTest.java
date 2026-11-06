@@ -49,42 +49,55 @@ class WorkshopMaterialReportCountBasisPostgresTest {
 
     @BeforeEach void seed() throws Exception {
         db.execute("""
-                DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                CREATE TABLE workshop_material_settings(periodic_bin_warehouse_id uuid, workshop_department_id uuid);
-                CREATE TABLE workshop_material_periods(id uuid PRIMARY KEY, bin_warehouse_id uuid, period_no int);
-                CREATE TABLE workshop_material_counts(id uuid PRIMARY KEY, period_id uuid, status text);
-                CREATE TABLE workshop_material_count_lines(count_id uuid, goods_id uuid, color_id uuid,
-                    line_kind text, fill_level text);
-                CREATE TABLE workshop_material_period_lines(id uuid DEFAULT gen_random_uuid(), period_id uuid,
-                    goods_id uuid, color_id uuid);
-                CREATE TABLE workshop_material_count_adjustment_postings(period_id uuid, goods_id uuid, color_id uuid, kind text);
-                CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, client_goods_name text, currency_id uuid);
-                CREATE TABLE colors(id uuid PRIMARY KEY, name text, remark text);
-                CREATE TABLE units(id uuid PRIMARY KEY, name text);
-                CREATE TABLE unit_measurement_profiles(unit_id uuid PRIMARY KEY, measurement_dimension text, mass_unit_code text);
-                CREATE TABLE v_workshop_material_period_report(
-                    bin_warehouse_id uuid, period_id uuid, period_no int, start_date date DEFAULT '2026-09-01',
-                    end_date date DEFAULT '2026-09-30', period_status text DEFAULT 'CLOSED',
-                    period_line_id uuid DEFAULT gen_random_uuid(), goods_id uuid, color_id uuid, unit_id uuid,
-                    cost_basis text DEFAULT 'OWN', opening_qty numeric DEFAULT 20, transfer_in_qty numeric DEFAULT 100,
-                    return_qty numeric DEFAULT 0, other_issue_qty numeric DEFAULT 0, closing_qty numeric DEFAULT 30,
-                    actual_qty numeric DEFAULT 90, theory_qty numeric DEFAULT 80, allocation_basis_qty numeric,
-                    diff_qty numeric DEFAULT 10, waste_rate numeric DEFAULT 0.125, outcome text DEFAULT 'ALLOCATED',
-                    flags text[] DEFAULT '{}', consumed_qty numeric DEFAULT 90, loss_qty numeric DEFAULT 0,
-                    close_no int DEFAULT 1, closed_at timestamptz DEFAULT now(), current_value numeric DEFAULT 180,
-                    value_at_close numeric DEFAULT 180, adjustment_qty numeric DEFAULT 0);
-                CREATE TABLE product_reference(id uuid);
-                CREATE VIEW v_workshop_material_product_report AS
-                    SELECT report.bin_warehouse_id, report.period_id, report.period_no, report.start_date, report.end_date,
-                        report.period_line_id AS close_material_id, report.cost_basis, report.goods_id AS material_goods_id,
-                        report.color_id AS material_color_id, report.unit_id AS material_unit_id,
-                        product.id AS product_goods_id, 100::numeric AS output_qty,
-                        report.theory_qty, report.actual_qty AS allocated_qty, report.current_value, true AS exclusive_period
-                    FROM v_workshop_material_period_report report CROSS JOIN product_reference product;
-                CREATE VIEW v_workshop_material_waste_trend AS
-                    SELECT bin_warehouse_id, period_id, period_no, start_date, end_date, goods_id, color_id, waste_rate
-                    FROM v_workshop_material_period_report;
-                """);
+            DROP SCHEMA public CASCADE; CREATE SCHEMA public;
+        """);
+        MigratedProjectionSchema.createCurrentColumns(db, "workshop_material_settings", "workshop_material_periods", "workshop_material_counts", "workshop_material_count_lines", "workshop_material_period_lines", "workshop_material_count_adjustment_postings", "goods", "colors", "units", "unit_measurement_profiles", "v_workshop_material_period_report");
+        db.execute("""
+            ALTER TABLE workshop_material_periods ADD PRIMARY KEY(id);
+            ALTER TABLE workshop_material_counts ADD PRIMARY KEY(id);
+
+
+
+            ALTER TABLE goods ADD PRIMARY KEY(id);
+            ALTER TABLE colors ADD PRIMARY KEY(id);
+            ALTER TABLE units ADD PRIMARY KEY(id);
+            ALTER TABLE unit_measurement_profiles ADD PRIMARY KEY(unit_id);
+            -- Constructor defaults below are supplied read-view outcomes, not production stored defaults.
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN start_date SET DEFAULT '2026-09-01';
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN end_date SET DEFAULT '2026-09-30';
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN period_status SET DEFAULT 'CLOSED';
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN period_line_id SET DEFAULT gen_random_uuid();
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN cost_basis SET DEFAULT 'OWN';
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN opening_qty SET DEFAULT 20;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN transfer_in_qty SET DEFAULT 100;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN return_qty SET DEFAULT 0;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN other_issue_qty SET DEFAULT 0;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN closing_qty SET DEFAULT 30;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN actual_qty SET DEFAULT 90;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN theory_qty SET DEFAULT 80;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN diff_qty SET DEFAULT 10;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN waste_rate SET DEFAULT 0.125;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN outcome SET DEFAULT 'ALLOCATED';
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN flags SET DEFAULT '{}';
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN consumed_qty SET DEFAULT 90;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN loss_qty SET DEFAULT 0;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN close_no SET DEFAULT 1;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN closed_at SET DEFAULT now();
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN current_value SET DEFAULT 180;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN value_at_close SET DEFAULT 180;
+            ALTER TABLE v_workshop_material_period_report ALTER COLUMN adjustment_qty SET DEFAULT 0;
+            CREATE TABLE product_reference(id uuid);
+            CREATE VIEW v_workshop_material_product_report AS
+                SELECT report.bin_warehouse_id, report.period_id, report.period_no, report.start_date, report.end_date,
+                    report.period_line_id AS close_material_id, report.cost_basis, report.goods_id AS material_goods_id,
+                    report.color_id AS material_color_id, report.unit_id AS material_unit_id,
+                    product.id AS product_goods_id, 100::numeric AS output_qty,
+                    report.theory_qty, report.actual_qty AS allocated_qty, report.current_value, true AS exclusive_period
+                FROM v_workshop_material_period_report report CROSS JOIN product_reference product;
+            CREATE VIEW v_workshop_material_waste_trend AS
+                SELECT bin_warehouse_id, period_id, period_no, start_date, end_date, goods_id, color_id, waste_rate
+                FROM v_workshop_material_period_report;
+        """);
         MigratedProjectionSchema.createCurrentTables(db, "warehouses", "workshop_bins");
         // 使用当前权威换算函数，不在夹具中复制一套因子。
         try (var resource = getClass().getResourceAsStream("/db/migration/V743__warehouse_weight_ledger_and_learning.sql")) {
@@ -92,15 +105,15 @@ class WorkshopMaterialReportCountBasisPostgresTest {
             int start = migration.indexOf("CREATE FUNCTION fn_weight_unit_kg_factor(");
             db.execute(migration.substring(start, migration.indexOf("$$;", start) + 3));
         }
-        db.update("INSERT INTO workshop_material_settings VALUES (?, ?)", bin, workshop);
+        db.update("INSERT INTO workshop_material_settings(periodic_bin_warehouse_id,workshop_department_id) VALUES(?, ?)", bin, workshop);
         db.update("INSERT INTO workshop_bins(bin_warehouse_id,workshop_department_id) VALUES (?, ?)", bin, workshop);
         db.update("INSERT INTO warehouses(id) VALUES (?)", bin);
-        db.update("INSERT INTO goods VALUES (?, 'PP', '颗粒'), (?, 'P1', '外壳')", goods, product);
+        db.update("INSERT INTO goods(id,code,name) VALUES(?, 'PP', '颗粒'), (?, 'P1', '外壳')", goods, product);
         db.update("INSERT INTO product_reference VALUES (?)", product);
-        db.update("INSERT INTO colors VALUES (?, '黑')", color);
-        db.update("INSERT INTO units VALUES (?, '车间称量单位')", materialUnit);
-        db.update("INSERT INTO unit_measurement_profiles VALUES (?, 'MASS', 'KG')", materialUnit);
-        db.update("INSERT INTO workshop_material_periods VALUES (?, ?, 1), (?, ?, 2)", first, bin, second, bin);
+        db.update("INSERT INTO colors(id,name) VALUES(?, '黑')", color);
+        db.update("INSERT INTO units(id,name) VALUES(?, '车间称量单位')", materialUnit);
+        db.update("INSERT INTO unit_measurement_profiles(unit_id,measurement_dimension,mass_unit_code) VALUES(?, 'MASS', 'KG')", materialUnit);
+        db.update("INSERT INTO workshop_material_periods(id,bin_warehouse_id,period_no) VALUES(?, ?, 1), (?, ?, 2)", first, bin, second, bin);
         count(firstCount, first, "SUBMITTED");
         count(secondCount, second, "SUBMITTED");
         line(firstCount, null, "CONTAINER", "HALF");
@@ -183,7 +196,7 @@ class WorkshopMaterialReportCountBasisPostgresTest {
 
     @Test void colorAndWarehouseBoundariesDoNotLeakEstimates() {
         UUID otherBin = UUID.randomUUID(), period = UUID.randomUUID(), counted = UUID.randomUUID();
-        db.update("INSERT INTO workshop_material_periods VALUES (?, ?, 1)", period, otherBin);
+        db.update("INSERT INTO workshop_material_periods(id,bin_warehouse_id,period_no) VALUES(?, ?, 1)", period, otherBin);
         count(counted, period, "SUBMITTED"); line(counted, color, "CONTAINER", "FULL");
         var rows = reports.binUsage(bin, null, null);
         assertThat(rows).hasSize(4);
@@ -242,7 +255,7 @@ class WorkshopMaterialReportCountBasisPostgresTest {
     }
 
     @Test void approvedOpeningIsASeparateSourceAndApprovedAdjustmentsAreNotTransferReceipts() {
-        db.update("INSERT INTO workshop_material_count_adjustment_postings VALUES (?,?,NULL,'OPENING')", first, goods);
+        db.update("INSERT INTO workshop_material_count_adjustment_postings(period_id,goods_id,color_id,kind) VALUES(?,?,NULL,'OPENING')", first, goods);
         db.update("UPDATE v_workshop_material_period_report SET adjustment_qty=7 WHERE period_id=?", first);
         var row = reports.binUsage(bin, null, null).stream().filter(r -> r.periodNo()==1 && r.colorId()==null).findFirst().orElseThrow();
         assertThat(row.openingCountBasis()).isEqualTo("APPROVED_OPENING");
@@ -257,10 +270,10 @@ class WorkshopMaterialReportCountBasisPostgresTest {
                 .findFirst().orElseThrow().openingCountBasis();
     }
     private void count(UUID id, UUID period, String status) {
-        db.update("INSERT INTO workshop_material_counts VALUES (?, ?, ?)", id, period, status);
+        db.update("INSERT INTO workshop_material_counts(id,period_id,status) VALUES(?, ?, ?)", id, period, status);
     }
     private void line(UUID count, UUID lineColor, String kind, String fill) {
-        db.update("INSERT INTO workshop_material_count_lines VALUES (?, ?, ?, ?, ?)", count, goods, lineColor, kind, fill);
+        db.update("INSERT INTO workshop_material_count_lines(count_id,goods_id,color_id,line_kind,fill_level) VALUES(?, ?, ?, ?, ?)", count, goods, lineColor, kind, fill);
     }
     private void report(UUID period, int no, UUID lineColor) {
         db.update("INSERT INTO workshop_material_period_lines(period_id, goods_id, color_id) VALUES (?, ?, ?)",

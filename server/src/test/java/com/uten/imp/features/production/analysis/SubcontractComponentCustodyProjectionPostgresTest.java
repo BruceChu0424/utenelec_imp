@@ -66,64 +66,48 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         execute("DROP SCHEMA public CASCADE");
         execute("CREATE SCHEMA public");
         execute("SET search_path TO public");
+        MigratedProjectionSchema.createCurrentColumns(new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true)), "preplan_supply_actions", "preplan_supply_action_allocations", "subcontract_orders", "subcontract_order_items", "subcontract_order_item_sources", "subcontract_receipts", "subcontract_receipt_items", "procurement_inspection_items", "subcontract_material_plans", "subcontract_material_plan_items", "subcontract_material_issues", "subcontract_material_issue_items", "stock_reservations", "subcontract_component_stock_handoffs", "production_material_analysis_materials");
         execute("""
-                CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text,
-                    operation_type text, status text, external_document_type text, requested_qty numeric,
-                    public_surplus_qty numeric NOT NULL DEFAULT 0, public_surplus_external_item_id uuid,
-                    goods_id uuid, color_id uuid, unit_id uuid);
-                CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    action_id uuid, analysis_id uuid, analysis_material_id uuid, allocated_qty numeric,
-                    external_item_id uuid);
-                CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false, termination_case_id uuid);
-                CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, unit_rate numeric,
-                    returned_qty numeric DEFAULT 0, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_order_item_sources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    order_item_id uuid, application_item_id uuid, alloc_qty numeric, line_no int);
-                CREATE TABLE subcontract_receipts(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_receipt_items(id uuid PRIMARY KEY, receipt_id uuid, order_item_id uuid,
-                    qty numeric, unit_rate numeric, is_deleted boolean DEFAULT false, finance_approval_case_id uuid, order_item_legacy_id integer);
-                CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    receipt_type text, receipt_item_id uuid, status text, warehouse_stocked_base_qty numeric,
-                    quantity_tranche text NOT NULL DEFAULT 'LEGACY' CHECK(quantity_tranche IN('LEGACY','CHARGED','GIFT')));
-                CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
-                    goods_id uuid, color_id uuid, bom_unit_qty numeric, issued_qty numeric,
-                    is_deleted boolean DEFAULT false, base_bom_unit_qty numeric(18,6),
-                    material_loss_pct numeric(5,2) NOT NULL DEFAULT 0);
-                CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    issue_id uuid, plan_item_id uuid, qty numeric, is_deleted boolean DEFAULT false,
-                    warehouse_split_command_id uuid, warehouse_split_at timestamptz);
-                CREATE TABLE stock_reservations(id uuid PRIMARY KEY, qty numeric, released_qty numeric DEFAULT 0,
-                    consumed_qty numeric DEFAULT 0, status int DEFAULT 0, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_component_stock_handoffs(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    plan_item_id uuid, parent_material_id uuid, child_material_id uuid,
-                    source_reservation_id uuid, target_reservation_id uuid, qty numeric,
-                    created_at timestamptz DEFAULT now());
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,
-                    analysis_item_id uuid, node_key text, parent_node_key text, node_role text, depth int,
-                    path text, goods_id uuid, color_id uuid, active boolean DEFAULT true, unit_id uuid);
-                CREATE FUNCTION fn_subcontract_draw_f(p_sets numeric, p_bom_unit_qty numeric)
-                RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT CEIL(p_sets * p_bom_unit_qty * 10000) / 10000 $$;
-                CREATE FUNCTION fn_subcontract_order_source_share(p_order_item_id uuid, p_application_item_id uuid,
-                    p_total_base numeric) RETURNS numeric LANGUAGE sql STABLE AS $$
-                    WITH bounds AS (
-                        SELECT src.application_item_id,
-                               src.alloc_qty * COALESCE(item.unit_rate, 1) AS alloc_base,
-                               COALESCE(SUM(src.alloc_qty) OVER w, 0) * COALESCE(item.unit_rate, 1)
-                                   - src.alloc_qty * COALESCE(item.unit_rate, 1) AS prefix_base,
-                               ROW_NUMBER() OVER w AS rn,
-                               COUNT(*) OVER (PARTITION BY src.order_item_id) AS source_count
-                        FROM subcontract_order_item_sources src
-                        JOIN subcontract_order_items item ON item.id = src.order_item_id
-                        WHERE src.order_item_id = p_order_item_id AND src.alloc_qty > 0
-                        WINDOW w AS (PARTITION BY src.order_item_id ORDER BY src.line_no, src.id))
-                    SELECT COALESCE((SELECT CASE WHEN b.rn = b.source_count
-                            THEN GREATEST(COALESCE(p_total_base, 0) - b.prefix_base, 0)
-                            ELSE GREATEST(LEAST(b.alloc_base, COALESCE(p_total_base, 0) - b.prefix_base), 0) END
-                        FROM bounds b WHERE b.application_item_id = p_application_item_id), 0);
-                $$;
-                """);
+            ALTER TABLE preplan_supply_actions ADD PRIMARY KEY(id);
+            ALTER TABLE preplan_supply_actions ALTER COLUMN public_surplus_qty SET NOT NULL;
+            ALTER TABLE preplan_supply_action_allocations ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_orders ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_order_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_order_item_sources ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_receipts ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_receipt_items ADD PRIMARY KEY(id);
+            ALTER TABLE procurement_inspection_items ADD PRIMARY KEY(id);
+            ALTER TABLE procurement_inspection_items ALTER COLUMN quantity_tranche SET NOT NULL;
+            ALTER TABLE procurement_inspection_items ADD CHECK(quantity_tranche IN('LEGACY','CHARGED','GIFT'));
+            ALTER TABLE subcontract_material_plans ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_plan_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_plan_items ALTER COLUMN material_loss_pct SET NOT NULL;
+            ALTER TABLE subcontract_material_issues ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_issue_items ADD PRIMARY KEY(id);
+            ALTER TABLE stock_reservations ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_component_stock_handoffs ADD PRIMARY KEY(id);
+            ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id);
+            CREATE FUNCTION fn_subcontract_draw_f(p_sets numeric, p_bom_unit_qty numeric)
+            RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT CEIL(p_sets * p_bom_unit_qty * 10000) / 10000 $$;
+            CREATE FUNCTION fn_subcontract_order_source_share(p_order_item_id uuid, p_application_item_id uuid,
+                p_total_base numeric) RETURNS numeric LANGUAGE sql STABLE AS $$
+                WITH bounds AS (
+                    SELECT src.application_item_id,
+                           src.alloc_qty * COALESCE(item.unit_rate, 1) AS alloc_base,
+                           COALESCE(SUM(src.alloc_qty) OVER w, 0) * COALESCE(item.unit_rate, 1)
+                               - src.alloc_qty * COALESCE(item.unit_rate, 1) AS prefix_base,
+                           ROW_NUMBER() OVER w AS rn,
+                           COUNT(*) OVER (PARTITION BY src.order_item_id) AS source_count
+                    FROM subcontract_order_item_sources src
+                    JOIN subcontract_order_items item ON item.id = src.order_item_id
+                    WHERE src.order_item_id = p_order_item_id AND src.alloc_qty > 0
+                    WINDOW w AS (PARTITION BY src.order_item_id ORDER BY src.line_no, src.id))
+                SELECT COALESCE((SELECT CASE WHEN b.rn = b.source_count
+                        THEN GREATEST(COALESCE(p_total_base, 0) - b.prefix_base, 0)
+                        ELSE GREATEST(LEAST(b.alloc_base, COALESCE(p_total_base, 0) - b.prefix_base), 0) END
+                    FROM bounds b WHERE b.application_item_id = p_application_item_id), 0);
+            $$;
+        """);
         MigratedProjectionSchema.createCurrentTables(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
                 "preplan_aggregate_batches", "preplan_aggregate_batch_events");
         MigratedProjectionSchema.installImportedDocumentPolicy(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
@@ -937,11 +921,11 @@ class SubcontractComponentCustodyProjectionPostgresTest {
 
         UUID orderItem(String rate, UUID application, String allocQty) throws SQLException {
             if (!orderCreated) {
-                update("INSERT INTO subcontract_orders VALUES (?,1,false)", order);
+                update("INSERT INTO subcontract_orders(id,status,is_deleted) VALUES(?,1,false)", order);
                 orderCreated = true;
             }
             UUID item = UUID.randomUUID();
-            update("INSERT INTO subcontract_order_items VALUES (?,?,?,0,false)", item, order, new BigDecimal(rate));
+            update("INSERT INTO subcontract_order_items(id,order_id,unit_rate,returned_qty,is_deleted) VALUES(?,?,?,0,false)", item, order, new BigDecimal(rate));
             source(item, application, allocQty, 1);
             return item;
         }
@@ -953,18 +937,18 @@ class SubcontractComponentCustodyProjectionPostgresTest {
 
         UUID planLine(UUID orderItem, UUID goods, String bomUnitQty, String issued) throws SQLException {
             if (!planCreated) {
-                update("INSERT INTO subcontract_material_plans VALUES (?,'OPEN',false)", plan);
+                update("INSERT INTO subcontract_material_plans(id,status,is_deleted) VALUES(?,'OPEN',false)", plan);
                 planCreated = true;
             }
             UUID line = UUID.randomUUID();
-            update("INSERT INTO subcontract_material_plan_items VALUES (?,?,?,?,NULL,?,?,false)",
+            update("INSERT INTO subcontract_material_plan_items(id,plan_id,order_item_id,goods_id,color_id,bom_unit_qty,issued_qty,is_deleted) VALUES(?,?,?,?,NULL,?,?,false)",
                     line, plan, orderItem, goods, new BigDecimal(bomUnitQty), new BigDecimal(issued));
             return line;
         }
 
         void draft(UUID planLine, String qty) throws SQLException {
             UUID issue = UUID.randomUUID();
-            update("INSERT INTO subcontract_material_issues VALUES (?,0,false)", issue);
+            update("INSERT INTO subcontract_material_issues(id,status,is_deleted) VALUES(?,0,false)", issue);
             update("INSERT INTO subcontract_material_issue_items(issue_id,plan_item_id,qty) VALUES (?,?,?)",
                     issue, planLine, new BigDecimal(qty));
         }
@@ -979,8 +963,8 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         void stockedReceipt(UUID orderItem, String qty) throws SQLException {
             UUID receipt = UUID.randomUUID();
             UUID item = UUID.randomUUID();
-            update("INSERT INTO subcontract_receipts VALUES (?,1,false)", receipt);
-            update("INSERT INTO subcontract_receipt_items VALUES (?,?,?,?,1,false)", item, receipt, orderItem, new BigDecimal(qty));
+            update("INSERT INTO subcontract_receipts(id,status,is_deleted) VALUES(?,1,false)", receipt);
+            update("INSERT INTO subcontract_receipt_items(quantity_adoption_version,id,receipt_id,order_item_id,qty,unit_rate,is_deleted) VALUES(1,?,?,?,?,1,false)", item, receipt, orderItem, new BigDecimal(qty));
             update("INSERT INTO procurement_inspection_items(receipt_type,receipt_item_id,status,warehouse_stocked_base_qty) VALUES ('SUBCONTRACT',?,'RESOLVED',?)",
                     item, new BigDecimal(qty));
         }

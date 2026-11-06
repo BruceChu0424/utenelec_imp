@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.valuation;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.uten.imp.application.port.InventoryProductionCostPort;
 import com.uten.imp.application.port.InventoryValuationPort;
 import com.uten.imp.features.stock.InventoryKey;
@@ -56,18 +57,34 @@ class InventoryValueWorkConcurrencyPostgresTest {
         bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());bean.setPackagesToScan("com.uten.imp.features.common.taskclaim");
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();factory=bean.getObject();
         manager=new JpaTransactionManager(factory);manager.setDataSource(source);
-        jdbc.execute("CREATE TABLE stock_value_pools(id uuid PRIMARY KEY,goods_id uuid NOT NULL,color_id uuid)");
-        jdbc.execute("CREATE TABLE stock_value_production_cost_objects(execution_segment_id uuid PRIMARY KEY,product_pool_id uuid,source_kind text,current_revision_id uuid,version bigint,state text,business_refresh_pending boolean,business_refresh_event_id uuid,business_refresh_actor_id uuid,business_refresh_precision_version smallint DEFAULT 2,business_refresh_precision_policy jsonb DEFAULT jsonb_build_object('version',1,'choices','{}'::jsonb),business_refresh_precision_root_id uuid)");
-        jdbc.execute("CREATE TABLE stock_value_nodes(id uuid PRIMARY KEY,pool_id uuid,owner_kind text,owner_id uuid,active boolean, reference_root_id uuid,origin_identity_snapshot jsonb)");
-        jdbc.execute("CREATE TABLE stock_value_production_cost_inputs(input_node_id uuid,execution_segment_id uuid)");
-        jdbc.execute("CREATE TABLE stock_value_production_cost_outputs(source_node_id uuid,execution_segment_id uuid)");
-        jdbc.execute("CREATE TABLE subcontract_receipt_material_consumptions(receipt_item_id uuid,issue_item_id uuid)");
-        jdbc.execute("CREATE TABLE subcontract_material_issue_items(id uuid,order_item_id uuid,goods_id uuid,color_id uuid,warehouse_split_command_id uuid,warehouse_split_at timestamptz)");
-        jdbc.execute("CREATE TABLE stock_value_production_cost_dirty(input_node_id uuid PRIMARY KEY,execution_segment_id uuid,source_event_id uuid,observed_revision bigint,cleared_revision bigint)");
-        jdbc.execute("CREATE TABLE stock_value_events(id uuid PRIMARY KEY,actor_user_id uuid,occurred_at timestamptz)");
-        jdbc.execute("CREATE TABLE stock_value_jobs(event_id uuid,status text)");
-        jdbc.execute("CREATE TABLE stock_value_tasks(id uuid,status text)");
-        jdbc.execute("CREATE TABLE stock_value_production_cost_tasks(id uuid,status text)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_pools");
+        jdbc.execute("""
+            ALTER TABLE stock_value_pools ADD PRIMARY KEY(id);
+            ALTER TABLE stock_value_pools ALTER COLUMN goods_id SET NOT NULL;
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_production_cost_objects");
+        jdbc.execute("""
+            ALTER TABLE stock_value_production_cost_objects ADD PRIMARY KEY(execution_segment_id);
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_nodes");
+        jdbc.execute("""
+            ALTER TABLE stock_value_nodes ADD PRIMARY KEY(id);
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_production_cost_inputs");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_production_cost_outputs");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "subcontract_receipt_material_consumptions");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "subcontract_material_issue_items");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_production_cost_dirty");
+        jdbc.execute("""
+            ALTER TABLE stock_value_production_cost_dirty ADD PRIMARY KEY(input_node_id);
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_events");
+        jdbc.execute("""
+            ALTER TABLE stock_value_events ADD PRIMARY KEY(id);
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_jobs");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_tasks");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_value_production_cost_tasks");
         jdbc.execute("CREATE TABLE applied_refresh(scope uuid,event uuid,actor uuid,kind text,version bigint,PRIMARY KEY(scope,event,kind))");
     }
     @AfterAll static void stop() { if(factory!=null){ factory.close(); }PG.stop(); }
@@ -192,18 +209,18 @@ class InventoryValueWorkConcurrencyPostgresTest {
         InventoryKey subcontractInput=new InventoryKey(UUID.randomUUID(),null);
         InventoryKey unrelated=new InventoryKey(UUID.randomUUID(),null);
         UUID registeredNode=node(seed.scope(),registered,"OTHER",true);
-        jdbc.update("INSERT INTO stock_value_production_cost_inputs VALUES(?,?)",registeredNode,seed.scope());
+        jdbc.update("INSERT INTO stock_value_production_cost_inputs(input_node_id,execution_segment_id) VALUES(?,?)",registeredNode,seed.scope());
         // Legal outputs keep product goods/color even when their physical pool
         // differs. This duplicates the global inventory key intentionally.
         UUID output=node(seed.scope(),seed.key(),"OTHER",true);
-        jdbc.update("INSERT INTO stock_value_production_cost_outputs VALUES(?,?)",output,seed.scope());
+        jdbc.update("INSERT INTO stock_value_production_cost_outputs(source_node_id,execution_segment_id) VALUES(?,?)",output,seed.scope());
         node(seed.scope(),waiting,"COST_WIP",true);
         node(seed.scope(),unrelated,"COST_WIP",false);
         UUID issue=UUID.randomUUID();
-        jdbc.update("INSERT INTO subcontract_material_issue_items VALUES(?,?,?,?)",issue,
+        jdbc.update("INSERT INTO subcontract_material_issue_items(id,order_item_id,goods_id,color_id) VALUES(?,?,?,?)",issue,
                 kind.equals("SUBCONTRACT_ORDER_NORMAL_LOSS")?seed.scope():UUID.randomUUID(),subcontractInput.goodsId(),subcontractInput.colorId());
         if(kind.equals("SUBCONTRACT_RECEIPT_ITEM"))
-            jdbc.update("INSERT INTO subcontract_receipt_material_consumptions VALUES(?,?)",seed.scope(),issue);
+            jdbc.update("INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id) VALUES(?,?)",seed.scope(),issue);
         business.set((scope,event,actor)->{
             mutex.requireHeld(registered);mutex.requireHeld(waiting);mutex.requireHeld(seed.key());
             if(kind.startsWith("SUBCONTRACT_"))mutex.requireHeld(subcontractInput);
@@ -222,8 +239,8 @@ class InventoryValueWorkConcurrencyPostgresTest {
             new TransactionTemplate(manager).executeWithoutResult(status->{
                 mutex.lockAll(List.of(input,seed.key()));
                 future.set(executor.submit(()->{Thread.currentThread().setName("blocked-value-worker");return worker.runBatch();}));await(attempted);
-                UUID pool=UUID.randomUUID();jdbc.update("INSERT INTO stock_value_pools VALUES(?,?,NULL)",pool,input.goodsId());
-                jdbc.update("INSERT INTO stock_value_nodes VALUES(?,?, 'COST_WIP',?,TRUE)",UUID.randomUUID(),pool,seed.scope());
+                UUID pool=UUID.randomUUID();jdbc.update("INSERT INTO stock_value_pools(id,goods_id,color_id) VALUES(?,?,NULL)",pool,input.goodsId());
+                jdbc.update("INSERT INTO stock_value_nodes(id,pool_id,owner_kind,owner_id,active) VALUES(?,?, 'COST_WIP',?,TRUE)",UUID.randomUUID(),pool,seed.scope());
             });
             assertEquals(0,future.get().get(5,TimeUnit.SECONDS));assertTrue(worker.hasPendingWork());assertEquals(0,count("SELECT count(*) FROM applied_refresh"));
             business.set((scope,event,actor)->{mutex.requireHeld(input);applyBusiness(scope,event,actor);});
@@ -241,16 +258,16 @@ class InventoryValueWorkConcurrencyPostgresTest {
 
     @Test void staleDirtyProjectionIsRecheckedAfterInventoryAndNeverBypassesAnUnfinishedSourceJob() throws Exception {
         Seed seed=seed("PRODUCTION_EXECUTION",false);UUID input=UUID.randomUUID();
-        jdbc.update("INSERT INTO stock_value_production_cost_dirty VALUES(?,?,?,1,0)",input,seed.scope(),seed.event());
-        jdbc.update("INSERT INTO stock_value_events VALUES(?,?,?)",seed.event(),seed.actor(),TIME);
+        jdbc.update("INSERT INTO stock_value_production_cost_dirty(input_node_id,execution_segment_id,source_event_id,observed_revision,cleared_revision) VALUES(?,?,?,1,0)",input,seed.scope(),seed.event());
+        jdbc.update("INSERT INTO stock_value_events(id,actor_user_id,occurred_at) VALUES(?,?,?)",seed.event(),seed.actor(),TIME);
         when(production.pendingRecalculations(anyInt())).thenReturn(List.of(new InventoryProductionCostPort.Recalculation(seed.scope(),seed.event(),0)));
         UUID latest=UUID.randomUUID(),actor=UUID.randomUUID();
         var future=new AtomicReference<Future<Integer>>();var executor=Executors.newSingleThreadExecutor();CountDownLatch attempted=signalWorkerLock();
         try {
             new TransactionTemplate(manager).executeWithoutResult(status->{
                 mutex.lock(seed.key());future.set(executor.submit(()->{Thread.currentThread().setName("blocked-value-worker");return worker.runBatch();}));await(attempted);
-                jdbc.update("INSERT INTO stock_value_events VALUES(?,?,?)",latest,actor,TIME.plusDays(1));
-                jdbc.update("INSERT INTO stock_value_jobs VALUES(?,'PENDING')",latest);
+                jdbc.update("INSERT INTO stock_value_events(id,actor_user_id,occurred_at) VALUES(?,?,?)",latest,actor,TIME.plusDays(1));
+                jdbc.update("INSERT INTO stock_value_jobs(event_id,status) VALUES(?,'PENDING')",latest);
                 jdbc.update("UPDATE stock_value_production_cost_objects SET version=5 WHERE execution_segment_id=?",seed.scope());
                 jdbc.update("UPDATE stock_value_production_cost_dirty SET observed_revision=4,source_event_id=? WHERE input_node_id=?",latest,input);
             });
@@ -265,8 +282,8 @@ class InventoryValueWorkConcurrencyPostgresTest {
 
     @Test void concurrentDirtyWorkersOnlyCommitOneRevision() throws Exception {
         Seed seed=seed("PRODUCTION_EXECUTION",false);
-        jdbc.update("INSERT INTO stock_value_production_cost_dirty VALUES(?,?,?,1,0)",UUID.randomUUID(),seed.scope(),seed.event());
-        jdbc.update("INSERT INTO stock_value_events VALUES(?,?,?)",seed.event(),seed.actor(),TIME);
+        jdbc.update("INSERT INTO stock_value_production_cost_dirty(input_node_id,execution_segment_id,source_event_id,observed_revision,cleared_revision) VALUES(?,?,?,1,0)",UUID.randomUUID(),seed.scope(),seed.event());
+        jdbc.update("INSERT INTO stock_value_events(id,actor_user_id,occurred_at) VALUES(?,?,?)",seed.event(),seed.actor(),TIME);
         when(production.pendingRecalculations(anyInt())).thenReturn(List.of(new InventoryProductionCostPort.Recalculation(seed.scope(),seed.event(),0)));
         CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
         dirty.set((event,scope,version)->{entered.countDown();await(release);applyDirty(event,scope,version);});
@@ -288,13 +305,13 @@ class InventoryValueWorkConcurrencyPostgresTest {
     private Seed seed(String kind,boolean pending) {
         UUID scope=UUID.randomUUID(),pool=UUID.randomUUID(),event=UUID.randomUUID(),actor=UUID.randomUUID();
         InventoryKey key=new InventoryKey(UUID.fromString("f0000000-0000-4000-8000-000000000001"),null);
-        jdbc.update("INSERT INTO stock_value_pools VALUES(?,?,NULL)",pool,key.goodsId());
-        jdbc.update("INSERT INTO stock_value_production_cost_objects(execution_segment_id,product_pool_id,source_kind,current_revision_id,version,state,business_refresh_pending,business_refresh_event_id,business_refresh_actor_id) VALUES(?,?,?,?,0,'PROVISIONAL',?,?,?)",scope,pool,kind,UUID.randomUUID(),pending,event,actor);
+        jdbc.update("INSERT INTO stock_value_pools(id,goods_id,color_id) VALUES(?,?,NULL)",pool,key.goodsId());
+        jdbc.update("INSERT INTO stock_value_production_cost_objects(execution_segment_id,product_pool_id,source_kind,current_revision_id,version,state,business_refresh_pending,business_refresh_event_id,business_refresh_actor_id,business_refresh_precision_version,business_refresh_precision_policy) VALUES(?,?,?,?,0,'PROVISIONAL',?,?,?,2,jsonb_build_object('version',1,'choices','{}'::jsonb))",scope,pool,kind,UUID.randomUUID(),pending,event,actor);
         return new Seed(scope,key,event,actor);
     }
     private UUID node(UUID scope,InventoryKey key,String owner,boolean active) {
         UUID pool=UUID.randomUUID(),node=UUID.randomUUID();
-        jdbc.update("INSERT INTO stock_value_pools VALUES(?,?,?)",pool,key.goodsId(),key.colorId());
+        jdbc.update("INSERT INTO stock_value_pools(id,goods_id,color_id) VALUES(?,?,?)",pool,key.goodsId(),key.colorId());
         jdbc.update("INSERT INTO stock_value_nodes(id,pool_id,owner_kind,owner_id,active) VALUES(?,?,?,?,?)",node,pool,owner,scope,active);
         return node;
     }

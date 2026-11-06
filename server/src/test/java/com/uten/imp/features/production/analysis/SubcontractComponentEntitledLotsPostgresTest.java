@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -39,37 +40,25 @@ class SubcontractComponentEntitledLotsPostgresTest {
         connection = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         connection.setAutoCommit(false);
         execute("CREATE SCHEMA entitled_lots_test; SET LOCAL search_path TO entitled_lots_test; SET LOCAL jit TO off");
+        MigratedProjectionSchema.createCurrentColumns(new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true)), "warehouses", "subcontract_application_items", "subcontract_order_items", "subcontract_order_item_sources", "preplan_supply_actions", "preplan_supply_action_allocations", "production_material_analysis_materials", "subcontract_material_plans", "subcontract_material_plan_items", "stock_reservations", "subcontract_component_stock_handoffs");
         execute("""
-                CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false,
-                    is_defective boolean DEFAULT false, is_line_side boolean DEFAULT false);
-                CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, application_id uuid, goods_id uuid,
-                    color_id uuid, qty numeric(18,4), is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, goods_id uuid, color_id uuid,
-                    is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4));
-                CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text, operation_type text,
-                    status text, external_document_type text, external_document_id uuid, public_surplus_external_item_id uuid);
-                CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, action_id uuid, analysis_id uuid,
-                    analysis_material_id uuid, external_item_id uuid, allocated_qty numeric(18,4));
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,
-                    analysis_item_id uuid, node_key text, parent_node_key text, node_role text DEFAULT 'BOM_COMPONENT',
-                    depth integer, goods_id uuid, color_id uuid, active boolean DEFAULT true);
-                CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN', is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
-                    base_bom_unit_qty numeric, material_loss_pct numeric(5,2) NOT NULL DEFAULT 0, line_no integer,
-                    goods_id uuid, color_id uuid, bom_unit_qty numeric, is_deleted boolean DEFAULT false,
-                    draw_closed_at timestamptz);
-                CREATE TABLE stock_reservations(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid,
-                    owner_type text, status smallint DEFAULT 0, is_deleted boolean DEFAULT false,
-                    qty numeric(18,4), consumed_qty numeric(18,4) DEFAULT 0, released_qty numeric(18,4) DEFAULT 0);
-                CREATE TABLE fixture_entitlement_lots(entitlement_event_id uuid PRIMARY KEY, stock_reservation_id uuid,
-                    beneficiary_analysis_id uuid, beneficiary_analysis_material_id uuid,
-                    source_exact_peg_id uuid, reallocation_id uuid, remaining_qty numeric(18,4));
-                CREATE VIEW v_preplan_stock_entitlement_lot_balance AS SELECT * FROM fixture_entitlement_lots;
-                CREATE TABLE subcontract_component_stock_handoffs(id uuid PRIMARY KEY, plan_item_id uuid,
-                    application_item_id uuid, parent_material_id uuid, child_material_id uuid,
-                    target_reservation_id uuid, qty numeric(18,4));
-                """);
+            ALTER TABLE warehouses ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_application_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_order_items ADD PRIMARY KEY(id);
+
+            ALTER TABLE preplan_supply_actions ADD PRIMARY KEY(id);
+            ALTER TABLE preplan_supply_action_allocations ADD PRIMARY KEY(id);
+            ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_plans ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_plan_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_plan_items ALTER COLUMN material_loss_pct SET NOT NULL;
+            ALTER TABLE stock_reservations ADD PRIMARY KEY(id);
+            CREATE TABLE fixture_entitlement_lots(entitlement_event_id uuid PRIMARY KEY, stock_reservation_id uuid,
+                beneficiary_analysis_id uuid, beneficiary_analysis_material_id uuid,
+                source_exact_peg_id uuid, reallocation_id uuid, remaining_qty numeric(18,4));
+            CREATE VIEW v_preplan_stock_entitlement_lot_balance AS SELECT * FROM fixture_entitlement_lots;
+            ALTER TABLE subcontract_component_stock_handoffs ADD PRIMARY KEY(id);
+        """);
         // This focused fixture has one known operational warehouse; the production functions below are unmodified.
         execute("CREATE FUNCTION fn_warehouse_is_operational_leaf(uuid) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT EXISTS (SELECT 1 FROM warehouses WHERE id=$1 AND NOT is_deleted) $$");
         String migration;

@@ -178,35 +178,6 @@ Future<void> _mountInstant(
   final prefs = await SharedPreferences.getInstance();
   final inventory =
       api ?? InstantInventoryApiFixture(withTotals: false, withAnalysis: false);
-  if (api == null) {
-    // Keep the legacy fixture's137-row fact, supplying real internal batches
-    // rather than repeating page1's two rows for every requested page.
-    inventory.onInventory = (query) async {
-      final raw = inventory.response();
-      final rows = <Object?>[
-        ...raw['items'] as List,
-        for (var i = 2; i < 137; i++)
-          {
-            'goodsId':
-                '00000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
-            'name': '完整库存候选$i',
-            'unitName': '个',
-            'qty': 0,
-          },
-      ];
-      final page = query['page'] as int? ?? 1;
-      final size = query['size'] as int? ?? 50;
-      final start = (page - 1) * size;
-      return {
-        ...raw,
-        'items': rows.sublist(start, (start + size).clamp(0, rows.length)),
-        'page': page,
-        'size': size,
-        'total': rows.length,
-        'totalPages': (rows.length + size - 1) ~/ size,
-      };
-    };
-  }
   tester.view
     ..physicalSize = const Size(2200, 1200)
     ..devicePixelRatio = 1;

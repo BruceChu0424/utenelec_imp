@@ -34,6 +34,7 @@ import '../../support/field_hint_support.dart';
 void main() {
   testWidgets('表格底部只保留服务端重量合计和详情入口', (tester) async {
     final router = await _pumpPage(tester, const Size(1500, 1000));
+    await _revealSummary(tester);
 
     expect(find.byType(InstantInventorySummaryBar), findsOneWidget);
     expect(find.text('查看详情'), findsOneWidget);
@@ -57,6 +58,7 @@ void main() {
   testWidgets('点击详情查看同一筛选的全集，数量按单位分开并隐藏全零单位', (tester) async {
     await _pumpPage(tester, const Size(1500, 1000));
 
+    await _revealSummary(tester);
     await tester.tap(find.text('查看详情'));
     await tester.pumpAndSettle();
 
@@ -108,6 +110,7 @@ void main() {
     await tester.pumpAndSettle();
     final originalState = tester.state(find.byType(InstantInventoryPage));
 
+    await _revealSummary(tester);
     await tester.tap(find.text('查看详情'));
     await tester.pumpAndSettle();
     expect(router.state.uri.path, '/stock/instant-inventory/overview');
@@ -222,6 +225,7 @@ void main() {
       expect(export.queryParams, isNot(contains('browseCategoryId')));
       expect(export.queryParams, isNot(contains('returnTo')));
 
+      await _revealSummary(tester);
       await tester.tap(find.text('查看详情'));
       await tester.pumpAndSettle();
       final overviewLocation = router.state.uri.toString();
@@ -324,6 +328,7 @@ void main() {
   testWidgets('旧响应仍可看汇总，缺失分析指标时不显示零风险结论', (tester) async {
     await _pumpPage(tester, const Size(1500, 1000), withAnalysis: false);
 
+    await _revealSummary(tester);
     await tester.tap(find.text('查看详情'));
     await tester.pumpAndSettle();
 
@@ -346,25 +351,50 @@ void main() {
       withTotals: true,
       withAnalysis: true,
     );
-    await _pumpPage(tester, const Size(1500, 1000), api: api);
+    final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
+    await _revealSummary(tester);
+    final details = find.byKey(const Key('instant-inventory-summary-details'));
+    final oldDetails = tester.widget<TextButton>(details).onPressed!;
+    await _revealSearch(tester);
     final request = Completer<Map<String, dynamic>>();
     api.nextInventoryResponse = request.future;
 
     await tester.tap(find.byTooltip('刷新'));
     await tester.pump();
 
-    expect(find.textContaining('统计更新中…', findRichText: true), findsOneWidget);
+    expect(
+      tester
+          .widget<MasterDataTableView<InstantInventoryRow>>(
+            find.byType(MasterDataTableView<InstantInventoryRow>),
+          )
+          .loadingMore,
+      isTrue,
+    );
+    expect(find.byType(InstantInventorySummaryBar), findsNothing);
     expect(find.textContaining('3.52 t', findRichText: true), findsNothing);
-    final details = find.byKey(const Key('instant-inventory-summary-details'));
-    expect(tester.widget<TextButton>(details).onPressed, isNull);
+    expect(details, findsNothing);
+    oldDetails();
+    await tester.pump();
+    expect(router.state.uri.path, RouteName.stockInstantInventory);
     expect(find.byType(InstantInventoryOverviewPage), findsNothing);
 
     request.completeError(StateError('库存查询失败'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('统计暂不可用', findRichText: true), findsOneWidget);
+    expect(
+      tester
+          .widget<MasterDataTableView<InstantInventoryRow>>(
+            find.byType(MasterDataTableView<InstantInventoryRow>),
+          )
+          .error,
+      isNotNull,
+    );
+    expect(find.byType(InstantInventorySummaryBar), findsNothing);
     expect(find.textContaining('3.52 t', findRichText: true), findsNothing);
-    expect(tester.widget<TextButton>(details).onPressed, isNull);
+    expect(details, findsNothing);
+    oldDetails();
+    await tester.pump();
+    expect(router.state.uri.path, RouteName.stockInstantInventory);
     expect(find.byType(InstantInventoryOverviewPage), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -376,6 +406,7 @@ void main() {
       withCategories: true,
     );
     final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
+    await _revealSummary(tester);
     final inventory = Completer<Map<String, dynamic>>();
     api.nextInventoryResponse = inventory.future;
     final search = find.descendant(
@@ -384,6 +415,7 @@ void main() {
     );
     final details = find.byKey(const Key('instant-inventory-summary-details'));
     final oldDetails = tester.widget<TextButton>(details).onPressed!;
+    await _revealSearch(tester);
 
     await tester.enterText(search, '新货品');
     await tester.pump();
@@ -407,6 +439,7 @@ void main() {
     inventory.complete(api.response());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
+    await _revealSummary(tester);
     expect(
       tester.widget<TextButton>(details).onPressed,
       isNotNull,
@@ -487,7 +520,7 @@ void main() {
     // A print snapshot serves every advertised identity, rather than
     // replaying the same two visible rows for all seven claimed pages.
     final completeRows = <Map<String, dynamic>>[
-      ...((api.response()['items']! as List).cast<Map<String, dynamic>>()),
+      ...api.seedRows,
       for (var index = 2; index < 137; index++)
         {
           'goodsId': 'print-fixture-$index',
@@ -530,6 +563,7 @@ void main() {
 
   testWidgets('窄屏 + 1.5× 字号：合计条和详情均不溢出', (tester) async {
     await _pumpPage(tester, const Size(375, 812), textScale: 1.5);
+    await _revealSummary(tester);
 
     expect(find.byType(InstantInventorySummaryBar), findsOneWidget);
     expect(find.text('查看详情'), findsOneWidget);
@@ -537,6 +571,7 @@ void main() {
 
     await tester.ensureVisible(find.text('查看详情'));
     await tester.pumpAndSettle();
+    await _revealSummary(tester);
     await tester.tap(find.text('查看详情'));
     await tester.pumpAndSettle();
     expect(find.text('库存总览与分析'), findsOneWidget);
@@ -546,6 +581,46 @@ void main() {
     expect(find.text('20'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+Future<void> _revealSearch(WidgetTester tester) async {
+  await tester.dragUntilVisible(
+    _inventorySearch(),
+    find.byType(MasterDataTableView<InstantInventoryRow>),
+    const Offset(0, 400),
+  );
+  await tester.pumpAndSettle();
+  expect(_inventorySearch().hitTestable(), findsOneWidget);
+}
+
+Future<void> _revealSummary(WidgetTester tester) async {
+  final table = find.byType(MasterDataTableView<InstantInventoryRow>);
+  final api =
+      ProviderScope.containerOf(tester.element(table)).read(apiClientProvider)
+          as InstantInventoryApiFixture;
+  final reads = api.inventoryRequests.length;
+  expect(
+    tester.widget<MasterDataTableView<InstantInventoryRow>>(table).items,
+    hasLength(137),
+  );
+  final details = find.byKey(const Key('instant-inventory-summary-details'));
+  if (details.hitTestable().evaluate().isEmpty) {
+    // The horizontal content's inner Scrollable can be wider than the screen.
+    // Drag the visible table surface, rather than its offscreen content center.
+    expect(table.hitTestable(), findsOneWidget);
+    await tester.dragUntilVisible(details, table, const Offset(0, -400));
+  }
+  await tester.pumpAndSettle();
+  expect(
+    api.inventoryRequests,
+    hasLength(reads),
+    reason:
+        'Reaching the complete local result footer never reads another batch',
+  );
+  expect(
+    find.byKey(const Key('instant-inventory-summary-details')).hitTestable(),
+    findsOneWidget,
+  );
 }
 
 Future<GoRouter> _pumpPage(

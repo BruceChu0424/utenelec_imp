@@ -121,6 +121,38 @@ Future<void> _doubleTapRow(WidgetTester tester, String reportNo) async {
 }
 
 void main() {
+  for (final defect in ['duplicate identity', 'scope drift']) {
+    testWidgets(
+      'complete FQC queue rejects $defect and retries the full scope',
+      (tester) async {
+        final api = _FqcApi(totalPages: 2)
+          ..duplicateSecondPage = defect == 'duplicate identity'
+          ..changedReadScope = defect == 'scope drift';
+        await _pumpPage(
+          tester,
+          api: api,
+          permissions: const {
+            Perm.productionQualityInspectionView,
+            Perm.productionQualityInspectionApprove,
+          },
+        );
+        expect(_taskTable(tester).items, isEmpty);
+        expect(_taskTable(tester).error, isNotNull);
+        expect(_taskTable(tester).selectedIds, isEmpty);
+        api.duplicateSecondPage = false;
+        api.changedReadScope = false;
+        _taskTable(tester).onRetry!();
+        await tester.pumpAndSettle();
+        expect(_taskTable(tester).items, hasLength(80));
+        expect(
+          _taskTable(tester).items.map((item) => item.id).toSet(),
+          hasLength(80),
+        );
+        expect(_taskTable(tester).error, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'status header queries one exact state inside the current queue',
     (tester) async {
@@ -568,135 +600,149 @@ void main() {
     },
   );
 
-  testWidgets('FQC queue exposes server paging controls at 375px', (
-    tester,
-  ) async {
-    final api = _FqcApi(totalPages: 2, pageSpecificRows: true);
-    await _pumpPage(
-      tester,
-      api: api,
-      permissions: const {
-        Perm.productionQualityInspectionView,
-        Perm.productionQualityInspectionApprove,
-      },
-    );
+  testWidgets(
+    'FQC queue completes 80 rows at 375px and scrolls without reads',
+    (tester) async {
+      final api = _FqcApi(totalPages: 2, pageSpecificRows: true);
+      await _pumpPage(
+        tester,
+        api: api,
+        permissions: const {
+          Perm.productionQualityInspectionView,
+          Perm.productionQualityInspectionApprove,
+        },
+      );
 
-    expect(_taskTable(tester).currentPage, 1);
-    expect(_taskTable(tester).totalPages, 2);
-    expect(find.text('/ 2'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    expect(api.listQueries.map((query) => query['page']), contains(2));
-    final pageInput = tester.widget<TextField>(
-      find.byWidgetPredicate(
-        (widget) => widget is TextField && widget.decoration?.hintText == '页码',
-      ),
-    );
-    expect(pageInput.controller?.text, '2');
-    expect(
-      find.text('FQC-PAGE-2').hitTestable(),
-      findsOneWidget,
-      reason:
-          'the leading page-1 buffer must preserve the explicit page-2 viewport',
-    );
-    expect(_taskTable(tester).totalPages, 2);
-  });
+      expect(_taskTable(tester).currentPage, 1);
+      expect(_taskTable(tester).totalPages, 1);
+      expect(_taskTable(tester).items, hasLength(80));
+      expect(api.listQueries.map((query) => query['page']), [1, 2]);
+      expect(api.listQueries.map((query) => query['size']), everyElement(40));
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      final rows = _taskTable(tester).items;
+      final reads = api.listQueries.length;
+      final table = find.byKey(const Key('production-fqc-inspection-table'));
+      await tester.dragUntilVisible(
+        find.text('FQC-PAGE-2-ROW-40'),
+        table,
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('FQC-PAGE-2-ROW-40').hitTestable(), findsOneWidget);
+      await tester.dragUntilVisible(
+        find.text('FQC-PAGE-1-ROW-1'),
+        table,
+        const Offset(0, 400),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('FQC-PAGE-1-ROW-1').hitTestable(), findsOneWidget);
+      expect(api.listQueries, hasLength(reads));
+      expect(_taskTable(tester).items, same(rows));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('status segments reset page and clear controlled selection', (
-    tester,
-  ) async {
-    final api = _FqcApi(totalPages: 2);
-    await _pumpPage(
-      tester,
-      api: api,
-      permissions: const {
-        Perm.productionQualityInspectionView,
-        Perm.productionQualityInspectionApprove,
-      },
-    );
+  testWidgets(
+    'status segments retire the complete scope and clear controlled selection',
+    (tester) async {
+      final api = _FqcApi(totalPages: 2);
+      await _pumpPage(
+        tester,
+        api: api,
+        permissions: const {
+          Perm.productionQualityInspectionView,
+          Perm.productionQualityInspectionApprove,
+        },
+      );
 
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(_reportNo));
-    await tester.pump();
-    expect(_taskTable(tester).selectedIds, {_inspectionId});
+      await tester.tap(find.text(_reportNo));
+      await tester.pump();
+      expect(_taskTable(tester).selectedIds, {_inspectionId});
 
-    final beforeHistory = api.listQueries.length;
-    await selectFilterSegment(tester, '历史单据');
-    await tester.pumpAndSettle();
-    final historyQueries = api.listQueries.skip(beforeHistory).toList();
-    expect(historyQueries.first['status'], 'HISTORY');
-    expect(historyQueries.first['page'], 1);
-    expect(
-      historyQueries.every((query) => query['status'] == 'HISTORY'),
-      isTrue,
-    );
-    expect(find.byType(TaskDraftRecoveryNotice), findsNothing);
-    expect(_taskTable(tester).currentPage, 1);
-    expect(_taskTable(tester).selectedIds, isEmpty);
-    expect(_taskTable(tester).selectable, isFalse);
-    expect(find.text('RB-RESOLVED'), findsOneWidget);
+      final beforeHistory = api.listQueries.length;
+      await selectFilterSegment(tester, '历史单据');
+      await tester.pumpAndSettle();
+      final historyQueries = api.listQueries.skip(beforeHistory).toList();
+      expect(historyQueries.first['status'], 'HISTORY');
+      expect(historyQueries.first['page'], 1);
+      expect(
+        historyQueries.every((query) => query['status'] == 'HISTORY'),
+        isTrue,
+      );
+      expect(find.byType(TaskDraftRecoveryNotice), findsNothing);
+      expect(_taskTable(tester).currentPage, 1);
+      expect(_taskTable(tester).selectedIds, isEmpty);
+      expect(_taskTable(tester).selectable, isFalse);
+      expect(find.text('RB-RESOLVED'), findsOneWidget);
 
-    expect(find.text('RB-CANCELLED'), findsOneWidget);
+      expect(find.text('RB-CANCELLED'), findsOneWidget);
 
-    final beforeActive = api.listQueries.length;
-    await selectFilterSegment(tester, '待处理');
-    await tester.pumpAndSettle();
-    final activeQueries = api.listQueries.skip(beforeActive).toList();
-    expect(activeQueries.first['status'], 'ACTIVE');
-    expect(activeQueries.first['page'], 1);
-    expect(activeQueries.every((query) => query['status'] == 'ACTIVE'), isTrue);
-    expect(_taskTable(tester).currentPage, 1);
-    expect(find.text('RB-RESOLVED'), findsNothing);
-    expect(find.text('RB-CANCELLED'), findsNothing);
-    expect(find.byType(TaskDraftRecoveryNotice), findsOneWidget);
-  });
+      final beforeActive = api.listQueries.length;
+      await selectFilterSegment(tester, '待处理');
+      await tester.pumpAndSettle();
+      final activeQueries = api.listQueries.skip(beforeActive).toList();
+      expect(activeQueries.first['status'], 'ACTIVE');
+      expect(activeQueries.first['page'], 1);
+      expect(
+        activeQueries.every((query) => query['status'] == 'ACTIVE'),
+        isTrue,
+      );
+      expect(_taskTable(tester).currentPage, 1);
+      expect(find.text('RB-RESOLVED'), findsNothing);
+      expect(find.text('RB-CANCELLED'), findsNothing);
+      expect(find.byType(TaskDraftRecoveryNotice), findsOneWidget);
+    },
+  );
 
-  testWidgets('search uses the built-in 300ms debounce and resets page', (
-    tester,
-  ) async {
-    final api = _FqcApi(totalPages: 2);
-    await _pumpPage(
-      tester,
-      api: api,
-      permissions: const {
-        Perm.productionQualityInspectionView,
-        Perm.productionQualityInspectionApprove,
-      },
-    );
+  testWidgets(
+    'search uses the built-in 300ms debounce and replaces the complete scope',
+    (tester) async {
+      final api = _FqcApi(totalPages: 2);
+      await _pumpPage(
+        tester,
+        api: api,
+        permissions: const {
+          Perm.productionQualityInspectionView,
+          Perm.productionQualityInspectionApprove,
+        },
+      );
 
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(_reportNo));
-    await tester.pump();
-    expect(_taskTable(tester).selectedIds, {_inspectionId});
+      await tester.tap(find.text(_reportNo));
+      await tester.pump();
+      expect(_taskTable(tester).selectedIds, {_inspectionId});
 
-    final listCallsBeforeSearch = api.listQueries.length;
-    await tester.enterText(find.byType(TextField).first, 'V51043');
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 299));
-    expect(api.listQueries, hasLength(listCallsBeforeSearch));
-    await tester.pump(const Duration(milliseconds: 1));
-    await tester.pumpAndSettle();
+      final listCallsBeforeSearch = api.listQueries.length;
+      await tester.enterText(find.byType(TextField).first, 'V51043');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 299));
+      expect(api.listQueries, hasLength(listCallsBeforeSearch));
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pumpAndSettle();
 
-    final searchQueries = api.listQueries.skip(listCallsBeforeSearch).toList();
-    expect(searchQueries.length, inInclusiveRange(1, 2));
-    expect(searchQueries.first['keyword'], 'V51043');
-    expect(searchQueries.first['page'], 1);
-    expect(
-      searchQueries.where((query) => query['page'] == 1),
-      hasLength(1),
-      reason:
-          'one debounced foreground read; at most one adjacent-page prefetch',
-    );
-    expect(
-      searchQueries.every((query) => query['keyword'] == 'V51043'),
-      isTrue,
-    );
-    expect(_taskTable(tester).currentPage, 1);
-    expect(_taskTable(tester).selectedIds, isEmpty);
-    expect(find.text(_reportNo), findsOneWidget);
-  });
+      final searchQueries = api.listQueries
+          .skip(listCallsBeforeSearch)
+          .toList();
+      expect(searchQueries.map((query) => query['page']), [1, 2]);
+      expect(searchQueries.map((query) => query['size']), everyElement(40));
+      expect(searchQueries.first['keyword'], 'V51043');
+      expect(searchQueries.first['page'], 1);
+      expect(
+        searchQueries.where((query) => query['page'] == 1),
+        hasLength(1),
+        reason: 'one debounced complete read starts at the first bounded batch',
+      );
+      expect(
+        searchQueries.every((query) => query['keyword'] == 'V51043'),
+        isTrue,
+      );
+      expect(_taskTable(tester).currentPage, 1);
+      expect(_taskTable(tester).selectedIds, isEmpty);
+      expect(find.text(_reportNo), findsOneWidget);
+    },
+  );
 }
 
 class _FqcApi extends ApiClient {
@@ -715,6 +761,8 @@ class _FqcApi extends ApiClient {
   final bool failReloadAfterDecision;
   final int totalPages;
   final bool pageSpecificRows;
+  bool duplicateSecondPage = false;
+  bool changedReadScope = false;
 
   /// 额外给待检队列塞一行「先入库后检」的成品（带登记库位与已上架位置）。
   final bool includeStocked;
@@ -857,7 +905,24 @@ class _FqcApi extends ApiClient {
     requestedPage = (effectiveQuery['page'] as num?)?.toInt() ?? 1;
     final status = effectiveQuery['status']?.toString() ?? 'ACTIVE';
     final keyword = effectiveQuery['keyword']?.toString().toLowerCase() ?? '';
-    final items = _itemsFor(status)
+    final source = _itemsFor(status);
+    final fullScope = totalPages > 1 && status == 'ACTIVE' && source.isNotEmpty
+        ? [
+            for (var index = 0; index < totalPages * 40; index++)
+              {
+                ...source.first,
+                'id': index == 0
+                    ? source.first['id']
+                    : '90000000-0000-4000-8000-${index.toString().padLeft(12, '0')}',
+                'reportNo': pageSpecificRows
+                    ? 'FQC-PAGE-${index ~/ 40 + 1}-ROW-${index % 40 + 1}'
+                    : index == 0
+                    ? source.first['reportNo']
+                    : 'FQC-EXTRA-$index',
+              },
+          ]
+        : source;
+    final items = fullScope
         .where((item) {
           return matchesKeywordSearch([
             item['reportNo'] as String?,
@@ -868,22 +933,20 @@ class _FqcApi extends ApiClient {
           ], keyword);
         })
         .toList(growable: false);
-    final effectiveTotalPages = items.isEmpty ? 0 : totalPages;
+    final offset = (requestedPage - 1) * 40;
+    final batch = items.skip(offset).take(40).toList();
+    if (duplicateSecondPage && requestedPage == 2 && batch.isNotEmpty) {
+      batch[0] = {...batch[0], 'id': items.first['id']};
+    }
     return {
-      'items': pageSpecificRows
-          ? [
-              for (final item in items)
-                {
-                  ...item,
-                  'id': '${item['id']}-page-$requestedPage',
-                  'reportNo': 'FQC-PAGE-$requestedPage',
-                },
-            ]
-          : items,
+      'items': batch,
       'page': requestedPage,
       'size': 40,
-      'total': items.isEmpty ? 0 : totalPages,
-      'totalPages': effectiveTotalPages,
+      'total': items.length,
+      'totalPages': (items.length + 39) ~/ 40,
+      'readScopeVersion': changedReadScope && requestedPage == 2
+          ? 'fqc-v2'
+          : 'fqc-v1',
     };
   }
 

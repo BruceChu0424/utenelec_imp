@@ -14,6 +14,78 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  for (final duplicate in [false, true]) {
+    testWidgets(
+      'complete IQC rejection scope preserves exact money and scrolls locally (duplicate=$duplicate)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1800, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final gateway = _Gateway(
+          items: [
+            for (var index = 1; index <= 201; index++)
+              _case(
+                id: 'case-$index',
+                goodsName: '拒收物料$index',
+                amount: index == 201
+                    ? '90071992547409.123456789012'
+                    : '25.0000',
+                currency: index == 201 ? 'USD' : 'CNY',
+              ),
+          ],
+        )..duplicateSecondPage = duplicate;
+        await tester.pumpWidget(
+          _app(gateway, permissions: {Perm.procurementIqcRejectionAmountView}),
+        );
+        await tester.pumpAndSettle();
+        MasterDataTableView<ProcurementIqcRejectionCase> table() =>
+            tester.widget(find.byKey(const Key('iqc-rejection-task-table')));
+        if (duplicate) {
+          expect(table().items, isEmpty);
+          expect(table().error, isNotNull);
+          expect(gateway.filters.map((filter) => filter.page), [1, 2]);
+          gateway.duplicateSecondPage = false;
+          table().onRetry!();
+          await tester.pumpAndSettle();
+        }
+        expect(table().items, hasLength(201));
+        expect(table().items.map((item) => item.id).toSet(), hasLength(201));
+        expect(
+          table().items.last.failedAmountLocal,
+          '90071992547409.123456789012',
+        );
+        expect(table().items.last.currencyCode, 'USD');
+        expect(
+          gateway.filters.map((filter) => filter.page),
+          duplicate ? [1, 2, 1, 2, 3] : [1, 2, 3],
+        );
+        expect(gateway.filters.map((filter) => filter.size), everyElement(100));
+        final reads = gateway.filters.length;
+        final rows = table().items;
+        final scrollable = find.byWidget(
+          Scrollable.of(
+            tester.element(find.text('拒收物料1')),
+            axis: Axis.vertical,
+          ).widget,
+        );
+        await tester.scrollUntilVisible(
+          find.text('拒收物料201'),
+          400,
+          scrollable: scrollable,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('拒收物料201').hitTestable(), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('拒收物料1'),
+          -400,
+          scrollable: scrollable,
+        );
+        await tester.pumpAndSettle();
+        expect(gateway.filters, hasLength(reads));
+        expect(table().items, same(rows));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'ordinary header queries reach both list and badge counts before pagination',
     (tester) async {
@@ -236,7 +308,7 @@ void main() {
         'receiptType': 'SUBCONTRACT',
         'status': 'FINANCE_EXCEPTION',
         'page': '1',
-        'size': '50',
+        'size': '100',
       });
       expect(find.textContaining('G-001'), findsWidgets);
       table().onFilterChanged('receiptType', null);
@@ -341,6 +413,7 @@ class _Gateway implements ProcurementIqcRejectionGateway {
   final List<ProcurementIqcRejectionFilter> filters = [];
   final List<ProcurementIqcRejectionFilter> countFilters = [];
   int calls = 0;
+  bool duplicateSecondPage = false;
 
   @override
   Future<ProcurementIqcCreditPreview> previewCredit(
@@ -354,12 +427,20 @@ class _Gateway implements ProcurementIqcRejectionGateway {
     filters.add(filter);
     calls++;
     if (failFirst && calls == 1) throw ApiException('NETWORK', '网络暂不可用');
+    final batch = items
+        .skip((filter.page - 1) * filter.size)
+        .take(filter.size)
+        .toList();
+    if (duplicateSecondPage && filter.page == 2 && batch.isNotEmpty) {
+      batch[0] = items.first;
+    }
     return PagedResult(
-      items: items,
+      items: batch,
       page: filter.page,
       size: filter.size,
       total: items.length,
-      totalPages: 1,
+      totalPages: (items.length + filter.size - 1) ~/ filter.size,
+      readScopeVersion: 'iqc-fixture-v1',
     );
   }
 
@@ -453,6 +534,8 @@ ProcurementIqcRejectionCase _case({
   String id = 'case-1',
   String goodsName = '轴套',
   bool masked = false,
+  String amount = '25.0000',
+  String currency = 'CNY',
 }) => ProcurementIqcRejectionCase(
   id: id,
   receiptType: ProcurementIqcReceiptType.purchase,
@@ -463,8 +546,8 @@ ProcurementIqcRejectionCase _case({
   goodsName: goodsName,
   failedQty: '5',
   unitName: '件',
-  failedAmountLocal: '25.0000',
-  currencyCode: 'CNY',
+  failedAmountLocal: amount,
+  currencyCode: currency,
   status: ProcurementIqcRejectionStatus.financeException,
   version: 3,
   allowedActions: const {},

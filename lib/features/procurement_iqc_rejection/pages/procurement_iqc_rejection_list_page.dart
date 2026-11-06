@@ -214,6 +214,7 @@ class _ProcurementIqcRejectionListPageState
       final result = _statusSelected
           ? await readScopedPage<ProcurementIqcRejectionCase>(
               page,
+              idOf: (item) => item.id.isEmpty ? null : item.id,
               query: (repository, query),
               currentQuery: () => (_repository, _query),
               useCache: useCache,

@@ -386,12 +386,12 @@ void main() {
 InstantInventoryApiFixture _api() {
   final api = InstantInventoryApiFixture(withTotals: true, withAnalysis: true);
   api.onInventory = (query) async {
-    final data = api.response();
+    final data = api.response(query: query);
     if (query['attention'] == null) return data;
     return {
       ...data,
       'items': [
-        ...data['items'] as List,
+        ...api.seedRows,
         {
           'goodsId': 'risk-third',
           'name': '第三条风险物料',

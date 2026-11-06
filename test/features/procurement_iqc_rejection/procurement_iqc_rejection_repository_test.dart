@@ -116,6 +116,7 @@ void main() {
           status: 'FINANCE_EXCEPTION',
           keyword: 'PO-001',
           page: 2,
+          size: 50,
         ),
       );
       final counts = await repository.counts(

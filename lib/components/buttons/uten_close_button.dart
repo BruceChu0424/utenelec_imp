@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -178,7 +179,11 @@ class _UtenWindowControlButtonState extends State<UtenWindowControlButton> {
             maximumSize: WidgetStatePropertyAll(size),
             fixedSize: WidgetStatePropertyAll(size),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: const WidgetStatePropertyAll(CircleBorder()),
+            shape: WidgetStatePropertyAll(
+              widget.native
+                  ? const _NativeWindowControlBorder()
+                  : const CircleBorder(),
+            ),
             foregroundColor: const WidgetStatePropertyAll(Colors.white),
             overlayColor: WidgetStateProperty.resolveWith(
               (states) => scheme.onSurface.withValues(
@@ -217,6 +222,64 @@ class _UtenWindowControlButtonState extends State<UtenWindowControlButton> {
         ),
       ),
     );
+  }
+}
+
+/// Paint native hover, pressed and focus feedback around the same padded
+/// content as the glyph, while the button retains its full strip hit target.
+class _NativeWindowControlBorder extends OutlinedBorder {
+  const _NativeWindowControlBorder({super.side});
+
+  Rect _circle(Rect rect) {
+    final content = Rect.fromLTRB(
+      rect.left,
+      rect.top +
+          math.min(UtenWindowControlButton.nativeGlyphTopInset, rect.height),
+      rect.right,
+      rect.bottom,
+    );
+    return Rect.fromCircle(
+      center: content.center,
+      radius: math.min(content.width, content.height) / 2,
+    );
+  }
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.all(side.width);
+
+  @override
+  _NativeWindowControlBorder copyWith({BorderSide? side}) =>
+      _NativeWindowControlBorder(side: side ?? this.side);
+
+  @override
+  _NativeWindowControlBorder scale(double t) =>
+      _NativeWindowControlBorder(side: side.scale(t));
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) =>
+      a is _NativeWindowControlBorder
+      ? _NativeWindowControlBorder(side: BorderSide.lerp(a.side, side, t))
+      : super.lerpFrom(a, t);
+
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) =>
+      b is _NativeWindowControlBorder
+      ? _NativeWindowControlBorder(side: BorderSide.lerp(side, b.side, t))
+      : super.lerpTo(b, t);
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
+      Path()..addOval(_circle(rect));
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
+      Path()..addOval(_circle(rect).deflate(side.width));
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (side.style == BorderStyle.solid && side.width > 0) {
+      canvas.drawOval(_circle(rect).deflate(side.width / 2), side.toPaint());
+    }
   }
 }
 

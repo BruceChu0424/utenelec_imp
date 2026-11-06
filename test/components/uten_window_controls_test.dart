@@ -1,4 +1,10 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
@@ -8,6 +14,80 @@ const _minimizeKey = ValueKey('group-minimize');
 const _expandKey = ValueKey('group-expand');
 
 void main() {
+  for (final dark in [false, true]) {
+    for (final mainWindow in [false, true]) {
+      final mode = mainWindow ? 'main' : 'login';
+      testWidgets(
+        '$mode native hover and focus follow the lowered glyph dark=$dark',
+        (tester) async {
+          final capture = GlobalKey();
+          var closed = 0;
+          await tester.runAsync(() async {
+            final font = FontLoader('MaterialIcons')
+              ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+            await font.load();
+          });
+          await _pump(
+            tester,
+            RepaintBoundary(
+              key: capture,
+              child: ColoredBox(
+                color: dark ? const Color(0xff202020) : Colors.white,
+                child: UtenWindowControls(
+                  native: true,
+                  onClose: () => closed++,
+                  onMinimize: () {},
+                  onExpand: () {},
+                  showMinimize: true,
+                  showExpand: mainWindow,
+                  closeButtonKey: _closeKey,
+                  minimizeButtonKey: _minimizeKey,
+                  expandButtonKey: _expandKey,
+                ),
+              ),
+            ),
+            dark: dark,
+          );
+          await tester.pumpAndSettle();
+          final target = tester.getRect(find.byKey(_closeKey));
+          final glyph = _circle(tester, _closeKey);
+          final boundary = tester.getRect(find.byKey(capture));
+          final center = glyph.center - boundary.topLeft;
+          final before = await _pixels(tester, capture);
+          final mouse = await tester.createGesture(
+            kind: ui.PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: Offset.zero);
+          await mouse.moveTo(glyph.center);
+          await tester.pumpAndSettle();
+          final hovered = await _pixels(
+            tester,
+            capture,
+            captureName: '$mode-${dark ? 'dark' : 'light'}-hover',
+          );
+          _expectFeedbackCentered(before, hovered, center);
+          expect(tester.getRect(find.byKey(_closeKey)), target);
+          expect(target.size, const Size(30, 36));
+          expect(glyph.top - target.top, 11);
+          await mouse.removePointer();
+          await tester.pumpAndSettle();
+
+          for (var index = 0; index < (mainWindow ? 3 : 2); index++) {
+            await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          }
+          await tester.pumpAndSettle();
+          final focused = await _pixels(tester, capture);
+          _expectFeedbackCentered(before, focused, center);
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pumpAndSettle();
+          expect(closed, 1);
+          expect(tester.getRect(find.byKey(_closeKey)), target);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets(
     'expand then close stay adjacent without a hidden minimize slot',
     (tester) async {
@@ -223,12 +303,85 @@ Future<void> _pump(
   WidgetTester tester,
   Widget controls, {
   TargetPlatform platform = TargetPlatform.windows,
+  bool dark = false,
 }) => tester.pumpWidget(
   MaterialApp(
-    theme: ThemeData(platform: platform),
+    theme: ThemeData(
+      platform: platform,
+      brightness: dark ? Brightness.dark : Brightness.light,
+    ),
     home: Scaffold(body: Center(child: controls)),
   ),
 );
+
+typedef _ControlPixels = ({Uint8List data, int width, int height});
+
+Future<_ControlPixels> _pixels(
+  WidgetTester tester,
+  GlobalKey key, {
+  String? captureName,
+}) async => (await tester.runAsync(() async {
+  final boundary =
+      key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final image = await boundary.toImage(pixelRatio: 1);
+  try {
+    final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    if (captureName != null &&
+        const bool.fromEnvironment('UTEN_WINDOW_HOVER_CAPTURE')) {
+      final png = (await image.toByteData(format: ui.ImageByteFormat.png))!;
+      final directory = Directory('build/window-control-hover')
+        ..createSync(recursive: true);
+      await File(
+        '${directory.path}/$captureName.png',
+      ).writeAsBytes(png.buffer.asUint8List());
+    }
+    return (
+      data: data.buffer.asUint8List(),
+      width: image.width,
+      height: image.height,
+    );
+  } finally {
+    image.dispose();
+  }
+}))!;
+
+void _expectFeedbackCentered(
+  _ControlPixels before,
+  _ControlPixels after,
+  Offset glyphCenter,
+) {
+  expect(after.width, before.width);
+  expect(after.height, before.height);
+  var left = before.width, top = before.height, right = -1, bottom = -1;
+  for (var y = 0; y < before.height; y++) {
+    for (var x = 0; x < before.width; x++) {
+      final offset = (y * before.width + x) * 4;
+      var changed = false;
+      for (var channel = 0; channel < 4; channel++) {
+        changed |=
+            before.data[offset + channel] != after.data[offset + channel];
+      }
+      if (!changed) continue;
+      if (x < left) left = x;
+      if (y < top) top = y;
+      if (x > right) right = x;
+      if (y > bottom) bottom = y;
+    }
+  }
+  expect(
+    right,
+    greaterThanOrEqualTo(0),
+    reason: 'Actual feedback must be painted',
+  );
+  final bounds = Rect.fromLTRB(
+    left.toDouble(),
+    top.toDouble(),
+    right + 1.0,
+    bottom + 1.0,
+  );
+  expect(bounds.center.dx, closeTo(glyphCenter.dx, .5));
+  expect(bounds.center.dy, closeTo(glyphCenter.dy, .5));
+}
 
 Rect _circle(WidgetTester tester, Key key) => tester.getRect(
   find.descendant(of: find.byKey(key), matching: find.byType(Container)),

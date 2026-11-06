@@ -758,14 +758,24 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// Persist an explicitly requested exit without changing background autosave.
   /// Only the owner that started this wait receives navigation permission.
   /// Callers retain their business busy guards and handle storage failures.
-  Future<bool> saveFormDraftBeforeExit({String? title}) =>
-      _runDraftExitPersistence(
-        title: title ?? (formDraftHasUnknownSubmission ? '正在保留原提交' : '正在保存草稿'),
-        action: () async {
-          await saveFormDraftNow();
-          return formDraftIdentityIsCurrent;
-        },
-      );
+  Future<bool> saveFormDraftBeforeExit({String? title}) async {
+    if (!mounted || _draftDisposed) return false;
+    final route = ModalRoute.of(context);
+    if (!_draftExitRouteIsCurrent(route)) return false;
+    final allowed = await _runDraftExitPersistence(
+      title: title ?? (formDraftHasUnknownSubmission ? '正在保留原提交' : '正在保存草稿'),
+      action: () async {
+        await saveFormDraftNow();
+        return formDraftIdentityIsCurrent;
+      },
+    );
+    return allowed && _draftExitRouteIsCurrent(route);
+  }
+
+  // A popped page stays mounted during its transition. That old owner must
+  // never use a fresh permission to pop the route that is now underneath it.
+  bool _draftExitRouteIsCurrent(ModalRoute<dynamic>? route) =>
+      mounted && !_draftDisposed && (route == null || route.isCurrent);
 
   Future<bool> _runDraftExitPersistence({
     required String title,
@@ -1084,6 +1094,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     // runs before the page's finally block clears _saving. Do not veto it.
     if (_draftFinished && !_draftExitDiscarding) return Future.value(true);
     if (formDraftBusy || _draftExitPersistenceBusy) return Future.value(false);
+    if (_draftExitPrompt != null) return Future.value(false);
     if (_draftExitAllowed || !_draftReady || _draftRestoreBlocked) {
       return Future.value(true);
     }
@@ -1091,12 +1102,30 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         _draftRevision == null) {
       return Future.value(true);
     }
-    return _draftExitPrompt ??= _showDraftExitPrompt().whenComplete(() {
-      _draftExitPrompt = null;
-    });
+    // Own the confirmation before pushing its route. Other exit requests get
+    // false rather than sharing a true result and navigating a second time.
+    final completion = Completer<bool>();
+    _draftExitPrompt = completion.future;
+    unawaited(() async {
+      try {
+        final allowed = await _showDraftExitPrompt();
+        _draftExitPrompt = null;
+        completion.complete(allowed);
+      } catch (error, stack) {
+        _draftExitPrompt = null;
+        completion.completeError(error, stack);
+      }
+    }());
+    return completion.future;
   }
 
-  Future<bool> confirmFormDraftExit() => _confirmDraftExit();
+  Future<bool> confirmFormDraftExit() async {
+    if (!mounted || _draftDisposed) return false;
+    final route = ModalRoute.of(context);
+    if (!_draftExitRouteIsCurrent(route)) return false;
+    final allowed = await _confirmDraftExit();
+    return allowed && _draftExitRouteIsCurrent(route);
+  }
 
   Future<void> _returnToWorkbench() async {
     final router = GoRouter.of(context);

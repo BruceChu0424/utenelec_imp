@@ -1,0 +1,81 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before save decision pop only their original route
+00:04 +1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: retirement preserves a return to saved input after an older CAS has started existing=false
+00:05 +2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_interruption_test.dart: hard disposal during explicit exit releases wait and retains the exact draft
+00:05 +3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_interruption_test.dart: hard disposal during explicit exit releases wait and retains the exact draft
+00:05 +4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_interruption_test.dart: hard disposal during explicit exit releases wait and retains the exact draft
+00:06 +5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_interruption_test.dart: hard disposal during explicit exit releases wait and retains the exact draft
+00:06 +6: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_interruption_test.dart: hard disposal during explicit exit releases wait and retains the exact draft
+00:06 +7: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before stay decision pop only their original route
+00:06 +8: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before stay decision pop only their original route
+00:06 +9: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before unknown-save decision pop only their original route
+00:07 +10: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before unknown-save decision pop only their original route
+00:07 +11: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: unknown submission blocks restart until explicit verified completion
+00:07 +12: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: retired route cannot use another exit permit while its closing animation is mounted
+00:08 +13: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: retired route cannot use another exit permit while its closing animation is mounted
+00:08 +14: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: retired route cannot use another exit permit while its closing animation is mounted
+00:08 +15: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: live capability editor retains owner input through permission ABA and repeated initialization guards
+00:08 +16: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: retired route cannot reuse direct persistence during its exit transition
+00:08 +17: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: retired route cannot reuse direct persistence during its exit transition
+00:08 +18: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: live capability editor keeps sticky server ABA identity fence
+00:09 +19: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: confirmed business completion still exits before its busy finally finishes
+00:09 +20: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: confirmed business completion still exits before its busy finally finishes
+00:09 +21: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: live capability editor keeps sticky dataset ABA identity fence
+00:09 +22: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: a replacement dataset blocks the old editor before any create
+00:09 +23: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: impersonation actor replacement fences the old editor and its ABA return
+00:10 +24: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: impersonation actor missing fences the old editor and its ABA return
+00:10 +25: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: impersonation target missing fences the old editor and its ABA return
+00:10 +26: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: same-dataset actor refresh leaves the editor able to checkpoint and submit once
+00:10 +27: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: default early source guard preserves permission ABA before draft initialization
+00:10 +28: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: permission ABA during attachment restoration cannot revive the old editor
+00:11 +29: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: draft capture owns incomplete fields and deferred attachment bytes before async persistence
+00:11 +30: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: blocked restoration excludes an already focused keyboard editor
+00:11 +31: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: fresh structured REMOTE_ACCESS_DENIED admission overrides a conservative business callback
+00:12 +32: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: REMOTE_ACCESS_DENIED cannot erase an earlier unknown command on an explicit replay
+00:12 +33: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: an unstructured admission-looking 403 is not proof that the write was refused
+00:12 +34: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: ABA account during initial draft storage read cannot bind old state again
+00:12 +35: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: ABA account during partial draft reset cannot rearm the previous page
+00:12 +36: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: ABA server during initial draft storage read cannot bind old state again
+00:13 +37: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: ABA server during partial draft reset cannot rearm the previous page
+00:13 +38: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: ABA dataset during initial draft storage read cannot bind old state again
+00:13 +39: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: ABA dataset during partial draft reset cannot rearm the previous page
+00:13 +40: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: unknown exit keeps evidence and offers only save original or continue
+00:14 +41: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: unknown exit rejects forced discard including late outcome=false
+00:15 +42: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: unknown exit rejects forced discard including late outcome=true
+00:15 +43: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: definite server rejection survives a failing local checkpoint replay=false
+00:16 +44: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: definite server rejection survives a failing local checkpoint replay=true
+00:16 +45: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: default 400 rejection keeps original editable draft behavior
+00:16 +46: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: replay caller may retain unknown marker after later 400
+00:16 +47: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: default 422 rejection keeps original editable draft behavior
+00:17 +48: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: replay caller may retain unknown marker after later 422
+00:17 +49: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: source reload preserves failed local draft and starts a new identity
+00:17 +50: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: failed reload remains blocked and never checkpoints partial state
+00:18 +51: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: identity change during source reload cannot unlock a different account
+00:19 +52: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: unresolved submission cannot use source reload after restore failure
+00:19 +53: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: metadata-only grid edits survive local draft recovery with their source version
+00:19 +54: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: identity change during pre-submit checkpoint never dispatches under the new user
+00:20 +55: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: confirmed save navigation bypasses busy but ordinary busy exit is blocked
+00:20 +56: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: overlapping autosave and explicit checkpoints use one writer
+00:20 +57: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: explicit duplicate-code conflict permits correction and a new submit
+00:20 +58: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: identity switch while storage opens keeps the old form blocked
+00:21 +59: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: identity fence hides previous form and prevents cross-scope completion server=false
+00:21 +60: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: identity fence hides previous form and prevents cross-scope completion server=true
+00:21 +61: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: two pushed editors of same route prompt only the top instance
+00:22 +62: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: returning to initial values discards cleanly and the same identity saves again
+00:22 +63: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: submission after returning to initial values checkpoints and sends once
+00:23 +64: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: definite rejection back at initial values clears the pending marker before discarding
+00:23 +65: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: exit persistence shows one wait only after save confirmation
+00:24 +66: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: exit persistence shows one wait only after discard confirmation
+00:25 +67: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: explicit exit owns one permit while background checkpoints stay quiet
+00:25 +68: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: explicit exit storage failure releases wait and preserves input for retry
+00:25 +69: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: identity retirement during explicit exit cannot grant navigation or bind new owner
+00:26 +70: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: discard storage failure retires its wait but keeps original draft and page
+00:26 +71: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: repeated exit confirmation stays interactive and cancellation opens no wait
+00:27 +72: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: empty defaults do not create draft or prompt
+00:27 +73: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: autosave survives hard disposal and restores raw input and selection
+00:27 +74: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: go navigation stays on cancel, persists on save and removes on discard
+00:29 +75: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: failed durable write cannot close after choosing save
+00:29 +76: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: business completion leaves tombstone and no leave prompt
+00:30 +77: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: unknown non-idempotent submit survives restart and cannot submit twice
+00:31 +78: All tests passed!

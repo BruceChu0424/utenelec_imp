@@ -22,7 +22,7 @@
 
 ## W7-BIZ-229 · lib/features/approvals/pages/approval_policy_settings_page.dart
 
-模块 `approvals`；446 行；SHA256 `c911079d12169ba248576bcc5e6982186aced7c3a78c10ab5528199f6d8c424c`。
+模块 `approvals`；447 行；SHA256 `972e3b9eb0b6e03606167a6836a29491517d1014dd1f1ffad0f2c05e734e0a94`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

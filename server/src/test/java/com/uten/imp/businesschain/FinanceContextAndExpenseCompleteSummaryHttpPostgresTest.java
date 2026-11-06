@@ -345,7 +345,7 @@ class FinanceContextAndExpenseCompleteSummaryHttpPostgresTest extends CompleteSu
                 INSERT INTO goods(id,code,name,source_type,status,unit_id,price,code_sequence)
                 SELECT gen_random_uuid(),?||n,'完整损耗货品'||n,'自制','使用',?,1,?+n FROM generate_series(1,51) n
                 """,prefix,world.unitId(),base);
-        UUID order=UUID.randomUUID();int legacy=500000000+new Random().nextInt(90000000);
+        UUID order=UUID.randomUUID();int legacy=500000000+java.util.concurrent.ThreadLocalRandom.current().nextInt(90000000);
         // Legal retained-import read fixture, all original archive/identity/quantity guards remain enabled.
         // It does not claim that this read test executed51 real receipt/stock workflows.
         db.update("""

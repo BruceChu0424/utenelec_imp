@@ -134,6 +134,9 @@ class CriticalHttpContractEndToEndTest {
     private JdbcTemplate jdbc;
 
     @Autowired
+    private com.uten.imp.features.auth.SessionWatchService sessionWatches;
+
+    @Autowired
     private ReadOnlyHostBridge hostBridge;
 
     @TestBean(methodName = "maintenanceController", enforceOverride = true)
@@ -309,8 +312,9 @@ class CriticalHttpContractEndToEndTest {
             assertTrue(opened.getNumberOfSheets() > 0);
         }
 
-        smokeEveryDocumentedHttpOperation(adminToken);
         verifyHostBackedReadContracts(adminToken, employeeToken);
+        hostBridge.unavailable = false;
+        smokeEveryDocumentedHttpOperation(adminToken);
     }
 
     private void verifyHostBackedReadContracts(String adminToken, String employeeToken) throws Exception {
@@ -439,6 +443,7 @@ class CriticalHttpContractEndToEndTest {
      * not a positive business assertion: deep successful chains are covered separately.
      */
     private void smokeEveryDocumentedHttpOperation(String accessToken) throws Exception {
+        HttpResponse<byte[]> watch = completeAuthenticatedWatchByRealLogout();
         HttpResponse<byte[]> docs = request(
                 "GET", "/v3/api-docs", null, accessToken, OPENAPI_GENERATION_TIMEOUT);
         assertStatus(docs, 200);
@@ -446,6 +451,7 @@ class CriticalHttpContractEndToEndTest {
         assertTrue(paths.isObject(), "OpenAPI paths missing");
 
         int operations = 0;
+        boolean watchCovered = false;
         Map<Integer, Integer> statuses = new TreeMap<>();
         List<String> failures = new ArrayList<>();
         Set<String> verifiedReadQueries = new java.util.HashSet<>();
@@ -490,8 +496,10 @@ class CriticalHttpContractEndToEndTest {
                     if (hasRequestBody) {
                         builder.header("Content-Type", "application/json");
                     }
-                    HttpResponse<byte[]> response = http.send(
-                            builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+                    boolean watchOperation = "get".equals(method) && "/api/auth/session/watch".equals(resolvedPath);
+                    HttpResponse<byte[]> response = watchOperation
+                            ? watch : http.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+                    watchCovered |= watchOperation;
                     statuses.merge(response.statusCode(), 1, Integer::sum);
                     List<String> requiredFields = "get".equals(method)
                             ? READ_QUERY_RESPONSE_FIELDS.get(resolvedPath) : null;
@@ -524,9 +532,49 @@ class CriticalHttpContractEndToEndTest {
 
         System.out.println("HTTP OpenAPI smoke operations=" + operations + ", statuses=" + statuses);
         assertTrue(operations >= 400, "Unexpectedly small OpenAPI surface: " + operations);
+        assertTrue(watchCovered, "The real logout-completed subscription must remain documented");
         assertEquals(READ_QUERY_RESPONSE_FIELDS.keySet(), verifiedReadQueries,
                 "Every repaired read query must remain covered by the HTTP contract");
         assertTrue(failures.isEmpty(), () -> "HTTP operation smoke failures:\n" + String.join("\n", failures));
+    }
+
+    /** This subscription deliberately waits 25s when nothing changes. Complete
+     * its real lifecycle event within the original 15s HTTP probe deadline. */
+    private HttpResponse<byte[]> completeAuthenticatedWatchByRealLogout() throws Exception {
+        JsonNode observer = login(EMPLOYEE_LOGIN, EMPLOYEE_NEW_PASSWORD);
+        String access = observer.path("accessToken").asText();
+        String refresh = observer.path("refreshToken").asText();
+        assertFalse(access.isBlank());
+        assertFalse(refresh.isBlank());
+        int originalWaiters = sessionWatchWaiters();
+        long deadline = System.nanoTime() + HTTP_REQUEST_TIMEOUT.toNanos();
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/session/watch"))
+                .timeout(HTTP_REQUEST_TIMEOUT).header("Authorization", "Bearer "+access).GET().build();
+        var pending = http.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray());
+        try {
+            org.awaitility.Awaitility.await().alias("the real HTTP watch registered its observer")
+                    .pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(10))
+                    .atMost(HTTP_REQUEST_TIMEOUT).until(() -> sessionWatchWaiters() > originalWaiters);
+            assertStatus(request("POST", "/api/auth/logout",
+                    objectMapper.writeValueAsBytes(Map.of("refreshToken", refresh)), null), 200);
+            sessionWatches.reconcile();
+            long remaining = deadline - System.nanoTime();
+            assertTrue(remaining > 0, "The original HTTP deadline must not be extended for a watch");
+            var response = pending.get(remaining, java.util.concurrent.TimeUnit.NANOSECONDS);
+            assertStatus(response, 200);
+            assertEquals("expired", json(response).path("status").asText());
+            assertTrue(response.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+            assertEquals(originalWaiters, sessionWatchWaiters(), "The completed observer must release capacity");
+            System.out.println("HTTP session watch: real logout completed, status=expired, no-store, capacity released within original15s");
+            return response;
+        } finally {
+            pending.cancel(true);
+        }
+    }
+
+    private int sessionWatchWaiters() {
+        Integer count = org.springframework.test.util.ReflectionTestUtils.invokeMethod(sessionWatches,"waitingCount");
+        return java.util.Objects.requireNonNull(count);
     }
 
     private static String resolvePath(String pathTemplate, List<JsonNode> parameters) {

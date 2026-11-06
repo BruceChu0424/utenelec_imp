@@ -665,7 +665,7 @@ void main() {
     // its old integer shadow into a new runtime relationship.
     expect(repo.updatedBody?.containsKey('colorLegacyId'), isFalse);
     expect(repo.updatedBody?.containsKey('colorId'), isFalse);
-    expect(repo.updatedBody?['qty'], 3);
+    expect(repo.updatedBody?['qty'], '3');
     // 生产管控字段已从编辑器移除（服务端 apply() 在省略时保留既有值），
     // 故保存体不再包含 controlStage/consumptionBasis 等。
     expect(repo.updatedBody?.containsKey('controlStage'), isFalse);

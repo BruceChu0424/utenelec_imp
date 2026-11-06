@@ -162,10 +162,16 @@ class LegacyOpeningOffsetEndToEndTest {
                         assertThat(observed).as("real native approval must reach its original January source marker while worker owns it").isTrue();
                     })).reconcileNow("AP",supplier);
                     tx.commit();
-                }catch(RuntimeException|Error failure){if(tx.isActive())tx.rollback();throw failure;}
+                }catch(RuntimeException|Error failure){if(tx.isActive()){
+                    tx.rollback();
+                }
+                throw failure;}
             }});
             await(workerReady,"worker party lock");
-            new TransactionTemplate(transactions).executeWithoutResult(status->{for(LocalDate month:List.of(january,current))jdbc.queryForObject("SELECT fn_touch_party_month_summary('AP',?,?)",Object.class,supplier,month);});
+            new TransactionTemplate(transactions).executeWithoutResult(status->{for(LocalDate month:List.of(january,current)){
+                jdbc.queryForObject("SELECT fn_touch_party_month_summary('AP',?,?)",Object.class,supplier,month);
+            }
+            });
             var producer=pool.submit(()->{
                 fixture.loginAs(reviewer);
                 try{return new TransactionTemplate(transactions).execute(status->{
@@ -190,10 +196,19 @@ class LegacyOpeningOffsetEndToEndTest {
         var wrapped=org.mockito.Mockito.mock(jakarta.persistence.EntityManager.class);var fired=new java.util.concurrent.atomic.AtomicBoolean();
         org.mockito.Mockito.when(wrapped.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call->{
             String sql=call.getArgument(0);jakarta.persistence.Query query=((jakarta.persistence.EntityManager)session).createNativeQuery(sql);
-            if(!sql.contains("DELETE FROM party_month_dirty"))return query;
+            if(!sql.contains("DELETE FROM party_month_dirty")){
+                return query;
+            }
+
             var intercepted=org.mockito.Mockito.mock(jakarta.persistence.Query.class,org.mockito.AdditionalAnswers.delegatesTo(query));var month=new java.util.concurrent.atomic.AtomicReference<Object>();
-            org.mockito.Mockito.doAnswer(binding->{String key=binding.getArgument(0);Object value=binding.getArgument(1);query.setParameter(key,value);if(key.equals("month"))month.set(value);return intercepted;}).when(intercepted).setParameter(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any());
-            org.mockito.Mockito.doAnswer(ignored->{int changed=query.executeUpdate();if(changed>0&&january.toString().equals(Objects.toString(month.get()))&&fired.compareAndSet(false,true))hook.run();return changed;}).when(intercepted).executeUpdate();
+            org.mockito.Mockito.doAnswer(binding->{String key=binding.getArgument(0);Object value=binding.getArgument(1);query.setParameter(key,value);if(key.equals("month")){
+                month.set(value);
+            }
+            return intercepted;}).when(intercepted).setParameter(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.doAnswer(ignored->{int changed=query.executeUpdate();if(changed>0&&january.toString().equals(Objects.toString(month.get()))&&fired.compareAndSet(false,true)){
+                hook.run();
+            }
+            return changed;}).when(intercepted).executeUpdate();
             return intercepted;
         });return wrapped;
     }

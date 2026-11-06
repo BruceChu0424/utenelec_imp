@@ -74,7 +74,8 @@ public class FinanceBatchEntryController {
     public Map<String,Object> cancelIncome(@PathVariable String key,@Valid @RequestBody Cancellation body){return service.cancelUnwritten("incomes",key,body);}
 
     @GetMapping("/bank-transfers/batch/operations/{key}") @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
-    public Map<String,Object> transferResult(@PathVariable String key){return service.receipt("bank-transfers",key);}
+    @io.swagger.v3.oas.annotations.Operation(operationId="transferResult")
+    public Map<String,Object> getTransferResult(@PathVariable String key){return service.receipt("bank-transfers",key);}
     @PostMapping("/bank-transfers/batch/operations/{key}/cancel") @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
     public Map<String,Object> cancelTransfer(@PathVariable String key,@Valid @RequestBody Cancellation body){return service.cancelUnwritten("bank-transfers",key,body);}
 }

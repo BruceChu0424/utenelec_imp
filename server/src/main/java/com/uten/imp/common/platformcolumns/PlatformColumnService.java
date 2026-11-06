@@ -311,7 +311,7 @@ public class PlatformColumnService {
         // 逐条借领域详情判可见(仓库单据逐张复核仓库任务范围): 一次批量读共用一次仓库范围解析,
         // 与 GET 同一规则, 走 POST 只因记录清单在请求体里(ADR-149 §2.1)。
         Map<UUID,PlatformColumnResourceAdapter.RecordAccess> access=warehouseScopes==null?authorize(adapter,ids,false)
-                :warehouseScopes.withScopeCache(()->authorize(adapter,ids,false));
+                :warehouseScopes.withQueryScopeCache(()->authorize(adapter,ids,false));
         Map<String,Object> parameters=params(scope);parameters.put("ids",ids);
         Map<UUID,Stored> records=new HashMap<>();
         jdbc.query("SELECT record_id,version,cells::text FROM platform_record_fields WHERE scope=:scope AND record_id IN(:ids)",parameters,

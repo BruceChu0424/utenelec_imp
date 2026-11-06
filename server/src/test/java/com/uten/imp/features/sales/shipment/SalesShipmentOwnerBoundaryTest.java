@@ -216,8 +216,14 @@ class SalesShipmentOwnerBoundaryTest {
                 chainNotice, clientShipAddressService,
                 org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
 
-        when(shipmentRepo.save(any(SalesShipment.class))).thenAnswer(call->{SalesShipment row=call.getArgument(0);if(row.getId()==null)row.setId(UUID.randomUUID());return row;});
-        when(itemRepo.save(any(SalesShipmentItem.class))).thenAnswer(call->{SalesShipmentItem row=call.getArgument(0);if(row.getId()==null)row.setId(UUID.randomUUID());return row;});
+        when(shipmentRepo.save(any(SalesShipment.class))).thenAnswer(call->{SalesShipment row=call.getArgument(0);if(row.getId()==null){
+            row.setId(UUID.randomUUID());
+        }
+        return row;});
+        when(itemRepo.save(any(SalesShipmentItem.class))).thenAnswer(call->{SalesShipmentItem row=call.getArgument(0);if(row.getId()==null){
+            row.setId(UUID.randomUUID());
+        }
+        return row;});
 
         BatchShipRequest request = new BatchShipRequest();
         org.springframework.test.util.ReflectionTestUtils.setField(service,"numericInputEvidence",numericInputEvidence);

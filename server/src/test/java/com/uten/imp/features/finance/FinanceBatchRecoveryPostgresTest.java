@@ -217,7 +217,13 @@ class FinanceBatchRecoveryPostgresTest {
     private static void auth(UUID person,boolean write,boolean read) {
         var authorities=new java.util.ArrayList<SimpleGrantedAuthority>();
         for(String permission:List.of("finance_receipt","finance_payment","finance_expense","finance_other_income","finance_bank_transfer")) {
-            if(read)authorities.add(new SimpleGrantedAuthority(permission+":view"));if(write)authorities.add(new SimpleGrantedAuthority(permission+":create"));
+            if(read){
+                authorities.add(new SimpleGrantedAuthority(permission+":view"));
+            }
+            if(write){
+                authorities.add(new SimpleGrantedAuthority(permission+":create"));
+            }
+
         }
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(person,"test",authorities));
     }

@@ -124,7 +124,10 @@ class FinancialCompositeAuditLocatorUpgradePostgresTest {
         for(UUID id:List.of(a,b))assertThat(db.update("UPDATE finance_sales_cost_inputs SET source_reference=?,freight_local=?::numeric,row_version=row_version+1,updated_by=? WHERE period=? AND client_id=?",reference,number,actor,period,id)).isEqualTo(1);
     }
     private static List<JsonNode> updates(JdbcTemplate db,String table,long after) throws Exception {
-        var result=new ArrayList<JsonNode>();for(String value:db.queryForList("SELECT to_jsonb(a)::text FROM audit_log a WHERE target_type=? AND action='update' AND id>? ORDER BY id",String.class,table,after))result.add(FinancialJsonResults.tree(JSON,value));return result;
+        var result=new ArrayList<JsonNode>();for(String value:db.queryForList("SELECT to_jsonb(a)::text FROM audit_log a WHERE target_type=? AND action='update' AND id>? ORDER BY id",String.class,table,after)){
+            result.add(FinancialJsonResults.tree(JSON,value));
+        }
+        return result;
     }
     private static JsonNode lastUpdate(JdbcTemplate db,String table) throws Exception {return lastEvent(db,table,"update");}
     private static JsonNode lastEvent(JdbcTemplate db,String table,String action) throws Exception {return FinancialJsonResults.tree(JSON,db.queryForObject("SELECT to_jsonb(a)::text FROM audit_log a WHERE target_type=? AND action=? ORDER BY id DESC LIMIT 1",String.class,table,action));}

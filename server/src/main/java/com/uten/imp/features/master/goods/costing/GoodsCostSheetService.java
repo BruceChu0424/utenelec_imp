@@ -192,7 +192,6 @@ public class GoodsCostSheetService {
         }
     }
     private record VersionReadSource(String sql,MapSqlParameterSource parameters) { }
-    private record CurrencyVersionFacet(long count,String label,OffsetDateTime at) { }
     @Transactional
     public Sheet create(SaveRequest request) {
         require(EDIT);tx.bind();
@@ -381,7 +380,7 @@ public class GoodsCostSheetService {
                         +TEMPLATE_SCOPE_SQL,templateScope(goodsId,clientId),Long.class)),
                 (batch,batchSize)->{
                     var parameters=templateScope(goodsId,clientId).addValue("size",batchSize)
-                            .addValue("offset",(long)(batch-1)*batchSize);
+                            .addValue("offset",Math.multiplyExact((long)batch-1,batchSize));
                     return db.queryForList("SELECT id,name,goods_id,client_id,row_version,updated_at,"
                             +"input->>'validFrom' AS valid_from,input->>'validTo' AS valid_to,"
                             +"input->>'minBatchQty' AS min_batch_qty,input->>'maxBatchQty' AS max_batch_qty,"

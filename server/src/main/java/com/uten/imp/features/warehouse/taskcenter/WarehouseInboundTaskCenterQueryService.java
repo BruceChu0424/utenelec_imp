@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -131,12 +132,14 @@ public class WarehouseInboundTaskCenterQueryService {
         rows=physicalCommandRows(rows,rights,filter.scopeWarehouseId()==null);
         if(identity!=null) return new Page(rows,1,1,count,rows.isEmpty()?0:1,Map.of());
         if(!includeMetadata) return new Page(rows,effectivePage,size,count,(int)Math.min(Integer.MAX_VALUE,pages),null,false);
-        List<StatusFacet> facets = metadata.statuses().entrySet().stream().map(entry -> {
+        // Identity-only and metadata-free requests have already returned above.
+        var completeMetadata=Objects.requireNonNull(metadata,"Warehouse task metadata was not loaded");
+        List<StatusFacet> facets = completeMetadata.statuses().entrySet().stream().map(entry -> {
             Presentation presentation=presentation(entry.getKey());
             return new StatusFacet(entry.getKey(),presentation.label(),entry.getValue());
         }).toList();
         return new Page(rows,effectivePage,size,count,(int)Math.min(Integer.MAX_VALUE,pages),
-                Map.of("status",facets,"billNo",metadata.bills()));
+                Map.of("status",facets,"billNo",completeMetadata.bills()));
     }
 
     /** Visible rows have a scope-checked physical read target even when the business document was reversed. */

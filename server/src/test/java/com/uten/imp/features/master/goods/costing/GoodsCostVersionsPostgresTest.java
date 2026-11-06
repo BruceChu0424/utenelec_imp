@@ -63,7 +63,10 @@ class GoodsCostVersionsPostgresTest {
             when(query.setParameter(anyString(),any())).thenAnswer(call->{parameters.put(call.getArgument(0),call.getArgument(1));return query;});
             when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->{
                 Object[] result=new Object[rs.getMetaData().getColumnCount()];
-                for(int at=0;at<result.length;at++)result[at]=rs.getObject(at+1);return result;
+                for(int at=0;at<result.length;at++){
+                    result[at]=rs.getObject(at+1);
+                }
+                return result;
             }));
             return query;
         });

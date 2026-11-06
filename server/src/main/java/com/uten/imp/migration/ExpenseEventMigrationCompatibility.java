@@ -148,7 +148,10 @@ final class ExpenseEventMigrationCompatibility {
             throw new FlywayException("The resolved immutable expense migration bytes differ from the reviewed SHA-256");
     }
     private static Set<String> events(String sql) {
-        var result=new HashSet<String>();var matcher=EVENT.matcher(sql);while(matcher.find())result.add(matcher.group(1));return result;
+        var result=new HashSet<String>();var matcher=EVENT.matcher(sql);while(matcher.find()){
+            result.add(matcher.group(1));
+        }
+        return result;
     }
     private static String compact(String sql){return sql.replaceAll("\\s+","");}
     private static String state(Connection connection)throws SQLException {

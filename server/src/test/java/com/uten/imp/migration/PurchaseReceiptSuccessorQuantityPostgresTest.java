@@ -342,7 +342,10 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
     }
     private static void migrate(String name,String target) {
         var config=TestFlyway.configure().dataSource(url(name),DB.getUsername(),DB.getPassword()).locations("classpath:db/migration").cleanDisabled(true);
-        if(target!=null)config.target(target);config.load().migrate();
+        if(target!=null){
+            config.target(target);
+        }
+        config.load().migrate();
     }
     private static Connection cloneConnection()throws SQLException {
         String name="receipt_successor_"+UUID.randomUUID().toString().replace("-","");
@@ -356,10 +359,16 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
     private static String number(String prefix){int next=BILL_SEQUENCE.incrementAndGet();if(next>999999)throw new IllegalStateException("Anonymous fixture document sequence exhausted");return prefix+"20260923"+"%06d".formatted(next);}
     private static Connection connection(String name)throws SQLException{return DriverManager.getConnection(url(name),DB.getUsername(),DB.getPassword());}
     private static void execute(Connection c,String sql,Object...args)throws SQLException {
-        try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);s.executeUpdate();}
+        try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){
+            s.setObject(i+1,args[i]);
+        }
+        s.executeUpdate();}
     }
     private static String scalar(Connection c,String sql,Object...args)throws SQLException {
-        try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);try(var r=s.executeQuery()){assertThat(r.next()).isTrue();return r.getString(1);}}
+        try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){
+            s.setObject(i+1,args[i]);
+        }
+        try(var r=s.executeQuery()){assertThat(r.next()).isTrue();return r.getString(1);}}
     }
     private record Fixture(UUID actor,UUID receipt,UUID item) { }
 }

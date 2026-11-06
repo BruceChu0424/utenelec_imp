@@ -29,10 +29,19 @@ class InteractiveTaskReadScopePostgresTest {
         configuration.getProperties().put("hibernate.connection.datasource",new SingleConnectionDataSource(physical,true));
         factory=configuration.buildSessionFactory();
     }
-    @AfterAll static void stop()throws Exception{if(factory!=null)factory.close();if(physical!=null)physical.close();PG.stop();}
+    @AfterAll static void stop()throws Exception{if(factory!=null){
+        factory.close();
+    }
+    if(physical!=null){
+        physical.close();
+    }
+    PG.stop();}
     @BeforeEach void begin()throws Exception{session=factory.openSession();session.getTransaction().begin();setting("on");}
     @AfterEach void close()throws Exception{
-        if(session!=null){if(session.getTransaction().isActive())session.getTransaction().rollback();session.close();}
+        if(session!=null){if(session.getTransaction().isActive()){
+            session.getTransaction().rollback();
+        }
+        session.close();}
         physical.setReadOnly(false);
     }
 

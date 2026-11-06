@@ -241,7 +241,13 @@ class FinanceChartImportOriginalCommandsPostgresTest {
     private String reference(UUID id){return db.queryForObject("SELECT jsonb_build_array(actor_id,source_name,sha256,storage_provider,storage_key,storage_version,storage_size)::text FROM finance_chart_imports WHERE id=?",String.class,id);}
     private String codeRow(String code){return db.queryForObject("SELECT to_jsonb(c)::text FROM finance_chart_codes c WHERE code=?",String.class,code);}
     private long version(String code){return db.queryForObject("SELECT row_version FROM finance_chart_codes WHERE code=?",Long.class,code);}
-    private void assertSameSourceRows(String one,String two)throws Exception {var old=json.readTree(one).path("rows").deepCopy();var current=json.readTree(two).path("rows").deepCopy();for(var row:old)((ObjectNode)row).remove("existingVersion");for(var row:current)((ObjectNode)row).remove("existingVersion");assertThat(current).isEqualTo(old);}
+    private void assertSameSourceRows(String one,String two)throws Exception {var old=json.readTree(one).path("rows").deepCopy();var current=json.readTree(two).path("rows").deepCopy();for(var row:old){
+        ((ObjectNode)row).remove("existingVersion");
+    }
+    for(var row:current){
+        ((ObjectNode)row).remove("existingVersion");
+    }
+    assertThat(current).isEqualTo(old);}
     private static Object attempt(Supplier<?> action){try{return action.get();}catch(ApiException error){return error;}}
     private static void await(CountDownLatch release){try{if(!release.await(40,TimeUnit.SECONDS))throw new AssertionError("commit gate timeout");}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}}
     private static void login(FullChainEndToEndTest.World actor,Set<String> permissions){var user=new AuthUser(actor.superAdminUserId(),actor.employeeId(),"anonymous-chart-import",permissions,false,true,false);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));}

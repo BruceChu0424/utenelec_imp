@@ -100,7 +100,21 @@ class FinanceApplicationReferencePagingPostgresTest {
         doThrow(new ApiException(ErrorCode.FORBIDDEN)).when(f.claims()).requireActiveClaimByMe(FinanceApplicationService.CLAIM,f.application().toString(),f.lease());assertThrows(ApiException.class,()->f.references().candidatesPage(f.application(),"source-proof",f.lease(),f.style(),f.auxiliary(),EMPLOYEE,"DEDUCTION",LocalDate.now(),"",null,null,1,100));
     }
     UUID voucher(UUID style,int number,boolean allocation){UUID voucher=UUID.randomUUID(),entry=UUID.randomUUID();insert("gl_vouchers",row("id",voucher,"voucher_no",String.format("V%03d",number),"voucher_date",LocalDate.now(),"status",1,"is_deleted",false));insert("gl_entries",row("id",entry,"voucher_id",voucher,"style_id",style,"direction",1,"entry_date",LocalDate.now(),"line_no",1,"source_bill_no","B"+number,"amount",new BigDecimal("100.0001"),"is_deleted",false));if(allocation){UUID auxiliary=db.queryForObject("SELECT id FROM finance_auxiliary_items LIMIT 1",UUID.class);insert("finance_gl_entry_allocations",row("entry_id",entry,"allocation_no",0,"account_code","1221001","auxiliary_id",auxiliary,"currency_id",CURRENCY,"original_currency_id",CURRENCY,"amount_local",new BigDecimal("100.0001"),"amount_original",new BigDecimal("100.0001")));}return entry;}
-    @SafeVarargs static Set<String> keys(List<Map<String,Object>>... lists){var keys=new HashSet<String>();for(var rows:lists)for(var r:rows)assertTrue(keys.add(r.getOrDefault("sourceKind","")+"|"+r.get("id")));return keys;}
-    static Map<String,Object> row(Object...values){var row=new LinkedHashMap<String,Object>();for(int i=0;i<values.length;i+=2)row.put(values[i].toString(),values[i+1]);return row;}
+    @SafeVarargs static Set<String> keys(List<Map<String,Object>>... lists){var keys=new HashSet<String>();for(var rows:lists){
+        for(var r:rows){
+        assertTrue(keys.add(r.getOrDefault("sourceKind","")+"|"+r.get("id")));
+    }
+
+    }
+    return keys;}
+    static Map<String,Object> row(Object...values){
+        var row=new LinkedHashMap<String,Object>();var pairs=Arrays.asList(values).iterator();
+        while(pairs.hasNext()){
+            Object column=pairs.next();
+            if(!pairs.hasNext())throw new IllegalArgumentException("Fixture column/value pair is incomplete");
+            row.put(column.toString(),pairs.next());
+        }
+        return row;
+    }
     static void insert(String table,Map<String,Object> row){db.update("INSERT INTO "+table+"("+String.join(",",row.keySet())+") VALUES("+String.join(",",Collections.nCopies(row.size(),"?"))+")",row.values().toArray());}
 }

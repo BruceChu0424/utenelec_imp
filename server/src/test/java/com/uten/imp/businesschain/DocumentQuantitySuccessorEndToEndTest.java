@@ -316,7 +316,7 @@ class DocumentQuantitySuccessorEndToEndTest {
         try{var type=s.salesSource().getClass();var ctor=type.getDeclaredConstructors()[0];ctor.setAccessible(true);return ctor.newInstance(s.world(),call(s.salesSource(),"reviewer"),call(s.salesSource(),"currency"),"PURCHASE",draft,line,call(s.salesSource(),"purchaseSource"));}
         catch(ReflectiveOperationException failure){throw new AssertionError(failure);}
     }
-    private final class ReturnEdit {
+    private static final class ReturnEdit {
         private final Scenario s;ReturnEdit(Scenario s){this.s=s;}
         com.uten.imp.features.sales.ret.dto.ReturnSaveRequest request(){return call(s.financial(),"request",s.salesSource(),".05");}
     }
@@ -357,7 +357,13 @@ class DocumentQuantitySuccessorEndToEndTest {
             "'parent_goods_id','parent_color_id','cost_amount']::text[] || CASE WHEN ? IN('purchase_order_items','subcontract_order_items') THEN ARRAY['total_amount_input','reference_price_precision_policy','extra_columns']::text[] ELSE ARRAY[]::text[] END)",String.class,id,a.lines().table());
     }
     private String sourceHistory(DocumentUnapprovalPort a,UUID id){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(value) ORDER BY id),'[]'::jsonb)::text FROM business_record_history value WHERE source_table=? AND source_id=?",String.class,a.lines().table(),id.toString());}
-    private static String sqlState(Throwable failure){for(Throwable cause=failure;cause!=null;cause=cause.getCause())if(cause instanceof SQLException sql&&sql.getSQLState()!=null)return sql.getSQLState();return null;}
+    private static String sqlState(Throwable failure){for(Throwable cause=failure;cause!=null;cause=cause.getCause()){
+        if(cause instanceof SQLException sql&&sql.getSQLState()!=null){
+        return sql.getSQLState();
+    }
+
+    }
+    return null;}
     private int version(DocumentUnapprovalPort a,UUID id){return db.queryForObject("SELECT "+(a.family().equals("salesReturn")?"receipt_quantity_version":"quantity_adoption_version")+" FROM "+a.lines().table()+" WHERE id=?",Integer.class,id);}
     private record InitialCopy(UUID draft,UUID line,String bill){}
     private UUID copyLegacy(DocumentUnapprovalPort a,Legacy l){return new TransactionTemplate(transactions).execute(status->{
@@ -417,5 +423,8 @@ class DocumentQuantitySuccessorEndToEndTest {
             }
         }
     }
-    private static void execute(Connection c,String sql,Object...args)throws SQLException {try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);s.executeUpdate();}}
+    private static void execute(Connection c,String sql,Object...args)throws SQLException {try(var s=c.prepareStatement(sql)){for(int i=0;i<args.length;i++){
+        s.setObject(i+1,args[i]);
+    }
+    s.executeUpdate();}}
 }

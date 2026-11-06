@@ -176,7 +176,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
         UUID successor=UUID.fromString(map(reversed.get("result")).get("id").toString());
         assertThat(map(reversed.get("result")).get("unapprovalOriginalId").toString()).isEqualTo(d.id().toString());
         String undone=moneyFacts(d);same(reverseHttp(d,reverse,generic),reversed);same(actions.receipt(family,d.id(),reverseId),reversed);
-        same(actions.cancel(family,d.id(),reverseId,cancellation(d,reverseId,"FINANCE_DOCUMENT_UNAPPROVE",reversePath,reverse)),reversed);
+        same(actions.cancel(family,d.id(),reverseId,cancellation(reverseId,"FINANCE_DOCUMENT_UNAPPROVE",reversePath,reverse)),reversed);
         assertThat(businessAudits(d,"reverse")).isEqualTo(1);assertThat(businessAudits(d,"approve")).isEqualTo(1);
         assertThat(db.queryForList("SELECT DISTINCT actor_id FROM v_audit_log_all WHERE action IN (?,?) AND target_type=? AND target_id=?",UUID.class,permission(d)+"_approve",permission(d)+"_reverse",permission(d),d.id().toString())).containsExactly(f.reviewer());
         assertThat(moneyFacts(d)).isEqualTo(undone);
@@ -360,13 +360,13 @@ class FinanceDocumentReviewCommandsPostgresTest {
     }
 
     @Test void originalApprovalAndUnapprovalCanBeSealedWithReadRightsAndLateRequestsNeverTouchMoney(){
-        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(d,original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
+        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
         loginReadOnly();String before=moneyFacts(d);var stopped=actions.cancel(d.family(),d.id(),original.requestId(),cancel);
         assertThat(stopped).containsEntry("outcome","CANCELLED_UNWRITTEN");same(actions.receipt(d.family(),d.id(),original.requestId()),stopped);
         forbidden(()->actions.approve(d.family(),d.id(),original));harness.loginAs(f.reviewer());same(actions.approve(d.family(),d.id(),original),stopped);assertThat(moneyFacts(d)).isEqualTo(before);
         var fresh=command(review(d));actions.approve(d.family(),d.id(),fresh);var capability=unapproval.capabilityHttp(d.family(),d.id());UUID reverseId=UUID.randomUUID();
         var reverse=new Command(reverseId,reverseId.toString(),"匿名只封口原反审不另逆账",capability.factsSnapshot());
-        var reverseCancel=cancellation(d,reverseId,"FINANCE_DOCUMENT_UNAPPROVE",unapprovePath(d),reverse);
+        var reverseCancel=cancellation(reverseId,"FINANCE_DOCUMENT_UNAPPROVE",unapprovePath(d),reverse);
         loginReadOnly();before=moneyFacts(d);var reverseStopped=actions.cancel(d.family(),d.id(),reverseId,reverseCancel);
         harness.loginAs(f.reviewer());same(actions.execute(d.family(),d.id(),reverse),reverseStopped);assertThat(moneyFacts(d)).isEqualTo(before);
         assertThat(db.queryForObject("SELECT count(*) FROM document_unapprovals WHERE original_id=?",Integer.class,d.id())).isZero();
@@ -379,7 +379,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
         BigInteger integer=new BigInteger("12345678901234567890123456789012345678901234567890");
         Map<String,Object> saved=transaction.execute(status->{variables.bind();return journal.command(id,"FINANCE_DOCUMENT_APPROVE","POST",approvePath(d),command,()->Map.of("amountOriginal",big,"amountLocal",tiny,"longInteger",integer,"nested",Map.of("amount",big)));});
         var repeated=transaction.execute(status->{variables.bind();return journal.command(id,"FINANCE_DOCUMENT_APPROVE","POST",approvePath(d),command,()->{throw new AssertionError("Original result must not run twice");});});
-        for(var result:List.of(saved,repeated,actions.receipt(d.family(),d.id(),id),actions.cancel(d.family(),d.id(),id,cancellation(d,id,"FINANCE_DOCUMENT_APPROVE",approvePath(d),command)))){
+        for(var result:List.of(saved,repeated,actions.receipt(d.family(),d.id(),id),actions.cancel(d.family(),d.id(),id,cancellation(id,"FINANCE_DOCUMENT_APPROVE",approvePath(d),command)))){
             var values=map(result.get("result"));assertThat(values.get("amountOriginal")).isInstanceOf(BigDecimal.class);assertThat((BigDecimal)values.get("amountOriginal")).isEqualByComparingTo(big);
             assertThat((BigDecimal)values.get("amountLocal")).isEqualByComparingTo(tiny);assertThat(values.get("longInteger")).isEqualTo(integer);
             assertThat((BigDecimal)map(values.get("nested")).get("amount")).isEqualByComparingTo(big);
@@ -450,7 +450,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
 
     @ParameterizedTest @ValueSource(booleans={false,true})
     void actualApprovalAndUnwrittenCancellationSerializeInBothCommitOrders(boolean cancelFirst)throws Exception{
-        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(d,original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
+        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);
         var entered=new CountDownLatch(1);var release=new CountDownLatch(1);var once=new AtomicBoolean();var pool=Executors.newFixedThreadPool(2);
         doAnswer(invocation->{Object result=invocation.callRealMethod();if(original.requestId().equals(invocation.getArgument(1))&&once.compareAndSet(false,true)){entered.countDown();await(release);}return result;})
             .when(journal).execute(isNull(),eq(original.requestId()),eq("FINANCE_DOCUMENT_APPROVE"),any(),any(),any());
@@ -467,7 +467,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     }
 
     @Test void receiptsAndCancellationKeepOwnerReadScopeAndRejectImpersonatedCancellationWithoutLeakingBodies(){
-        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(d,original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);var saved=actions.approve(d.family(),d.id(),original);
+        Draft d=create("financeExpense","10");var original=command(review(d));var cancel=cancellation(original.requestId(),"FINANCE_DOCUMENT_APPROVE",approvePath(d),original);var saved=actions.approve(d.family(),d.id(),original);
         harness.loginAs(f.world().superAdminUserId());assertThat(actions.receipt(d.family(),d.id(),original.requestId())).containsEntry("found",false);forbidden(()->actions.cancel(d.family(),d.id(),original.requestId(),cancel));
         UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,f.reviewer());
         loginReadOnly();same(actions.receipt(d.family(),d.id(),original.requestId()),saved);same(actions.cancel(d.family(),d.id(),original.requestId(),cancel),saved);forbidden(()->actions.approve(d.family(),d.id(),original));
@@ -663,7 +663,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     }
     private FinanceReviewMetadata review(Draft d){harness.loginAs(f.reviewer());return actions.reviewedDetail(d.family(),d.id(),false);}
     private static FinanceDocumentActions.ApprovalCommand command(FinanceReviewMetadata shown){return new FinanceDocumentActions.ApprovalCommand(UUID.randomUUID(),shown.getApprovalVersion(),shown.getApprovalSnapshot());}
-    private FinanceOperationJournal.Cancellation cancellation(Draft d,UUID id,String operation,String path,Object body){return new FinanceOperationJournal.Cancellation(id,f.reviewer(),operation,"POST",path,json.valueToTree(body),Map.of());}
+    private FinanceOperationJournal.Cancellation cancellation(UUID id,String operation,String path,Object body){return new FinanceOperationJournal.Cancellation(id,f.reviewer(),operation,"POST",path,json.valueToTree(body),Map.of());}
     private void loginReadOnly(){UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,f.reviewer());var user=new AuthUser(f.reviewer(),employee,"anonymous-review-reader",Set.of("finance_expense:view","finance:view:all"),false,true,false);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));}
     private String moneyFacts(Draft d){return header(d)+db.queryForObject("SELECT jsonb_build_object('bank',(SELECT balance_current FROM accounts WHERE id=?),'other',(SELECT balance_current FROM accounts WHERE id=?),'flows',(SELECT COALESCE(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]'::jsonb) FROM finance_reconciliations x WHERE source_doc_id=?),'gl',(SELECT COALESCE(jsonb_agg(to_jsonb(v) ORDER BY v.id),'[]'::jsonb) FROM gl_vouchers v WHERE source_doc_id=?),'ledger',(SELECT COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.id),'[]'::jsonb) FROM ar_ap_ledger l WHERE source_doc_id=?))::text",String.class,f.bank(),f.otherBank(),d.id(),d.id(),d.id());}
     private String header(Draft d){return db.queryForObject("SELECT to_jsonb(h)::text FROM "+TABLES.get(d.family())+" h WHERE id=?",String.class,d.id());}

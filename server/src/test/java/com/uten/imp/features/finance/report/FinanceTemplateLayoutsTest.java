@@ -113,7 +113,13 @@ class FinanceTemplateLayoutsTest {
     /** Geometry-only values; these rows are not a reconciled accounting book. */
     private static Map<String,Object> syntheticProfitRow(int number,String caption,boolean annual){
         var row=new LinkedHashMap<String,Object>();row.put("lineNo",number);row.put("item",caption);row.put("basis","匿名版式样例，不是实账勾稽");
-        if(annual){for(int month=1;month<=12;month++)row.put("m"+month,month<=9?BigDecimal.ONE:null);row.put("yearTotal",new BigDecimal("9"));if(number==32)row.put("profitRatio",new BigDecimal("19.5"));row.put("__notApplicableMonths",List.of(10,11,12));}
+        if(annual){for(int month=1;month<=12;month++){
+            row.put("m"+month,month<=9?BigDecimal.ONE:null);
+        }
+        row.put("yearTotal",new BigDecimal("9"));if(number==32){
+            row.put("profitRatio",new BigDecimal("19.5"));
+        }
+        row.put("__notApplicableMonths",List.of(10,11,12));}
         else{row.put("monthAmount",BigDecimal.ONE);row.put("yearAmount",new BigDecimal("9"));}
         return row;
     }

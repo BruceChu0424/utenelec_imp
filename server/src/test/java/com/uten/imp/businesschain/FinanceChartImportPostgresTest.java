@@ -53,12 +53,18 @@ class FinanceChartImportPostgresTest {
         for(String sql:java.util.List.of(main,delta,importDelta)) {
             var matcher=calls.matcher(sql);int count=0;
             while(matcher.find()) {
-                count++;String table=matcher.group(1);if(sql==main)names.add(table);
+                count++;String table=matcher.group(1);if(sql.equals(main)){
+                    names.add(table);
+                }
+
                 policies.put(table,matcher.group(2));registration.append(matcher.group()).append('\n');
                 var columns=new java.util.ArrayList<String>();var column=java.util.regex.Pattern.compile("'([^']+)'").matcher(matcher.group(4)==null?"":matcher.group(4));
-                while(column.find())columns.add(column.group(1));expectedColumns.put(table,columns);
+                while(column.find()){
+                    columns.add(column.group(1));
+                }
+                expectedColumns.put(table,columns);
             }
-            assertThat(count).isEqualTo(sql==main?57:sql==delta?3:1);
+            assertThat(count).isEqualTo(sql.equals(main)?57:sql.equals(delta)?3:1);
         }
         assertThat(names).doesNotHaveDuplicates();
         assertThat(policies.get("finance_application_operations")).isEqualTo("COLUMN_SCOPED");
@@ -102,9 +108,15 @@ class FinanceChartImportPostgresTest {
         String number="987.123456789012345678901234",privateUpdate=marker+"-CHANGED";
         java.util.UUID otherClient=java.util.UUID.randomUUID();
         db.update("INSERT INTO clients(id,code,name,status,code_sequence)VALUES(?,?,?,'使用',(SELECT coalesce(max(code_sequence),0)+1 FROM clients))",otherClient,"AUDIT-"+otherClient,"匿名同月第二财务客户");
-        for(var client:java.util.List.of(world.clientId(),otherClient))db.update("INSERT INTO finance_sales_cost_inputs(period,client_id,source_reference,freight_local,updated_by)VALUES(?,?,?,1,?)",period,client,marker,world.superAdminUserId());
+        for(var client:java.util.List.of(world.clientId(),otherClient)){
+            db.update("INSERT INTO finance_sales_cost_inputs(period,client_id,source_reference,freight_local,updated_by)VALUES(?,?,?,1,?)",period,client,marker,world.superAdminUserId());
+        }
+
         long updateAnchor=db.queryForObject("SELECT coalesce(max(id),0) FROM audit_log",Long.class);
-        for(var client:java.util.List.of(world.clientId(),otherClient))assertThat(db.update("UPDATE finance_sales_cost_inputs SET source_reference=?,freight_local=?::numeric,row_version=row_version+1 WHERE period=? AND client_id=?",privateUpdate,number,period,client)).isEqualTo(1);
+        for(var client:java.util.List.of(world.clientId(),otherClient)){
+            assertThat(db.update("UPDATE finance_sales_cost_inputs SET source_reference=?,freight_local=?::numeric,row_version=row_version+1 WHERE period=? AND client_id=?",privateUpdate,number,period,client)).isEqualTo(1);
+        }
+
         var updates=db.queryForList("SELECT to_jsonb(a)::text FROM audit_log a WHERE target_type='finance_sales_cost_inputs' AND action='update' AND id>? ORDER BY id",String.class,updateAnchor);
         assertThat(updates).hasSize(2);var actualClients=new java.util.HashSet<String>();
         for(String value:updates){

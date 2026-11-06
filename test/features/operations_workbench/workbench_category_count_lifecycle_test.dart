@@ -39,7 +39,7 @@ final _apiSource = StateProvider<_Api>((_) => _Api());
 
 void main() {
   testWidgets(
-    'working first-page preparation is adopted by a fast stage click',
+    'entry reads only overview and a fast stage click loads its rows once',
     (tester) async {
       final api = _Api()..gate = Completer<Map<String, dynamic>>();
       await _mount(
@@ -50,6 +50,9 @@ void main() {
         api: api,
       );
       await tester.pump();
+      expect(api.calls, hasLength(1));
+      expect(api.calls.single.$1, '/operations/workbench/purchase/overview');
+      expect(api.calls.single.$2, isEmpty);
       await _select(tester, '进行中');
       await tester.pump();
       expect(
@@ -58,7 +61,7 @@ void main() {
       );
       expect(
         api.calls.where((call) => call.$2?['status'] == 'WAITING_ORDER'),
-        hasLength(1),
+        isEmpty,
       );
       expect(
         api.calls.any((call) => call.$2?['status'] == 'COMPLETED'),
@@ -71,6 +74,13 @@ void main() {
         hasLength(1),
       );
       expect(_progressCounts(tester), (3, null));
+      final beforeScroll = api.calls.length;
+      await tester.drag(
+        find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+        const Offset(0, -500),
+      );
+      await tester.pumpAndSettle();
+      expect(api.calls, hasLength(beforeScroll));
       expect(tester.takeException(), isNull);
     },
   );

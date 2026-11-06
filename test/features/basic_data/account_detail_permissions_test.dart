@@ -638,6 +638,9 @@ class _AccountFacetApi extends ApiClient {
       'page': body?['__facetPage'],
       'size': 100,
       'hasMore': false,
+      'readScopeVersion': 'account-facet-authority-v1',
+      'readSnapshotRevision': 'account-facet-snapshot-v1',
+      'readDataVersion': 'account-facet-data-v1',
       'items': [
         {'value': 'ONLY-REMOTE', 'label': 'ONLY-REMOTE', 'count': 1},
       ],

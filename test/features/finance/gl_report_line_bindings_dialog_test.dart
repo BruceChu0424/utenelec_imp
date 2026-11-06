@@ -11,7 +11,6 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/widgets/gl_report_line_bindings_dialog.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
 import '../../support/audit_screenshot_support.dart';
 import '../../support/finance_command_test_support.dart';
 import '../../support/pump_until.dart';
@@ -444,8 +443,13 @@ void main() {
       expect(find.text('办公费'), findsNothing);
       expect(find.byKey(const ValueKey('gl-line-target-save')), findsNothing);
       if (openPicker) {
-        final close = find.widgetWithText(UtenButton, '关闭').hitTestable();
+        final close = find.byType(UtenCloseButton).hitTestable();
         expect(close, findsOneWidget);
+        expect(tester.widget(close), isA<UtenCloseButton>());
+        expect(
+          find.byKey(const ValueKey('gl-line-retired-close')).hitTestable(),
+          findsNothing,
+        );
         await tester.tap(close);
         await tester.pumpAndSettle();
         expect(changed, isNull);

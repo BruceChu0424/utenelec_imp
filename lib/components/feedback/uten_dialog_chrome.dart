@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_close_button.dart';
 import '../inputs/uten_field_hint_icon.dart';
+import '../inputs/uten_table_cell_spec.dart';
 import 'uten_dialog_action_scope.dart';
 import 'uten_dialog_action_layout.dart';
 
@@ -242,6 +245,10 @@ class UtenDialogHeader extends StatelessWidget {
         leading: leading,
       );
     }
+    final inlineTitle = heading is UtenDialogHeading ? heading.title : heading;
+    final hasInlineHint =
+        inlineTitle is UtenDialogTitleWithHint &&
+        inlineTitle.info?.trim().isNotEmpty == true;
     return Padding(
       padding:
           padding ??
@@ -253,31 +260,175 @@ class UtenDialogHeader extends StatelessWidget {
           color: theme.colorScheme.onSurface,
           height: 1.3,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: _DialogHeaderContent(
+          minimumHeadingWidth:
+              (hasInlineHint
+                  ? UtenEditableGridCellSpec.heightOf(context) + UtenSpacing.s8
+                  : 0) +
+              MediaQuery.textScalerOf(context).scale(20),
           children: [
-            Expanded(child: heading),
-            if (trailing != null) ...[
-              const SizedBox(width: UtenSpacing.s8),
-              trailing!,
-            ],
-            if (windowControls != null || showCloseButton) ...[
-              const SizedBox(width: UtenSpacing.s8),
-              windowControls ??
-                  UtenCloseButton(
-                    key: closeButtonKey,
-                    tooltip:
-                        closeTooltip ??
-                        MaterialLocalizations.of(context).closeButtonTooltip,
-                    onPressed: onClose,
-                  ),
-            ],
+            heading,
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              alignment: WrapAlignment.end,
+              children: [
+                ?trailing,
+                if (windowControls != null || showCloseButton)
+                  windowControls ??
+                      UtenCloseButton(
+                        key: closeButtonKey,
+                        tooltip:
+                            closeTooltip ??
+                            MaterialLocalizations.of(
+                              context,
+                            ).closeButtonTooltip,
+                        onPressed: onClose,
+                      ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+/// Keep the same heading and action elements when a resize moves the controls
+/// above the title. Reserve a real title glyph beside its accessible hint;
+/// neither control targets nor user text are shrunk to fit the old row.
+class _DialogHeaderContent extends MultiChildRenderObjectWidget {
+  const _DialogHeaderContent({
+    required this.minimumHeadingWidth,
+    required super.children,
+  });
+
+  final double minimumHeadingWidth;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderDialogHeaderContent(
+        minimumHeadingWidth,
+        Directionality.of(context),
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderDialogHeaderContent renderObject,
+  ) => renderObject.configure(minimumHeadingWidth, Directionality.of(context));
+}
+
+class _RenderDialogHeaderContent extends RenderBox
+    with
+        ContainerRenderObjectMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        >,
+        RenderBoxContainerDefaultsMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        > {
+  _RenderDialogHeaderContent(this._minimumHeadingWidth, this._direction);
+
+  double _minimumHeadingWidth;
+  TextDirection _direction;
+
+  void configure(double minimumHeadingWidth, TextDirection direction) {
+    if (_minimumHeadingWidth == minimumHeadingWidth &&
+        _direction == direction) {
+      return;
+    }
+    _minimumHeadingWidth = minimumHeadingWidth;
+    _direction = direction;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! ContainerBoxParentData<RenderBox>) {
+      child.parentData = _DialogHeaderParentData();
+    }
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => math.max(
+    firstChild!.getMinIntrinsicWidth(height),
+    lastChild!.getMinIntrinsicWidth(height),
+  );
+
+  @override
+  double computeMaxIntrinsicWidth(double height) {
+    final actionWidth = lastChild!.getMaxIntrinsicWidth(height);
+    return firstChild!.getMaxIntrinsicWidth(height) +
+        (actionWidth > 0 ? UtenSpacing.s8 + actionWidth : 0);
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      computeDryLayout(BoxConstraints(maxWidth: width)).height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      computeMinIntrinsicHeight(width);
+
+  Size _layout(BoxConstraints limits, {required bool dry}) {
+    Size measure(RenderBox child, BoxConstraints box) {
+      if (dry) return child.getDryLayout(box);
+      child.layout(box, parentUsesSize: true);
+      return child.size;
+    }
+
+    final heading = firstChild!, actions = lastChild!;
+    final width = limits.hasBoundedWidth
+        ? limits.maxWidth
+        : computeMaxIntrinsicWidth(double.infinity);
+    final actionSize = measure(actions, BoxConstraints(maxWidth: width));
+    final gap = actionSize.width > 0 ? UtenSpacing.s8 : 0.0;
+    final inlineWidth = math.max(0.0, width - actionSize.width - gap);
+    final stacked = actionSize.width > 0 && inlineWidth < _minimumHeadingWidth;
+    final headingSize = measure(
+      heading,
+      BoxConstraints.tightFor(width: stacked ? width : inlineWidth),
+    );
+    final result = limits.constrain(
+      Size(
+        width,
+        stacked
+            ? actionSize.height + gap + headingSize.height
+            : math.max(actionSize.height, headingSize.height),
+      ),
+    );
+    if (!dry) {
+      final rtl = _direction == TextDirection.rtl;
+      (heading.parentData! as ContainerBoxParentData<RenderBox>).offset =
+          Offset(
+            rtl && !stacked ? width - headingSize.width : 0,
+            stacked ? actionSize.height + gap : 0,
+          );
+      (actions.parentData! as ContainerBoxParentData<RenderBox>).offset =
+          Offset(rtl ? 0 : width - actionSize.width, 0);
+    }
+    return result;
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      _layout(constraints, dry: true);
+
+  @override
+  void performLayout() => size = _layout(constraints, dry: false);
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
+class _DialogHeaderParentData extends ContainerBoxParentData<RenderBox> {}
 
 /// An action group stays centered and wraps as a group in narrow windows.
 class UtenDialogActions extends StatelessWidget {

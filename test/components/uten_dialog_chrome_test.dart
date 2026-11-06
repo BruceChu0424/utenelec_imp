@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
@@ -257,6 +258,68 @@ void main() {
     await tester.tap(find.byIcon(Icons.close_rounded));
     expect(closed, isTrue);
   });
+
+  for (final direction in [TextDirection.ltr, TextDirection.rtl]) {
+    testWidgets(
+      'hint heading retains its owner and close across narrow resize $direction',
+      (tester) async {
+        final width = ValueNotifier(128.0);
+        addTearDown(width.dispose);
+        var closed = 0;
+        const explanation = '标题旁的可访问说明';
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildLightTheme(),
+            home: Directionality(
+              textDirection: direction,
+              child: Scaffold(
+                body: Center(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: width,
+                    child: UtenDialogHeader(
+                      title: const UtenDialogTitleWithHint(
+                        title: Text('导出表格'),
+                        info: explanation,
+                      ),
+                      showCloseButton: true,
+                      onClose: () => closed++,
+                    ),
+                    builder: (_, value, child) =>
+                        SizedBox(width: value, child: child),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        final hintElement = tester.element(find.byType(UtenFieldHintIcon));
+        for (final value in [128.0, 560.0, 128.0, 560.0, 128.0]) {
+          width.value = value;
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(
+            tester.element(find.byType(UtenFieldHintIcon)),
+            same(hintElement),
+          );
+          final titleRect = tester.getRect(find.text('导出表格'));
+          final hintRect = tester.getRect(find.byType(UtenFieldHintIcon));
+          expect(
+            hintRect.center.dy,
+            inInclusiveRange(titleRect.top, titleRect.bottom),
+          );
+          expect(find.byType(UtenCloseButton).hitTestable(), findsOneWidget);
+        }
+        await tester.tap(find.byType(UtenFieldHintIcon));
+        await tester.pumpAndSettle();
+        expect(find.text(explanation), findsOneWidget);
+        Tooltip.dismissAllToolTips();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(UtenCloseButton));
+        expect(closed, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'a bottom-sheet body can reuse the surface inside a dialog without double painting',

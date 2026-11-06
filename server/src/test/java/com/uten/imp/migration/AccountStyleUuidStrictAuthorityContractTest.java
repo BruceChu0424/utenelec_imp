@@ -71,6 +71,10 @@ class AccountStyleUuidStrictAuthorityContractTest {
                 "src/main/java/com/uten/imp/features/master/paymentstyle/PaymentStyleService.java"));
         String styleRepository = compact(read(
                 "src/main/java/com/uten/imp/features/master/paymentstyle/PaymentStyleRepository.java"));
+        String accountRepository = compact(read(
+                "../lib/features/basic_data/repositories/account_repository.dart"));
+        String accountModel = compact(read(
+                "../lib/features/basic_data/models/account_node.dart"));
         String accountEntry = compact(read(
                 "../lib/features/basic_data/pages/account_page.dart"));
         String accountWorkspace = compact(read(
@@ -92,19 +96,33 @@ class AccountStyleUuidStrictAuthorityContractTest {
         assertThat(styleRepository)
                 .contains("account.style_id in (select id from style_subtree)")
                 .doesNotContain("account.style_legacy_id");
+        assertThat(accounts).contains("return fundingstyles.choices();");
+        assertThat(accountRepository)
+                .contains("postingstyles = '$base/posting-styles'")
+                .contains("accountpostingstylesreaderprovider")
+                .contains("accountendpoints.postingstyles")
+                .contains("accountpostingstyle.fromjson");
+        String postingStyle = accountModel.substring(accountModel.indexOf("class accountpostingstyle"),
+                accountModel.indexOf("enum accounttype"));
+        assertThat(postingStyle).contains("id: json['id'] as string").doesNotContain("legacyid");
         assertThat(accountEntry)
                 .isEqualTo("export 'account_workspace_page.dart';");
         assertThat(accountWorkspace)
                 .contains("key: 'styleid'")
                 .contains("required: true")
-                .contains("activeaccountstyleleaves(roots)")
+                .contains("ref.read(accountpostingstylesreaderprovider)()")
+                .contains("list<accountpostingstyle>")
+                .contains("value: style.id")
                 .contains("class accountstyleloadnotice")
                 .doesNotContain("stylelegacyid");
         assertThat(accountDetail)
                 .contains("key: 'styleid'")
                 .contains("required: true")
-                .contains("activeaccountstyleleaves(roots)")
-                .contains("'styleid': styleavailable ? detail.styleid! : ''")
+                .contains("ref.read(accountpostingstylesreaderprovider)()")
+                .contains("list<accountpostingstyle>")
+                .contains("value: style.id")
+                .contains("value: existing")
+                .contains("'styleid': detail.styleid ?? ''")
                 .doesNotContain("stylelegacyid");
 
         String saveInput = styleModel.substring(

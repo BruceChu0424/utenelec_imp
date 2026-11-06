@@ -648,7 +648,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     // =====================================================================
 
     @Test
-    void maskedSellersNeverSetDiscountsButKeepStoredOnesAndDeriveFromTheFilePrice() {
+    void maskedSellersNeverSetDiscountsButKeepStoredOnesAndDeriveFromTheFilePrice() throws Exception {
         Fixture f = fixture("masked");
         UUID listed = goods("脱敏报价货品", BigDecimal.TEN);
         UUID usdGoods = goods("脱敏美元货品", new BigDecimal("70"));
@@ -664,7 +664,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(created.getItems().getFirst().getPrice()).isNull();
         assertThat(created.getItems().getFirst().getClientPrice()).isEqualByComparingTo("8");
         assertThat(storedDiscounts(created.getId())).containsExactly(
-                new BigDecimal("0.8000"), new BigDecimal("1.0000"), new BigDecimal("1.0000"));
+                new BigDecimal("0.8"), new BigDecimal("1.0000"), new BigDecimal("1.0000"));
         assertThat(created.getItems().get(1).getRemark()).contains("换算不出合理折扣");
 
         // 财务后来改成 0.75(直接写库模拟), 脱敏的负责人再保存: 回传空折扣与空文件单价 → 原值保留。
@@ -699,7 +699,16 @@ class SalesQuoteFinanceFlowPostgresTest {
         orderLine.setDiscount(new BigDecimal("0.3001"));
         orderLine.setClientPrice(new BigDecimal("9"));
         order.setItems(new ArrayList<>(List.of(orderLine)));
-        OrderDetail created2 = orders.create(order);
+        // The alternate plain 9/70 candidate is non-terminating even though it
+        // is discarded as implausible; the current shared calculation requires
+        // an explicit operation choice, while the adopted 9*7/70 stays exact.
+        assertThatThrownBy(() -> orders.create(order))
+                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        OrderDetail created2;
+        try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+                "money.discount",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"HALF_UP")))) {
+            created2 = orders.create(order);
+        }
         assertThat(created2.isPriceMasked()).isTrue();
         assertThat(jdbc.queryForObject("SELECT discount FROM sales_order_items WHERE order_id = ? AND NOT is_deleted",
                 BigDecimal.class, created2.getId())).isEqualByComparingTo("0.9");
@@ -716,17 +725,19 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(jdbc.queryForObject("SELECT client_price FROM sales_order_items WHERE order_id = ? AND NOT is_deleted",
                 BigDecimal.class, created2.getId())).isEqualByComparingTo("9");
 
-        // 文件单价精度超出单价界限(解析文件带来的浮点尾数): 保存时 400, 免得核价页之后打不开。
+        // 文件单价超出当前24位边界时拒绝，不能取舍原数或覆盖旧行。
         OrderSaveRequest noisy = orderRequest(orders.detail(created2.getId()));
-        noisy.getItems().getFirst().setClientPrice(new BigDecimal("9.1234567890123456789012"));
+        noisy.getItems().getFirst().setClientPrice(new BigDecimal("9.1234567890123456789012345"));
         assertThatThrownBy(() -> orders.update(created2.getId(), noisy))
                 .isInstanceOf(ApiException.class).hasMessageContaining("文件单价")
                 .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
         QuoteSaveRequest noisyQuote = quoteRequest(f.maskedClient(),
-                line(listed, "1", null, null, "8.00000000001"));
+                line(listed, "1", null, null, "8.0000000000000000000000001"));
         assertThatThrownBy(() -> quotes.create(noisyQuote))
                 .isInstanceOf(ApiException.class).hasMessageContaining("文件单价")
                 .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+        assertThat(jdbc.queryForObject("SELECT client_price FROM sales_order_items WHERE order_id=? AND NOT is_deleted",
+                BigDecimal.class,created2.getId())).isEqualByComparingTo("9");
     }
 
     // =====================================================================
@@ -1612,20 +1623,41 @@ class SalesQuoteFinanceFlowPostgresTest {
     }
 
     @Test
-    void financeDealPriceCannotBypassTheSamePrecisionBoundaryAsDirectPrice() {
+    void financeDealPriceCannotBypassTheSamePrecisionBoundaryAsDirectPrice() throws Exception {
         Fixture f = fixture("quote-deal-precision");
         UUID goods = goods("成交价精度货品", BigDecimal.TEN);
+        String within = "12.123456789012345678901234";
+        String tooFine = within + "5";
         loginAs(f.sales());
+        QuoteDetail direct = quotes.create(quoteRequest(f.client(), line(goods, "2", within, "1", null)));
+        assertThat(direct.getItems().getFirst().getPrice()).isEqualByComparingTo(within);
+        assertCode(() -> quotes.create(quoteRequest(f.client(), line(goods, "2", tooFine, "1", null))),
+                ErrorCode.VALIDATION_FAILED);
+        assertThat(quotes.detail(direct.getId()).getItems().getFirst().getPrice()).isEqualByComparingTo(within);
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", null, null, null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
         managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
-        assertCode(() -> finance.edit(draft.getId(), edit(2, claim.claimId(), List.of(
+        assertThatThrownBy(() -> finance.edit(draft.getId(), edit(2, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(draft.getItems().getFirst().getId(), null,
-                        new BigDecimal("12.12345678901"), null, null)))), ErrorCode.VALIDATION_FAILED);
+                        new BigDecimal(within), null, null)))))
+                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
         assertThat(finance.review(draft.getId()).reviewRevision()).isEqualTo(2);
-        assertThat(finance.review(draft.getId()).lines().getFirst().listPrice()).isEqualByComparingTo("10");
+        QuoteFinanceReviewDto accepted;
+        try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+                "money.discount",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))) {
+            accepted = finance.edit(draft.getId(), edit(2, claim.claimId(), List.of(
+                    new QuoteFinanceEditRequest.Line(draft.getItems().getFirst().getId(), null,
+                            new BigDecimal(within), null, null))));
+        }
+        assertThat(accepted.reviewRevision()).isEqualTo(3);
+        assertThat(accepted.lines().getFirst().dealPrice()).isEqualByComparingTo(within);
+        assertCode(() -> finance.edit(draft.getId(), edit(3, claim.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(draft.getItems().getFirst().getId(), null,
+                        new BigDecimal(tooFine), null, null)))), ErrorCode.VALIDATION_FAILED);
+        assertThat(finance.review(draft.getId()).reviewRevision()).isEqualTo(3);
+        assertThat(finance.review(draft.getId()).lines().getFirst().dealPrice()).isEqualByComparingTo(within);
     }
 
     private OrderDetail quotedOrder(Fixture f, UUID goods) {

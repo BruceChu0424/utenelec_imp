@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -323,9 +322,9 @@ Future<_ControlPixels> _pixels(
 }) async => (await tester.runAsync(() async {
   final boundary =
       key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  final image = await boundary.toImage(pixelRatio: 1);
+  final image = await boundary.toImage();
   try {
-    final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    final data = (await image.toByteData())!;
     if (captureName != null &&
         const bool.fromEnvironment('UTEN_WINDOW_HOVER_CAPTURE')) {
       final png = (await image.toByteData(format: ui.ImageByteFormat.png))!;

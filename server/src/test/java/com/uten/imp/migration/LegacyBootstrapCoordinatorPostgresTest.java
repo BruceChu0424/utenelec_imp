@@ -729,7 +729,6 @@ class LegacyBootstrapCoordinatorPostgresTest {
     }
 
     private static org.flywaydb.core.api.MigrationVersion version(Path file) {
-        String name = file.getFileName().toString();
-        return org.flywaydb.core.api.MigrationVersion.fromVersion(name.substring(1, name.indexOf("__")));
+        return MigrationRehearsalSupport.migrationVersionForScript(file.getFileName().toString());
     }
 }

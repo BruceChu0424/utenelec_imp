@@ -44,11 +44,11 @@ class CandidateVersionTests(unittest.TestCase):
             for version, name in rows), encoding="utf-8")
 
     def test_component_order_script_binding_and_old_integer_head_are_preserved(self):
-        rows = [("2", "V2__first.sql"), ("999", "V999__whole.sql"),
+        rows = [("1", "V01__enable_pgcrypto.sql"), ("2", "V2__first.sql"), ("999", "V999__whole.sql"),
                 ("999.1", "V999_1__first_dot.sql"), ("999.2", "V999_2__second_dot.sql"),
                 ("999.11", "V999.11__eleventh_dot.sql"), ("1000", "V1000__next.sql")]
         self.prepare(rows)
-        self.assertEqual((6, 1000, "bootstrap-v3"), verify_candidate.verify(self.root, self.manifest))
+        self.assertEqual((7, 1000, "bootstrap-v3"), verify_candidate.verify(self.root, self.manifest))
         self.manifest.write_text(self.manifest.read_text().replace("V999_2__second_dot.sql", "V999_2__different.sql"))
         with self.assertRaisesRegex(ValueError, "exact reviewed"):
             verify_candidate.verify(self.root, self.manifest)
@@ -99,6 +99,15 @@ class StandaloneVersionTests(unittest.TestCase):
                 result = self.invoke(shell, ["summary"], rows)
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertEqual("3\t999.11\n", result.stdout)
+
+    def test_only_attested_original_legacy_history_can_project_to_canonical_wire(self):
+        for shell in SHELLS:
+            for raw in ("01", "1"):
+                result = self.invoke(shell, ["history"], f"{raw}\tV01__enable_pgcrypto.sql\t1\n")
+                self.assertEqual((0, "1\tV01__enable_pgcrypto.sql\t1\n"), (result.returncode, result.stdout), result.stderr)
+            for row in ("001\tV01__enable_pgcrypto.sql\t1\n", "01\tV01__forged.sql\t1\n", "01\tV1__other.sql\t1\n"):
+                self.assertNotEqual(0, self.invoke(shell, ["history"], row).returncode)
+            self.assertNotEqual(0, self.invoke(shell, ["summary"], "01\tV01__enable_pgcrypto.sql\t1\n").returncode)
 
     def test_aliases_wrong_binding_unsorted_rows_and_bad_crc_cannot_authorize(self):
         for rows in ("999.01\tV999_1__bad.sql\t1\n", "999.1\tV999_2__wrong.sql\t1\n",

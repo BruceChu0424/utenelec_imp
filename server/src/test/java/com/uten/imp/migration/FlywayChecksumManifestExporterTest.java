@@ -37,7 +37,7 @@ class FlywayChecksumManifestExporterTest {
     private static final String OUTPUT_NAME = "uten-imp-flyway-checksums.tsv";
     private static final String HEADER = "# uten-imp-flyway-checksums-v1";
     private static final Pattern MIGRATION_FILE = Pattern.compile(
-            "^V(?<version>[0-9]+)__(?<description>[A-Za-z0-9_]+)\\.sql$");
+            "^V(?<version>[0-9]+(?:[._][0-9]+)*)__(?<description>[A-Za-z0-9_]+)\\.sql$");
 
     @Test
     void exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested()
@@ -54,7 +54,7 @@ class FlywayChecksumManifestExporterTest {
 
         Path migrationDirectory = Path.of(migrationUrl.toURI());
         List<MigrationChecksum> migrations = new ArrayList<>();
-        Set<Integer> versions = new HashSet<>();
+        Set<org.flywaydb.core.api.MigrationVersion> versions = new HashSet<>();
         try (var paths = Files.list(migrationDirectory)) {
             for (Path migrationPath : paths.filter(Files::isRegularFile).toList()) {
                 String filename = migrationPath.getFileName().toString();
@@ -63,7 +63,7 @@ class FlywayChecksumManifestExporterTest {
                 }
                 Matcher matcher = MIGRATION_FILE.matcher(filename);
                 assertTrue(matcher.matches(), () -> "unexpected Flyway SQL filename: " + filename);
-                int version = com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group("version"));
+                var version = MigrationRehearsalSupport.migrationVersionForScript(filename);
                 assertTrue(versions.add(version), () -> "duplicate Flyway version: " + version);
                 LoadableResource migration = new ClassPathResource(
                         Location.fromPath("classpath:", "db/migration"),
@@ -77,15 +77,15 @@ class FlywayChecksumManifestExporterTest {
             }
         }
 
-        migrations.sort(Comparator.comparingInt(MigrationChecksum::version));
+        migrations.sort(Comparator.comparing(MigrationChecksum::version));
         assertEquals(CURRENT_MIGRATION_COUNT, migrations.size(),
                 "signed-release checksum inventory must cover every versioned migration");
-        assertEquals(com.uten.imp.testsupport.FixtureNumbers.integer(CURRENT_HEAD_VERSION), migrations.getLast().version(),
+        assertEquals(org.flywaydb.core.api.MigrationVersion.fromVersion(CURRENT_HEAD_VERSION), migrations.getLast().version(),
                 "signed-release checksum inventory has an unexpected head version");
 
         StringBuilder output = new StringBuilder(32_768).append(HEADER).append('\n');
         for (MigrationChecksum migration : migrations) {
-            output.append(migration.version())
+            output.append(migration.version().getVersion())
                     .append('\t')
                     .append(migration.filename())
                     .append('\t')
@@ -128,6 +128,6 @@ class FlywayChecksumManifestExporterTest {
         assertEquals(output.toString(), Files.readString(destination, StandardCharsets.UTF_8));
     }
 
-    private record MigrationChecksum(int version, String filename, int checksum) {
+    private record MigrationChecksum(org.flywaydb.core.api.MigrationVersion version, String filename, int checksum) {
     }
 }

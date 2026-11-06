@@ -4628,7 +4628,9 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "flywayHistory": [
                 {
                     "checksum": migration["flywayChecksum"],
-                    "description": migration["description"],
+                    # Flyway persists the filename description with underscores
+                    # rendered as spaces; the signed source keeps its raw name.
+                    "description": migration["description"].replace("_", " "),
                     "installedRank": index,
                     "script": migration["file"],
                     "success": True,

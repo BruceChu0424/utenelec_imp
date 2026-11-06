@@ -30,23 +30,27 @@ class FinanceChartImportPostgresTest {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired FinanceChartService chart;
     @Autowired JdbcTemplate db;
+    @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
     @Test void forwardFinancialAuditUsesRealHelpersAndNeverCopiesPrivateSourceBodies()throws Exception {
         var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);
         var world=fixture.seedWorld("finance-audit-forward");fixture.loginAs(world.superAdminUserId());
-        String main,delta;
+        String main,delta,importDelta;
         try(var input=getClass().getResourceAsStream("/db/migration/V1059__financial_subversion_audit_policy_registration.sql")) {
             main=new String(java.util.Objects.requireNonNull(input).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         }
         try(var input=getClass().getResourceAsStream("/db/migration/V1068__financial_source_audit_policy_forward.sql")) {
             delta=new String(java.util.Objects.requireNonNull(input).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         }
+        try(var input=getClass().getResourceAsStream("/db/migration/V1083__finance_chart_import_original_intents.sql")) {
+            importDelta=new String(java.util.Objects.requireNonNull(input).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+        }
         var calls=java.util.regex.Pattern.compile("(?s)SELECT\\s+public\\.fn_audit_track_table\\('([a-z_]+)'\\s*,\\s*'([A-Z_]+)'\\s*,\\s*'[^']+'\\s*,\\s*(?:true|false)\\s*,\\s*(ARRAY\\[(.*?)\\]|NULL)\\s*,\\s*true\\s*,\\s*NULL\\s*\\);");
         var names=new java.util.ArrayList<String>();var policies=new java.util.LinkedHashMap<String,String>();
         var expectedColumns=new java.util.LinkedHashMap<String,java.util.List<String>>();var registration=new StringBuilder();
-        for(String sql:java.util.List.of(main,delta)) {
+        for(String sql:java.util.List.of(main,delta,importDelta)) {
             var matcher=calls.matcher(sql);int count=0;
             while(matcher.find()) {
                 count++;String table=matcher.group(1);if(sql==main)names.add(table);
@@ -54,7 +58,7 @@ class FinanceChartImportPostgresTest {
                 var columns=new java.util.ArrayList<String>();var column=java.util.regex.Pattern.compile("'([^']+)'").matcher(matcher.group(4)==null?"":matcher.group(4));
                 while(column.find())columns.add(column.group(1));expectedColumns.put(table,columns);
             }
-            assertThat(count).isEqualTo(sql==main?57:3);
+            assertThat(count).isEqualTo(sql==main?57:sql==delta?3:1);
         }
         assertThat(names).doesNotHaveDuplicates();
         assertThat(policies.get("finance_application_operations")).isEqualTo("COLUMN_SCOPED");
@@ -72,7 +76,7 @@ class FinanceChartImportPostgresTest {
         String factsBefore=db.queryForObject("SELECT to_jsonb(s)::text FROM finance_statement_source_reviews s WHERE id=?",String.class,source);
         String auditBefore=db.queryForObject("SELECT jsonb_agg(to_jsonb(a) ORDER BY id)::text FROM audit_log a WHERE target_type='finance_statement_source_reviews' AND target_id=?",String.class,source.toString());
         assertThat(auditBefore).isNotNull().doesNotContain(marker,"anonymous-private-source.xls","anonymous-"+source);
-        // Replay the actual Main57 registrars plus the3 additive registrars. The
+        // Replay Main57 plus the3 original and1 import-safe additive registrars. The
         // already-applied minimizer DO is deliberately not re-executed or replaced.
         String publicRegistrations=registration+"SELECT public.fn_refresh_finance_audit_metadata_projection();";
         new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{db.execute(publicRegistrations);db.execute(publicRegistrations);});
@@ -96,10 +100,26 @@ class FinanceChartImportPostgresTest {
         assertThatThrownBy(()->db.update("UPDATE finance_statement_source_reviews SET preview='{}'::jsonb WHERE id=?",source)).hasMessageContaining("不可覆盖");
         String period=com.uten.imp.common.time.BusinessTime.today().toString().substring(0,7);
         String number="987.123456789012345678901234",privateUpdate=marker+"-CHANGED";
-        db.update("INSERT INTO finance_sales_cost_inputs(period,client_id,source_reference,freight_local,updated_by)VALUES(?,?,?,1,?)",period,world.clientId(),marker,world.superAdminUserId());
-        db.update("UPDATE finance_sales_cost_inputs SET source_reference=?,freight_local=?::numeric,row_version=row_version+1 WHERE period=? AND client_id=?",privateUpdate,number,period,world.clientId());
+        java.util.UUID otherClient=java.util.UUID.randomUUID();
+        db.update("INSERT INTO clients(id,code,name,status,code_sequence)VALUES(?,?,?,'使用',(SELECT coalesce(max(code_sequence),0)+1 FROM clients))",otherClient,"AUDIT-"+otherClient,"匿名同月第二财务客户");
+        for(var client:java.util.List.of(world.clientId(),otherClient))db.update("INSERT INTO finance_sales_cost_inputs(period,client_id,source_reference,freight_local,updated_by)VALUES(?,?,?,1,?)",period,client,marker,world.superAdminUserId());
+        long updateAnchor=db.queryForObject("SELECT coalesce(max(id),0) FROM audit_log",Long.class);
+        for(var client:java.util.List.of(world.clientId(),otherClient))assertThat(db.update("UPDATE finance_sales_cost_inputs SET source_reference=?,freight_local=?::numeric,row_version=row_version+1 WHERE period=? AND client_id=?",privateUpdate,number,period,client)).isEqualTo(1);
+        var updates=db.queryForList("SELECT to_jsonb(a)::text FROM audit_log a WHERE target_type='finance_sales_cost_inputs' AND action='update' AND id>? ORDER BY id",String.class,updateAnchor);
+        assertThat(updates).hasSize(2);var actualClients=new java.util.HashSet<String>();
+        for(String value:updates){
+            var event=com.uten.imp.common.finance.FinancialJsonResults.tree(json,value);
+            assertThat(event.path("target_id").asText()).isEqualTo(period);
+            assertThat(event.path("before").path("period").asText()).isEqualTo(period);
+            assertThat(event.path("after").path("period").asText()).isEqualTo(period);
+            String client=event.path("before").path("client_id").asText();
+            assertThat(event.path("after").path("client_id").asText()).isEqualTo(client);actualClients.add(client);
+            assertThat(value).contains("_redacted_changes","freight_local","source_reference").doesNotContain(marker,privateUpdate,number);
+        }
+        assertThat(actualClients).containsExactlyInAnyOrder(world.clientId().toString(),otherClient.toString());
         String privateTrail=db.queryForObject("SELECT jsonb_agg(to_jsonb(a) ORDER BY id)::text FROM audit_log a WHERE target_type='finance_sales_cost_inputs' AND (before->>'client_id'=? OR after->>'client_id'=?)",String.class,world.clientId().toString(),world.clientId().toString());
         assertThat(privateTrail).contains("_redacted_changes","freight_local","source_reference").doesNotContain(marker,privateUpdate,number);
+        assertThat(db.queryForList("SELECT action FROM audit_log WHERE target_type='finance_sales_cost_inputs' AND (before->>'client_id'=? OR after->>'client_id'=?) ORDER BY id",String.class,world.clientId().toString(),world.clientId().toString())).containsExactly("insert","update");
         java.util.UUID operation=java.util.UUID.randomUUID();
         db.update("INSERT INTO finance_application_operations(request_id,application_id,actor_id,operation,payload_hash,result)VALUES(?,NULL,?,'PROCUREMENT_AP_POLICY_SAVE',repeat('c',64),jsonb_build_object('requestBody',?::text,'result',?::text,'amount',?::numeric))",operation,world.superAdminUserId(),marker,privateUpdate,number);
         String operationTrail=db.queryForObject("SELECT jsonb_agg(to_jsonb(a) ORDER BY id)::text FROM audit_log a WHERE target_type='finance_application_operations' AND target_id=?",String.class,operation.toString());
@@ -195,8 +215,9 @@ class FinanceChartImportPostgresTest {
         var world=fixture.seedWorld("finance-chart-create-lines");fixture.loginAs(world.superAdminUserId());
         chart.apply(new FinanceChartContracts.Apply(chart.preview("chart.xls",getClass().getResourceAsStream("/finance/finance-chart-codes.xls").readAllBytes()).importId()));
         var equity=chart.list().stream().filter(a->a.code().equals("310410")).findFirst().orElseThrow();
-        var command=new FinanceChartContracts.CreateTarget(equity.version(),"EQUITY","EQUITY",null,"BS_51","PL_PRIOR_ADJUSTMENT");
-        chart.createTarget(equity.code(),command);chart.createTarget(equity.code(),command);
+        var command=new FinanceChartContracts.CreateTarget(java.util.UUID.randomUUID(),equity.version(),"EQUITY","EQUITY",null,"BS_51","PL_PRIOR_ADJUSTMENT");
+        var originalReceipt=chart.createTargetCommand(equity.code(),json.valueToTree(command));
+        assertThat(chart.createTargetCommand(equity.code(),json.valueToTree(command))).isEqualTo(originalReceipt);
         var saved=chart.list().stream().filter(a->a.code().equals(equity.code())).findFirst().orElseThrow();
         assertThat(saved.targets()).hasSize(1);
         assertThat(saved.lineKeys()).containsExactlyInAnyOrder("BS_51","PL_PRIOR_ADJUSTMENT");
@@ -214,7 +235,7 @@ class FinanceChartImportPostgresTest {
         assertThat(db.queryForObject("SELECT row_version FROM finance_chart_codes WHERE code=?",Long.class,equity.code())).isEqualTo(saved.version());
         assertThat(db.queryForObject("SELECT count(*) FROM finance_chart_owned_bindings WHERE code=?",Integer.class,equity.code())).isEqualTo(2);
         assertThat(db.queryForObject("SELECT currency_id FROM finance_chart_codes WHERE code=?",java.util.UUID.class,equity.code())).isEqualTo(saved.currencyId());
-        chart.createTarget(equity.code(),command);
+        assertThat(chart.createTargetCommand(equity.code(),json.valueToTree(command))).isEqualTo(originalReceipt);
         assertThat(chart.list().stream().filter(a->a.code().equals(equity.code())).findFirst().orElseThrow()).isEqualTo(saved);
         var before=chart.list().stream().filter(a->a.code().equals("100201")).findFirst().orElseThrow();
         int styles=db.queryForObject("SELECT count(*) FROM payment_styles",Integer.class);
@@ -239,13 +260,15 @@ class FinanceChartImportPostgresTest {
         assertThat(chart.list()).hasSize(177);
         assertThat(db.queryForObject("SELECT count(*) FROM gl_entries",Integer.class)).isEqualTo(journalBefore);
         var account=chart.list().stream().filter(a->a.code().equals("1001")).findFirst().orElseThrow();
-        var create=new FinanceChartContracts.CreateTarget(account.version(),"ACCOUNT",null,null,"BS_1",null);
-        chart.createTarget("1001",create);chart.createTarget("1001",create);
+        var create=new FinanceChartContracts.CreateTarget(java.util.UUID.randomUUID(),account.version(),"ACCOUNT",null,null,"BS_1",null);
+        var created=chart.createTargetCommand("1001",json.valueToTree(create));
+        assertThat(chart.createTargetCommand("1001",json.valueToTree(create))).isEqualTo(created);
         account=chart.list().stream().filter(a->a.code().equals("1001")).findFirst().orElseThrow();
         assertThat(account.targets()).hasSize(1);var nativeId=account.targets().getFirst().id();
         assertThat(account.lineKeys()).containsExactly("BS_1");
-        var mapping=new FinanceChartContracts.Mapping(account.version(),List.of(nativeId),"BS_1",null);
-        chart.map("1001",mapping);chart.map("1001",mapping);
+        var mapping=new FinanceChartContracts.Mapping(java.util.UUID.randomUUID(),account.version(),List.of(nativeId),"BS_1",null,null,null);
+        var mapped=chart.mapCommand("1001",json.valueToTree(mapping));
+        assertThat(chart.mapCommand("1001",json.valueToTree(mapping))).isEqualTo(mapped);
         assertThat(db.queryForObject("SELECT count(*) FROM finance_report_line_bindings WHERE line_key='BS_1' AND style_id=?",Integer.class,nativeId)).isEqualTo(1);
         var bank=chart.list().stream().filter(a->a.code().equals("100201")).findFirst().orElseThrow();
         assertThatThrownBy(()->chart.map("100201",new FinanceChartContracts.Mapping(bank.version(),List.of(nativeId),"BS_1",null)))

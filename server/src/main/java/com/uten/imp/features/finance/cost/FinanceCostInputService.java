@@ -92,7 +92,7 @@ public class FinanceCostInputService {
     public Saved savePlastic(Plastic input){
         write();if(input==null||input.periodLineId()==null)throw invalid("请选择已结算塑料期间行");
         validateQuantity(input.rejectReturnQty());validateQuantity(input.rejectIssueQty());
-        validateAmount(input.weightKgPerUnit(),10,"单位换算");
+        if(input.weightKgPerUnit()!=null)com.uten.imp.common.util.FinancialExactAmount.rate(input.weightKgPerUnit(),"单位换算");
         if(input.weightKgPerUnit()!=null&&input.weightKgPerUnit().signum()<=0)throw invalid("每原单位千克数必须大于0");
         if(input.confirmed()&&(input.weightKgPerUnit()==null||input.sourceReference()==null||input.sourceReference().isBlank()))throw invalid("请核对原单位到KG的换算及来源依据后确认");
         return execute(input.requestId(),"PLASTIC",input,"plastic:"+input.periodLineId(),()->{
@@ -162,8 +162,10 @@ public class FinanceCostInputService {
     private void requireClient(UUID id){if(id==null||db.queryForObject("SELECT count(*) FROM clients WHERE id=? AND NOT is_deleted",Integer.class,id)!=1)throw invalid("客户不存在或已删除");}
     private static void validPeriod(String period){try{if(period==null||!period.matches("[0-9]{4}-(0[1-9]|1[0-2])"))throw new IllegalArgumentException();YearMonth.parse(period);}catch(RuntimeException e){throw invalid("月份格式应为YYYY-MM");}}
     private static void expected(long actual,long expected){if(actual!=expected)throw conflict("原表资料已变化，请刷新核对后重试");}
-    private static void validateQuantity(BigDecimal value){if(value==null||value.signum()<0)throw invalid("数量须为非负数");validateAmount(value,4,"数量");}
-    private static void validateAmount(BigDecimal value,int scale,String label){if(value!=null&&(value.scale()>scale||value.precision()-value.scale()>14))throw invalid(label+"精度超出允许范围");}
+    private static void validateQuantity(BigDecimal value){
+        if(value==null||value.signum()<0)throw invalid("数量须为非负数");
+        com.uten.imp.common.util.FinancialExactAmount.quantity(value,"原表分类数量");
+    }
     private String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException("原表资料无法编码",e);}}
     @SuppressWarnings("unchecked") private Map<String,Object> decode(String value){try{return json.readValue(value,Map.class);}catch(Exception e){throw new IllegalStateException("原表资料回执无效",e);}}
     private static ApiException invalid(String m){return new ApiException(ErrorCode.VALIDATION_FAILED,m);}

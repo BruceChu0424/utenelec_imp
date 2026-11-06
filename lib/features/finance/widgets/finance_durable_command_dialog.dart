@@ -10,6 +10,7 @@ import '../../../components/feedback/uten_dialog.dart';
 
 import '../shared/finance_original_command.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/performance/json_value_snapshot.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
@@ -25,17 +26,40 @@ enum FinanceDurableOperation {
   inventoryPolicy('INVENTORY_COST_POLICY_SAVE', '对账与启用策略'),
   inventoryPeriod('INVENTORY_COST_PERIOD_CHOICE', '指定入账期间'),
   inventoryPost('INVENTORY_COST_POST', '追加成本凭证'),
-  inventoryClose('INVENTORY_COST_CLOSE', '关闭成本期间');
+  inventoryClose('INVENTORY_COST_CLOSE', '关闭成本期间'),
+  chartAccountCreate('CHART_ACCOUNT_CREATE', '新增科目'),
+  chartMappingReplace('CHART_MAPPING_REPLACE', '对应科目/报表'),
+  chartTargetCreate('CHART_TARGET_CREATE', '补建并对应此科目');
 
   const FinanceDurableOperation(this.key, this.title);
   final String key, title;
-  bool get inventory => index >= inventoryPolicy.index;
+  bool get inventory => const {
+    inventoryPolicy,
+    inventoryPeriod,
+    inventoryPost,
+    inventoryClose,
+  }.contains(this);
+  bool get chart => const {
+    chartAccountCreate,
+    chartMappingReplace,
+    chartTargetCreate,
+  }.contains(this);
   Set<String> get writePermissions => {
     inventory ? Perm.financePostExecute : Perm.paymentStyleEdit,
     if (this == procurementPolicy) ...{
       Perm.supplierSettlementConfirm,
       Perm.financePostExecute,
     },
+    if (this == chartTargetCreate) Perm.paymentStyleCreate,
+  };
+  Set<String> get potentialWritePermissions => {
+    ...writePermissions,
+    if (this == chartAccountCreate) Perm.paymentStyleCreate,
+  };
+  Set<String> writePermissionsFor(Map<String, dynamic> body) => {
+    ...writePermissions,
+    if (this == chartAccountCreate && body['category'] != null)
+      Perm.paymentStyleCreate,
   };
   Set<String> get readPermissions => {
     Perm.financeReportView,
@@ -44,9 +68,13 @@ enum FinanceDurableOperation {
       Perm.financeViewAll,
     },
     if (inventory) Perm.goodsCostView,
+    if (chart) Perm.financeViewAll,
   };
   String get method => switch (this) {
-    procurementPolicy || reportBinding || inventoryPolicy => 'PUT',
+    procurementPolicy ||
+    reportBinding ||
+    inventoryPolicy ||
+    chartMappingReplace => 'PUT',
     _ => 'POST',
   };
   String path(String target) => switch (this) {
@@ -57,12 +85,18 @@ enum FinanceDurableOperation {
     inventoryPeriod => '/finance/gl/inventory-cost/postings/$target/period',
     inventoryPost => '/finance/gl/inventory-cost/periods/$target/post',
     inventoryClose => '/finance/gl/inventory-cost/periods/$target/close',
+    chartAccountCreate => '/finance/chart',
+    chartMappingReplace => '/finance/chart/$target',
+    chartTargetCreate => '/finance/chart/$target/create-target',
   };
   String receiptPath(String requestId) => switch (this) {
     procurementPolicy =>
       '/finance/procurement-payable-recognitions/policy/operations/$requestId',
     reportBinding ||
     reportDefaults => '/finance/reports/gl/line-bindings/operations/$requestId',
+    chartAccountCreate ||
+    chartMappingReplace ||
+    chartTargetCreate => '/finance/chart/operations/$requestId',
     _ => '/finance/gl/inventory-cost/operations/$requestId',
   };
   bool validTarget(String target) => switch (this) {
@@ -71,8 +105,55 @@ enum FinanceDurableOperation {
     inventoryPost || inventoryClose =>
       RegExp(r'^[0-9]{4}-(0[1-9]|1[0-2])$').hasMatch(target) &&
           !target.startsWith('0000'),
+    chartMappingReplace ||
+    chartTargetCreate => RegExp(r'^[0-9]{1,32}$').hasMatch(target),
     _ => target.isEmpty,
   };
+  bool validDraftBody(Map<String, dynamic> body) {
+    if (!chart) return true;
+    final creating = this == chartAccountCreate;
+    final requiredKeys = creating
+        ? {'code', 'name', 'currencyName', 'category', 'sourceReference'}
+        : {
+            'expectedVersion',
+            if (this == chartMappingReplace) 'styleIds' else 'category',
+          };
+    final allowed = {
+      ...requiredKeys,
+      'classification',
+      'currencyId',
+      if (!creating) ...{'balanceLineKey', 'profitLineKey'},
+    };
+    if (!body.keys.toSet().containsAll(requiredKeys) ||
+        body.keys.any((key) => !allowed.contains(key))) {
+      return false;
+    }
+    for (final key in [
+      'classification',
+      'currencyId',
+      'category',
+      'currencyName',
+      'balanceLineKey',
+      'profitLineKey',
+    ]) {
+      if (body[key] != null && body[key] is! String) return false;
+    }
+    if (creating) {
+      return [
+        'code',
+        'name',
+        'sourceReference',
+      ].every((key) => body[key] is String);
+    }
+    if (body['expectedVersion'] is! int ||
+        (body['expectedVersion'] as int) < 0) {
+      return false;
+    }
+    return this != chartMappingReplace ||
+        body['styleIds'] is List &&
+            (body['styleIds'] as List).every((id) => id is String);
+  }
+
   static FinanceDurableOperation parse(String key) =>
       values.where((value) => value.key == key).firstOrNull ??
       (throw const FormatException('财务草稿的原操作不受支持'));
@@ -113,7 +194,8 @@ Future<Map<String, dynamic>?> showFinanceDurableCommandDialog(
   required FinanceCommandReviewLoader reviewLoader,
 }) {
   if (!operation.validTarget(target) ||
-      initialBody == null && resumeDraftId == null) {
+      initialBody == null && resumeDraftId == null ||
+      initialBody != null && !operation.validDraftBody(initialBody)) {
     throw const FormatException('财务命令缺少原目标或原输入');
   }
   return showDialog<Map<String, dynamic>>(
@@ -141,8 +223,15 @@ class FinanceDurableEditor {
   Map<String, dynamic> get contextData => Map.unmodifiable(_owner._contextData);
   bool get editable => _owner._editable;
   bool get pending => _owner._sent != null;
+  bool get needsCurrentReview => _owner._needsCurrentReview;
+  bool get stillCurrent => _owner.formDraftIdentityIsCurrent && _owner._canRead;
   TextEditingController controller(String key) => _owner._controller(key);
   void set(String key, Object? value) => _owner._set(key, value);
+  void setContext(String key, Object? value) => _owner._setContext(key, value);
+  Future<T?> read<T>(String title, Future<T> Function(ApiClient api) action) =>
+      _owner._editorRead(title, action);
+  Future<T?> interact<T>(Future<T?> Function() action) =>
+      _owner._editorInteraction(action);
 }
 
 class _FinanceDurableCommandDialog extends ConsumerStatefulWidget {
@@ -183,6 +272,7 @@ class _FinanceDurableCommandDialogState
   bool _needsCurrentReview = false;
   bool _ready = false, _busy = false;
   bool _menuOpen = false;
+  bool _interacting = false;
 
   String? _error;
   late final _editor = FinanceDurableEditor._(this);
@@ -196,12 +286,13 @@ class _FinanceDurableCommandDialogState
   bool get _canWrite =>
       financeOriginalIdentityCanMutate(ref.read(authenticatedScopeProvider)) &&
       _canRead &&
-      widget.operation.writePermissions.every(
-        ref.read(currentPermissionsProvider).contains,
-      );
+      widget.operation
+          .writePermissionsFor(_sent ?? _body)
+          .every(ref.read(currentPermissionsProvider).contains);
   bool get _editable =>
       _ready &&
       !_busy &&
+      !_interacting &&
       _sent == null &&
       _canWrite &&
       formDraftIdentityIsCurrent &&
@@ -222,7 +313,7 @@ class _FinanceDurableCommandDialogState
   @override
   String? get formDraftResumeId => widget.resumeDraftId;
   @override
-  bool get formDraftBusy => _busy;
+  bool get formDraftBusy => _busy || _interacting;
   @override
   bool get formDraftCanReplaySubmission => _sent != null;
   @override
@@ -233,7 +324,7 @@ class _FinanceDurableCommandDialogState
         identity: boundary.identity,
         api: boundary.api,
         permissions: {...boundary.permissions}
-          ..removeAll(widget.operation.writePermissions),
+          ..removeAll(widget.operation.potentialWritePermissions),
         superAdmin: boundary.superAdmin,
       );
   @override
@@ -259,8 +350,12 @@ class _FinanceDurableCommandDialogState
         data['context'] is! Map) {
       throw StateError('原财务命令身份、版本或输入不完整');
     }
+    final restoredBody = _copy(Map<String, dynamic>.from(data['body'] as Map));
+    if (!widget.operation.validDraftBody(restoredBody)) {
+      throw StateError('原科目字段、版本或选择不完整，草稿继续保留');
+    }
     _requestId = data['requestId'] as String;
-    _body = _copy(Map<String, dynamic>.from(data['body'] as Map));
+    _body = restoredBody;
     _contextData = _copy(Map<String, dynamic>.from(data['context'] as Map));
     _sent = data['sent'] == null
         ? null
@@ -324,6 +419,45 @@ class _FinanceDurableCommandDialogState
     markFormDraftChanged();
   }
 
+  void _setContext(String key, Object? value) {
+    if (!_editable) return;
+    setState(() => _contextData[key] = value);
+    markFormDraftChanged();
+  }
+
+  Future<T?> _editorRead<T>(
+    String title,
+    Future<T> Function(ApiClient api) action,
+  ) async {
+    if (!_ready ||
+        _busy ||
+        !_canRead ||
+        !formDraftIdentityIsCurrent ||
+        formDraftRestorationBlocked) {
+      return null;
+    }
+    setState(() => _busy = true);
+    try {
+      final result = await _waitScoped<T>(
+        title,
+        (scope) => scope.run(() => action(ref.read(apiClientProvider))),
+      );
+      return result?.response;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<T?> _editorInteraction<T>(Future<T?> Function() action) async {
+    if (!_editable || _interacting) return null;
+    setState(() => _interacting = true);
+    try {
+      return await action();
+    } finally {
+      if (mounted) setState(() => _interacting = false);
+    }
+  }
+
   Map<String, dynamic> _verify(Map<String, dynamic> envelope) {
     if (_sent == null) throw StateError('缺少原财务命令');
     return _verifyAgainst(envelope, _sent!);
@@ -340,7 +474,40 @@ class _FinanceDurableCommandDialogState
   Map<String, dynamic> _verifyAgainst(
     Map<String, dynamic> envelope,
     Map<String, dynamic> body,
-  ) => _commandFor(body).verify(envelope);
+  ) {
+    final verified = _commandFor(body).verify(envelope);
+    if (widget.operation.chart && envelope['outcome'] == 'SUCCEEDED') {
+      final result = envelope['result'];
+      final creating =
+          widget.operation == FinanceDurableOperation.chartAccountCreate;
+      if (result is! Map ||
+          result['requestId'] != body['requestId'] ||
+          result['code'] != (creating ? body['code'] : widget.target) ||
+          result['status'] != (creating ? 'CREATED' : 'APPLIED') ||
+          !creating &&
+              (result['version'] is! int ||
+                  (result['version'] as int) < 0 ||
+                  result['styleIds'] is! List ||
+                  (result['styleIds'] as List).any(
+                    (id) =>
+                        id is! String ||
+                        !Uuid.isValidUUIDFormat(fromString: id),
+                  ) ||
+                  result['lineKeys'] is! List ||
+                  (result['lineKeys'] as List).any((key) => key is! String) ||
+                  result['classification'] != null &&
+                      result['classification'] is! String ||
+                  result['currencyId'] != null &&
+                      (result['currencyId'] is! String ||
+                          !Uuid.isValidUUIDFormat(
+                            fromString: result['currencyId'] as String,
+                          )))) {
+        throw StateError('原科目回执的编码、结果或版本依据不一致，原请求继续保留');
+      }
+    }
+    return verified;
+  }
+
   Future<void> _acceptReceipt(Map<String, dynamic> envelope) async {
     _verify(envelope);
     if (envelope['outcome'] == 'CANCELLED_UNWRITTEN') {
@@ -357,9 +524,29 @@ class _FinanceDurableCommandDialogState
     if (mounted) Navigator.pop(context, envelope);
   }
 
+  Future<({AuthenticatedRequestScope scope, T response})?> _waitScoped<T>(
+    String title,
+    Future<T> Function(AuthenticatedRequestScope scope) action,
+  ) => UtenBusyOverlay.run<({AuthenticatedRequestScope scope, T response})?>(
+    context,
+    title: title,
+    action: () async {
+      final scope = await captureFormDraftRequestScope();
+      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) {
+        return null;
+      }
+      final response = await action(scope);
+      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) {
+        return null;
+      }
+      return (scope: scope, response: response);
+    },
+  );
+
   Future<void> _save() async {
     if (!_ready ||
         _busy ||
+        _interacting ||
         _menuOpen ||
         !_canWrite ||
         _needsCurrentReview ||
@@ -379,13 +566,10 @@ class _FinanceDurableCommandDialogState
         _requestId = const Uuid().v4();
       }
       _sent ??= _copy({..._body, 'requestId': _requestId});
-      final scope = await captureFormDraftRequestScope();
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
-      final envelope = await runFormDraftSubmission(
-        () => UtenBusyOverlay.run(
-          context,
-          title: '正在处理${widget.operation.title}',
-          action: () => scope.run(() async {
+      final outcome = await _waitScoped<Map<String, dynamic>>(
+        '正在处理${widget.operation.title}',
+        (scope) => runFormDraftSubmission(
+          () => scope.run(() async {
             final api = ref.read(apiClientProvider);
             dispatched = true;
             final response = widget.operation.method == 'PUT'
@@ -400,11 +584,16 @@ class _FinanceDurableCommandDialogState
             _verify(response);
             return response;
           }),
+          isDefiniteRejection: (_) => false,
         ),
-        isDefiniteRejection: (_) => false,
       );
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
-      await _acceptReceipt(envelope);
+      if (outcome == null ||
+          !mounted ||
+          !outcome.scope.isCurrent ||
+          !formDraftIdentityIsCurrent) {
+        return;
+      }
+      await _acceptReceipt(outcome.response);
     } catch (error) {
       if (!dispatched && !hadPending) {
         _sent = null;
@@ -435,6 +624,7 @@ class _FinanceDurableCommandDialogState
   Future<void> _receipt() async {
     if (!_ready ||
         _busy ||
+        _interacting ||
         _sent == null ||
         !_canRead ||
         !formDraftIdentityIsCurrent ||
@@ -446,18 +636,19 @@ class _FinanceDurableCommandDialogState
       _error = null;
     });
     try {
-      final scope = await captureFormDraftRequestScope();
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
-      final response = await UtenBusyOverlay.run(
-        context,
-        title: '正在核对原${widget.operation.title}',
-        action: () => scope.run(
-          () => ref
-              .read(apiClientProvider)
-              .get(widget.operation.receiptPath(_requestId)),
+      final outcome = await _waitScoped<Map<String, dynamic>>(
+        '正在核对原${widget.operation.title}',
+        (scope) => scope.run(
+          () => _commandFor(_sent!).readReceiptResponsive(
+            ref.read(apiClientProvider),
+            widget.operation.receiptPath(_requestId),
+            isCurrent: () =>
+                mounted && scope.isCurrent && formDraftIdentityIsCurrent,
+          ),
         ),
       );
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
+      if (outcome == null) return;
+      final response = outcome.response;
       if (response['found'] != true) {
         setState(() => _error = '尚未取得原成功回执，原内容和请求继续保留。');
         return;
@@ -477,8 +668,12 @@ class _FinanceDurableCommandDialogState
   Future<void> _cancelUnwritten() async {
     if (!_ready ||
         _busy ||
+        _interacting ||
         _sent == null ||
         !_canRead ||
+        !financeOriginalIdentityCanMutate(
+          ref.read(authenticatedScopeProvider),
+        ) ||
         !formDraftIdentityIsCurrent ||
         formDraftRestorationBlocked) {
       return;
@@ -488,12 +683,9 @@ class _FinanceDurableCommandDialogState
       _error = null;
     });
     try {
-      final scope = await captureFormDraftRequestScope();
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
-      final response = await UtenBusyOverlay.run(
-        context,
-        title: '正在核实原请求是否写入',
-        action: () => scope.run(
+      final outcome = await _waitScoped<Map<String, dynamic>>(
+        '正在核实原请求是否写入',
+        (scope) => scope.run(
           () => ref
               .read(apiClientProvider)
               .post(
@@ -502,7 +694,8 @@ class _FinanceDurableCommandDialogState
               ),
         ),
       );
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
+      if (outcome == null) return;
+      final response = outcome.response;
       await _acceptReceipt(response);
     } catch (error) {
       if (mounted && formDraftIdentityIsCurrent) {
@@ -521,7 +714,9 @@ class _FinanceDurableCommandDialogState
   Future<void> _reviewCurrent() async {
     if (!_ready ||
         _busy ||
+        _interacting ||
         _sent != null ||
+        !_needsCurrentReview ||
         !_canRead ||
         !formDraftIdentityIsCurrent ||
         formDraftRestorationBlocked) {
@@ -532,12 +727,9 @@ class _FinanceDurableCommandDialogState
       _error = null;
     });
     try {
-      final scope = await captureFormDraftRequestScope();
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
-      final review = await UtenBusyOverlay.run(
-        context,
-        title: '正在读取当前设置',
-        action: () => scope.run(
+      final outcome = await _waitScoped<FinanceCommandReview>(
+        '正在读取当前设置',
+        (scope) => scope.run(
           () => widget.reviewLoader(
             ref.read(apiClientProvider),
             _copy(_body),
@@ -546,12 +738,15 @@ class _FinanceDurableCommandDialogState
           ),
         ),
       );
-      if (!mounted || !scope.isCurrent || !formDraftIdentityIsCurrent) return;
+      if (outcome == null || !mounted) return;
+      final scope = outcome.scope, review = outcome.response;
       final allowed = switch (widget.operation) {
         FinanceDurableOperation.procurementPolicy => {'expectedRevision'},
         FinanceDurableOperation.reportBinding => {'expectedFingerprint'},
         FinanceDurableOperation.inventoryPolicy ||
-        FinanceDurableOperation.inventoryClose => {'expectedVersion'},
+        FinanceDurableOperation.inventoryClose ||
+        FinanceDurableOperation.chartMappingReplace ||
+        FinanceDurableOperation.chartTargetCreate => {'expectedVersion'},
         _ => <String>{},
       };
       if (review.versionPatch.keys.any((key) => !allowed.contains(key)) ||
@@ -593,11 +788,15 @@ class _FinanceDurableCommandDialogState
   }
 
   Future<void> _close() async {
-    if (_busy || _menuOpen) return;
+    if (_busy || _interacting || _menuOpen) return;
     if (_sent != null && formDraftHasUnknownSubmission) {
       setState(() => _busy = true);
       try {
-        await saveFormDraftNow();
+        await UtenBusyOverlay.run(
+          context,
+          title: '正在保留原请求',
+          action: saveFormDraftNow,
+        );
         if (mounted && formDraftIdentityIsCurrent) Navigator.pop(context);
       } catch (error) {
         if (mounted) setState(() => _error = describeFormSaveError(error));
@@ -676,7 +875,7 @@ class _FinanceDurableCommandDialogState
           if (_sent != null)
             ...financeOriginalRequestActions(
               context,
-              busy: _busy,
+              busy: _busy || _interacting,
               receiptLabel: '核对原操作结果',
               receipt: _receipt,
               cancel: _cancelUnwritten,
@@ -686,7 +885,7 @@ class _FinanceDurableCommandDialogState
             ),
           UtenButton(
             type: UtenButtonType.secondary,
-            onPressed: _busy ? null : _close,
+            onPressed: _busy || _interacting ? null : _close,
             child: Text(_sent == null ? '取消' : '稍后核对'),
           ),
           UtenButton(
@@ -698,6 +897,7 @@ class _FinanceDurableCommandDialogState
             onPressed:
                 _ready &&
                     !_busy &&
+                    !_interacting &&
                     (_needsCurrentReview ? _canRead : _canWrite) &&
                     !formDraftRestorationBlocked
                 ? (_needsCurrentReview ? _reviewCurrent : _save)

@@ -31,9 +31,6 @@ class FinancialStatementSqlPostgresTest {
         return java.util.Map.of(
                 "report.percentage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(2, "HALF_UP"));
     }
-    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
-    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
-
     private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine");
     private static JdbcTemplate db;
     private static NamedParameterJdbcTemplate named;
@@ -117,8 +114,10 @@ class FinancialStatementSqlPostgresTest {
         assertThat(monthly).hasSize(20);
         var annual=statements.profitAnnual(2026);
         assertThat(annual).hasSize(21);amount(annual,33,"m1","25");amount(annual,32,"m1","175");
-        assertThat(org.assertj.core.api.Assertions.catchThrowable(()->FinancialStatementAnnual.totals(annual)))
-                .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        try(var noChoice=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of())) {
+            assertThat(org.assertj.core.api.Assertions.catchThrowable(()->FinancialStatementAnnual.totals(annual)))
+                    .isInstanceOf(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class);
+        }
         try(var precision=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("report.percentage",
                 new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(8,"HALF_UP")))) {
             FinancialStatementAnnual.totals(annual);
@@ -151,7 +150,7 @@ class FinancialStatementSqlPostgresTest {
         amount(statements.profit(2026,1),14,"m1","100");amount(statements.balance(LocalDate.of(2026,1,31)),1,"periodEnd","200");
     }
 
-    @Test void verifiedClosingIsExcludedFromProfitAndChangedCertificationDoesNotEraseRealPostedFacts() {
+    @Test void verifiedClosingIsExcludedFromProfitAndChangedCertificationDoesNotEraseRealPostedFacts() throws Exception {
         UUID revenue=db.queryForObject("SELECT style_id FROM finance_report_line_bindings WHERE line_key='PL_1'",UUID.class);
         UUID retained=style("EQUITY","BS_51");
         db.update("DELETE FROM finance_report_line_confirmations WHERE line_key='BS_51'");
@@ -165,7 +164,10 @@ class FinancialStatementSqlPostgresTest {
         var rows=statements.profit(2026,2);
         amount(rows,1,"m1","500");
         amount(rows,1,"m2","100");
-        FinancialStatementAnnual.totals(rows,2);amount(rows,32,"yearTotal","300");
+        try(var precision=com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
+            FinancialStatementAnnual.totals(rows,2);
+        }
+        amount(rows,32,"yearTotal","300");
     }
 
     @Test void fundingChoicesUseProvedBankAncestryOrExplicitMonetaryFundsInsteadOfAllAccountSubjects() {

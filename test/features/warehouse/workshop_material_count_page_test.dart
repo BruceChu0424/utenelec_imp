@@ -18,6 +18,8 @@ import 'package:flutter/material.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_field_message.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -434,12 +436,25 @@ void main() {
       tester.widget<TextField>(bags).controller!.text,
       '0.0000000000000000000000001',
     );
-    expect(
-      (tester.widget<TextField>(bags).decoration as UtenInputDecoration)
-          .base
-          .errorText,
-      contains('最多 40 位整数、24 位小数'),
+    final decoration =
+        tester.widget<TextField>(bags).decoration as UtenInputDecoration;
+    expect(decoration.base.error, isA<UtenFieldMessage>());
+    final error = decoration.base.error! as UtenFieldMessage;
+    expect(error.kind, UtenFieldMessageKind.error);
+    expect(error.message, contains('最多 40 位整数、24 位小数'));
+    final hint = find.descendant(
+      of: bags,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon && widget.errorMessage == error.message,
+      ),
     );
+    expect(hint, findsOneWidget);
+    await tester.ensureVisible(hint);
+    await tester.tap(hint.hitTestable());
+    await tester.pump();
+    expect(find.textContaining('最多 40 位整数、24 位小数'), findsOneWidget);
+    expect(repo.savedLines, hasLength(saved));
   });
 
   testWidgets('周期盘点录入与审核按钮分权，审核者不能修改草稿行', (tester) async {

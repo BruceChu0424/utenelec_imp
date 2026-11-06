@@ -358,8 +358,13 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
               child: UtenDialogHeader(
                 showCloseButton: true,
 
-                title: const Text(
-                  '${FinanceRequirementNames.otherReceivableStatement}原表导入比对',
+                title: UtenDialogTitleWithHint(
+                  title: Text(
+                    '${FinanceRequirementNames.otherReceivableStatement}原表导入比对'
+                    '${_result == null ? '' : '（未对应${(_result!['unmappedSourceRows'] as List).length}行）'}',
+                  ),
+                  info:
+                      '比对保留全部原行号、原值及差额；逐行明确对应页每页编辑30行，提交比对使用完整清单。原件及期间载入后冻结，需另一原件或期间时，先关闭保留草稿再另开。',
                 ),
                 onClose: _busy ? null : _close,
               ),
@@ -599,20 +604,6 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
                       idOf: (r) => '${r['sourceRow']}:${r['label']}',
                       busy: _busy,
                     ),
-            ),
-            UtenDialogSurface(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_result != null)
-                    Text(
-                      '尚未对应原行：${(_result!['unmappedSourceRows'] as List).length}行；逐行对应页保留完整清单',
-                    ),
-                  const Text(
-                    '比对保留全部原行号、原值及差额；每页编辑30行，提交比对取完整清单。原件及期间载入后冻结，需另一原件/期间时先关闭保留草稿再另开。',
-                  ),
-                ],
-              ),
             ),
           ],
         ),

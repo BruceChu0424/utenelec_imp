@@ -220,6 +220,11 @@ void main() {
         );
         await tester.tap(find.text('打开'));
         await tester.pumpAndSettle();
+        expect(find.text('打印范围'), findsOneWidget);
+        final allResults = find.byKey(const ValueKey('table-output-all'));
+        expect(allResults.hitTestable(), findsOneWidget);
+        await tester.tap(allResults);
+        await tester.pumpAndSettle();
         expect(find.textContaining('发货清单'), findsWidgets);
         expect(find.textContaining('审核员'), findsOneWidget);
         expect(find.textContaining('财务原名'), findsOneWidget);

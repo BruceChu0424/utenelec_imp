@@ -189,6 +189,12 @@ public class FinanceOperationJournal {
     /** Legacy adapters validate the same identity but keep their own established
      * fingerprint payload and lock order rather than translating old IDs. */
     public <T>T cancellationBody(UUID routedRequest,Cancellation cancellation,String operation,String method,String path,Class<T> bodyType){
+        return cancellationBodyForIdentityField(routedRequest,cancellation,operation,method,path,"requestId",bodyType);
+    }
+    /** The field name belongs to a reviewed protocol, never to the incoming request. */
+    public <T>T cancellationBodyForIdentityField(UUID routedRequest,Cancellation cancellation,String operation,String method,String path,String identityField,Class<T> bodyType){
+        if(!"requestId".equals(identityField)&&!"importId".equals(identityField))
+            throw new IllegalArgumentException("Unsupported finance original identity field");
         requireCancellationIdentity(routedRequest,cancellation,operation,method,path);
         T body;
         try{
@@ -196,7 +202,7 @@ public class FinanceOperationJournal {
             body=com.uten.imp.common.finance.FinancialJsonResults.value(json,encode(cancellation.requestBody()),bodyType);
         }catch(Exception error){throw invalid("请保留原完整请求正文核对，不能猜补取消内容");}
         JsonNode typed;try{typed=com.uten.imp.common.finance.FinancialJsonResults.tree(json,encode(body));}catch(Exception error){throw invalid("原取消核对正文无法完整读取");}
-        if(!routedRequest.toString().equals(typed.path("requestId").asText())
+        if(!routedRequest.toString().equals(typed.path(identityField).asText())
                 ||!encode(canonical(cancellation.requestBody())).equals(encode(canonical(typed))))
             throw invalid("取消核对的原请求正文不完整或身份不一致");
         return body;
@@ -246,6 +252,19 @@ public class FinanceOperationJournal {
         if(value.isObject()){var result=new TreeMap<String,Object>();value.properties().forEach(field->result.put(field.getKey(),exactCanonical(field.getValue())));return result;}
         if(value.isArray()){var result=new ArrayList<Object>();value.forEach(child->result.add(exactCanonical(child)));return result;}
         if(value.isNull())return null;if(value.isNumber())return value.numberValue();if(value.isBoolean())return value.booleanValue();return value.asText();
+    }
+
+    /** Exact supplied-object identity for new adapters over their established journals.
+     * Existing typed hashes and their historic rows keep their original algorithms. */
+    public String originalBodyFingerprint(JsonNode body){
+        if(body==null||!body.isObject())throw invalid("请保留原完整财务请求对象");
+        return ImmutableDocumentStore.digest(encode(exactCanonical(body)).getBytes(StandardCharsets.UTF_8));
+    }
+
+    public void requireOriginalBodyMatch(JsonNode expected,JsonNode actual){
+        if(expected==null||!expected.isObject()||actual==null||!actual.isObject()
+                ||!originalBodyFingerprint(expected).equals(originalBodyFingerprint(actual)))
+            throw conflict("原操作回执正文与完整原请求不一致，请保留原请求核对");
     }
 
     /** A missing receipt is not proof that an in-flight transaction did not write. */

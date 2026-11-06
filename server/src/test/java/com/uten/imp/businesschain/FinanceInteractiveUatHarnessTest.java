@@ -99,12 +99,19 @@ class FinanceInteractiveUatHarnessTest {
     """,fixture.lastSeedSuperAdminUserId,start,Math.min(10003,start+249));
   if(!bookMode&&jdbc.queryForObject("SELECT count(*) FROM finance_chart_codes WHERE source_reference=?",Integer.class,
       "隔离界面压力夹具；未形成业务金额")!=10003)throw new IllegalStateException("Incomplete isolated directory fixture");
+  java.util.Map<String,Object> distinctOwners=null;
+  if(!bookMode){
+   var ownerFixture=new FinanceDistinctOwnerUiFixture();beans.autowireBean(ownerFixture);
+   distinctOwners=ownerFixture.seed();
+  }
   SecurityContextHolder.clearContext();
   // This disposable synthetic bootstrap identity is never a company account.
   jdbc.update("UPDATE users SET must_change_password=false WHERE login_account=?",FullChainEndToEndTest.SHARED_ADMIN_LOGIN);
   String run=System.getProperty("uten.finance.uat.run","default");
   if(!run.matches("[a-zA-Z0-9_-]{1,80}"))throw new IllegalArgumentException("Invalid task-owned UAT run identifier");
   var directory=Path.of("../tmp/finance-interactive",run);Files.createDirectories(directory);
+  if(distinctOwners!=null)new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter()
+      .writeValue(directory.resolve("distinct-owners.json").toFile(),distinctOwners);
   Files.writeString(directory.resolve("ready.json"),"{\"localOnly\":true,\"syntheticData\":true,\"api\":\"http://127.0.0.1:"+Integer.getInteger("uten.finance.uat.port",18089)+"/api\",\"scenario\":\""+scenarioKind+"\",\"pid\":"+ProcessHandle.current().pid()+",\"run\":\""+run+"\"}");
   int holdHours=Integer.getInteger("uten.finance.uat.hold-hours",4);
   if(holdHours<1||holdHours>12)throw new IllegalArgumentException("UAT hold must remain bounded to 1..12 hours");

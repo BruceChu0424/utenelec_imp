@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'finance_requirement_test_ui.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -68,8 +69,10 @@ void main() {
       expect(api.saves, hasLength(1));
       expect(
         tester
-            .widget<TextButton>(find.widgetWithText(TextButton, '关闭'))
-            .onPressed,
+            .widget<UtenDialogHeader>(
+              find.widgetWithText(UtenDialogHeader, '往来项目分类'),
+            )
+            .onClose,
         isNull,
       );
       expect(

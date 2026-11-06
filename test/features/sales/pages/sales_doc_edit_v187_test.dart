@@ -247,7 +247,10 @@ void main() {
         initialOrderItems: 'source-line:11',
         detail: _prefillOrder,
       );
-      expect(find.textContaining('可发数量已变化'), findsOneWidget);
+      expect(
+        find.textContaining('所选产品的可发或可建备货单数量已变化，请返回订单刷新后重新选择'),
+        findsOneWidget,
+      );
       expect(find.text('保存'), findsNothing);
       expect(api.batchBodies, isEmpty);
     },

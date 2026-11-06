@@ -324,6 +324,13 @@ abstract final class FormDraftCatalog {
     permission: Perm.financeReportView,
     dialogKind: 'financeChartMetadata',
   );
+  static const financeChartImport = FormDraftDescriptor(
+    title: '科目目录导入',
+    module: BadgeModule.finance,
+    route: '/finance',
+    permission: Perm.financeReportView,
+    dialogKind: 'financeChartImport',
+  );
   static const financeDurableCommand = FormDraftDescriptor(
     title: '财务设置与成本操作',
     module: BadgeModule.finance,
@@ -966,6 +973,7 @@ abstract final class FormDraftCatalog {
     'financeAssetOpeningGroup': financeAssetOpeningGroup,
     'financeMaterialStatement': financeMaterialStatement,
     'financeChartMetadata': financeChartMetadata,
+    'financeChartImport': financeChartImport,
     'financeDurableCommand': financeDurableCommand,
     'financeSubcontractLossPolicy': financeSubcontractLossPolicy,
     'financeSubcontractQuantityEvidence': financeSubcontractQuantityEvidence,

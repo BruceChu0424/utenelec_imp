@@ -83,6 +83,7 @@ class AccountPostingReversalPostgresTest {
     }
 
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private org.springframework.beans.factory.BeanFactory testServices;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private com.uten.imp.security.TxSessionVars transactionIdentity;
     @Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativeAccounts;
@@ -541,6 +542,7 @@ class AccountPostingReversalPostgresTest {
         request.setReceiptKind("CUSTOMER_PREPAYMENT");
         request.setBillDate(billDate);
         request.setClientId(client);
+        request.setSalesOrderId(com.uten.imp.support.SalesPrepaymentOrderFixture.createApproved(testServices,jdbc,client,currency,billDate));
         request.setAccountId(receiving);
         request.setCurrencyId(currency);
         request.setExchangeRate(BigDecimal.ONE);
@@ -553,8 +555,9 @@ class AccountPostingReversalPostgresTest {
         request.setFeePaymentAccountId(feeAccount);
         request.setSettlementChannel("DIRECT_ACCOUNT");
         request.setExchangeRateSource("BANK_STATEMENT");
-        request.setExchangeRateEffectiveAt(BusinessTime.startOfDay(billDate).plusHours(9));
-        request.setBankBookedAt(BusinessTime.startOfDay(billDate).plusHours(10));
+        var actualBankTime=java.time.OffsetDateTime.now().minusSeconds(1);
+        request.setExchangeRateEffectiveAt(actualBankTime);
+        request.setBankBookedAt(actualBankTime);
         request.setBankReference("POSTING-RCV-" + client);
         request.setAccountCurrencyId(currency);
         request.setCreateIdempotencyKey("posting-receipt-" + client);

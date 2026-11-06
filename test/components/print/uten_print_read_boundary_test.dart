@@ -171,7 +171,7 @@ void main() {
       await _open(tester, loader: () => response.future);
       await tester.pump(const Duration(milliseconds: 250));
       expect(find.byType(UtenBusyOverlay), findsOneWidget);
-      expect(find.text('正在读取打印内容'), findsOneWidget);
+      expect(find.text('正在读取打印结果'), findsOneWidget);
       await tester.tap(find.text('取消读取'));
       await tester.pumpAndSettle();
       expect(find.byType(UtenBusyOverlay), findsNothing);

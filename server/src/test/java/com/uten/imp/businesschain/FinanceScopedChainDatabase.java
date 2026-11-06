@@ -36,9 +36,22 @@ public final class FinanceScopedChainDatabase {
     public static final class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return 1900;}
         @Override public void afterTestClass(TestContext context)throws Exception{
-            var lease=OWNED.remove(context.getTestClass());if(lease==null)return;
+            var lease=OWNED.get(context.getTestClass());if(lease==null)return;
+            if(!context.hasApplicationContext())
+                throw new IllegalStateException("Finance fixture context did not remain available; retain its owned clone without reloading it");
+            // A Mockito-spied primary DataSource can lose Spring's inferred
+            // destroy method. Capture only this context's actual owned pool
+            // before closing the context; never reopen it or enumerate others.
+            var data=context.getApplicationContext().getBean("dataSource",javax.sql.DataSource.class);
+            var pool=data instanceof com.zaxxer.hikari.HikariDataSource hikari?hikari:
+                data.unwrap(com.zaxxer.hikari.HikariDataSource.class);
+            if(pool==null||!java.util.Objects.equals(pool.getJdbcUrl(),lease.getJdbcUrl()))
+                throw new IllegalStateException("Finance fixture cleanup cannot claim a different datasource");
             context.markApplicationContextDirty(DirtiesContext.HierarchyMode.EXHAUSTIVE);
+            if(!pool.isClosed())pool.close();
+            if(!pool.isClosed())throw new IllegalStateException("Owned finance fixture pool is still open after context shutdown");
             lease.close();
+            OWNED.remove(context.getTestClass(),lease);
         }
     }
 }

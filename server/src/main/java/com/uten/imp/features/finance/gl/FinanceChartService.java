@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.gl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.application.port.FinancialChartCurrencyReadPort;
 import com.uten.imp.common.storage.ImmutableDocumentStore;
@@ -35,9 +36,193 @@ public class FinanceChartService {
     private void readAccess(){CurrentAuthorityGuard.requireAll("finance_report:view");FinanceCompanyReportAccess.require(access);}
     private void writeAccess(){readAccess();CurrentAuthorityGuard.requireAll("payment_style:edit");}
     private void lock(){db.query("SELECT pg_advisory_xact_lock(hashtextextended('uten:finance-chart',0))",rs->{});}
+    private static final String ACCOUNT_CREATE="CHART_ACCOUNT_CREATE",MAPPING_REPLACE="CHART_MAPPING_REPLACE",TARGET_CREATE="CHART_TARGET_CREATE";
+    private static final String IMPORT_APPLY="CHART_IMPORT_APPLY",IMPORT_REVIEW="CHART_IMPORT_REPREVIEW";
+    private static final Set<String> CHART_COMMANDS=Set.of(ACCOUNT_CREATE,MAPPING_REPLACE,TARGET_CREATE,IMPORT_REVIEW);
+
+    @Transactional public Map<String,Object> createAccountCommand(JsonNode original){return chartCommand(ACCOUNT_CREATE,null,original);}
+    @Transactional public Map<String,Object> mapCommand(String code,JsonNode original){return chartCommand(MAPPING_REPLACE,chartCode(code),original);}
+    @Transactional public Map<String,Object> createTargetCommand(String code,JsonNode original){return chartCommand(TARGET_CREATE,chartCode(code),original);}
+
+    /** The chart's original table owns both success and stopped-unwritten rows.
+     * No current directory or mapping equality can stand in for this receipt. */
+    private Map<String,Object> chartCommand(String operation,String code,JsonNode original){
+        writeAccess();UUID request=originalRequestId(original);
+        if(TARGET_CREATE.equals(operation)||ACCOUNT_CREATE.equals(operation)&&!original.path("category").isMissingNode()&&!original.path("category").isNull())
+            CurrentAuthorityGuard.requireAll("payment_style:create");
+        String method=commandMethod(operation),path=commandPath(operation,code);
+        tx.bind();lockCommand(operation,original);
+        var previous=manualOperation(request);
+        if(previous!=null){
+            var result=originalReceipt(request,operation,method,path,original,previous);
+            if("CANCELLED_UNWRITTEN".equals(result.get("outcome")))throw conflict("原科目请求已确认未写入并已停止，请核对原回执后重新发起");
+            return result;
+        }
+        Object result;
+        if(ACCOUNT_CREATE.equals(operation))result=createAccountCore(commandBody(original,CreateAccount.class));
+        else if(MAPPING_REPLACE.equals(operation)){
+            var body=commandBody(original,Mapping.class);requireOriginalVersion(original,body.expectedVersion());mapCore(code,body);result=mutationResult(request,code);
+        }else{
+            var body=commandBody(original,CreateTarget.class);requireOriginalVersion(original,body.expectedVersion());
+            requireCurrentVersion(code,body.expectedVersion());
+            requireExistingTargetCurrencyUnchanged(code,body);
+            createTargetCore(code,body);requireTargetCorrespondence(code);result=mutationResult(request,code);
+        }
+        String fingerprint=commandFingerprint(operation,path,original);
+        var receipt=operations.cancellationOutcome(request,operation,method,path,original,result,false);
+        receipt.put("proofScope","RAW_BODY");
+        if(ACCOUNT_CREATE.equals(operation))receipt.put("chartProof",metadataEnvelope(encode(mutationResult(request,commandBody(original,CreateAccount.class).code()))));
+        db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result) VALUES(?,?,?,?::jsonb)",request,current.requireId(),fingerprint,encode(receipt));
+        return receipt;
+    }
+
+    @Transactional(readOnly=true) public Map<String,Object> operationReceipt(UUID request){
+        readAccess();if(request==null)throw invalid("请保留原科目请求编号");
+        var rows=db.queryForList("SELECT actor_id,fingerprint,result::text FROM finance_chart_manual_operations WHERE request_id=? AND actor_id=?",request,current.requireId());
+        if(rows.isEmpty())return Map.of("found",false);
+        var stored=metadataEnvelope(rows.getFirst().get("result").toString());
+        if(stored.containsKey("operation")){
+            if(!CHART_COMMANDS.contains(Objects.toString(stored.get("operation"),"")))return Map.of("found",false);
+            requireReceiptIdentity(request,stored);return stored;
+        }
+        if(!"CREATED".equals(stored.get("status")))return Map.of("found",false);
+        var legacy=decode(encode(stored),CreateAccountResult.class);
+        if(!request.equals(legacy.requestId())||!"CREATED".equals(legacy.status()))return Map.of("found",false);
+        // The historical table never stored the original raw body. A caller
+        // must supply its original typed body to confirm the old8-field hash;
+        // historical optional omissions have the same typed null semantics.
+        var result=new LinkedHashMap<String,Object>();result.put("found",true);result.put("requestId",request);
+        result.put("actorId",current.requireId());result.put("operation",ACCOUNT_CREATE);result.put("method","POST");result.put("path","/finance/chart");
+        result.put("outcome","SUCCEEDED");result.put("result",legacy);result.put("requiresOriginalRequestProof",true);result.put("proofScope","LEGACY_TYPED_BODY");return result;
+    }
+
+    @Transactional public Map<String,Object> cancelOperation(UUID request,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        readAccess();
+        if(cancellation==null||cancellation.operation()==null||!CHART_COMMANDS.contains(cancellation.operation()))throw invalid("请保留原科目操作身份");
+        if(IMPORT_REVIEW.equals(cancellation.operation()))return cancelRepreview(request,cancellation);
+        String operation=cancellation.operation(),code=codeFromCommandPath(operation,cancellation.path());
+        String method=commandMethod(operation),path=commandPath(operation,code);
+        JsonNode original=operations.cancellationBody(request,cancellation,operation,method,path,JsonNode.class);
+        tx.bind();lockCommand(operation,original);
+        var previous=manualOperation(request);if(previous!=null)return originalReceipt(request,operation,method,path,original,previous);
+        var receipt=operations.cancellationOutcome(request,operation,method,path,original,Map.of("cancelled",true),true);
+        receipt.put("proofScope","RAW_BODY");
+        db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result) VALUES(?,?,?,?::jsonb)",request,current.requireId(),commandFingerprint(operation,path,original),encode(receipt));
+        return receipt;
+    }
+
+    private void lockCommand(String operation,JsonNode original){
+        if(TARGET_CREATE.equals(operation)||ACCOUNT_CREATE.equals(operation)&&original.hasNonNull("category"))PaymentStyleHierarchyLock.lockForHierarchyChange(em);
+        else PaymentStyleHierarchyLock.lock(em);
+        lock();
+        db.query("SELECT pg_advisory_xact_lock(hashtextextended('uten:finance-report-line-bindings',0))",rs->{});
+    }
+    private Map<String,Object> manualOperation(UUID request){
+        var rows=db.queryForList("SELECT actor_id,fingerprint,result::text FROM finance_chart_manual_operations WHERE request_id=?",request);
+        return rows.isEmpty()?null:rows.getFirst();
+    }
+    private Map<String,Object> originalReceipt(UUID request,String operation,String method,String path,JsonNode original,Map<String,Object> stored){
+        if(!current.requireId().equals(stored.get("actor_id")))throw new ApiException(ErrorCode.FORBIDDEN,"只能核对并办理本人原请求");
+        if(!commandFingerprint(operation,path,original).equals(stored.get("fingerprint")))throw conflict("原科目请求的完整参数或办理动作不同，请保留原请求核对");
+        var receipt=metadataEnvelope(stored.get("result").toString());
+        if(receipt.containsKey("operation")){
+            requireReceiptIdentity(request,receipt);
+            if(!operation.equals(receipt.get("operation"))||!method.equals(receipt.get("method"))||!path.equals(receipt.get("path")))throw conflict("原科目请求回执的来源不一致");
+            operations.requireOriginalBodyMatch(tree(receipt.get("requestBody")),original);return receipt;
+        }
+        if(!ACCOUNT_CREATE.equals(operation))throw conflict("原编号已有其他科目操作，请保留原请求核对");
+        var typed=commandBody(original,CreateAccount.class);
+        for(String required:List.of("requestId","code","name","currencyName","sourceReference"))
+            if(!original.path(required).isTextual())throw invalid("请保留原新增科目的必要字段，不能猜补旧请求");
+        var legacy=decode(encode(receipt),CreateAccountResult.class);
+        if(!request.equals(legacy.requestId())||!Objects.equals(typed.code(),legacy.code())||!"CREATED".equals(legacy.status()))throw conflict("原新增科目回执身份不一致");
+        var verified=operations.cancellationOutcome(request,operation,method,path,original,legacy,false);
+        verified.put("proofScope","LEGACY_TYPED_BODY");return verified;
+    }
+    private void requireReceiptIdentity(UUID request,Map<String,Object> receipt){
+        if(!Boolean.TRUE.equals(receipt.get("found"))||!request.toString().equals(Objects.toString(receipt.get("requestId"),""))
+                ||!current.requireId().toString().equals(Objects.toString(receipt.get("actorId"),""))
+                ||!Set.of("SUCCEEDED","CANCELLED_UNWRITTEN").contains(Objects.toString(receipt.get("outcome"),"")))throw conflict("原科目回执身份不完整");
+    }
+    private String commandFingerprint(String operation,String path,JsonNode original){
+        if(ACCOUNT_CREATE.equals(operation)){
+            try{return ImmutableDocumentStore.digest(encode(commandBody(original,CreateAccount.class)).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+            catch(ApiException invalidBody){/* A malformed unwritten original may still be stopped by its exact raw identity. */}
+        }
+        return ImmutableDocumentStore.digest((operation+":"+path+":"+operations.originalBodyFingerprint(original)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+    private UUID originalRequestId(JsonNode original){
+        try{if(original==null||!original.isObject()||!original.path("requestId").isTextual())throw new IllegalArgumentException();
+            UUID id=UUID.fromString(original.path("requestId").asText());if(!id.toString().equals(original.path("requestId").asText()))throw new IllegalArgumentException();return id;
+        }catch(Exception error){throw invalid("请保留原科目请求编号和完整正文");}
+    }
+    private static String chartCode(String code){if(code==null||!code.matches("[0-9]{1,32}"))throw invalid("请保留原科目编码");return code;}
+    private static String commandMethod(String operation){return MAPPING_REPLACE.equals(operation)?"PUT":"POST";}
+    private static String commandPath(String operation,String code){return ACCOUNT_CREATE.equals(operation)?"/finance/chart":"/finance/chart/"+chartCode(code)+(TARGET_CREATE.equals(operation)?"/create-target":"");}
+    private static String codeFromCommandPath(String operation,String path){
+        if(ACCOUNT_CREATE.equals(operation)){if(!"/finance/chart".equals(path))throw invalid("原新增科目路径不一致");return null;}
+        String suffix=TARGET_CREATE.equals(operation)?"/create-target":"";
+        if(path==null||!path.startsWith("/finance/chart/")||!path.endsWith(suffix))throw invalid("原科目操作路径不一致");
+        return chartCode(path.substring("/finance/chart/".length(),path.length()-suffix.length()));
+    }
+    private <T>T commandBody(JsonNode original,Class<T> type){
+        var body=operations.decodeOriginal(new com.uten.imp.features.finance.FinanceOperationJournal.WireCommand(original),type);
+        if(type==Mapping.class&&original.hasNonNull("styleIds"))for(var id:original.path("styleIds"))requireUuidText(id);
+        if(original.hasNonNull("currencyId"))requireUuidText(original.path("currencyId"));
+        return body;
+    }
+    private static void requireUuidText(JsonNode value){try{if(!value.isTextual()||!UUID.fromString(value.asText()).toString().equals(value.asText()))throw new IllegalArgumentException();}catch(Exception error){throw invalid("科目请求身份必须保留原UUID文本");}}
+    private JsonNode tree(Object value){try{return com.uten.imp.common.finance.FinancialJsonResults.tree(json,encode(value));}catch(Exception error){throw conflict("原科目回执正文无法完整读取");}}
+    private static void requireOriginalVersion(JsonNode original,Long expected){if(expected==null||expected<0||!original.path("expectedVersion").isIntegralNumber()||!original.path("expectedVersion").canConvertToLong())throw invalid("请明确保留本次审阅的科目版本，缺失或空值不能当作零");}
+    private void requireCurrentVersion(String code,Long expected){
+        var versions=db.queryForList("SELECT row_version FROM finance_chart_codes WHERE code=? FOR UPDATE",Long.class,code);
+        if(versions.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"财务科目代码不存在");
+        if(!Objects.equals(versions.getFirst(),expected))throw conflict("科目目录已变化，请保留原选择核对当前版本");
+    }
+    private void requireExistingTargetCurrencyUnchanged(String code,CreateTarget request){
+        if(request.currencyId()==null||(request.balanceLineKey()!=null&&!request.balanceLineKey().isBlank())
+                ||(request.profitLineKey()!=null&&!request.profitLineKey().isBlank()))return;
+        UUID nativeId=db.queryForObject("SELECT native_style_id FROM finance_chart_codes WHERE code=?",UUID.class,code);
+        if(nativeId==null)return;
+        // The read port resolves a historical unset base UUID by the same
+        // authority as the single-account view. No name-based currency guess
+        // or metadata rewrite is introduced by a legacy target no-op.
+        var saved=chartCurrencies.read(Set.of(code)).get(code);
+        if(saved==null||!Objects.equals(saved.currencyId(),request.currencyId()))
+            throw conflict("本财务科目已有系统目标；改选币别请通过修改对应关系办理，本次未写入");
+    }
+    private MutationResult mutationResult(UUID request,String code){
+        var row=db.queryForMap("SELECT row_version,classification FROM finance_chart_codes WHERE code=?",code);
+        var effectiveCurrency=chartCurrencies.read(Set.of(code)).get(code);
+        if(effectiveCurrency==null)throw conflict("科目币别资料未完整读取，不能发布原操作证明");
+        return new MutationResult(request,code,"APPLIED",((Number)row.get("row_version")).longValue(),
+                List.copyOf(db.queryForList("SELECT style_id FROM finance_chart_code_styles WHERE code=? ORDER BY style_id",UUID.class,code)),
+                db.queryForObject("SELECT min(s.category) FROM finance_chart_code_styles m JOIN payment_styles s ON s.id=m.style_id WHERE m.code=?",String.class,code),
+                (String)row.get("classification"),effectiveCurrency.currencyId(),effectiveLineKeys(code));
+    }
+    private void requireTargetCorrespondence(String code){
+        Integer nativeMapping=db.queryForObject("SELECT count(*) FROM finance_chart_codes c JOIN finance_chart_code_styles m ON m.code=c.code AND m.style_id=c.native_style_id WHERE c.code=?",Integer.class,code);
+        Integer categories=db.queryForObject("SELECT count(DISTINCT s.category) FROM finance_chart_code_styles m JOIN payment_styles s ON s.id=m.style_id WHERE m.code=?",Integer.class,code);
+        if(!Objects.equals(nativeMapping,1)||!Objects.equals(categories,1))
+            throw conflict("本财务科目已有原系统科目但尚未形成一致对应，请通过“对应已有科目”明确选择原科目；本次未写入");
+    }
+    private List<String> effectiveLineKeys(String code){return List.copyOf(db.queryForList("SELECT DISTINCT b.line_key FROM finance_chart_code_styles m JOIN finance_report_line_bindings b ON b.style_id=m.style_id AND b.binding_kind='STYLE' WHERE m.code=? AND (b.line_key LIKE 'BS\\_%' OR b.line_key LIKE 'PL\\_%' OR b.line_key='SALES_FEE') ORDER BY b.line_key",String.class,code));}
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ) public Account account(String code){
+        readAccess();chartCode(code);var rows=db.queryForList("SELECT code,name,currency_name,row_version,classification FROM finance_chart_codes WHERE code=?",code);
+        if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"财务科目代码不存在");var row=rows.getFirst();
+        var targets=db.query("SELECT s.id,s.code,s.name,s.category FROM finance_chart_code_styles m JOIN payment_styles s ON s.id=m.style_id WHERE m.code=? ORDER BY s.path,s.id",(rs,n)->new Target(rs.getObject(1,UUID.class),rs.getString(2),rs.getString(3),rs.getString(4)),code);
+        var currency=chartCurrencies.read(Set.of(code)).get(code);if(currency==null)throw conflict("科目币别资料未完整读取");
+        return new Account(code,(String)row.get("name"),(String)row.get("currency_name"),((Number)row.get("row_version")).longValue(),List.copyOf(targets),effectiveLineKeys(code),(String)row.get("classification"),currency.currencyId());
+    }
 
     @Transactional
     public CreateAccountResult createAccount(CreateAccount request) {
+        var receipt=createAccountCommand(json.valueToTree(request));
+        return decode(encode(receipt.get("result")),CreateAccountResult.class);
+    }
+
+    private CreateAccountResult createAccountCore(CreateAccount request) {
         writeAccess();
         if(request==null||request.requestId()==null||request.code()==null||!request.code().matches("[0-9]{1,32}")
                 ||request.name()==null||request.name().isBlank()||request.name().strip().length()>240
@@ -47,22 +232,32 @@ public class FinanceChartService {
         if(request.category()!=null&&!Set.of("ACCOUNT","LIABILITY","EQUITY","INCOME","EXPENSE").contains(request.category()))throw invalid("核算类别不正确");
         if(request.category()!=null)CurrentAuthorityGuard.requireAll("payment_style:create");
         tx.bind();if(request.category()!=null){PaymentStyleHierarchyLock.lockForHierarchyChange(em);}lock();
-        String fingerprint=ImmutableDocumentStore.digest(encode(request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        var previous=db.queryForList("SELECT actor_id,fingerprint,result::text FROM finance_chart_manual_operations WHERE request_id=?",request.requestId());
-        if(!previous.isEmpty()) {
-            var stored=previous.getFirst();if(!current.requireId().equals(stored.get("actor_id"))||!fingerprint.equals(stored.get("fingerprint")))throw conflict("同一新增请求已使用，请保留原参数核对结果");
-            return decode(stored.get("result").toString(),CreateAccountResult.class);
-        }
         String classification=FinanceChartClassification.resolve(request.code(),request.classification(),request.category());
         if(classification==null)throw invalid("请选择原表的财务类别：资产、负债、权益、成本或损益");
         UUID currency=currencyIdentity(request.currencyName(),request.currencyId(),null);
         if(db.queryForObject("SELECT count(*) FROM finance_chart_codes WHERE code=?",Integer.class,request.code())!=0)throw conflict("该财务代码已存在，请直接维护对应关系");
         db.update("INSERT INTO finance_chart_codes(code,name,currency_name,sort_order,source_row,source_kind,source_reference,classification,currency_id,updated_by) SELECT ?,?,?,COALESCE(max(sort_order),0)+1,1,'MANUAL',?,?,?,? FROM finance_chart_codes",
                 request.code(),request.name().strip(),request.currencyName().strip(),request.sourceReference().strip(),classification,currency,current.requireId());
-        if(request.category()!=null)createTarget(request.code(),new CreateTarget(0,request.category(),classification));
+        if(request.category()!=null)createTargetCore(request.code(),new CreateTarget(0,request.category(),classification));
         var result=new CreateAccountResult(request.requestId(),request.code(),"CREATED");
-        db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result) VALUES(?,?,?,?::jsonb)",request.requestId(),current.requireId(),fingerprint,encode(result));
         return result;
+    }
+
+    /** HTTP shape adapter: retain the established typed4 hash and original
+     * string values, while never inventing a reviewed version from a default0. */
+    @Transactional
+    public UpdateAccountResult updateAccountCommand(String code,JsonNode original){
+        writeAccess();originalRequestId(original);
+        if(original.size()!=4||!original.has("expectedVersion")||!original.path("name").isTextual()
+                ||!original.path("sourceReference").isTextual()||!original.path("expectedVersion").isIntegralNumber()
+                ||!original.path("expectedVersion").canConvertToLong())
+            throw invalid("请保留科目名称修改的完整四个原字段及明确整数版本，缺失或空版本不能当作零");
+        UpdateAccount request;
+        try{request=com.uten.imp.common.finance.FinancialJsonResults.value(json,encode(original),UpdateAccount.class);}
+        catch(Exception error){throw invalid("原科目名称修改请求格式不正确，本次未写入");}
+        requireOriginalVersion(original,request.expectedVersion());
+        operations.requireOriginalBodyMatch(json.valueToTree(request),original);
+        return updateAccount(code,request);
     }
 
     @Transactional
@@ -98,7 +293,7 @@ public class FinanceChartService {
     @Transactional
     public Preview preview(String filename,byte[] bytes) {
         writeAccess();tx.bind();lock();UUID actor=current.requireId();String hash=ImmutableDocumentStore.digest(bytes);
-        var previous=db.queryForList("SELECT id FROM finance_chart_imports WHERE actor_id=? AND sha256=?",UUID.class,actor,hash);
+        var previous=db.queryForList("SELECT id FROM finance_chart_imports WHERE actor_id=? AND sha256=? AND parent_import_id IS NULL",UUID.class,actor,hash);
         if(!previous.isEmpty()) {files.checkLegacy("FINANCE_CHART_IMPORT_REPLAY",bytes);return imported(previous.getFirst());}
         String name=filename==null?"chart.xlsx":filename.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_");
         if(name.isBlank()||name.length()>240)throw invalid("文件名称无效");
@@ -128,6 +323,8 @@ public class FinanceChartService {
         var rows=db.queryForList("SELECT result::text FROM finance_chart_manual_operations WHERE request_id=? AND actor_id=?",requestId,current.requireId());
         if(rows.isEmpty())return Map.of("found",false);
         String encoded=rows.getFirst().get("result").toString();
+        var rawReceipt=metadataEnvelope(encoded);
+        if(rawReceipt.containsKey("operation")&&!"CHART_METADATA_UPDATE".equals(rawReceipt.get("operation")))return Map.of("found",false);
         var result=metadataResult(encoded);
         if("CANCELLED_UNWRITTEN".equals(result.status())){
             if(!code.equals(result.code())||!requestId.equals(result.requestId()))return Map.of("found",false);
@@ -174,25 +371,139 @@ public class FinanceChartService {
 
     @Transactional(readOnly=true)
     public List<Map<String,Object>> recent() {
-        writeAccess();return db.queryForList("SELECT id AS \"importId\",source_name AS \"sourceName\",applied_at AS \"appliedAt\" FROM finance_chart_imports WHERE actor_id=? ORDER BY created_at DESC,id LIMIT 10",current.requireId());
+        readAccess();return db.queryForList("SELECT id AS \"importId\",source_name AS \"sourceName\",applied_at AS \"appliedAt\",cancelled_at AS \"cancelledAt\" FROM finance_chart_imports WHERE actor_id=? ORDER BY created_at DESC,id LIMIT 10",current.requireId());
     }
 
     @Transactional(readOnly=true)
     public Preview imported(UUID id) {
-        writeAccess();var rows=db.queryForList("SELECT preview::text,applied_at FROM finance_chart_imports WHERE id=? AND actor_id=?",id,current.requireId());
-        if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"导入批次不存在或不属于当前账号");
-        var p=decode((String)rows.getFirst().get("preview"),Preview.class);
-        return new Preview(p.importId(),p.sourceName(),p.sha256(),p.rows(),p.issues(),rows.getFirst().get("applied_at")!=null);
+        readAccess();var row=importRow(id,false);var p=decode((String)row.get("preview"),Preview.class);
+        return new Preview(p.importId(),p.sourceName(),p.sha256(),p.rows(),p.issues(),row.get("applied_at")!=null);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> importView(UUID id){
+        readAccess();var row=importRow(id,false);var view=metadataEnvelope((String)row.get("preview"));
+        view.put("applied",row.get("applied_at")!=null);view.put("cancelled",row.get("cancelled_at")!=null);
+        view.put("parentImportId",row.get("parent_import_id"));view.put("sourceImportId",sourceImportId(id));
+        view.put("applyOutcome",row.get("applied_at")!=null?"SUCCEEDED":row.get("cancelled_at")!=null?"CANCELLED_UNWRITTEN":null);
+        return view;
+    }
+
+    /** Upload response recovery is actor+content bound and independent of the
+     * recent-ten convenience list. Absence never declares an in-flight upload unwritten. */
+    @Transactional(readOnly=true)
+    public Map<String,Object> importBySha(String sha){
+        readAccess();if(sha==null||!sha.matches("[a-f0-9]{64}"))throw invalid("请保留原文件SHA256摘要");
+        var rows=db.queryForList("SELECT id,source_name,sha256,storage_size,applied_at,cancelled_at FROM finance_chart_imports WHERE actor_id=? AND sha256=? AND parent_import_id IS NULL",current.requireId(),sha);
+        if(rows.isEmpty())return Map.of("found",false);var row=rows.getFirst();
+        return Map.of("found",true,"importId",row.get("id"),"sourceName",row.get("source_name"),"sha256",row.get("sha256"),"storageSize",row.get("storage_size"),"applied",row.get("applied_at")!=null,"cancelled",row.get("cancelled_at")!=null);
+    }
+
+    @Transactional
+    public Map<String,Object> applyCommand(JsonNode original){
+        writeAccess();UUID id=importIdentity(original);tx.bind();lockCommand(IMPORT_APPLY,original);
+        var row=importRow(id,true);
+        if(row.get("cancellation_result")!=null)throw conflict("原导入批次已确认未写入并已停止，请核对原回执后显式重新审阅");
+        if(row.get("applied_result")!=null)return importApplyReceipt(row);
+        verifyImportFile(row);
+        var result=applyCore(id,row);var receipt=operations.cancellationOutcome(id,IMPORT_APPLY,"POST","/finance/chart/import-apply",original,result,false);
+        receipt.put("proofScope","RAW_BODY");
+        db.update("UPDATE finance_chart_imports SET applied_at=now(),applied_result=?::jsonb,apply_receipt=?::jsonb WHERE id=?",encode(result),encode(receipt),id);
+        return receipt;
+    }
+
+    @Transactional(readOnly=true)
+    public Map<String,Object> importApplyOperation(UUID id){
+        readAccess();var rows=importRows(id,false);if(rows.isEmpty())return Map.of("found",false);
+        var row=rows.getFirst();return row.get("applied_result")==null&&row.get("cancellation_result")==null?Map.of("found",false):importApplyReceipt(row);
+    }
+
+    @Transactional
+    public Map<String,Object> cancelImportApply(UUID id,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        readAccess();var original=operations.cancellationBodyForIdentityField(id,cancellation,IMPORT_APPLY,"POST","/finance/chart/import-apply","importId",Apply.class);
+        JsonNode body=json.valueToTree(original);importIdentity(body);tx.bind();lockCommand(IMPORT_APPLY,body);
+        var row=importRow(id,true);if(row.get("applied_result")!=null||row.get("cancellation_result")!=null)return importApplyReceipt(row);
+        var receipt=operations.cancellationOutcome(id,IMPORT_APPLY,"POST","/finance/chart/import-apply",body,Map.of("cancelled",true),true);receipt.put("proofScope","RAW_BODY");
+        db.update("UPDATE finance_chart_imports SET cancelled_at=now(),cancellation_result=?::jsonb WHERE id=?",encode(receipt),id);return receipt;
+    }
+
+    private Map<String,Object> importApplyReceipt(Map<String,Object> row){
+        UUID id=(UUID)row.get("id");
+        String encoded=(String)(row.get("cancellation_result")!=null?row.get("cancellation_result"):row.get("apply_receipt"));
+        if(encoded!=null){var receipt=metadataEnvelope(encoded);requireReceiptIdentity(id,receipt);
+            if(!IMPORT_APPLY.equals(receipt.get("operation"))||!"POST".equals(receipt.get("method"))||!"/finance/chart/import-apply".equals(receipt.get("path")))throw conflict("原导入回执的动作或来源不一致");
+            operations.requireOriginalBodyMatch(tree(receipt.get("requestBody")),json.valueToTree(new Apply(id)));return receipt;}
+        var result=decode((String)row.get("applied_result"),Result.class);var preview=decode((String)row.get("preview"),Preview.class);
+        if(!id.equals(result.importId())||!"APPLIED".equals(result.status())||result.imported()!=preview.rows().size())throw conflict("原导入成功回执不完整，不能按当前目录推定结果");
+        var receipt=operations.cancellationOutcome(id,IMPORT_APPLY,"POST","/finance/chart/import-apply",new Apply(id),result,false);
+        receipt.put("proofScope","LEGACY_TYPED_IMPORT_ID");return receipt;
+    }
+
+    private UUID importIdentity(JsonNode original){
+        if(original==null||!original.isObject()||original.size()!=1||!original.has("importId"))throw invalid("请保留原导入批次的唯一完整参数");
+        requireUuidText(original.path("importId"));return UUID.fromString(original.path("importId").asText());
+    }
+
+    @Transactional
+    public Map<String,Object> repreview(UUID parent,JsonNode original){
+        writeAccess();UUID request=originalRequestId(original);commandBody(original,Repreview.class);
+        String path=repreviewPath(parent);tx.bind();lockCommand(IMPORT_REVIEW,original);
+        var previous=manualOperation(request);
+        if(previous!=null){var receipt=originalReceipt(request,IMPORT_REVIEW,"POST",path,original,previous);
+            if("CANCELLED_UNWRITTEN".equals(receipt.get("outcome")))throw conflict("原重新审阅请求已停止，请核对原回执后另行发起");return receipt;}
+        var source=importRow(parent,true);verifyImportFile(source);
+        var raw=tree(metadataEnvelope((String)source.get("preview"))).deepCopy();
+        if(!raw.isObject()||!raw.path("rows").isArray())throw conflict("原科目文件预览不完整，不能重建源行");
+        UUID id=UUID.randomUUID();((com.fasterxml.jackson.databind.node.ObjectNode)raw).put("importId",id.toString());
+        Map<String,Long> versions=new HashMap<>();db.query("SELECT code,row_version FROM finance_chart_codes",rs->{versions.put(rs.getString(1),rs.getLong(2));});
+        for(JsonNode row:raw.path("rows")){
+            if(!row.isObject()||!row.path("code").isTextual())throw conflict("原科目源行身份不完整，不能猜补");
+            Long version=versions.get(row.path("code").asText());var mutable=(com.fasterxml.jackson.databind.node.ObjectNode)row;
+            if(version==null)mutable.putNull("existingVersion");else mutable.put("existingVersion",version);
+        }
+        db.update("""
+                INSERT INTO finance_chart_imports(id,actor_id,source_name,sha256,storage_provider,storage_key,storage_version,storage_size,preview,parent_import_id,review_request_id)
+                VALUES(?,?,?,?,?,?,?,?,?::jsonb,?,?)
+                """,id,current.requireId(),source.get("source_name"),source.get("sha256"),source.get("storage_provider"),source.get("storage_key"),source.get("storage_version"),source.get("storage_size"),encode(raw),parent,request);
+        var result=Map.of("requestId",request,"importId",id,"parentImportId",parent,"sourceImportId",sourceImportId(parent),"sha256",source.get("sha256"),"status","PREVIEWED");
+        var receipt=operations.cancellationOutcome(request,IMPORT_REVIEW,"POST",path,original,result,false);receipt.put("proofScope","RAW_BODY");
+        db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result)VALUES(?,?,?,?::jsonb)",request,current.requireId(),commandFingerprint(IMPORT_REVIEW,path,original),encode(receipt));return receipt;
+    }
+
+    private Map<String,Object> cancelRepreview(UUID request,com.uten.imp.features.finance.FinanceOperationJournal.Cancellation cancellation){
+        String prefix="/finance/chart/imports/",suffix="/repreview",path=cancellation.path();
+        if(path==null||!path.startsWith(prefix)||!path.endsWith(suffix))throw invalid("请保留原重新审阅来源路径");
+        UUID parent;try{parent=UUID.fromString(path.substring(prefix.length(),path.length()-suffix.length()));if(!repreviewPath(parent).equals(path))throw new IllegalArgumentException();}catch(Exception error){throw invalid("请保留原重新审阅来源批次身份");}
+        var original=operations.cancellationBody(request,cancellation,IMPORT_REVIEW,"POST",path,JsonNode.class);
+        tx.bind();lockCommand(IMPORT_REVIEW,original);var previous=manualOperation(request);
+        if(previous!=null)return originalReceipt(request,IMPORT_REVIEW,"POST",path,original,previous);
+        importRow(parent,false); // Same actor's retained source is required even after write permission is lost.
+        var receipt=operations.cancellationOutcome(request,IMPORT_REVIEW,"POST",path,original,Map.of("cancelled",true),true);receipt.put("proofScope","RAW_BODY");
+        db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result)VALUES(?,?,?,?::jsonb)",request,current.requireId(),commandFingerprint(IMPORT_REVIEW,path,original),encode(receipt));return receipt;
+    }
+    private static String repreviewPath(UUID parent){if(parent==null)throw invalid("请保留原科目文件批次");return "/finance/chart/imports/"+parent+"/repreview";}
+    private void verifyImportFile(Map<String,Object> row){files.checkLegacy("FINANCE_CHART_IMPORT_REPLAY",files.read(new ImmutableDocumentStore.Reference((String)row.get("storage_provider"),(String)row.get("storage_key"),(String)row.get("storage_version"),((Number)row.get("storage_size")).longValue(),(String)row.get("sha256"))));}
+    private List<Map<String,Object>> importRows(UUID id,boolean forUpdate){
+        if(id==null)throw invalid("请保留原科目文件批次");
+        return db.queryForList("SELECT id,actor_id,source_name,sha256,storage_provider,storage_key,storage_version,storage_size,preview::text AS preview,applied_at,applied_result::text AS applied_result,parent_import_id,review_request_id,apply_receipt::text AS apply_receipt,cancelled_at,cancellation_result::text AS cancellation_result FROM finance_chart_imports WHERE id=? AND actor_id=?"+(forUpdate?" FOR UPDATE":""),id,current.requireId());
+    }
+    private Map<String,Object> importRow(UUID id,boolean forUpdate){var rows=importRows(id,forUpdate);if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"导入批次不存在或不属于当前账号");return rows.getFirst();}
+    private UUID sourceImportId(UUID id){
+        return db.queryForObject("""
+                WITH RECURSIVE source AS(SELECT id,parent_import_id,ARRAY[id] AS path FROM finance_chart_imports WHERE id=? AND actor_id=?
+                UNION ALL SELECT p.id,p.parent_import_id,s.path||p.id FROM source s JOIN finance_chart_imports p ON p.id=s.parent_import_id WHERE NOT p.id=ANY(s.path))
+                SELECT id FROM source WHERE parent_import_id IS NULL
+                """,UUID.class,id,current.requireId());
     }
 
     @Transactional
     public Result apply(Apply request) {
         writeAccess();if(request==null||request.importId()==null)throw invalid("请选择已预览的科目文件");
-        tx.bind();PaymentStyleHierarchyLock.lock(em);lock();UUID id=request.importId();
-        var rows=db.queryForList("SELECT preview::text,applied_result::text FROM finance_chart_imports WHERE id=? AND actor_id=? FOR UPDATE",id,current.requireId());
-        if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"导入批次不存在或不属于当前账号");
-        var data=rows.getFirst();if(data.get("applied_result")!=null)return decode((String)data.get("applied_result"),Result.class);
+        var receipt=applyCommand(json.valueToTree(request));return decode(encode(receipt.get("result")),Result.class);
+    }
+    private Result applyCore(UUID id,Map<String,Object> data){
         Preview preview=decode((String)data.get("preview"),Preview.class);
+        if(preview.rows()==null||preview.rows().isEmpty())throw invalid("原导入预览没有可审阅科目，不能返回空成功");
         if(!preview.issues().isEmpty())throw invalid("请先修正预览中的全部错误，未写入任何科目");
         int order=db.queryForObject("SELECT COALESCE(max(sort_order),0) FROM finance_chart_codes",Integer.class);
         for(var row:preview.rows()) {
@@ -211,9 +522,7 @@ public class FinanceChartService {
                     throw conflict("科目目录已变化，请重新预览："+row.code());
             }
         }
-        Result result=new Result(id,preview.rows().size(),"APPLIED");
-        db.update("UPDATE finance_chart_imports SET applied_at=now(),applied_result=?::jsonb WHERE id=?",encode(result),id);
-        return result;
+        return new Result(id,preview.rows().size(),"APPLIED");
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -244,10 +553,14 @@ public class FinanceChartService {
     }
     @Transactional(readOnly=true) public Map<String,Object> options(){readAccess();return Map.of("currencies",chartCurrencies.choices());}
 
+    /** Controlled compound helper; external writes use the original-request adapter. */
     @Transactional
     public List<Account> createTarget(String code,CreateTarget request) {
+        createTargetCore(code,request);return list();
+    }
+    private void createTargetCore(String code,CreateTarget request) {
         writeAccess();CurrentAuthorityGuard.requireAll("payment_style:create");
-        if(request==null||request.category()==null||!Set.of("ACCOUNT","LIABILITY","EQUITY","INCOME","EXPENSE").contains(request.category()))
+        if(request==null||request.expectedVersion()==null||request.expectedVersion()<0||request.category()==null||!Set.of("ACCOUNT","LIABILITY","EQUITY","INCOME","EXPENSE").contains(request.category()))
             throw invalid("请选择财务核算类别");
         tx.bind();PaymentStyleHierarchyLock.lockForHierarchyChange(em);lock();
         var rows=db.queryForList("SELECT name,row_version,native_style_id,classification FROM finance_chart_codes WHERE code=? FOR UPDATE",code);
@@ -261,25 +574,31 @@ public class FinanceChartService {
             // Legacy create-target callers have no report-line fields. Creation
             // without an explicit selection must not clear an existing mapping.
             if((request.balanceLineKey()==null||request.balanceLineKey().isBlank())
-                    &&(request.profitLineKey()==null||request.profitLineKey().isBlank()))return list();
-            return map(code,new Mapping(request.expectedVersion(),List.of((UUID)row.get("native_style_id")),request.balanceLineKey(),request.profitLineKey(),classification,request.currencyId()));
+                    &&(request.profitLineKey()==null||request.profitLineKey().isBlank()))return;
+            mapCore(code,new Mapping(request.expectedVersion(),List.of((UUID)row.get("native_style_id")),request.balanceLineKey(),request.profitLineKey(),classification,request.currencyId()));return;
         }
         if(((Number)row.get("row_version")).longValue()!=request.expectedVersion())throw conflict("科目目录已变化，请刷新后核对");
         if(db.queryForObject("SELECT count(*) FROM finance_chart_code_styles WHERE code=?",Integer.class,code)!=0)
             throw conflict("本财务科目已有对应，请核对现有取数，不能再创建一份");
         UUID style=accountCreation.create(code,(String)row.get("name"),request.category());
         db.update("UPDATE finance_chart_codes SET native_style_id=? WHERE code=?",style,code);
-        return map(code,new Mapping(request.expectedVersion(),List.of(style),request.balanceLineKey(),request.profitLineKey(),classification,request.currencyId()));
+        mapCore(code,new Mapping(request.expectedVersion(),List.of(style),request.balanceLineKey(),request.profitLineKey(),classification,request.currencyId()));
     }
 
+    /** Controlled compound helper; a current mapping is never an operation receipt. */
     @Transactional
     public List<Account> map(String code,Mapping request) {
-        writeAccess();if(request==null||code==null||!code.matches("[0-9]{1,32}"))throw invalid("请选择科目和当前版本");
+        mapCore(code,request);return list();
+    }
+    private void mapCore(String code,Mapping request) {
+        writeAccess();if(request==null||request.expectedVersion()==null||request.expectedVersion()<0||code==null||!code.matches("[0-9]{1,32}"))throw invalid("请选择科目和当前版本");
         tx.bind();PaymentStyleHierarchyLock.lock(em);lock();
         // Same order as GlReportLineBindingService; no unguarded secondary report allocation.
         db.query("SELECT pg_advisory_xact_lock(hashtextextended('uten:finance-report-line-bindings',0))",rs->{});
         var version=db.queryForList("SELECT row_version FROM finance_chart_codes WHERE code=? FOR UPDATE",Long.class,code);
         if(version.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"科目代码不存在");
+        if(!Objects.equals(version.getFirst(),request.expectedVersion()))
+            throw conflict("科目对应已变化，请刷新核对后重试");
         String previousClassification=db.queryForObject("SELECT classification FROM finance_chart_codes WHERE code=?",String.class,code);
         String classification=FinanceChartClassification.resolve(code,request.classification()==null?previousClassification:request.classification(),null);
         var currencyRow=db.queryForMap("SELECT currency_name,currency_id FROM finance_chart_codes WHERE code=?",code);
@@ -303,11 +622,6 @@ public class FinanceChartService {
         String fingerprint=ImmutableDocumentStore.digest((ids.stream().map(UUID::toString).sorted().toList().toString()
                 +desiredLines.stream().sorted().toList()+classification+currency).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         Set<UUID> before=new LinkedHashSet<>(db.queryForList("SELECT style_id FROM finance_chart_code_styles WHERE code=?",UUID.class,code));
-        if(version.getFirst()!=request.expectedVersion()) {
-            var saved=db.queryForObject("SELECT mapping_fingerprint FROM finance_chart_codes WHERE code=?",String.class,code);
-            if(version.getFirst()==request.expectedVersion()+1&&before.equals(ids)&&fingerprint.equals(saved))return list();
-            throw conflict("科目对应已变化，请刷新核对后重试");
-        }
         if(!ids.isEmpty()) {
             var valid=em.createNativeQuery("""
                     SELECT count(*) FROM payment_styles s WHERE s.id IN(:ids) AND NOT s.is_deleted
@@ -342,7 +656,6 @@ public class FinanceChartService {
         if(currency!=null&&db.queryForObject("SELECT count(*) FROM finance_gl_entry_allocations WHERE account_code=? AND currency_id IS DISTINCT FROM ?",Long.class,code,currency)!=0)
             throw conflict("该科目已有其他币别的已过账来源，不能更换币别，请用独立科目明细维护");
         db.update("UPDATE finance_chart_codes SET row_version=row_version+1,mapping_fingerprint=?,classification=?,currency_id=?,updated_at=now(),updated_by=? WHERE code=?",fingerprint,classification,currency,current.requireId(),code);
-        return list();
     }
     private void validateClassification(String code,String classification) {
         if(classification==null)return;

@@ -63,7 +63,7 @@ class FinanceChartMetadataTest {
         assertThat(chart.metadataReceipt("1001",request.requestId())).containsEntry("found",false);
     }
     @Test void metadataEndpointKeepsAllThreeAuthoritiesAndAutomaticWriteAuditAction()throws Exception {
-        var endpoint=FinanceChartController.class.getDeclaredMethod("updateAccount",String.class,FinanceChartContracts.UpdateAccount.class);
+        var endpoint=FinanceChartController.class.getDeclaredMethod("updateAccount",String.class,com.fasterxml.jackson.databind.JsonNode.class);
         assertThat(endpoint.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')");
         assertThat(com.uten.imp.audit.AuditActionNames.semanticAction(FinanceChartController.class,endpoint.getName()))

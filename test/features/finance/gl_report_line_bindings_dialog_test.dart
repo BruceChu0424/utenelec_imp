@@ -5,13 +5,16 @@ import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/widgets/gl_report_line_bindings_dialog.dart';
-import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import '../../support/audit_screenshot_support.dart';
 import '../../support/finance_command_test_support.dart';
+import '../../support/pump_until.dart';
 
 /// ADR-112 / overhaul-gap-03: 附表取数设置——未配置的行明确标注, 选费用末级科目后整行保存,
 /// 「按默认名单补齐」调用服务端同一个库函数。
@@ -342,7 +345,10 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [apiClientProvider.overrideWithValue(api)],
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            ...financeCommandTestOverrides(),
+          ],
           child: const MaterialApp(
             home: Scaffold(body: GlReportLineBindingsDialog(canEdit: true)),
           ),
@@ -362,8 +368,14 @@ void main() {
       seed();
       seed();
       edit();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+      await pumpUntil(
+        tester,
+        () =>
+            api.defaultCalls == 1 &&
+            find.byType(UtenBusyOverlay).evaluate().length == 1 &&
+            find.byType(UtenBusyOverlayCard).evaluate().length == 1,
+        reason: '默认名单操作尚未在真实弹窗恢复和确认回调后进入等待',
+      );
       expect(api.defaultCalls, 1);
       expect(api.lastQuery, isNull);
       expect(find.byType(UtenBusyOverlay), findsOneWidget);
@@ -380,7 +392,9 @@ void main() {
       tester,
     ) async {
       final api = _Api();
-      final epoch = _Epoch();
+      final identity = StateProvider<AuthenticatedScope?>(
+        (_) => const AuthenticatedScope(userId: financeCommandTestActor),
+      );
       bool? changed;
       await tester.binding.setSurfaceSize(const Size(1400, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -388,7 +402,10 @@ void main() {
         ProviderScope(
           overrides: [
             apiClientProvider.overrideWithValue(api),
-            exportContextEpochProvider.overrideWith(() => epoch),
+            ...financeCommandTestOverrides(identity: false),
+            authenticatedScopeProvider.overrideWith(
+              (ref) => ref.watch(identity),
+            ),
           ],
           child: MaterialApp(
             home: Builder(
@@ -417,14 +434,19 @@ void main() {
         );
         await tester.pump();
       }
-      epoch.advance();
+      ProviderScope.containerOf(
+        tester.element(find.text('open')),
+        listen: false,
+      ).read(identity.notifier).state = const AuthenticatedScope(
+        userId: 'different-finance-reader',
+      );
       await tester.pumpAndSettle();
       expect(find.text('办公费'), findsNothing);
       expect(find.byKey(const ValueKey('gl-line-target-save')), findsNothing);
       if (openPicker) {
-        await tester.tap(
-          find.byKey(const ValueKey('gl-line-picker-retired-close')),
-        );
+        final close = find.widgetWithText(UtenButton, '关闭').hitTestable();
+        expect(close, findsOneWidget);
+        await tester.tap(close);
         await tester.pumpAndSettle();
         expect(changed, isNull);
       }
@@ -451,13 +473,6 @@ void main() {
     expect(flat.map((item) => item.label), ['生产部 (D1)', '注塑车间 (D2)']);
     expect(flat.map((item) => item.depth), [0, 1]);
   });
-}
-
-class _Epoch extends ExportContextEpoch {
-  @override
-  int build() => 0;
-
-  void advance() => state++;
 }
 
 class _Api extends ApiClient {

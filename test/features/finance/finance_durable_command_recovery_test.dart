@@ -282,7 +282,9 @@ void main() {
       await _unmount(tester, harness);
     },
   );
-  for (final operation in FinanceDurableOperation.values) {
+  for (final operation in FinanceDurableOperation.values.where(
+    (operation) => !operation.chart,
+  )) {
     testWidgets(
       '${operation.key} hard reopen through real hub preserves original body/target/version and retries only the original command',
       (tester) async {
@@ -322,7 +324,9 @@ void main() {
     );
   }
 
-  for (final operation in FinanceDurableOperation.values) {
+  for (final operation in FinanceDurableOperation.values.where(
+    (operation) => !operation.chart,
+  )) {
     testWidgets(
       '${operation.key} proved unwritten preserves input, requires explicit current review and sends a new ID only after explicit save',
       (tester) async {

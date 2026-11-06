@@ -506,7 +506,8 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
 
     @Test
     void localOnlyExpenseAndIncomeRejectAnActiveForeignCurrencyAccount() throws Exception {
-        List<DraftDocument> documents = seedDrafts();
+        List<DraftDocument> documents = seedDrafts(false);
+        assertThat(documents).extracting(DraftDocument::label).containsExactlyInAnyOrder("expense","income");
         String suffix = UUID.randomUUID().toString();
         UUID foreignCurrencyId = UUID.randomUUID();
         jdbc.update("""
@@ -536,10 +537,11 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
     @Test
     void localOnlyExpenseAndIncomeRejectHeaderCurrencyOrRateContradictingTheBaseAccount()
             throws Exception {
-        List<DraftDocument> documents = seedDrafts().stream()
+        List<DraftDocument> documents = seedDrafts(false).stream()
                 .filter(item -> item.label().equals("expense")
                         || item.label().equals("income"))
                 .toList();
+        assertThat(documents).extracting(DraftDocument::label).containsExactlyInAnyOrder("expense","income");
         String suffix = UUID.randomUUID().toString();
         UUID foreignCurrencyId = UUID.randomUUID();
         jdbc.update("""
@@ -575,6 +577,11 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
     }
 
     private List<DraftDocument> seedDrafts() throws Exception {
+        return seedDrafts(true);
+    }
+
+    private List<DraftDocument> seedDrafts(boolean includeSettlementFamilies) throws Exception {
+        List<DraftDocument> documents=new java.util.ArrayList<>();
         String suffix = UUID.randomUUID().toString();
         seedCoreStyle("102", "银行存款", "ACCOUNT", "/102/");
         UUID currencyId = jdbc.queryForObject("""
@@ -582,25 +589,26 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 WHERE is_base_currency AND status='使用'
                   AND COALESCE(is_deleted,FALSE)=FALSE
                 """, UUID.class);
-        UUID clientId = UUID.randomUUID();
+        UUID clientId = includeSettlementFamilies?UUID.randomUUID():null;
         UUID makerId = seedCurrentActor("concurrency-direct-maker").employeeId();
-        jdbc.update("""
+        if(includeSettlementFamilies)jdbc.update("""
                 INSERT INTO clients (id, code, name, status, code_sequence)
                 VALUES (?, ?, '财务并发测试客户', '使用',
                         (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM clients))
                 """, clientId, "CLI-" + suffix);
 
-        UUID receiptAccount = seedAccount(currencyId, suffix + "-RECEIPT");
+        UUID receiptAccount = includeSettlementFamilies?seedAccount(currencyId, suffix + "-RECEIPT"):null;
         UUID incomeAccount = seedAccount(currencyId, suffix + "-INCOME");
         UUID expenseAccount = seedAccount(currencyId, suffix + "-EXPENSE");
-        UUID transferOutAccount = seedAccount(currencyId, suffix + "-TRANSFER-OUT");
-        UUID transferInAccount = seedAccount(currencyId, suffix + "-TRANSFER-IN");
+        UUID transferOutAccount = includeSettlementFamilies?seedAccount(currencyId, suffix + "-TRANSFER-OUT"):null;
+        UUID transferInAccount = includeSettlementFamilies?seedAccount(currencyId, suffix + "-TRANSFER-IN"):null;
         UUID incomeStyle = seedLeafStyle("INCOME", suffix + "-INCOME-STYLE");
         UUID expenseStyle = seedLeafStyle("EXPENSE", suffix + "-EXPENSE-STYLE");
 
         // 当期日期：审核/财务确认会触碰 GL 自动投影的跨期间红冲守卫，
         // 固定未来日期会被「跨会计期间红冲」拒绝。
         LocalDate billDate = BusinessTime.today();
+        if(includeSettlementFamilies){
         // V379 起无核销明细的收款是客户预收且必须走服务创建（AR_SETTLEMENT 必须带行，
         // 预收立账的金额/元数据由服务端权威写入），不再用裸 SQL 伪造表头。
         com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest receiptReq =
@@ -633,6 +641,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 callAsSuperAdmin("concurrency-receipt-seeder",
                         () -> receiptService.create(receiptReq));
         UUID receiptId = receiptDetail.getId();
+        documents.add(new DraftDocument("receipt", "finance_receipts", "RECEIPT", 1, receiptId,
+                () -> receiptService.delete(receiptId), () -> receiptService.approve(receiptId)));
+        }
 
         UUID incomeId = UUID.randomUUID();
         String incomeNo = businessIdentifier("QS", billDate);
@@ -648,7 +659,10 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                     amount_original, amount_local, line_no, is_deleted)
                 VALUES (?, ?, ?, ?, ?, 10.0000, 10.0000, 1, false)
                 """, UUID.randomUUID(), incomeId, incomeNo, billDate, incomeStyle);
+        documents.add(new DraftDocument("income", "finance_other_incomes", "INCOME", 1, incomeId,
+                () -> incomeService.delete(incomeId), () -> incomeService.approve(incomeId)));
 
+        if(includeSettlementFamilies){
         UUID transferId = UUID.randomUUID();
         String transferNo = businessIdentifier("YC", billDate);
         jdbc.update("""
@@ -663,6 +677,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                     amount_original, amount_local, line_no, is_deleted)
                 VALUES (?, ?, ?, ?, ?, 10.0000, 10.0000, 1, false)
                 """, UUID.randomUUID(), transferId, transferNo, billDate, transferInAccount);
+        documents.add(new DraftDocument("bank-transfer", "finance_bank_transfers", "BANK_TRANSFER", 2, transferId,
+                () -> transferService.delete(transferId), () -> transferService.approve(transferId)));
+        }
 
         UUID expenseId = UUID.randomUUID();
         String expenseNo = businessIdentifier("YF", billDate);
@@ -679,19 +696,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 VALUES (?, ?, ?, ?, ?, 10.0000, 10.0000, 1, false)
                 """, UUID.randomUUID(), expenseId, expenseNo, billDate, expenseStyle);
 
-        return List.of(
-                new DraftDocument(
-                        "receipt", "finance_receipts", "RECEIPT", 1, receiptId,
-                        () -> receiptService.delete(receiptId), () -> receiptService.approve(receiptId)),
-                new DraftDocument(
-                        "income", "finance_other_incomes", "INCOME", 1, incomeId,
-                        () -> incomeService.delete(incomeId), () -> incomeService.approve(incomeId)),
-                new DraftDocument(
-                        "bank-transfer", "finance_bank_transfers", "BANK_TRANSFER", 2, transferId,
-                        () -> transferService.delete(transferId), () -> transferService.approve(transferId)),
-                new DraftDocument(
-                        "expense", "finance_expenses", "EXPENSE", 1, expenseId,
-                        () -> expenseService.delete(expenseId), () -> expenseService.approve(expenseId)));
+        documents.add(new DraftDocument("expense", "finance_expenses", "EXPENSE", 1, expenseId,
+                () -> expenseService.delete(expenseId), () -> expenseService.approve(expenseId)));
+        return List.copyOf(documents);
     }
 
     private UUID seedAccount(UUID currencyId, String suffix) {

@@ -756,8 +756,9 @@ void main() {
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
     expect(notifications.single.message, '请至少引用一条应收明细');
-    // 2026-09-14：引用入口从顶部工具条挪到明细表上方，空态文案随之改「上方」。
-    expect(find.text('暂无明细，请点击上方“引用应收”添加'), findsOneWidget);
+    expect(api.writeCalls, 0);
+    expect(find.text('暂无明细，请点击上方“按出货单收款”添加'), findsOneWidget);
+    expect(find.text('按出货单收款'), findsOneWidget);
   });
 
   testWidgets(
@@ -959,7 +960,7 @@ void main() {
       for (final column in const [
         '出货单/原来源',
         '应收币种',
-        '本次分配收款(原币)',
+        FinanceDocConfig.receiptAllocationAmountLabel,
         '当前批次实际到账汇率',
         '分配折算毛额(人民币)',
         '冲减应收账面金额(人民币)',

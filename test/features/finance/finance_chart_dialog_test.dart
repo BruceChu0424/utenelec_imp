@@ -1,10 +1,12 @@
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
@@ -21,6 +23,10 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../support/finance_command_test_support.dart'
+    show financeCommandTestReceipt;
+
+const _chartImport = '00000000-0000-0000-0000-000000000801';
 
 class _Session extends SessionNotifier {
   @override
@@ -98,7 +104,13 @@ void main() {
         ..accountName = '未分配利润'
         ..loseFirstTarget = true;
       await _pump(tester, api);
-      await tester.tap(find.text('对应科目/报表'));
+      final mappingAction = find.widgetWithText(UtenButton, '对应科目/报表');
+      await tester.ensureVisible(mappingAction);
+      await tester.pumpAndSettle();
+      expect(mappingAction.hitTestable(), findsOneWidget);
+      await tester.tap(mappingAction);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('补建并对应此科目'));
       await tester.pumpAndSettle();
       Future<void> choose(String label, String value) async {
         final field = find.byWidgetPredicate(
@@ -115,14 +127,15 @@ void main() {
       await choose('资产负债表项目', '未分配利润');
       await choose('利润表项目', '以前年度损益调整');
       expect(find.text('保存对应'), findsNothing);
-      await tester.tap(find.text('补建并对应此科目'));
+      await tester.tap(find.widgetWithText(UtenButton, '补建并对应此科目'));
       await tester.pumpAndSettle();
       expect(api.targetRequests.single['balanceLineKey'], 'BS_51');
       expect(api.targetRequests.single['profitLineKey'], 'PL_PRIOR_ADJUSTMENT');
-      await tester.tap(find.text('核对并重试原对应'));
+      await tester.tap(find.widgetWithText(UtenButton, '重试原请求'));
       await tester.pumpAndSettle();
       expect(api.targetRequests, hasLength(2));
       expect(api.targetRequests.first, api.targetRequests.last);
+      expect(api.targetWrites, 1);
       expect(tester.takeException(), isNull);
     },
   );
@@ -206,7 +219,7 @@ void main() {
     },
   );
   testWidgets(
-    'lost apply reply retries only the original batch and closes no unknown work',
+    'lost apply reply retains the original opaque batch, allows durable later checking and retries no new import',
     (tester) async {
       final api = _ChartApi()..loseFirstApply = true;
       await _pump(tester, api);
@@ -214,16 +227,16 @@ void main() {
       expect(find.textContaining('1条科目，0项错误'), findsOneWidget);
       await tester.tap(find.text('确认导入科目目录'));
       await tester.pumpAndSettle();
-      expect(api.applies, ['batch-1']);
+      expect(api.applies, [_chartImport]);
       expect(
         tester
             .widget<UtenCloseButton>(find.byType(UtenCloseButton).last)
             .onPressed,
-        isNull,
+        isNotNull,
       );
-      await tester.tap(find.text('核对并重试原批次'));
+      await tester.tap(find.widgetWithText(UtenButton, '重试原导入请求'));
       await tester.pumpAndSettle();
-      expect(api.applies, ['batch-1', 'batch-1']);
+      expect(api.applies, [_chartImport, _chartImport]);
       expect(api.actualImports, 1);
       expect(api.uploads, 1);
       expect(find.text('1001'), findsOneWidget);
@@ -233,14 +246,16 @@ void main() {
   );
 
   testWidgets(
-    'definite validation rejection keeps the preview editable and does not trap the user',
+    'a dispatched validation rejection retains the original preview and request for explicit proof without trapping later exit',
     (tester) async {
       final api = _ChartApi()..rejectApply = true;
       await _pump(tester, api);
       await _tapTableAction(tester, '导入科目目录');
       await tester.tap(find.text('确认导入科目目录'));
       await tester.pumpAndSettle();
-      expect(find.text('核对并重试原批次'), findsNothing);
+      expect(find.widgetWithText(UtenButton, '重试原导入请求'), findsOneWidget);
+      expect(find.widgetWithText(UtenButton, '稍后核对'), findsOneWidget);
+      expect(find.widgetWithText(UtenButton, '确认导入科目目录'), findsNothing);
       expect(
         tester
             .widget<UtenCloseButton>(find.byType(UtenCloseButton).last)
@@ -337,14 +352,21 @@ class _ChartApi extends ApiClient {
   String accountName = '库存现金';
   String accountCode = '1001';
   bool loseFirstTarget = false;
+  int targetWrites = 0;
+  final targetReceipts = <String, Map<String, dynamic>>{};
   final targetRequests = <Map<String, dynamic>>[];
   final metadataRequests = <Map<String, dynamic>>[];
   int uploads = 0, actualImports = 0;
   final applies = <String>[];
   final preview = <String, dynamic>{
-    'importId': 'batch-1',
+    'importId': _chartImport,
     'sourceName': 'chart.xls',
     'applied': false,
+    'sha256': sha256.convert([1, 2, 3]).toString(),
+    'parentImportId': null,
+    'sourceImportId': _chartImport,
+    'cancelled': false,
+    'applyOutcome': null,
     'rows': [
       {'code': '1001', 'name': '库存现金', 'currencyName': ''},
     ],
@@ -355,6 +377,9 @@ class _ChartApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/finance/chart/imports/$_chartImport/operations/apply') {
+      return actualImports == 0 ? {'found': false} : _applyReceipt();
+    }
     if (path.startsWith('/finance/chart/1001/metadata/operations/')) {
       if (metadataRequests.isEmpty || metadataWrites == 0) {
         return {'found': false};
@@ -384,6 +409,7 @@ class _ChartApi extends ApiClient {
             'name': '人民币',
             'code': 'CNY',
             'baseCurrency': true,
+            'status': '使用',
           },
         ],
       };
@@ -399,12 +425,27 @@ class _ChartApi extends ApiClient {
               'code': accountCode,
               'name': accountName,
               'classification': accountCode == '310410' ? 'EQUITY' : 'ASSET',
-              'version': 0,
-              'targets': <Object>[],
-              'lineKeys': <Object>[],
+              'version': targetWrites,
+              'targets': [
+                if (targetWrites > 0)
+                  {
+                    'id': '00000000-0000-0000-0000-000000000501',
+                    'code': accountCode,
+                    'name': accountName,
+                    'category': 'EQUITY',
+                  },
+              ],
+              'lineKeys': [
+                if (targetWrites > 0) ...['BS_51', 'PL_PRIOR_ADJUSTMENT'],
+              ],
             },
         ],
       };
+    }
+    if (path == '/finance/chart/$accountCode') {
+      return Map<String, dynamic>.from(
+        ((await get('/finance/chart'))['items'] as List).single as Map,
+      );
     }
     return {};
   }
@@ -496,11 +537,40 @@ class _ChartApi extends ApiClient {
       };
     }
     if (path == '/finance/chart/310410/create-target') {
-      targetRequests.add(Map<String, dynamic>.from(body! as Map));
+      final command = Map<String, dynamic>.from(body! as Map);
+      targetRequests.add(command);
+      final response = targetReceipts.putIfAbsent(
+        command['requestId'] as String,
+        () {
+          targetWrites++;
+          return {
+            ...financeCommandTestReceipt(
+              operation: 'CHART_TARGET_CREATE',
+              method: 'POST',
+              path: path,
+              body: command,
+              result: {
+                'requestId': command['requestId'],
+                'code': '310410',
+                'status': 'APPLIED',
+                'version': targetWrites,
+                'styleIds': ['00000000-0000-0000-0000-000000000501'],
+                'classification': command['classification'],
+                'currencyId': command['currencyId'],
+                'lineKeys': [
+                  command['balanceLineKey'],
+                  command['profitLineKey'],
+                ].whereType<String>().toList(),
+              },
+            ),
+            'actorId': 'chart-test-user',
+          };
+        },
+      );
       if (loseFirstTarget && targetRequests.length == 1) {
         throw NetworkTimeoutException();
       }
-      return get('/finance/chart');
+      return response;
     }
     if (path == '/finance/chart/import-apply') {
       applies.add((body as Map)['importId'].toString());
@@ -516,8 +586,20 @@ class _ChartApi extends ApiClient {
       if (loseFirstApply && applies.length == 1) {
         throw NetworkTimeoutException();
       }
-      return {'status': 'APPLIED', 'imported': 1};
+      return _applyReceipt();
     }
     return {};
   }
+
+  Map<String, dynamic> _applyReceipt() => {
+    'found': true,
+    'outcome': 'SUCCEEDED',
+    'requestId': _chartImport,
+    'actorId': 'chart-test-user',
+    'operation': 'CHART_IMPORT_APPLY',
+    'method': 'POST',
+    'path': '/finance/chart/import-apply',
+    'requestBody': {'importId': _chartImport},
+    'result': {'importId': _chartImport, 'imported': 1, 'status': 'APPLIED'},
+  };
 }

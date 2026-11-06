@@ -221,7 +221,16 @@ void main() {
         expect(api.lookupIds, ['historical-party']);
         expect(api.reportQueries.last['partyId'], 'historical-party');
         expect(api.reportQueries.last['side'], side);
-        await tester.tap(find.byTooltip('清除选择'));
+        final clearParty = find.descendant(
+          of: side == 'AR'
+              ? find.byType(ClientPickerField)
+              : find.byType(SupplierPickerField),
+          matching: find.byTooltip('清除选择'),
+        );
+        expect(clearParty, findsOneWidget);
+        await tester.ensureVisible(clearParty);
+        expect(clearParty.hitTestable(), findsOneWidget);
+        await tester.tap(clearParty);
         await tester.pumpAndSettle();
         expect(api.reportQueries.last.containsKey('partyId'), isFalse);
         expect(tester.takeException(), isNull);
@@ -246,7 +255,13 @@ void main() {
       );
       expect(field.initialId, 'historical-party');
       expect(field.allowClear, isFalse);
-      expect(find.byTooltip('清除选择'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(SupplierPickerField),
+          matching: find.byTooltip('清除选择'),
+        ),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     },
   );

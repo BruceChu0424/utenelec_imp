@@ -33,6 +33,8 @@ import '../widgets/finance_asset_opening_group_dialog.dart';
 import '../widgets/finance_statement_document_dialog.dart';
 import '../widgets/finance_material_statement_dialog.dart';
 import '../widgets/finance_chart_metadata_dialog.dart';
+import '../widgets/finance_chart_command_dialog.dart';
+import '../widgets/finance_chart_import_workbench.dart';
 import '../widgets/finance_durable_command_dialog.dart';
 
 import '../widgets/gl_report_line_bindings_dialog.dart';
@@ -81,6 +83,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
       FormDraftCatalog.financeAssetOpeningGroup,
       FormDraftCatalog.financeMaterialStatement,
       FormDraftCatalog.financeChartMetadata,
+      FormDraftCatalog.financeChartImport,
       FormDraftCatalog.financeDurableCommand,
       FormDraftCatalog.financeStatementComparison,
       FormDraftCatalog.financeSubcontractLossPolicy,
@@ -97,6 +100,11 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
         descriptor: descriptor,
         onResume: (parameters) async {
           final id = parameters['draftId'];
+          if (descriptor == FormDraftCatalog.financeChartImport) {
+            if (id == null) throw const FormatException('原目录导入缺少草稿编号');
+            await showFinanceChartImportWorkbench(context, resumeDraftId: id);
+            return;
+          }
           if (descriptor == FormDraftCatalog.financeDurableCommand) {
             final operation = FinanceDurableOperation.parse(
               parameters['operation'] ?? '',
@@ -120,6 +128,15 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
               case FinanceDurableOperation.reportDefaults:
                 await showFinanceReportDefaultsCommand(
                   context,
+                  resumeDraftId: id,
+                );
+              case FinanceDurableOperation.chartAccountCreate:
+              case FinanceDurableOperation.chartMappingReplace:
+              case FinanceDurableOperation.chartTargetCreate:
+                await showFinanceChartCommand(
+                  context,
+                  operation: operation,
+                  code: target,
                   resumeDraftId: id,
                 );
               default:

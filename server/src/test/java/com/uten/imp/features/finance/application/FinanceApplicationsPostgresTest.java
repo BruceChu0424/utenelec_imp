@@ -19,7 +19,7 @@ import static com.uten.imp.features.finance.application.FinanceApplicationContra
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
-    "spring.profiles.active=dev","spring.flyway.target=1039","uten.inventory.value-work.enabled=false","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
+    "spring.profiles.active=dev","uten.inventory.value-work.enabled=false","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
     "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
     "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
     "uten.jwt.secret=application-test-only-jwt-key-0123456789-0123456789",
@@ -30,8 +30,15 @@ import static com.uten.imp.features.finance.application.FinanceApplicationContra
 class FinanceApplicationsPostgresTest {
     private static final String MIGRATIONS=snapshotMigrations();
     private final Map<String,Prepared> prepared=new LinkedHashMap<>();
+    private static FinanceApplicationsPostgresTest historical;
+    private static String originalEvents,originalOperations,originalSources,completedHead;
+    private static int completedMigrationCount;
     static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("application_chain").withUsername("fixture_admin").withPassword("uten");
-    @DynamicPropertySource static void database(DynamicPropertyRegistry r){PG.start();FixtureDatabaseProperties.bindSameRole(r,PG::getJdbcUrl,PG::getUsername,PG::getPassword);r.add("spring.flyway.locations",()->MIGRATIONS);}
+    @DynamicPropertySource static void database(DynamicPropertyRegistry r)throws Exception{
+        PG.start();
+        if(historical==null)prepareOriginalDatabaseBeforeCurrentJpa();
+        FixtureDatabaseProperties.bindSameRole(r,PG::getJdbcUrl,PG::getUsername,PG::getPassword);r.add("spring.flyway.locations",()->MIGRATIONS);
+    }
     @Autowired JdbcTemplate db;@Autowired FinanceApplicationService applications;@Autowired FinanceApplicationRoles roles;@Autowired TaskClaimService claims;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.uten.imp.features.expenseclaim.ExpenseClaimService expenseClaims;
@@ -186,7 +193,7 @@ class FinanceApplicationsPostgresTest {
      * the complete current schema before any business action. This neither opens
      * retired SAVE/SUBMIT nor proves an older pre1000 database with reversal events
      * can cross the intermediate V1000/V1002 constraint replacements. */
-    @BeforeAll void captureActualPre1040OriginalRounds() throws Exception {
+    private void seedActualPre1040OriginalRounds() {
         assertThat(db.queryForObject("SELECT to_regclass('finance_application_legacy_sources') IS NULL",Boolean.class)).isTrue();
         World travelWorld=world();prepare("travel",travelWorld,travel(UUID.randomUUID()),null,null,false);
         World withdrawal=world();prepare("withdraw",withdrawal,travel(UUID.randomUUID()),null,null,false);prepare("reject",withdrawal,travel(UUID.randomUUID()),null,null,false);
@@ -202,20 +209,50 @@ class FinanceApplicationsPostgresTest {
         prepare("prepayment",prepayment,payment(UUID.randomUUID(),"PREPAYMENT_APPLICATION","SUPPLIER_PREPAYMENT",supplier,null,null,"100"),null,null,false);
         World scoped=world();login(scoped.owner());UUID inaccessible=UUID.randomUUID();db.update("INSERT INTO suppliers(id,code,name,status,code_sequence) VALUES(?,?,'匿名权限范围供应商','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM suppliers))",inaccessible,"FQ-S-"+inaccessible);
         prepared.put("payableScope",new Prepared(scoped,payment(UUID.randomUUID(),"PAYMENT_APPLICATION","SUPPLIER_AP",inaccessible,UUID.randomUUID(),null,"100"),null,null,null));
-        com.uten.imp.testsupport.TestFlyway.configure().dataSource(data).locations(MIGRATIONS).target("1040").load().migrate();
-        String oldEvents=eventHistory(),oldOperations=operationHistory();
-        String oldSources=db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY application_id),'[]'::jsonb)::text FROM finance_application_legacy_sources s",String.class);
-        var currentMigrations=com.uten.imp.testsupport.TestFlyway.configure().dataSource(data).locations(MIGRATIONS).load();
-        currentMigrations.migrate();
-        String head=db.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1",String.class);
-        var highestResolved=java.util.Arrays.stream(currentMigrations.info().all())
-                .filter(info->info.getVersion()!=null&&info.getState().isResolved())
-                .map(org.flywaydb.core.api.MigrationInfo::getVersion).max(java.util.Comparator.naturalOrder()).orElseThrow();
-        assertThat(currentMigrations.info().pending()).isEmpty();
-        assertThat(head).isEqualTo(highestResolved.toString());
-        assertThat(eventHistory()).isEqualTo(oldEvents);assertThat(operationHistory()).isEqualTo(oldOperations);
-        assertThat(db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY application_id),'[]'::jsonb)::text FROM finance_application_legacy_sources s",String.class)).isEqualTo(oldSources);
-        System.out.println("FINANCE_APPLICATION_SCHEMA_HEAD="+head+";SUCCESSFUL_MIGRATIONS="+db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class));
+    }
+    private static void prepareOriginalDatabaseBeforeCurrentJpa(){
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations(MIGRATIONS).target("1039").load().migrate();
+        var old=new FinanceApplicationsPostgresTest();old.data=source;old.db=new JdbcTemplate(source);
+        assertThat(old.db.queryForObject("SELECT max(version::numeric)::int FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class)).isEqualTo(1039);
+        // Only the anonymous bootstrap identity needed to grant the original
+        // fixture's explicit permissions is supplied before the normal app boots.
+        if(old.db.queryForObject("SELECT count(*) FROM users WHERE is_super_admin AND NOT is_deleted",Integer.class)==0){
+            UUID employee=UUID.randomUUID(),user=UUID.randomUUID(),department=old.db.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);
+            old.db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"OLD-"+employee,"匿名旧轮引导员工",department);
+            old.db.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status)VALUES(?,?,?,'unused-preboot-fixture',false,true,'active')",user,employee,"original-fixture-"+user);
+        }
+        var wiring=JdbcHistoricalFinanceServices.create(source);
+        old.applications=wiring.applications();old.roles=wiring.roles();old.numbers=wiring.numbers();old.auxiliaries=wiring.auxiliaries();
+        old.expenseClaims=wiring.expenseSnapshots();old.tx=wiring.identity();old.transactions=wiring.transactions();
+        try{
+            old.seedActualPre1040OriginalRounds();
+            String beforeEvents=old.eventHistory(),beforeOperations=old.operationHistory();
+            String originalHeaders=old.db.queryForObject("SELECT jsonb_object_agg(id,to_jsonb(value))::text FROM finance_applications value WHERE kind<>'PAYROLL_PAYMENT'",String.class);
+            String originalNodes=old.db.queryForObject("SELECT jsonb_object_agg(app.id,COALESCE((SELECT jsonb_agg(to_jsonb(node) ORDER BY submission_round,step_no) FROM finance_application_nodes node WHERE node.application_id=app.id),'[]'::jsonb))::text FROM finance_applications app WHERE kind<>'PAYROLL_PAYMENT'",String.class);
+            com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations(MIGRATIONS).target("1040").load().migrate();
+            assertThat(old.eventHistory()).isEqualTo(beforeEvents);assertThat(old.operationHistory()).isEqualTo(beforeOperations);
+            assertThat(old.db.queryForObject("SELECT jsonb_object_agg(application_id,header_snapshot)::text FROM finance_application_legacy_sources",String.class)).isEqualTo(originalHeaders);
+            assertThat(old.db.queryForObject("SELECT jsonb_object_agg(application_id,nodes_snapshot)::text FROM finance_application_legacy_sources",String.class)).isEqualTo(originalNodes);
+            originalEvents=old.eventHistory();originalOperations=old.operationHistory();
+            originalSources=old.db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY application_id),'[]'::jsonb)::text FROM finance_application_legacy_sources s",String.class);
+            var currentMigrations=com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations(MIGRATIONS).load();currentMigrations.migrate();
+            completedHead=old.db.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1",String.class);
+            var highestResolved=Arrays.stream(currentMigrations.info().all()).filter(info->info.getVersion()!=null&&info.getState().isResolved())
+                .map(org.flywaydb.core.api.MigrationInfo::getVersion).max(Comparator.naturalOrder()).orElseThrow();
+            assertThat(currentMigrations.info().pending()).isEmpty();assertThat(completedHead).isEqualTo(highestResolved.toString());
+            assertThat(old.eventHistory()).isEqualTo(originalEvents);assertThat(old.operationHistory()).isEqualTo(originalOperations);
+            assertThat(old.db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY application_id),'[]'::jsonb)::text FROM finance_application_legacy_sources s",String.class)).isEqualTo(originalSources);
+            completedMigrationCount=old.db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class);historical=old;
+            System.out.println("FINANCE_APPLICATION_PREBOOT_JDBC=1039->1040->"+completedHead+";OLD_HEADER_NODES_OPERATIONS_EVENTS_PRESERVED=true;CURRENT_JPA_NOT_STARTED=true");
+        }finally{SecurityContextHolder.clearContext();}
+    }
+    @BeforeAll void currentJpaReadsTheActuallyCapturedOriginalRounds(){
+        prepared.putAll(Objects.requireNonNull(historical).prepared);
+        assertThat(eventHistory()).isEqualTo(originalEvents);assertThat(operationHistory()).isEqualTo(originalOperations);
+        assertThat(db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY application_id),'[]'::jsonb)::text FROM finance_application_legacy_sources s",String.class)).isEqualTo(originalSources);
+        assertThat(db.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1",String.class)).isEqualTo(completedHead);
+        System.out.println("FINANCE_APPLICATION_SCHEMA_HEAD="+completedHead+";SUCCESSFUL_MIGRATIONS="+completedMigrationCount);
         assertExpenseEventTypeConstraint(prepared.get("REIMBURSEMENT"));
         for(var fixture:prepared.entrySet())if(!fixture.getKey().equals("payableScope"))assertThat(legacy.allowed(fixture.getValue().input().id())).as(fixture.getKey()).isTrue();
         logout();

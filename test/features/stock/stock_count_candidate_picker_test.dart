@@ -51,6 +51,8 @@ class _Repo extends StockCountRequestRepository {
   Completer<PagedResult<CountStockRow>>? delayed;
   final requests = <String>[];
   bool includeLocked = false;
+  bool changedReadScope = false;
+  bool duplicateSecondPage = false;
 
   @override
   Future<List<ProductCategoryNode>> candidateCategories(
@@ -101,21 +103,22 @@ class _Repo extends StockCountRequestRepository {
     expectSync(warehouseId, 'bin');
     requests.add('$categoryId|$keyword|$page');
     if (keyword == '慢') return delayed!.future;
+    final candidates = keyword?.isNotEmpty == true
+        ? [row('红')]
+        : [row('白'), if (includeLocked) row('锁定', editable: false), row('黑')];
+    final offset = page - 1;
     return PagedResult(
       items: [
-        if (includeLocked) row('锁定', editable: false),
-        row(
-          keyword?.isNotEmpty == true
-              ? '红'
-              : page == 1
-              ? '白'
-              : '黑',
-        ),
+        if (offset < candidates.length)
+          duplicateSecondPage && page == 2 ? row('白') : candidates[offset],
       ],
       page: page,
       size: 1,
-      total: keyword?.isNotEmpty == true ? 1 : 2,
-      totalPages: keyword?.isNotEmpty == true ? 1 : 2,
+      total: candidates.length,
+      totalPages: candidates.length,
+      readScopeVersion: changedReadScope && page == 2
+          ? 'count-candidates-access-v2'
+          : 'count-candidates-access-v1',
     );
   }
 }
@@ -184,19 +187,40 @@ Future<void> _open(
   await tester.pumpAndSettle();
 }
 
-Future<void> _goToPickerPage(WidgetTester tester, int page) async {
-  final input = find.descendant(
-    of: find.byKey(const Key('picker-footer-pagination')),
-    matching: find.byType(TextField),
-  );
-  expect(input, findsOneWidget);
-  await tester.enterText(input, '$page');
-  await tester.testTextInput.receiveAction(TextInputAction.done);
-  await tester.pumpAndSettle();
-}
-
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  for (final defect in ['authorization drift', 'duplicate identity']) {
+    testWidgets(
+      'complete count candidate reads reject $defect and allow retry',
+      (tester) async {
+        final repo = _Repo()
+          ..changedReadScope = defect == 'authorization drift'
+          ..duplicateSecondPage = defect == 'duplicate identity';
+        final results = <List<CountStockRow>>[];
+        await _open(tester, repo, results);
+        MasterDataTableView<GoodsListItem> table() =>
+            tester.widget(find.byKey(const Key('goods-picker-paged-list')));
+        expect(table().items, isEmpty);
+        expect(table().error, isNotNull);
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(const Key('goods-picker-multi-confirm')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(results, isEmpty);
+        repo.changedReadScope = false;
+        repo.duplicateSecondPage = false;
+        table().onRetry!();
+        await tester.pumpAndSettle();
+        expect(table().items.map((item) => item.id), ['pp|白', 'pp|黑']);
+        expect(table().error, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'capture real desktop and compact stock-count picker layouts',
     (tester) async {
@@ -243,32 +267,33 @@ void main() {
       '当前库存',
       '重量',
     ]);
-    expect(find.text('0 kg'), findsNWidgets(2));
-    expect(find.text('未称'), findsNWidgets(2));
-    await tester.tap(
-      find.descendant(of: tableFinder, matching: find.byType(Checkbox)).first,
-    );
-    await tester.pump();
-    expect(find.text('已选 1 项'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|锁定')));
-    await tester.pump();
-    expect(find.text('已选 1 项'), findsOneWidget);
-    await tester.enterText(find.byType(EditableText).first, '红');
-    await tester.pump(const Duration(milliseconds: 301));
-    await tester.pumpAndSettle();
-    expect(find.text('已选 1 项'), findsOneWidget);
+    expect(table.items.map((item) => item.id), ['pp|白', 'pp|锁定', 'pp|黑']);
+    expect(find.text('0 kg'), findsNWidgets(3));
+    expect(find.text('未称'), findsNWidgets(3));
     await tester.tap(
       find.descendant(of: tableFinder, matching: find.byType(Checkbox)).first,
     );
     await tester.pump();
     expect(find.text('已选 2 项'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|锁定')));
+    await tester.pump();
+    expect(find.text('已选 2 项'), findsOneWidget);
+    await tester.enterText(find.byType(EditableText).first, '红');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    expect(find.text('已选 2 项'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: tableFinder, matching: find.byType(Checkbox)).first,
+    );
+    await tester.pump();
+    expect(find.text('已选 3 项'), findsOneWidget);
     await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
     await tester.pumpAndSettle();
-    expect(results.single.map((row) => row.key), ['pp|白', 'pp|红']);
+    expect(results.single.map((row) => row.key), ['pp|白', 'pp|黑', 'pp|红']);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('宽屏分页与已选清空确定共用底栏，页码垂直居中', (tester) async {
+  testWidgets('宽屏完整候选与已选清空确定共用底栏', (tester) async {
     final repo = _Repo();
     await _open(
       tester,
@@ -278,9 +303,11 @@ void main() {
     );
     final paging = find.byKey(const Key('picker-footer-pagination'));
     final confirm = find.byKey(const Key('goods-picker-multi-confirm'));
-    expect(paging, findsOneWidget);
+    expect(paging, findsNothing);
     expect(
-      tester.getCenter(paging).dy,
+      tester
+          .getCenter(find.byKey(const Key('goods-picker-selected-summary')))
+          .dy,
       closeTo(tester.getCenter(confirm).dy, 1),
     );
     expect(
@@ -290,17 +317,16 @@ void main() {
       ),
       findsNothing,
     );
-    final input = find.descendant(of: paging, matching: find.byType(TextField));
-    expect(
-      tester.getCenter(input).dy,
-      closeTo(tester.getCenter(find.text('/ 2')).dy, 1),
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+      find.byKey(const Key('goods-picker-paged-list')),
     );
-    await _goToPickerPage(tester, 2);
+    expect(table.items.map((item) => item.id), ['pp|白', 'pp|黑']);
+    expect(table.totalPages, 1);
     expect(repo.requests.last, endsWith('|2'));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('盘点物料到底滚轮续页，确认保留两页的货品颜色快照', (tester) async {
+  testWidgets('盘点完整候选滚轮不读取，确认保留各批货品颜色快照', (tester) async {
     final repo = _Repo();
     final results = <List<CountStockRow>>[];
     await _open(tester, repo, results);
@@ -327,7 +353,7 @@ void main() {
     expect(
       repo.requests.length,
       before,
-      reason: 'The prepared adjacent page is reused without a duplicate read',
+      reason: 'Every candidate batch was accepted before local scrolling',
     );
     expect(
       repo.requests.where((request) => request.endsWith('|2')),
@@ -350,11 +376,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('盘点物料从第二页顶部上滚补第一页，旧页仍可选', (tester) async {
+  testWidgets('完整盘点候选上滚保持颜色快照与选择', (tester) async {
     final repo = _Repo();
     final results = <List<CountStockRow>>[];
     await _open(tester, repo, results);
-    await _goToPickerPage(tester, 2);
     await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|黑')));
     await tester.pump();
     final list = find.byWidget(
@@ -380,7 +405,7 @@ void main() {
     expect(
       repo.requests.length,
       before,
-      reason: 'The retained previous page is reused without a duplicate read',
+      reason: 'Moving through the accepted complete result issues no request',
     );
     expect(
       repo.requests.where((request) => request.endsWith('|1')),
@@ -420,12 +445,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(results.single.single.colorId, '白');
   });
-  testWidgets('销售同款跨页跨搜索多选，保留同料不同颜色', (tester) async {
+  testWidgets('销售同款完整候选跨搜索多选，保留同料不同颜色', (tester) async {
     final results = <List<CountStockRow>>[];
     await _open(tester, _Repo(), results);
     await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|白')));
-    await _goToPickerPage(tester, 2);
+    await tester.pump();
+    expect(find.text('已选 1 项'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|黑')));
+    await tester.pump();
+    expect(find.text('已选 2 项'), findsOneWidget);
     await tester.enterText(find.byType(EditableText).first, '红');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
@@ -555,7 +583,8 @@ class _PreviewRepo extends _Repo {
     ],
     page: page,
     size: 10,
-    total: 20,
-    totalPages: 2,
+    total: 10,
+    totalPages: 1,
+    readScopeVersion: 'count-preview-access-v1',
   );
 }

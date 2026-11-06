@@ -360,7 +360,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 按当前视图和往来范围分页读取前2000行，保持原预览上限及列格式。
+  /// 按当前视图和往来范围通过有界批次读取完整结果，保持原列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration;

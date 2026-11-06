@@ -105,6 +105,10 @@ class _StockCountPickerSource extends UtenGoodsPickerDataSource {
       size: result.size,
       total: result.total,
       totalPages: result.totalPages,
+      totals: result.totals,
+      facets: result.facets,
+      facetNullCounts: result.facetNullCounts,
+      readScopeVersion: result.readScopeVersion,
     );
   }
 

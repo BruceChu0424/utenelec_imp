@@ -360,6 +360,7 @@ class _MasterPickerSheetState<TItem>
       final spec = _spec, keyword = _categoryContentKeyword;
       final r = await readScopedPage<TItem>(
         _page,
+        idOf: _spec.idOf,
         query: _pagingQuery(),
         currentQuery: _pagingQuery,
         useCache: useCache,
@@ -491,6 +492,7 @@ class _MasterPickerSheetState<TItem>
       final spec = _spec;
       final result = await readScopedPage<TItem>(
         requestedPage,
+        idOf: _spec.idOf,
         query: _pagingQuery(),
         currentQuery: _pagingQuery,
         useCache: useCache,

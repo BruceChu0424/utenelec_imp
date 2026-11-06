@@ -8636,6 +8636,7 @@ class _FilterCellState extends State<_FilterCell> {
     return UtenTableHeaderMenu(
       anchorContext: context,
       onClose: _close,
+      dismissOnOutsideTap: !(_remoteLoading && _remoteManualLoading),
       child: StatefulBuilder(
         builder: (ctx, setOverlayState) {
           final q = _searchCtl?.text.trim().toLowerCase() ?? '';

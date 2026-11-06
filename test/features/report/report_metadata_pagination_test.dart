@@ -1,11 +1,18 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -30,6 +37,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/uten_test_actions.dart';
+import '../../support/native_facet_fake_transport.dart';
 
 class _Permissions extends Notifier<Set<String>> {
   @override
@@ -47,20 +55,142 @@ class _StatementPrefs extends FinanceStatementReportPrefsNotifier {
       const ReportFilterPrefs(extra: {'partyId': 'party-1'});
 }
 
-class _ReportApi extends ApiClient {
-  _ReportApi() : super(Dio());
+const _fixturePhone = '12345678';
+
+class _ReportHttpBoundary extends ApiClient {
+  _ReportHttpBoundary(super.dio);
+
+  Future<Map<String, dynamic>> nativeFormOverHttp(
+    String path, {
+    required Map<String, dynamic> body,
+  }) => super.postForm(path, body: body);
+}
+
+class _CandidateHttpTransport implements HttpClientAdapter {
+  final requests = <RequestOptions>[];
+  int status = 404;
+
+  ResponseBody response(int status) {
+    final body = requests.last.data as Map;
+    return ResponseBody.fromString(
+      jsonEncode(
+        status == 404
+            ? {'code': 'NOT_FOUND', 'message': '匿名候选接口不存在'}
+            : {
+                'field': body['__facetField'],
+                'page': body['__facetPage'],
+                'size': body['__facetSize'],
+                'items': [
+                  {
+                    'value': _fixturePhone,
+                    'label': _fixturePhone,
+                    'count': 101,
+                  },
+                ],
+                'hasMore': false,
+                'readScopeVersion': 'fixture-v1',
+              },
+      ),
+      status,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.path != '/finance/reports/column-candidates') {
+      throw StateError('Unexpected native candidate HTTP fixture path');
+    }
+    requests.add(options);
+    return response(status);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _CandidateWidgetTransport {
+  final requests = <Map<String, dynamic>>[];
+  Completer<Map<String, dynamic>>? gate;
+
+  Map<String, dynamic> response() => {
+    'field': requests.last['__facetField'],
+    'page': requests.last['__facetPage'],
+    'size': requests.last['__facetSize'],
+    'items': [
+      {'value': _fixturePhone, 'label': _fixturePhone, 'count': 101},
+    ],
+    'hasMore': false,
+    'readScopeVersion': 'fixture-v1',
+  };
+
+  static ApiException missing() =>
+      ApiException('NOT_FOUND', '匿名候选接口不存在', httpStatus: 404);
+
+  Future<Map<String, dynamic>> fetch(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    expect(path, '/finance/reports/column-candidates');
+    requests.add(Map.unmodifiable(body));
+    return gate?.future ?? (throw missing());
+  }
+}
+
+class _ReportApi extends ApiClient with NativeFacetFakeTransport {
+  _ReportApi({Dio? dio}) : super(dio ?? Dio());
   final queries = <Map<String, dynamic>>[];
+  final candidateFormReads = <({String path, Map<String, dynamic> body})>[];
+  Future<Map<String, dynamic>> Function(String, Map<String, dynamic>)?
+  candidateTransport;
+  Object? candidateError;
   int pages = 2;
   bool previewClamp = false;
   int? largePreviewRows;
   bool headerFacts = false;
+  int headerRows = 1;
   bool failHeaders = false;
   final postBodies = <Object?>[];
+
+  @override
+  Future<Map<String, dynamic>> postForm(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    candidateFormReads.add((path: path, body: Map.unmodifiable(body)));
+    candidateError = null;
+    try {
+      return await (candidateTransport?.call(path, body) ??
+          super.postForm(path, body: body));
+    } catch (error) {
+      candidateError = error;
+      rethrow;
+    }
+  }
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/finance/reports/column-candidates') {
+      if (!headerFacts ||
+          query?['report'] != 'ar-ap/overview' ||
+          query?['column'] != 'phone') {
+        throw StateError('Unexpected report column candidate fixture scope');
+      }
+      return {
+        'value': [
+          {'value': _fixturePhone, 'label': _fixturePhone, 'count': headerRows},
+        ],
+      };
+    }
     if (!path.contains('/reports/')) return {};
     final parameters = Map<String, dynamic>.of(query ?? {});
     queries.add(parameters);
@@ -70,6 +200,8 @@ class _ReportApi extends ApiClient {
     }
     if (headerFacts) {
       final statement = path.contains('/statement/');
+      final page = parameters['page'] as int? ?? 1;
+      final size = parameters['size'] as int? ?? 50;
       return {
         'readScopeVersion': 'fixture-v1',
         'columns': statement
@@ -110,26 +242,33 @@ class _ReportApi extends ApiClient {
               }
             : <String, dynamic>{},
         'rows': [
-          statement
-              ? <String, dynamic>{
-                  'billDate': '2026-10-12',
-                  'currencyCode': '美金',
-                  'refNo': 'TARGET',
-                  'receiptOriginal': '0.123456789012',
-                  'receiptOriginalExact': '0.123456789012',
-                  'balanceLocal': '525',
-                }
-              : <String, dynamic>{
-                  'partyName': '服务器往来单位',
-                  'phone': '12345678',
-                  'receivable': '30',
-                  'receivableExact': '30',
-                },
+          for (
+            var index = (page - 1) * size;
+            index < headerRows && index < page * size;
+            index++
+          )
+            statement
+                ? <String, dynamic>{
+                    'billDate': '2026-10-12',
+                    'currencyCode': '美金',
+                    'refNo': 'TARGET',
+                    'receiptOriginal': '0.123456789012',
+                    'receiptOriginalExact': '0.123456789012',
+                    'balanceLocal': '525',
+                  }
+                : <String, dynamic>{
+                    'partyName': headerRows == 1
+                        ? '服务器往来单位'
+                        : '服务器往来单位${index + 1}',
+                    'phone': _fixturePhone,
+                    'receivable': '30',
+                    'receivableExact': '30',
+                  },
         ],
         'page': parameters['page'] ?? 1,
         'size': parameters['size'] ?? 50,
-        'total': 1,
-        'totalPages': 1,
+        'total': headerRows,
+        'totalPages': (headerRows / size).ceil(),
       };
     }
     final page = parameters['page'] as int? ?? 1;
@@ -176,6 +315,9 @@ class _ReportApi extends ApiClient {
         ],
       };
     }
+    final size = (parameters['size'] as int? ?? 50).clamp(1, 50).toInt();
+    final total = pages == 2 ? 51 : pages * size;
+    final offset = (page - 1) * size;
     return {
       'readScopeVersion': 'fixture-v1',
       'statisticsGeneratedAt': omitted ? null : '2026-10-25T00:00:00Z',
@@ -183,16 +325,27 @@ class _ReportApi extends ApiClient {
         {'key': 'proof', 'label': '记录', 'type': 'text', 'width': 280},
       ],
       'rows': [
-        {'id': '$page', 'proof': '服务端第$page页'},
+        for (
+          var index = offset;
+          index < total && index < offset + size;
+          index++
+        )
+          {
+            'id': 'report-line-${index + 1}',
+            'proof': index == offset
+                ? '服务端第$page页'
+                : '服务端第$page页第${index - offset + 1}行',
+          },
       ],
       'page': page,
-      'total': omitted ? -1 : (pages == 2 ? 51 : 4000),
-      'totalPages': omitted ? -1 : pages,
+      'size': size,
+      'total': omitted ? -1 : total,
+      'totalPages': omitted ? -1 : (total / size).ceil(),
       'facets': omitted
           ? <String, dynamic>{}
           : {
               'proof': [
-                {'value': 'source', 'label': '原始来源', 'count': 51},
+                {'value': 'source', 'label': '原始来源', 'count': total},
               ],
             },
       'totals': omitted
@@ -387,6 +540,23 @@ void main() {
       await _mount(tester, const FinanceArApOverviewPage(), api);
       await tester.tap(find.text('电话'));
       await tester.pumpAndSettle();
+      expect(api.candidateFormReads, isNotEmpty);
+      expect(
+        api.candidateFormReads.first.path,
+        '/finance/reports/column-candidates',
+      );
+      expect(
+        api.candidateFormReads.first.body,
+        containsPair('report', 'ar-ap/overview'),
+      );
+      expect(
+        api.candidateFormReads.first.body,
+        containsPair('column', 'phone'),
+      );
+      expect(
+        api.candidateFormReads.first.body,
+        containsPair('__facetSize', 100),
+      );
       await tester.enterText(
         find.byKey(const Key('uten-column-keyword-input')),
         '1234 5678',
@@ -421,6 +591,177 @@ void main() {
       await tester.pump(const Duration(milliseconds: 800));
     },
   );
+  for (final status in [404, 200]) {
+    test(
+      'native candidate HTTP $status preserves private form and read-only semantics',
+      () async {
+        final transport = _CandidateHttpTransport()..status = status;
+        final dio = Dio()..httpClientAdapter = transport;
+        var writes = 0;
+        dio.interceptors.add(DataWriteRevisionInterceptor((_) => writes++));
+        addTearDown(() => dio.close(force: true));
+        final api = _ReportHttpBoundary(dio);
+        final read = api.nativeFormOverHttp(
+          '/finance/reports/column-candidates',
+          body: {
+            'report': 'ar-ap/overview',
+            'column': 'phone',
+            'f.search.phone': '1234 5678',
+            '__facetField': 'value',
+            '__facetKeyword': '5678',
+            '__facetPage': 1,
+            '__facetSize': 100,
+          },
+        );
+        if (status == 404) {
+          await expectLater(
+            read,
+            throwsA(
+              isA<ApiException>().having(
+                (error) => error.httpStatus,
+                'HTTP status',
+                404,
+              ),
+            ),
+          );
+        } else {
+          expect((await read)['items'], [
+            {'value': _fixturePhone, 'label': _fixturePhone, 'count': 101},
+          ]);
+        }
+        expect(transport.requests, hasLength(1));
+        final request = transport.requests.single;
+        expect(request.method, 'POST');
+        expect(request.queryParameters, isEmpty);
+        expect(request.contentType, Headers.formUrlEncodedContentType);
+        expect((request.data as Map)['f.search.phone'], '1234 5678');
+        expect(writes, 0);
+      },
+    );
+  }
+  for (final outcome in ['close', 'retry', 'escape']) {
+    testWidgets(
+      'candidate HTTP 404 releases busy and preserves private input on $outcome',
+      (tester) async {
+        final transport = _CandidateWidgetTransport();
+        final api = _ReportApi()
+          ..headerFacts = true
+          ..headerRows = 101
+          ..candidateTransport = transport.fetch;
+        await _mount(tester, const FinanceArApOverviewPage(), api);
+        MasterDataTableView<Map<String, dynamic>> table() => tester.widget(
+          find.byType(MasterDataTableView<Map<String, dynamic>>),
+        );
+        table().onFilterChanged('search.phone', '1234 5678');
+        await tester.pumpAndSettle();
+        expect(table().items, hasLength(101));
+        transport.gate = Completer<Map<String, dynamic>>();
+        await tester.tap(
+          find.byKey(const ValueKey('master-column-filter-phone')),
+        );
+        await tester.pump();
+        expect(transport.requests, hasLength(1));
+        expect(find.byType(UtenBusyOverlay), findsOneWidget);
+        transport.gate!.completeError(_CandidateWidgetTransport.missing());
+        transport.gate = null;
+        await tester.pumpAndSettle();
+        expect(
+          api.candidateError,
+          isA<ApiException>().having(
+            (error) => error.httpStatus,
+            'HTTP status',
+            404,
+          ),
+        );
+        expect(find.byType(UtenBusyOverlay), findsNothing);
+        const failure = '候选加载失败，点击重试';
+        expect(find.text(failure), findsOneWidget);
+        final input = find.byKey(const Key('uten-column-keyword-input'));
+        expect(tester.widget<TextField>(input).controller!.text, '1234 5678');
+        await tester.enterText(input, '5678');
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pumpAndSettle();
+        expect(transport.requests, hasLength(2));
+        expect(find.text(failure), findsOneWidget);
+        expect(tester.widget<TextField>(input).controller!.text, '5678');
+        expect(table().filters['search.phone'], '1234 5678');
+        if (outcome != 'close') {
+          transport.gate = Completer<Map<String, dynamic>>();
+          final retryPoint = tester.getCenter(find.text(failure));
+          await tester.tapAt(retryPoint);
+          await tester.pump();
+          expect(find.byType(UtenBusyOverlay), findsOneWidget);
+          expect(transport.requests, hasLength(3));
+          await tester.pump();
+          expect(
+            find.byType(UtenBusyOverlayCard).hitTestable(),
+            findsOneWidget,
+          );
+          expect(input, findsOneWidget, reason: 'retry keeps the open input');
+          for (var repeat = 0; repeat < 8; repeat++) {
+            await tester.tapAt(retryPoint);
+            await tester.pump();
+            expect(input, findsOneWidget, reason: 'held retry tap $repeat');
+          }
+          expect(transport.requests, hasLength(3));
+          if (outcome == 'escape') {
+            await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+            await tester.pump();
+            expect(input, findsNothing);
+            expect(find.byType(UtenBusyOverlay), findsNothing);
+          }
+          transport.gate!.complete(transport.response());
+          transport.gate = null;
+          await tester.pumpAndSettle();
+          expect(find.byType(UtenBusyOverlay), findsNothing);
+          expect(find.text(failure), findsNothing);
+          if (outcome == 'escape') {
+            expect(
+              input,
+              findsNothing,
+              reason: 'late success keeps read retired',
+            );
+          } else {
+            expect(tester.widget<TextField>(input).controller!.text, '5678');
+          }
+        }
+        expect(
+          transport.requests.every(
+            (request) => request['f.search.phone'] == '1234 5678',
+          ),
+          isTrue,
+        );
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pumpAndSettle();
+        expect(input, findsNothing);
+        expect(table().filters['search.phone'], '1234 5678');
+        final privateBody = {
+          'sensitiveFilter': {
+            'columnSearch': {'phone': '1234 5678'},
+          },
+        };
+        expect(
+          _toolbarAction<UtenExportButton>(tester).bodyParams,
+          privateBody,
+        );
+        expect(
+          _toolbarAction<UtenPrintPreviewButton>(tester).exportBody,
+          privateBody,
+        );
+        final reads = api.queries.length,
+            candidateReads = transport.requests.length;
+        await tester.drag(
+          find.byType(MasterDataTableView<Map<String, dynamic>>),
+          const Offset(0, -10000),
+        );
+        await tester.pumpAndSettle();
+        expect(api.queries, hasLength(reads));
+        expect(transport.requests, hasLength(candidateReads));
+        expect(table().items, hasLength(101));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'finance ordinary page print reads all 2501 rows beyond the former prefix ceiling',
     (tester) async {
@@ -512,7 +853,7 @@ void main() {
       },
     );
     testWidgets(
-      '${entry.key} paginates with server metadata${entry.key == 'account' ? ' and retains balance chronology' : ' and reloads on sorting'}',
+      '${entry.key} completes server metadata${entry.key == 'account' ? ' and retains balance chronology' : ' and reloads on sorting'}',
       (tester) async {
         final api = _ReportApi();
         await _mount(tester, entry.value, api);
@@ -521,16 +862,24 @@ void main() {
         );
         MasterDataTableView<Map<String, dynamic>> table() =>
             tester.widget(finder);
-        expect(table().totalPages, 2);
+        expect(table().items, hasLength(51));
+        expect(table().items.first['id'], 'report-line-1');
+        expect(table().items.last['id'], 'report-line-51');
+        expect(table().currentPage, 1);
+        expect(table().totalPages, 1);
+        expect(api.queries.map((query) => query['page']), [1, 2]);
         expect(api.queries.first['includeCount'], isNull);
-        await table().onPageChange!(2);
-        await tester.pumpAndSettle();
         expect(api.queries.last, containsPair('includeCount', false));
         expect(api.queries.last, containsPair('includeFacets', false));
         expect(api.queries.last, containsPair('includeTotals', false));
-        expect(table().currentPage, 2);
-        expect(table().totalPages, 2);
+        final completedRequests = api.queries.length;
+        await tester.drag(finder, const Offset(0, -4000));
+        await tester.pumpAndSettle();
+        expect(api.queries, hasLength(completedRequests));
         expect(find.text('服务端第2页'), findsOneWidget);
+        if (entry.key != 'ar-ap') {
+          expect(find.textContaining('1000.00000001'), findsWidgets);
+        }
         if (const {
           'sales',
           'purchase',
@@ -540,21 +889,19 @@ void main() {
           'finance',
         }.contains(entry.key)) {
           expect(table().facets['proof']!.single.label, '原始来源');
+          expect(table().facets['proof']!.single.count, 51);
         }
         final beforeReturn = api.queries.length;
-        await table().onPageChange!(1);
+        await tester.drag(finder, const Offset(0, 4000));
         await tester.pumpAndSettle();
         expect(table().currentPage, 1);
-        expect(table().totalPages, 2);
+        expect(table().totalPages, 1);
         expect(
           api.queries.length,
           beforeReturn,
-          reason: 'completed report payload returns without RPC',
+          reason: 'Scrolling the complete report returns without RPC',
         );
         expect(find.text('服务端第1页'), findsOneWidget);
-        if (entry.key != 'ar-ap') {
-          expect(find.textContaining('1000'), findsWidgets);
-        }
         final beforeSort = api.queries.length;
         if (entry.key == 'account') {
           expect(table().onSortChange, isNull);
@@ -572,22 +919,31 @@ void main() {
         }
         if (const {'statement', 'account', 'ar-ap'}.contains(entry.key)) {
           api.pages = 80;
+          final beforeLongRead = api.queries.length;
           table().onRetry!();
           await tester.pumpAndSettle();
-          final rows = table().rowsController!;
-          rows.goToPage(79);
+          expect(table().items, hasLength(4000));
+          expect(
+            api.queries.skip(beforeLongRead).map((query) => query['page']),
+            [for (var page = 1; page <= 80; page++) page],
+          );
+          final beforeScroll = api.queries.length;
+          await tester.drag(finder, const Offset(0, -200000));
           await tester.pumpAndSettle();
-          await tester.pump(const Duration(milliseconds: 20));
-          await tester.pumpAndSettle();
-          expect(rows.visiblePage, 79);
-          expect(api.queries.map((q) => q['page']), containsAll([79, 78, 80]));
+          expect(api.queries, hasLength(beforeScroll));
+          expect(table().items.last['id'], 'report-line-4000');
           final beforeRefresh = api.queries.length;
           table().onRetry!();
           await tester.pumpAndSettle();
           expect(
             api.queries.skip(beforeRefresh).first['page'],
-            79,
-            reason: 'manual report retry follows visible page rather than seed',
+            1,
+            reason:
+                'An explicit retry starts a new complete read from its first bounded batch',
+          );
+          expect(
+            api.queries.skip(beforeRefresh).map((query) => query['page']),
+            [for (var page = 1; page <= 80; page++) page],
           );
         }
         expect(tester.takeException(), isNull);

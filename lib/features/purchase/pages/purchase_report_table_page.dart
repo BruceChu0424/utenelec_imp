@@ -365,7 +365,7 @@ class _PurchaseReportTablePageState
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
+  /// 按真实服务器有界批次完整读取当前筛选结果，保持原列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration;

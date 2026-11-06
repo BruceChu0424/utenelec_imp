@@ -28,7 +28,22 @@ class UtenAncestorRowWindowController<T extends Object> {
     T row, {
     double alignment = .15,
     bool Function()? isCurrent,
-  }) async => await _state?._reveal(row, alignment, isCurrent) ?? false;
+    int maxGeometryCorrections = 16,
+  }) async {
+    RangeError.checkValueInInterval(
+      maxGeometryCorrections,
+      1,
+      16,
+      'maxGeometryCorrections',
+    );
+    return await _state?._reveal(
+          row,
+          alignment,
+          isCurrent,
+          maxGeometryCorrections,
+        ) ??
+        false;
+  }
 }
 
 /// Limits real new row subtrees across all windows in a frame. Constructing a
@@ -640,6 +655,7 @@ class _UtenAncestorRowWindowState<T extends Object>
     T row,
     double alignment,
     bool Function()? isCurrent,
+    int maxGeometryCorrections,
   ) async {
     if (!mounted ||
         !_presentationActive ||
@@ -679,7 +695,7 @@ class _UtenAncestorRowWindowState<T extends Object>
       // bounded number of geometry corrections. Real row admission may take
       // more frames than that under the shared mount budget; waiting for it
       // must not consume those corrections or abandon a valid reveal.
-      for (var corrections = 0; corrections < 16;) {
+      for (var corrections = 0; corrections < maxGeometryCorrections;) {
         WidgetsBinding.instance.ensureVisualUpdate();
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted || !current()) return false;

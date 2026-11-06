@@ -1940,6 +1940,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int? _pendingScrollToEnd;
   int _scrollToEndAttempts = 0;
   bool _scrollToEndScheduled = false;
+  _MasterWindowSlot? _tailWindowSlot;
   final GlobalKey _revealedRowKey = GlobalKey();
   String? _pendingRevealId;
   bool _revealScheduled = false;
@@ -2030,6 +2031,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (controller == null || controller.positions.length != 1) return;
       final position = controller.position;
       if (!position.hasContentDimensions) return;
+      final tail = _tailWindowSlot;
+      if (tail != null && _localRowWindow.mountedRowCount > 0) {
+        // The measured window owns terminal-row materialization and geometry.
+        // Jumping only to an estimated max extent can abandon an offscreen row.
+        final request = _pendingScrollToEnd!;
+        _scrollToEndScheduled = true;
+        unawaited(_revealWindowEnd(request, tail));
+        return;
+      }
       if (_localRowWindow.isMounting ||
           _deferredRowMounts.values.any((row) => row.isMounting)) {
         _scheduleScrollToEnd();
@@ -2058,6 +2068,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         _pendingScrollToEnd = null;
       }
     });
+  }
+
+  Future<void> _revealWindowEnd(int request, _MasterWindowSlot tail) async {
+    try {
+      await _localRowWindow.reveal(
+        tail,
+        alignment: 1,
+        maxGeometryCorrections: 8,
+        isCurrent: () =>
+            mounted &&
+            _pendingScrollToEnd == request &&
+            identical(_tailWindowSlot, tail),
+      );
+    } finally {
+      if (mounted) {
+        _scrollToEndScheduled = false;
+        if (_pendingScrollToEnd == request) _pendingScrollToEnd = null;
+        _scheduleScrollToEnd();
+      }
+    }
   }
 
   // 联动表格与带悬浮留白表格共用横滚条覆盖层，与 _bodyH 双向同步。
@@ -4313,8 +4343,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// Default cells are single-line Text. Their real line height and checkbox
   /// minimum can be shared instead of walking every cell's intrinsic tree on
   /// every scroll frame. Rich controls retain their original measured path.
-  double? _knownPlainRowHeight(ThemeData theme) {
-    if (!_outputSelectable ||
+  double? _knownPlainRowHeight(ThemeData theme, {bool forEstimation = false}) {
+    if ((!forEstimation && !_outputSelectable) ||
+        widget.listItemBuilder != null ||
         widget.leadingOverlayBuilder != null ||
         widget.unselectableLeadingBuilder != null ||
         widget.rowDrag != null ||
@@ -5120,10 +5151,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     final bodyStyle = theme.textTheme.bodyMedium;
     final estimatedRowExtent =
+        _knownPlainRowHeight(theme, forEstimation: true) ??
         MediaQuery.textScalerOf(context).scale(bodyStyle?.fontSize ?? 14) *
-            (bodyStyle?.height ?? 1.5) +
-        UtenSpacing.s16;
+                (bodyStyle?.height ?? 1.5) +
+            UtenSpacing.s16;
     final window = windowSlots;
+    _tailWindowSlot = window == null || window.isEmpty ? null : window.last;
     final stageFallbackRows =
         window == null &&
         plan.length >= UtenAncestorRowWindow.minimumStagedRows;

@@ -183,26 +183,27 @@ class SupplierAdvanceStatementReplayPostgresTest {
    try(var sql=connection.createStatement()) {
     sql.execute("SET LOCAL search_path=pg_temp,public");
     for(String table:List.of("finance_payments","finance_supplier_advances","gl_vouchers","gl_entries","finance_reconciliations","finance_gl_entry_allocations","ar_ap_ledger","finance_payment_lines","party_monthly_summaries","party_month_dirty"))
-     sql.execute("CREATE TEMP TABLE "+table+" ON COMMIT DROP AS SELECT * FROM public."+table);
+     com.uten.imp.support.PostgresFixtureDdl.execute(connection,"CREATE TEMP TABLE %I ON COMMIT DROP AS SELECT * FROM public.%I",table,table);
     assertThat(proof(connection,payment)).isTrue();
-    for(String mutation:List.of(
-      "DELETE FROM finance_supplier_advances WHERE payment_id='"+payment+"'",
-      "UPDATE finance_supplier_advances SET amount_local=amount_local+1 WHERE payment_id='"+payment+"'",
-      "UPDATE finance_supplier_advances SET currency_id='"+UUID.randomUUID()+"' WHERE payment_id='"+payment+"'",
-      "UPDATE finance_supplier_advances SET supplier_id='"+UUID.randomUUID()+"' WHERE payment_id='"+payment+"'",
-      "UPDATE finance_supplier_advances SET style_id='"+UUID.randomUUID()+"' WHERE payment_id='"+payment+"'",
-      "UPDATE finance_payments SET reversed_at=reversed_at+INTERVAL '1 second' WHERE id='"+payment+"'",
-      "UPDATE gl_vouchers SET voucher_date=voucher_date+1 WHERE source_type='PAYMENT_REV' AND source_doc_id='"+payment+"'",
-      "UPDATE gl_entries SET amount=amount+1 WHERE voucher_id IN(SELECT id FROM gl_vouchers WHERE source_type='PAYMENT_REV' AND source_doc_id='"+payment+"')",
-      "DELETE FROM finance_reconciliations WHERE source_doc_id='"+payment+"' AND entry_kind='REVERSAL'",
-      "UPDATE finance_reconciliations SET account_id='"+UUID.randomUUID()+"' WHERE source_doc_id='"+payment+"' AND entry_kind='REVERSAL'",
-      "DELETE FROM finance_gl_entry_allocations WHERE entry_id IN(SELECT e.id FROM gl_entries e JOIN gl_vouchers v ON v.id=e.voucher_id WHERE v.source_type='PAYMENT_REV' AND v.source_doc_id='"+payment+"')")) {
-      var point=connection.setSavepoint();sql.executeUpdate(mutation);assertThat(proof(connection,payment)).as(mutation.split(" ")[0]+" proof fault must not become a dated zero").isFalse();
+    var local=fixtureJdbc(connection);
+    for(var mutation:List.of(
+      mutation("DELETE","DELETE FROM finance_supplier_advances WHERE payment_id=?",payment),
+      mutation("UPDATE","UPDATE finance_supplier_advances SET amount_local=amount_local+1 WHERE payment_id=?",payment),
+      mutation("UPDATE","UPDATE finance_supplier_advances SET currency_id=? WHERE payment_id=?",UUID.randomUUID(),payment),
+      mutation("UPDATE","UPDATE finance_supplier_advances SET supplier_id=? WHERE payment_id=?",UUID.randomUUID(),payment),
+      mutation("UPDATE","UPDATE finance_supplier_advances SET style_id=? WHERE payment_id=?",UUID.randomUUID(),payment),
+      mutation("UPDATE","UPDATE finance_payments SET reversed_at=reversed_at+INTERVAL '1 second' WHERE id=?",payment),
+      mutation("UPDATE","UPDATE gl_vouchers SET voucher_date=voucher_date+1 WHERE source_type='PAYMENT_REV' AND source_doc_id=?",payment),
+      mutation("UPDATE","UPDATE gl_entries SET amount=amount+1 WHERE voucher_id IN(SELECT id FROM gl_vouchers WHERE source_type='PAYMENT_REV' AND source_doc_id=?)",payment),
+      mutation("DELETE","DELETE FROM finance_reconciliations WHERE source_doc_id=? AND entry_kind='REVERSAL'",payment),
+      mutation("UPDATE","UPDATE finance_reconciliations SET account_id=? WHERE source_doc_id=? AND entry_kind='REVERSAL'",UUID.randomUUID(),payment),
+      mutation("DELETE","DELETE FROM finance_gl_entry_allocations WHERE entry_id IN(SELECT e.id FROM gl_entries e JOIN gl_vouchers v ON v.id=e.voucher_id WHERE v.source_type='PAYMENT_REV' AND v.source_doc_id=?)",payment))) {
+      var point=connection.setSavepoint();local.update(mutation.sql(),mutation.values());assertThat(proof(connection,payment)).as(mutation.label()+" proof fault must not become a dated zero").isFalse();
       try(var guard=connection.prepareStatement("SELECT count(*) FROM finance_payments payment WHERE payment.id=? AND "+com.uten.imp.features.finance.SupplierAdvanceReplaySql.unknown("payment"))){guard.setObject(1,payment);try(var row=guard.executeQuery()){assertThat(row.next()).isTrue();assertThat(row.getInt(1)).as("both report and freeze use this exact unknown-proof guard").isEqualTo(1);}}
       connection.rollback(point);
      }
     for(String view:List.of("v_finance_supplier_advance_asset_events","v_finance_supplier_advance_ap_events"))
-     sql.execute("CREATE TEMP VIEW "+view+" AS SELECT * FROM public."+view+" WHERE payment_id<>'"+payment+"'");
+     com.uten.imp.support.PostgresFixtureDdl.execute(connection,"CREATE TEMP VIEW %I AS SELECT * FROM public.%I WHERE payment_id<>%L",view,view,payment);
     assertLegacyReadProof(connection,setup,payment);
    }
  }
@@ -211,60 +212,69 @@ class SupplierAdvanceStatementReplayPostgresTest {
  }
  private void assertLegacyReadProof(java.sql.Connection connection,Setup setup,UUID payment) throws Exception {
   try(var sql=connection.createStatement()) {
-   sql.executeUpdate("DELETE FROM finance_supplier_advances WHERE payment_id='"+payment+"'");
-   sql.executeUpdate("UPDATE finance_payments SET amount_authority_version=1,reversed_at=NULL,updated_at=now()+INTERVAL '2 years' WHERE id='"+payment+"'");
+   var local=fixtureJdbc(connection);
+   local.update("DELETE FROM finance_supplier_advances WHERE payment_id=?",payment);
+   local.update("UPDATE finance_payments SET amount_authority_version=1,reversed_at=NULL,updated_at=now()+INTERVAL '2 years' WHERE id=?",payment);
    assertThat(unknownProof(connection,payment)).as("legacy reversed header cannot use updated_at as an invented event date").isEqualTo(1);
-   for(int version:List.of(0,1))for(int status:List.of(1,-1)){sql.executeUpdate("UPDATE finance_payments SET amount_authority_version="+version+",status="+status+" WHERE id='"+payment+"'");assertThat(unknownProof(connection,payment)).as("unproved legacy original/reverse cannot acquire a native fallback").isEqualTo(1);}
-   sql.executeUpdate("UPDATE finance_payments SET amount_authority_version=1,status=-1 WHERE id='"+payment+"'");
+   for(int version:List.of(0,1))for(int status:List.of(1,-1)){local.update("UPDATE finance_payments SET amount_authority_version=?,status=? WHERE id=?",version,status,payment);assertThat(unknownProof(connection,payment)).as("unproved legacy original/reverse cannot acquire a native fallback").isEqualTo(1);}
+   local.update("UPDATE finance_payments SET amount_authority_version=1,status=-1 WHERE id=?",payment);
    UUID ledger=UUID.randomUUID();
-   sql.executeUpdate("INSERT INTO ar_ap_ledger(id,direction,open_item_kind,source_doc_type,source_doc_id,bill_no,bill_date,supplier_id,currency_id,amount_original,amount_original_local,status,is_deleted,deleted_at) "
-     +"SELECT '"+ledger+"','AP','PREPAYMENT','DIRECT_PAYMENT',id,bill_no,bill_date,supplier_id,currency_id,-amount_original,-amount_local,-1,true,(SELECT reversed_at FROM public.finance_payments WHERE id='"+payment+"') FROM finance_payments WHERE id='"+payment+"'");
-   sql.executeUpdate("UPDATE ar_ap_ledger SET amount_balance_original=amount_original,amount_balance=amount_original_local,amount_settled=0,amount_received_original=0,amount_received_local=0 WHERE id='"+ledger+"'");
+   local.update("INSERT INTO ar_ap_ledger(id,direction,open_item_kind,source_doc_type,source_doc_id,bill_no,bill_date,supplier_id,currency_id,amount_original,amount_original_local,status,is_deleted,deleted_at) "
+     +"SELECT ?,'AP','PREPAYMENT','DIRECT_PAYMENT',id,bill_no,bill_date,supplier_id,currency_id,-amount_original,-amount_local,-1,true,(SELECT reversed_at FROM public.finance_payments WHERE id=?) FROM finance_payments WHERE id=?",ledger,payment,payment);
+   local.update("UPDATE ar_ap_ledger SET amount_balance_original=amount_original,amount_balance=amount_original_local,amount_settled=0,amount_received_original=0,amount_received_local=0 WHERE id=?",ledger);
    assertThat(unknownProof(connection,payment)).as("retained single negative AP is the dated legacy proof").isZero();
    try(var query=connection.prepareStatement("SELECT "+com.uten.imp.features.finance.SupplierAdvanceReplaySql.legacyReversalDate("payment")+"=(SELECT reversed_at FROM public.finance_payments WHERE id=payment.id) FROM finance_payments payment WHERE payment.id=?")){query.setObject(1,payment);try(var row=query.executeQuery()){assertThat(row.next()).isTrue();assertThat(row.getBoolean(1)).as("only the independent ledger deletion date is used").isTrue();}}
-   for(String mutation:List.of("supplier_id='"+UUID.randomUUID()+"'","currency_id='"+UUID.randomUUID()+"'","amount_original=amount_original-1","amount_original_local=amount_original_local-1","deleted_at=NULL","status=1","open_item_kind='PAYABLE'")) {
-    var point=connection.setSavepoint();sql.executeUpdate("UPDATE ar_ap_ledger SET "+mutation+" WHERE id='"+ledger+"'");assertThat(unknownProof(connection,payment)).as("legacy proof "+mutation.split("=")[0]).isEqualTo(1);connection.rollback(point);
+   for(var mutation:List.of(
+      mutation("supplier_id","UPDATE ar_ap_ledger SET supplier_id=? WHERE id=?",UUID.randomUUID(),ledger),
+      mutation("currency_id","UPDATE ar_ap_ledger SET currency_id=? WHERE id=?",UUID.randomUUID(),ledger),
+      mutation("amount_original","UPDATE ar_ap_ledger SET amount_original=amount_original-1 WHERE id=?",ledger),
+      mutation("amount_original_local","UPDATE ar_ap_ledger SET amount_original_local=amount_original_local-1 WHERE id=?",ledger),
+      mutation("deleted_at","UPDATE ar_ap_ledger SET deleted_at=NULL WHERE id=?",ledger),
+      mutation("status","UPDATE ar_ap_ledger SET status=1 WHERE id=?",ledger),
+      mutation("open_item_kind","UPDATE ar_ap_ledger SET open_item_kind='PAYABLE' WHERE id=?",ledger))) {
+    var point=connection.setSavepoint();local.update(mutation.sql(),mutation.values());assertThat(unknownProof(connection,payment)).as("legacy proof "+mutation.label()).isEqualTo(1);connection.rollback(point);
    }
    UUID supplier=db.queryForObject("SELECT supplier_id FROM finance_payments WHERE id=?",UUID.class,payment);
    LocalDate original=db.queryForObject("SELECT bill_date FROM finance_payments WHERE id=?",LocalDate.class,payment);
    var method=Class.forName("com.uten.imp.features.finance.report.FinancePartyStatementSql").getDeclaredMethod("events",boolean.class,String.class);method.setAccessible(true);
-   String events=((String)method.invoke(null,false,"1=1")).replace(":pid","'"+supplier+"'::uuid");
-   try(var row=sql.executeQuery(events+"SELECT sum(posted_local-settled_local) FROM party_events WHERE event_date<=DATE '"+original+"'")){assertThat(row.next()).isTrue();assertThat(row.getBigDecimal(1)).as("retained negative AP and its cash header are one net source").isEqualByComparingTo("-276");}
-   try(var row=sql.executeQuery(events+"SELECT sum(posted_local-settled_local) FROM party_events")){assertThat(row.next()).isTrue();assertThat(row.getBigDecimal(1)).as("legacy original and dated reverse close exactly once").isZero();}
-   sql.executeUpdate("DELETE FROM party_monthly_summaries WHERE side='AP' AND party_id='"+supplier+"'");
-   sql.executeUpdate("INSERT INTO party_monthly_summaries(side,party_id,currency_id,month_start,net_original,posted_local_sum,settled_local_sum,net_local,event_count,null_original_count) SELECT 'AP',supplier_id,currency_id,date_trunc('month',bill_date)::date,-999,0,999,-999,1,0 FROM finance_payments WHERE id='"+payment+"'");
-   sql.executeUpdate("DELETE FROM party_month_dirty WHERE side='AP' AND party_id='"+supplier+"'");
+   String events=(String)method.invoke(null,false,"1=1");
+   var named=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(local);
+   assertThat(named.queryForObject(events+"SELECT sum(posted_local-settled_local) FROM party_events WHERE event_date<=:cutoff",Map.of("pid",supplier,"cutoff",original),BigDecimal.class)).as("retained negative AP and its cash header are one net source").isEqualByComparingTo("-276");
+   assertThat(named.queryForObject(events+"SELECT sum(posted_local-settled_local) FROM party_events",Map.of("pid",supplier),BigDecimal.class)).as("legacy original and dated reverse close exactly once").isZero();
+   local.update("DELETE FROM party_monthly_summaries WHERE side='AP' AND party_id=?",supplier);
+   local.update("INSERT INTO party_monthly_summaries(side,party_id,currency_id,month_start,net_original,posted_local_sum,settled_local_sum,net_local,event_count,null_original_count) SELECT 'AP',supplier_id,currency_id,date_trunc('month',bill_date)::date,-999,0,999,-999,1,0 FROM finance_payments WHERE id=?",payment);
+   local.update("DELETE FROM party_month_dirty WHERE side='AP' AND party_id=?",supplier);
    sql.executeUpdate("ALTER TABLE party_month_dirty ADD PRIMARY KEY(side,party_id,month_start)");
    String migration;try(var input=Objects.requireNonNull(getClass().getClassLoader().getResourceAsStream("db/migration/V1085__supplier_advance_statement_replay.sql"))){migration=new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
    int backfill=migration.indexOf("INSERT INTO party_month_dirty(side,party_id,month_start,reason)");assertThat(backfill).isGreaterThan(0);sql.executeUpdate(migration.substring(backfill,migration.indexOf(';',backfill)));
-   try(var row=sql.executeQuery("SELECT count(*) FROM party_month_dirty WHERE side='AP' AND party_id='"+supplier+"' AND month_start=DATE '1900-01-01'")){assertThat(row.next()).isTrue();assertThat(row.getInt(1)).as("the real forward migration invalidates an old clean legacy cache").isEqualTo(1);}
+   assertThat(local.queryForObject("SELECT count(*) FROM party_month_dirty WHERE side='AP' AND party_id=? AND month_start=DATE '1900-01-01'",Integer.class,supplier)).as("the real forward migration invalidates an old clean legacy cache").isEqualTo(1);
    assertLegacyPublic(setup,original,"-276","276");
    assertLegacyPublic(setup,BusinessTime.today(),"0","-276");
-   sql.executeUpdate("UPDATE finance_payments SET status=1 WHERE id='"+payment+"'");
-   sql.executeUpdate("UPDATE ar_ap_ledger SET status=1,is_deleted=false,deleted_at=NULL,exchange_rate=6.9,amount_balance_original=amount_original,amount_balance=amount_original_local WHERE id='"+ledger+"'");
+   local.update("UPDATE finance_payments SET status=1 WHERE id=?",payment);
+   local.update("UPDATE ar_ap_ledger SET status=1,is_deleted=false,deleted_at=NULL,exchange_rate=6.9,amount_balance_original=amount_original,amount_balance=amount_original_local WHERE id=?",ledger);
    assertThat(unknownProof(connection,payment)).isZero();assertLegacyPublic(setup,original,"-276","276");
    UUID target=UUID.randomUUID(),line=UUID.randomUUID();
-   sql.executeUpdate("INSERT INTO ar_ap_ledger(id,direction,business_type,open_item_kind,source_doc_type,source_doc_id,bill_no,bill_date,supplier_id,currency_id,exchange_rate,amount_original,amount_original_local,amount_balance_original,amount_balance,amount_settled,status,is_deleted) "
-     +"SELECT '"+target+"','AP','PURCHASE','PAYABLE','PURCHASE_RECEIPT','"+target+"','ANONYMOUS-RETAINED-AP',bill_date,supplier_id,currency_id,7,80,560,70,490,70,1,false FROM finance_payments WHERE id='"+payment+"'");
-   sql.executeUpdate("UPDATE ar_ap_ledger SET amount_original=-30,amount_original_local=-207,amount_balance_original=-30,amount_balance=-207 WHERE id='"+ledger+"'");
-   sql.executeUpdate("INSERT INTO finance_payment_lines(id,payment_id,applied_ledger_id,supplier_id,line_no,amount_original,amount_local,applied_amount_local,exchange_diff,is_deleted) SELECT '"+line+"',id,'"+target+"',supplier_id,1,10,69,70,-1,false FROM finance_payments WHERE id='"+payment+"'");
-   sql.executeUpdate("UPDATE ar_ap_ledger SET amount_received_original=10,amount_received_local=69 WHERE id='"+target+"'");
+   local.update("INSERT INTO ar_ap_ledger(id,direction,business_type,open_item_kind,source_doc_type,source_doc_id,bill_no,bill_date,supplier_id,currency_id,exchange_rate,amount_original,amount_original_local,amount_balance_original,amount_balance,amount_settled,status,is_deleted) "
+     +"SELECT ?,'AP','PURCHASE','PAYABLE','PURCHASE_RECEIPT',?,'ANONYMOUS-RETAINED-AP',bill_date,supplier_id,currency_id,7,80,560,70,490,70,1,false FROM finance_payments WHERE id=?",target,target,payment);
+   local.update("UPDATE ar_ap_ledger SET amount_original=-30,amount_original_local=-207,amount_balance_original=-30,amount_balance=-207 WHERE id=?",ledger);
+   local.update("INSERT INTO finance_payment_lines(id,payment_id,applied_ledger_id,supplier_id,line_no,amount_original,amount_local,applied_amount_local,exchange_diff,is_deleted) SELECT ?,id,?,supplier_id,1,10,69,70,-1,false FROM finance_payments WHERE id=?",line,target,payment);
+   local.update("UPDATE ar_ap_ledger SET amount_received_original=10,amount_received_local=69 WHERE id=?",target);
    assertThat(unknownProof(connection,payment)).as("partial legacy AP application retains a separately proved remaining advance").isZero();
    assertLegacyPublic(setup,original,"283","276");
    var partial=connection.setSavepoint();
-   sql.executeUpdate("DELETE FROM ar_ap_ledger WHERE id='"+ledger+"'");
+   local.update("DELETE FROM ar_ap_ledger WHERE id=?",ledger);
    assertThat(unknownProof(connection,payment)).as("partial allocation cannot silently discard its unproved residual").isEqualTo(1);
    assertThatThrownBy(()->reports.payableSummary(code(setup),original.withDayOfMonth(1),original.withDayOfMonth(original.lengthOfMonth()),1,50)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
    connection.rollback(partial);
-   sql.executeUpdate("DELETE FROM ar_ap_ledger WHERE id='"+ledger+"'");
-   sql.executeUpdate("UPDATE finance_payment_lines SET amount_original=40,amount_local=276,applied_amount_local=280,exchange_diff=-4 WHERE id='"+line+"'");
-   sql.executeUpdate("UPDATE ar_ap_ledger SET amount_received_original=40,amount_received_local=276,amount_balance_original=40,amount_balance=280,amount_settled=280 WHERE id='"+target+"'");
+   local.update("DELETE FROM ar_ap_ledger WHERE id=?",ledger);
+   local.update("UPDATE finance_payment_lines SET amount_original=40,amount_local=276,applied_amount_local=280,exchange_diff=-4 WHERE id=?",line);
+   local.update("UPDATE ar_ap_ledger SET amount_received_original=40,amount_received_local=276,amount_balance_original=40,amount_balance=280,amount_settled=280 WHERE id=?",target);
    assertThat(unknownProof(connection,payment)).as("fully allocated legacy line facts conserve both header currencies").isZero();assertLegacyPublic(setup,original,"280","276");
    UUID credit=UUID.randomUUID();
-   sql.executeUpdate("INSERT INTO ar_ap_ledger(id,direction,business_type,open_item_kind,source_doc_type,source_doc_id,bill_no,bill_date,supplier_id,currency_id,exchange_rate,amount_original,amount_original_local,amount_balance_original,amount_balance,status,is_deleted) "
-     +"SELECT '"+credit+"','AP','PURCHASE','CREDIT','PURCHASE_RETURN','"+credit+"','ANONYMOUS-RETAINED-CREDIT',bill_date,supplier_id,currency_id,7,-5,-35,-5,-35,1,false FROM finance_payments WHERE id='"+payment+"'");
+   local.update("INSERT INTO ar_ap_ledger(id,direction,business_type,open_item_kind,source_doc_type,source_doc_id,bill_no,bill_date,supplier_id,currency_id,exchange_rate,amount_original,amount_original_local,amount_balance_original,amount_balance,status,is_deleted) "
+     +"SELECT ?,'AP','PURCHASE','CREDIT','PURCHASE_RETURN',?,'ANONYMOUS-RETAINED-CREDIT',bill_date,supplier_id,currency_id,7,-5,-35,-5,-35,1,false FROM finance_payments WHERE id=?",credit,credit,payment);
    assertLegacyPublic(setup,original,"245","276");
-   sql.executeUpdate("UPDATE finance_payments SET amount_authority_version=0,amount_local=NULL WHERE id='"+payment+"'");assertThat(unknownProof(connection,payment)).as("authority zero has no guessed cash basis").isEqualTo(1);
+   local.update("UPDATE finance_payments SET amount_authority_version=0,amount_local=NULL WHERE id=?",payment);assertThat(unknownProof(connection,payment)).as("authority zero has no guessed cash basis").isEqualTo(1);
   }
  }
  private void assertLegacyPublic(Setup setup,LocalDate month,String balance,String cash) {
@@ -312,4 +322,10 @@ class SupplierAdvanceStatementReplayPostgresTest {
  private static BigDecimal n(String s){return new BigDecimal(s);}
  private static void amount(Map<String,Object> row,String key,String expected){assertThat(row.get(key)).as(key).isNotNull();assertThat(new BigDecimal(row.get(key).toString())).as(key).isEqualByComparingTo(expected);}
  private static void amountTotal(ReportTableResponse report,String key,String expected){var total=report.totals().stream().filter(t->t.key().equals(key)).findFirst().orElseThrow();assertThat(total.groups()).hasSize(1);assertThat(new BigDecimal(total.groups().getFirst().value().toString())).as("unfiltered authoritative cash total").isEqualByComparingTo(expected);}
+
+ private record ProofMutation(String label,String sql,Object[] values) { }
+ private static ProofMutation mutation(String label,String sql,Object...values) { return new ProofMutation(label,sql,values); }
+ private static org.springframework.jdbc.core.JdbcTemplate fixtureJdbc(java.sql.Connection connection) {
+  return new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true));
+ }
 }

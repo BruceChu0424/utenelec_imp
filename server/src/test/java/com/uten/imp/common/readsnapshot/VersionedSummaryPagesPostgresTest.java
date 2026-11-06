@@ -33,7 +33,7 @@ class VersionedSummaryPagesPostgresTest {
     @BeforeAll static void start() {
         PG.start();source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());db=new JdbcTemplate(source);
         runtimePassword=UUID.randomUUID().toString();
-        db.execute("CREATE ROLE uten LOGIN PASSWORD '"+runtimePassword+"' NOSUPERUSER NOCREATEDB NOCREATEROLE");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE ROLE uten LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE",runtimePassword);
         TestFlyway.configure().dataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()).load().migrate();
         db.execute("CREATE TABLE summary_protocol_fixture(id integer PRIMARY KEY,value text NOT NULL)");
         db.execute("CREATE TABLE summary_protocol_auth(id integer PRIMARY KEY,token text NOT NULL)");
@@ -51,10 +51,10 @@ class VersionedSummaryPagesPostgresTest {
         db.execute("DROP TRIGGER IF EXISTS summary_fixture_marker_truncate ON summary_protocol_fixture");
         db.execute("TRUNCATE summary_protocol_fixture");
         domain="test-summary-"+UUID.randomUUID();db.update("INSERT INTO summary_read_domains(domain) VALUES(?)",domain);
-        db.execute("CREATE TRIGGER summary_fixture_marker AFTER INSERT ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain('"+domain+"')");
-        db.execute("CREATE TRIGGER summary_fixture_marker_update AFTER UPDATE ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain('"+domain+"')");
-        db.execute("CREATE TRIGGER summary_fixture_marker_delete AFTER DELETE ON summary_protocol_fixture REFERENCING OLD TABLE AS summary_old_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain('"+domain+"')");
-        db.execute("CREATE TRIGGER summary_fixture_marker_truncate AFTER TRUNCATE ON summary_protocol_fixture FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain('"+domain+"')");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker AFTER INSERT ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",domain);
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker_update AFTER UPDATE ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",domain);
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker_delete AFTER DELETE ON summary_protocol_fixture REFERENCING OLD TABLE AS summary_old_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",domain);
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker_truncate AFTER TRUNCATE ON summary_protocol_fixture FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",domain);
         db.update("UPDATE summary_protocol_auth SET token=? WHERE id=1",UUID.randomUUID().toString());
         var current=mock(SecurityContextCurrentUser.class);
         UUID actor=UUID.randomUUID();when(current.get()).thenReturn(Optional.of(new AuthUser(actor,actor,"summary-fixture",Set.of("finance_report:view"),false,true,false)));
@@ -95,17 +95,17 @@ class VersionedSummaryPagesPostgresTest {
         db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one'),(2,'two')");
         try(Connection older=source.getConnection();Connection newer=source.getConnection()) {
             older.setAutoCommit(false);newer.setAutoCommit(false);
-            older.createStatement().executeUpdate("UPDATE summary_protocol_fixture SET value='older' WHERE id=1");
-            newer.createStatement().executeUpdate("UPDATE summary_protocol_fixture SET value='newer' WHERE id=2");
+            update(older,"UPDATE summary_protocol_fixture SET value='older' WHERE id=1");
+            update(newer,"UPDATE summary_protocol_fixture SET value='newer' WHERE id=2");
             newer.commit();var middle=page(1,1,null);older.commit();changed(()->page(2,1,middle.readSnapshotRevision()));
         }
     }
     @Test void rollbackAndSavepointRollbackDoNotPublishARevisionWhileZeroRowDmlDoesNotInventOne() throws Exception {
         db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one')");var before=page(1,1000,null);
         try(Connection c=source.getConnection()) {
-            c.setAutoCommit(false);Savepoint save=c.setSavepoint();c.createStatement().executeUpdate("UPDATE summary_protocol_fixture SET value='discard' WHERE id=1");
+            c.setAutoCommit(false);Savepoint save=c.setSavepoint();update(c,"UPDATE summary_protocol_fixture SET value='discard' WHERE id=1");
             c.rollback(save);c.commit();
-            c.createStatement().executeUpdate("UPDATE summary_protocol_fixture SET value='discard-again' WHERE id=1");c.rollback();
+            update(c,"UPDATE summary_protocol_fixture SET value='discard-again' WHERE id=1");c.rollback();
         }
         db.update("UPDATE summary_protocol_fixture SET value='missing' WHERE id=-1");
         assertThat(page(1,1000,before.readSnapshotRevision()).readDataVersion()).isEqualTo(before.readDataVersion());
@@ -113,7 +113,7 @@ class VersionedSummaryPagesPostgresTest {
     @Test void compactionPreservesTheLogicalVersionAndAnInFlightCommitStillAdvancesIt() throws Exception {
         db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one'),(2,'two')");
         try(Connection late=source.getConnection()) {
-            late.setAutoCommit(false);late.createStatement().executeUpdate("UPDATE summary_protocol_fixture SET value='late' WHERE id=2");
+            late.setAutoCommit(false);update(late,"UPDATE summary_protocol_fixture SET value='late' WHERE id=2");
             var before=page(1,1,null);assertThat(compactor.compactDomain(domain)).isPositive();
             assertThat(page(1,1,before.readSnapshotRevision()).readDataVersion()).isEqualTo(before.readDataVersion());
             late.commit();changed(()->page(2,1,before.readSnapshotRevision()));
@@ -127,7 +127,7 @@ class VersionedSummaryPagesPostgresTest {
             assertThat(db.queryForObject("SHOW transaction_isolation",String.class)).isEqualTo("read committed");
             changed(()->pages.page(request(1,1000,null),()->{
                 long count=db.queryForObject("SELECT count(*) FROM summary_protocol_fixture",Long.class);
-                try(Connection independent=source.getConnection()){independent.createStatement().executeUpdate("INSERT INTO summary_protocol_fixture VALUES(2,'new')");}
+                try(Connection independent=source.getConnection()){update(independent,"INSERT INTO summary_protocol_fixture VALUES(2,'new')");}
                 catch(SQLException e){throw new RuntimeException(e);}return count;
             },(p,n)->{var old=db.queryForList("SELECT id,value FROM summary_protocol_fixture ORDER BY id");sawOldBatch.set(old.size()==1);return old;}));
             assertThat(db.queryForObject("SHOW transaction_isolation",String.class)).isEqualTo("read committed");return null;
@@ -137,7 +137,7 @@ class VersionedSummaryPagesPostgresTest {
         db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one')");
         assertThatThrownBy(()->pages.page(request(1,1000,null),()->db.queryForObject("SELECT count(*) FROM summary_protocol_fixture",Long.class),(p,n)->{
             var items=db.queryForList("SELECT id,value FROM summary_protocol_fixture ORDER BY id");
-            try(Connection independent=source.getConnection()){independent.createStatement().executeUpdate("UPDATE summary_protocol_auth SET token='changed' WHERE id=1");}
+            try(Connection independent=source.getConnection()){update(independent,"UPDATE summary_protocol_auth SET token='changed' WHERE id=1");}
             catch(SQLException e){throw new RuntimeException(e);}return items;
         })).isInstanceOfSatisfying(ApiException.class,e->assertThat(e.getCode()).isEqualTo(ErrorCode.READ_SCOPE_CHANGED));
         db.execute("TRUNCATE summary_protocol_fixture");var empty=page(1,1000,null);db.execute("TRUNCATE summary_protocol_fixture");changed(()->page(1,1000,empty.readSnapshotRevision()));
@@ -146,43 +146,56 @@ class VersionedSummaryPagesPostgresTest {
         String second=domain+"-second";db.update("INSERT INTO summary_read_domains(domain) VALUES(?)",second);
         db.execute("CREATE TABLE summary_protocol_second(id integer PRIMARY KEY,value text)");
         try {
-            db.execute("CREATE TRIGGER summary_second_marker AFTER UPDATE ON summary_protocol_second REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain('"+second+"')");
+            com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_second_marker AFTER UPDATE ON summary_protocol_second REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",second);
             db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one'),(2,'two')");db.update("INSERT INTO summary_protocol_second VALUES(1,'one'),(2,'two')");
             CyclicBarrier bothFirst=new CyclicBarrier(2);ExecutorService pool=Executors.newFixedThreadPool(2);
             try {
-                var a=pool.submit(()->inverseWrite("summary_protocol_fixture","summary_protocol_second",1,bothFirst));
-                var b=pool.submit(()->inverseWrite("summary_protocol_second","summary_protocol_fixture",2,bothFirst));
+                var a=pool.submit(()->inverseWrite(ProbeTable.PRIMARY,ProbeTable.SECONDARY,1,bothFirst));
+                var b=pool.submit(()->inverseWrite(ProbeTable.SECONDARY,ProbeTable.PRIMARY,2,bothFirst));
                 a.get(15,TimeUnit.SECONDS);b.get(15,TimeUnit.SECONDS);
             } finally {pool.shutdownNow();assertThat(pool.awaitTermination(10,TimeUnit.SECONDS)).isTrue();}
         } finally {db.execute("DROP TABLE summary_protocol_second");}
     }
-    private void inverseWrite(String first,String second,int id,CyclicBarrier barrier) {
-        try(Connection c=source.getConnection()) {
-            c.setAutoCommit(false);c.createStatement().execute("SET LOCAL statement_timeout='10s'");
-            c.createStatement().executeUpdate("UPDATE "+first+" SET value='done' WHERE id="+id);
-            barrier.await(10,TimeUnit.SECONDS);c.createStatement().executeUpdate("UPDATE "+second+" SET value='done' WHERE id="+id);c.commit();
+    private void inverseWrite(ProbeTable first,ProbeTable second,int id,CyclicBarrier barrier) {
+        try(Connection c=source.getConnection();var local=c.createStatement()) {
+            c.setAutoCommit(false);local.execute("SET LOCAL statement_timeout='10s'");
+            update(c,first.sql,id);
+            barrier.await(10,TimeUnit.SECONDS);update(c,second.sql,id);c.commit();
         } catch(Exception e){throw new RuntimeException(e);}
     }
     @Test void actualRuntimeRoleCanPublishAndCompactButCannotForgeMetadataDdlHistoryOrRetiredReset() throws Exception {
         db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one')");var before=page(1,1000,null);
-        try(Connection runtime=DriverManager.getConnection(PG.getJdbcUrl(),"uten",runtimePassword)) {
+        try(Connection runtime=DriverManager.getConnection(PG.getJdbcUrl(),"uten",runtimePassword);var runtimeSql=runtime.createStatement()) {
             assertThat(runtime.getMetaData().getUserName()).isEqualTo("uten");runtime.setAutoCommit(false);
-            try(var rows=runtime.createStatement().executeQuery("SELECT current_user,rolsuper FROM pg_roles WHERE rolname=current_user")){assertThat(rows.next()).isTrue();assertThat(rows.getString(1)).isEqualTo("uten");assertThat(rows.getBoolean(2)).isFalse();}
-            assertThat(runtime.createStatement().executeUpdate("UPDATE departments SET name=name WHERE code='DEPT_PROD'")).isPositive();runtime.rollback();
+            try(var rows=runtimeSql.executeQuery("SELECT current_user,rolsuper FROM pg_roles WHERE rolname=current_user")){assertThat(rows.next()).isTrue();assertThat(rows.getString(1)).isEqualTo("uten");assertThat(rows.getBoolean(2)).isFalse();}
+            assertThat(runtimeSql.executeUpdate("UPDATE departments SET name=name WHERE code='DEPT_PROD'")).isPositive();runtime.rollback();
             assertThat(page(1,1000,before.readSnapshotRevision()).readDataVersion()).isEqualTo(before.readDataVersion());
             runtime.setAutoCommit(true);
-            assertThatThrownBy(()->runtime.createStatement().executeUpdate("UPDATE summary_read_domains SET compacted_markers=0 WHERE domain='"+domain+"'"))
+            assertThatThrownBy(()->update(runtime,"UPDATE summary_read_domains SET compacted_markers=0 WHERE domain=?",domain))
                     .isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
-            assertThatThrownBy(()->runtime.createStatement().executeUpdate("DELETE FROM summary_read_markers WHERE domain='"+domain+"'"))
+            assertThatThrownBy(()->update(runtime,"DELETE FROM summary_read_markers WHERE domain=?",domain))
                     .isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
             try(var compact=runtime.prepareStatement("SELECT fn_compact_summary_read_domain(?)")){compact.setString(1,domain);try(var rows=compact.executeQuery()){assertThat(rows.next()).isTrue();assertThat(rows.getInt(1)).isPositive();}}
             assertThat(page(1,1000,before.readSnapshotRevision()).readDataVersion()).isEqualTo(before.readDataVersion());
-            assertThatThrownBy(()->runtime.createStatement().execute("CREATE TABLE forbidden_summary_runtime(id integer)"))
+            assertThatThrownBy(()->runtimeSql.execute("CREATE TABLE forbidden_summary_runtime(id integer)"))
                     .isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
-            assertThatThrownBy(()->runtime.createStatement().executeUpdate("UPDATE flyway_schema_history SET checksum=checksum"))
+            assertThatThrownBy(()->runtimeSql.executeUpdate("UPDATE flyway_schema_history SET checksum=checksum"))
                     .isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("42501"));
-            assertThatThrownBy(()->runtime.createStatement().executeUpdate("UPDATE authorization_state SET business_reset_generation=business_reset_generation+1 WHERE singleton_id=1"))
+            assertThatThrownBy(()->runtimeSql.executeUpdate("UPDATE authorization_state SET business_reset_generation=business_reset_generation+1 WHERE singleton_id=1"))
                     .isInstanceOfSatisfying(SQLException.class,e->assertThat(e.getSQLState()).isEqualTo("55000"));
+        }
+    }
+
+    private enum ProbeTable {
+        PRIMARY("UPDATE summary_protocol_fixture SET value='done' WHERE id=?"),
+        SECONDARY("UPDATE summary_protocol_second SET value='done' WHERE id=?");
+        final String sql;
+        ProbeTable(String sql) { this.sql=sql; }
+    }
+    private static int update(Connection connection,String sql,Object...values) throws SQLException {
+        try(var statement=connection.prepareStatement(sql)) {
+            for(int i=0;i<values.length;i++) { statement.setObject(i+1,values[i]); }
+            return statement.executeUpdate();
         }
     }
 }

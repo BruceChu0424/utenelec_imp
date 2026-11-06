@@ -234,7 +234,7 @@ class FulfillmentWorkbenchPageReadPostgresTest {
         insertRows();
         jdbc.getJdbcTemplate().execute("UPDATE workbench_fixture SET display_stage='BOM_MISSING' WHERE task_status='FINANCE_APPROVED'");
         for(String department:List.of("PURCHASE","SUBCONTRACT","WAREHOUSE")) {
-            jdbc.getJdbcTemplate().execute("UPDATE workbench_fixture SET department='"+department+"'");
+            jdbc.getJdbcTemplate().update("UPDATE workbench_fixture SET department=?",department);
             String status="SUBCONTRACT".equals(department)
                     ? "CASE WHEN display_stage='BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END='BOM_MISSING'"
                     : "task_status='WAITING_ORDER'";

@@ -62,7 +62,7 @@ class ProcurementOrderApprovalPredicatesPostgresTest {
         assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(1);
         assertThat(SQL).hasSize(1);assertThat(bindings(SQL.getFirst())).isEqualTo(smallBindings).isLessThan(10);
         assertThat(SQL.getFirst().toLowerCase(Locale.ROOT)).contains("exists").doesNotContain(" in (");
-        String plan=jdbc.queryForObject("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) SELECT id FROM approval_predicate_orders o WHERE o.id='"+target+"' AND EXISTS(SELECT 1 FROM procurement_order_approval_cases c WHERE c.order_type='PURCHASE' AND c.order_id=o.id AND c.request_type='ORDER' AND c.status='PENDING')",String.class);
+        String plan=jdbc.queryForObject("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) SELECT id FROM approval_predicate_orders o WHERE o.id=? AND EXISTS(SELECT 1 FROM procurement_order_approval_cases c WHERE c.order_type='PURCHASE' AND c.order_id=o.id AND c.request_type='ORDER' AND c.status='PENDING')",String.class,target);
         assertThat(plan).contains("uk_procurement_order_approval_pending");
         System.out.println("APPROVAL-QUALIFIER-GROWTH historicalCases=6000 statements=1 bindings="+smallBindings+" existingPendingIndex=true");
     }

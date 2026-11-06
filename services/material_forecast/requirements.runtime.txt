@@ -9,7 +9,7 @@ fsspec==2026.9.0
 fugue==0.9.7
 interface_meta==2.0.1
 narwhals==2.27.1
-numpy==2.2.6
+numpy==2.5.4
 packaging==26.3
 pandas==2.3.3
 patsy==1.0.3

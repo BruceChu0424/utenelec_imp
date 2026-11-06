@@ -1,5 +1,5 @@
 # Direct runtime dependencies. requirements.txt contains the reviewed universal
 # Python 3.12 resolution and package hashes, including every transitive package.
 statsforecast==2.1.1
-numpy==2.2.6
+numpy==2.5.4
 pandas==2.3.3

@@ -88,6 +88,27 @@ class NativeReadScopeVersionPostgresTest {
         login();
     }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
+    @Test void unchangedAuthorityColumnsSkipCallbacksAndAnActualDepartmentChangeStillPublishes() {
+        UUID parent=db.queryForObject("SELECT department_id FROM employees WHERE id=?",UUID.class,employee);
+        UUID target=department(parent);
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+            status.setRollbackOnly();
+            db.execute("SET LOCAL track_functions='all'");
+            long before=nativeColumnCalls();
+            long warehouseBefore=generation("native_warehouse_tasks");
+            long workshopBefore=generation("native_workshop_tasks");
+            db.update("UPDATE employees SET department_id=department_id,status=status WHERE id=?",employee);
+            assertThat(nativeColumnCalls()).isEqualTo(before);
+            assertThat(generation("native_warehouse_tasks")).isEqualTo(warehouseBefore);
+            db.update("UPDATE employees SET department_id=? WHERE id=?",target,employee);
+            assertThat(nativeColumnCalls()-before).isEqualTo(1);
+            assertThat(generation("native_warehouse_tasks")).isEqualTo(warehouseBefore+1);
+            assertThat(generation("native_workshop_tasks")).isEqualTo(workshopBefore+1);
+        });
+    }
+    private static long nativeColumnCalls() {
+        return db.queryForObject("SELECT COALESCE(pg_stat_get_xact_function_calls('fn_mark_native_scope_columns()'::regprocedure),0)",Long.class);
+    }
     @SuppressWarnings("unchecked") static <T> void port(Object target,String field,T value){
         ObjectProvider<T> provider=mock(ObjectProvider.class);when(provider.getIfAvailable()).thenReturn(value);ReflectionTestUtils.setField(target,field,provider);
     }

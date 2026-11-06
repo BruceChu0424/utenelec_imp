@@ -56,6 +56,7 @@ class VersionedSummaryPagesPostgresTest {
         com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker_update AFTER UPDATE ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",domain);
         com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker_delete AFTER DELETE ON summary_protocol_fixture REFERENCING OLD TABLE AS summary_old_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",domain);
         com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker_truncate AFTER TRUNCATE ON summary_protocol_fixture FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",domain);
+        db.execute("SELECT fn_refresh_summary_read_marker_gates()");
         db.update("UPDATE summary_protocol_auth SET token=? WHERE id=1",UUID.randomUUID().toString());
         var current=mock(SecurityContextCurrentUser.class);
         UUID actor=UUID.randomUUID();when(current.get()).thenReturn(Optional.of(new AuthUser(actor,actor,"summary-fixture",Set.of("finance_report:view"),false,true,false)));
@@ -148,6 +149,7 @@ class VersionedSummaryPagesPostgresTest {
         db.execute("CREATE TABLE summary_protocol_second(id integer PRIMARY KEY,value text)");
         try {
             com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_second_marker AFTER UPDATE ON summary_protocol_second REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L)",second);
+            db.execute("SELECT fn_refresh_summary_read_marker_gates()");
             db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one'),(2,'two')");db.update("INSERT INTO summary_protocol_second VALUES(1,'one'),(2,'two')");
             CyclicBarrier bothFirst=new CyclicBarrier(2);ExecutorService pool=Executors.newFixedThreadPool(2);
             try {
@@ -163,6 +165,79 @@ class VersionedSummaryPagesPostgresTest {
             update(c,first.sql,id);
             barrier.await(10,TimeUnit.SECONDS);update(c,second.sql,id);c.commit();
         } catch(Exception e){throw new RuntimeException(e);}
+    }
+    @Test void everyDomainNeedsItsOwnCurrentTransactionProofAndCompactionRetiresThatProof() {
+        String second=domain+"-second";db.update("INSERT INTO summary_read_domains(domain) VALUES(?)",second);
+        db.execute("DROP TRIGGER summary_fixture_marker_update ON summary_protocol_fixture");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker_update AFTER UPDATE ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L,%L)",domain,second);
+        assertThat(db.queryForObject("SELECT fn_refresh_summary_read_marker_gates()",Integer.class)).isEqualTo(1);
+        new TransactionTemplate(manager).executeWithoutResult(status->{
+            db.execute("SET LOCAL track_functions='all'");
+            long writers=markerCalls("fn_mark_summary_read_domain()"),guards=markerCalls("fn_guard_summary_read_metadata()");
+            db.update("INSERT INTO summary_protocol_fixture VALUES(1,'first')");
+            db.update("UPDATE summary_protocol_fixture SET value='second' WHERE id=1");
+            db.update("UPDATE summary_protocol_fixture SET value='third' WHERE id=1");
+            assertThat(markerCalls("fn_mark_summary_read_domain()")-writers).isEqualTo(2);
+            assertThat(markerCalls("fn_guard_summary_read_metadata()")-guards).isEqualTo(2);
+            assertThat(db.queryForObject("SELECT count(*) FROM summary_read_markers WHERE domain IN (?,?) AND transaction_id=txid_current()",Long.class,domain,second)).isEqualTo(2);
+            // Compaction and UPDATE share one outer command. A removed marker
+            // must be observed, rather than retained as a session/statement flag.
+            com.uten.imp.support.PostgresFixtureDdl.execute(db,"""
+                    DO $marker_proof$ DECLARE before_version numeric;after_version numeric;BEGIN
+                     SELECT compacted_markers+(SELECT count(*) FROM summary_read_markers WHERE domain=%L)
+                       INTO before_version FROM summary_read_domains WHERE domain=%L;
+                     PERFORM fn_compact_summary_read_domain(%L);
+                     SELECT compacted_markers+(SELECT count(*) FROM summary_read_markers WHERE domain=%L)
+                       INTO after_version FROM summary_read_domains WHERE domain=%L;
+                     IF after_version<>before_version THEN RAISE EXCEPTION 'Compaction changed the logical version';END IF;
+                     UPDATE summary_protocol_fixture SET value='after compaction' WHERE id=1;
+                     SELECT compacted_markers+(SELECT count(*) FROM summary_read_markers WHERE domain=%L)
+                       INTO after_version FROM summary_read_domains WHERE domain=%L;
+                     IF after_version<>before_version+1 THEN RAISE EXCEPTION 'Removed marker proof was cached';END IF;
+                    END $marker_proof$;
+                    """,Collections.nCopies(7,domain).toArray());
+        });
+    }
+    @Test void markerGateRefreshPreservesOriginalArgumentsModeTransitionNamesAndComment() {
+        db.execute("DROP TRIGGER summary_fixture_marker ON summary_protocol_fixture");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker AFTER INSERT ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L,%L)",domain,"escaped α ' , slash");
+        db.execute("ALTER TABLE summary_protocol_fixture ENABLE ALWAYS TRIGGER summary_fixture_marker");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"COMMENT ON TRIGGER summary_fixture_marker ON summary_protocol_fixture IS %L","original α ' comment");
+        String query="""
+                SELECT jsonb_build_object('args',encode(tgargs,'hex'),'mode',tgenabled::text,'type',tgtype,
+                 'new',tgnewtable,'old',tgoldtable,'comment',obj_description(oid,'pg_trigger'))::text
+                FROM pg_trigger WHERE tgrelid='summary_protocol_fixture'::regclass AND tgname='summary_fixture_marker'
+                """;
+        String before=db.queryForObject(query,String.class);
+        assertThat(db.queryForObject("SELECT fn_refresh_summary_read_marker_gates()",Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject(query,String.class)).isEqualTo(before);
+        assertThat(db.queryForObject("SELECT pg_get_expr(tgqual,tgrelid) FROM pg_trigger WHERE tgrelid='summary_protocol_fixture'::regclass AND tgname='summary_fixture_marker'",String.class))
+                .contains("fn_summary_read_domains_marked");
+        assertThat(db.queryForObject("SELECT fn_refresh_summary_read_marker_gates()",Integer.class)).isZero();
+    }
+    private long markerCalls(String signature) {
+        return db.queryForObject("SELECT COALESCE(pg_stat_get_xact_function_calls(CAST(? AS regprocedure)),0)",Long.class,signature);
+    }
+    @Test void oneMultiDomainWriteUsesOneProtectedStatementAndEmptyRuntimeWritesStillReject() throws Exception {
+        String second=domain+"-second";
+        db.update("INSERT INTO summary_read_domains(domain) VALUES(?)",second);
+        db.execute("DROP TRIGGER summary_fixture_marker ON summary_protocol_fixture");
+        com.uten.imp.support.PostgresFixtureDdl.execute(db,"CREATE TRIGGER summary_fixture_marker AFTER INSERT ON summary_protocol_fixture REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT EXECUTE FUNCTION fn_mark_summary_read_domain(%L,%L)",domain,second);
+        db.execute("SELECT fn_refresh_summary_read_marker_gates()");
+        new TransactionTemplate(manager).executeWithoutResult(status->{
+            db.execute("SET LOCAL track_functions='all'");
+            long before=markerCalls("fn_guard_summary_read_metadata()");
+            db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one'),(2,'two')");
+            assertThat(markerCalls("fn_guard_summary_read_metadata()")-before).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT count(*) FROM summary_read_markers WHERE domain IN (?,?) AND transaction_id=txid_current()",Long.class,domain,second)).isEqualTo(2);
+        });
+        try(Connection runtime=DriverManager.getConnection(PG.getJdbcUrl(),"uten",runtimePassword)) {
+            for(String sql:List.of("UPDATE summary_read_markers SET domain=domain WHERE false",
+                    "DELETE FROM summary_read_domains WHERE false")) {
+                assertThatThrownBy(()->update(runtime,sql)).isInstanceOfSatisfying(SQLException.class,
+                        failure->assertThat(failure.getSQLState()).isEqualTo("42501"));
+            }
+        }
     }
     @Test void actualRuntimeRoleCanPublishAndCompactButCannotForgeMetadataDdlHistoryOrRetiredReset() throws Exception {
         db.update("INSERT INTO summary_protocol_fixture VALUES(1,'one')");var before=page(1,1000,null);
@@ -230,6 +305,7 @@ class VersionedSummaryPagesPostgresTest {
         assertThat(all).hasSize(1001);assertThat(all.getLast()).containsEntry("value","001001").containsEntry("label","中文 %_ 末尾").containsEntry("count",1L);
         assertThat(all.stream().map(row->row.get("value")).distinct().count()).isEqualTo(1001);
         try(var scope=com.uten.imp.common.web.NativeFacetCandidates.open("clientId","中文 %_",1,100)) {
+            assertThat(com.uten.imp.common.web.NativeFacetCandidates.current()).isSameAs(scope);
             var request=new VersionedSummaryPages.Request(domain,"native_workshop_tasks",Map.of("field","clientId","keyword","中文 %_","mode","positional"),"all",1,100,100,null);
             var exact=pages.read(request,()->{},()->com.uten.imp.common.web.NativeFacets.jdbcRows(db,"clientId",
                     "SELECT lpad(id::text,6,'0'),value,COUNT(*) FROM summary_protocol_fixture WHERE id>? AND value<>? GROUP BY id,value",

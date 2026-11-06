@@ -58,21 +58,16 @@ void main() {
       const ProductionWorkshopTasksPage(),
       router: router,
     );
-    // Working queues may be prepared without publishing an unselected category.
-    expect(repository.taskLoads, 3);
-    expect(repository.statuses.toSet(), {
-      'PREPARING',
-      'IN_PROGRESS',
-      'REPORT_INSPECTION',
-    });
+    expect(repository.taskLoads, 0);
+    expect(repository.statuses, isEmpty);
     expect(find.text('车间任务 1'), findsNothing);
     // 2026-09-06 改版：「可报工」分类退役，报工归「生产中」。
     await tester.tap(find.text('生产中'));
     await tester.pumpAndSettle();
     expect(
       repository.taskLoads,
-      3,
-      reason: 'Selecting the prepared queue reuses its first page',
+      1,
+      reason: 'Only the explicitly selected queue is read',
     );
     expect(repository.inProgressLoads, 1);
     expect(find.text('车间任务 1'), findsOneWidget);
@@ -278,8 +273,8 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
           'canBatchReport': false,
         }),
       ],
-      page: 1,
-      size: 50,
+      page: page,
+      size: size,
       total: 1,
       totalPages: 1,
     );

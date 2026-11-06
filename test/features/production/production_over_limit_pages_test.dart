@@ -72,12 +72,22 @@ class _ListRepository extends _Repository {
     headerCalls.add({
       'status': status,
       'page': page,
+      'size': size,
       'search': Map<String, String?>.of(columnSearch),
       'sort': sort,
       'order': order,
     });
     return PagedResult(
-      items: [row],
+      items: pages == 1
+          ? [row]
+          : [
+              for (var index = 0; index < size; index++)
+                ProductionOverLimitDisposition({
+                  ...row.data,
+                  'id': '${row.id}-${(page - 1) * size + index}',
+                  'status': status,
+                }),
+            ],
       page: page,
       size: size,
       total: pages == 1 ? 1 : pages * size,
@@ -119,8 +129,9 @@ void main() {
           tester.widget(
             find.byType(MasterDataTableView<ProductionOverLimitDisposition>),
           );
-      table().onPageChange!(2);
-      await tester.pumpAndSettle();
+      expect(table().items, hasLength(60));
+      expect(table().currentPage, 1);
+      expect(table().totalPages, 1);
       await tester.tap(
         find.byKey(const ValueKey('master-column-filter-within')),
       );
@@ -167,10 +178,12 @@ void main() {
           tester.widget(
             find.byType(MasterDataTableView<ProductionOverLimitDisposition>),
           );
-      table().onPageChange!(2);
-      await tester.pumpAndSettle();
+      expect(table().items, hasLength(60));
       expect(repo.queries, contains(('PENDING', 2)));
-      expect(table().currentPage, 2);
+      expect(repo.queries, [('PENDING', 1), ('PENDING', 2), ('PENDING', 3)]);
+      expect(repo.headerCalls.every((query) => query['size'] == 20), isTrue);
+      expect(table().currentPage, 1);
+      expect(table().totalPages, 1);
       await tester.tap(
         find.byKey(const ValueKey('master-column-filter-status')),
       );
@@ -187,6 +200,8 @@ void main() {
       expect(repo.queries.first, ('RETURNED', 1));
       expect(table().currentPage, 1);
       expect(table().filters['status'], 'RETURNED');
+      expect(table().items, hasLength(60));
+      expect(table().items.every((row) => row.status == 'RETURNED'), isTrue);
       await tester.tap(
         find.byKey(const ValueKey('master-column-filter-status')),
       );

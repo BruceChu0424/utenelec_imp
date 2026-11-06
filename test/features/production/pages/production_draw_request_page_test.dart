@@ -39,6 +39,7 @@ import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import '../support/production_draw_request_fixture.dart';
 import '../../../support/audit_screenshot_support.dart';
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../helpers/badge_summary_fixture.dart';
 
 const _permissions = {
   Perm.productionExecutionView,
@@ -186,6 +187,7 @@ Future<ProviderContainer> _pump(
         productionDrawRequestRepositoryProvider.overrideWithValue(repository),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
+        fixedBadgeSummaryOverride(),
       ],
       child: MaterialApp.router(
         theme: theme,

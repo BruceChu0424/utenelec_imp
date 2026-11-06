@@ -399,6 +399,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
 
       final result = await readScopedPage(
         page,
+        idOf: (row) => row.key,
         slot: '_load',
         query: [
           pageRepository,

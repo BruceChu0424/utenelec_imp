@@ -119,11 +119,12 @@ class _SessionRepo extends StockCountRequestRepository {
       rows = rows.where((r) => (double.tryParse(r.qty) ?? 0) != 0).toList();
     }
     return PagedResult(
-      items: rows,
-      page: 1,
+      items: rows.skip((page - 1) * size).take(size).toList(),
+      page: page,
       size: size,
       total: rows.length,
-      totalPages: 1,
+      totalPages: (rows.length + size - 1) ~/ size,
+      readScopeVersion: 'stock-session-fixture-v1',
     );
   }
 
@@ -236,6 +237,25 @@ Future<void> _confirmSubmit(WidgetTester tester, {String? reason}) async {
 }
 
 void main() {
+  for (final defect in ['duplicate identity', 'scope drift']) {
+    testWidgets('盘点完整候选拒绝$defect后可重试且不伪造可提交数据', (tester) async {
+      final repo = _InvalidCompleteRepo(defect);
+      final router = await _mount(tester, repo, warehouseId: 'leaf-a');
+      addTearDown(router.dispose);
+      MasterDataTableView<CountStockRow> table() =>
+          tester.widget(find.byType(MasterDataTableView<CountStockRow>));
+      expect(table().items, isEmpty);
+      expect(table().error, isNotNull);
+      expect(repo.submissions, isEmpty);
+      repo.defective = false;
+      table().onRetry!();
+      await tester.pumpAndSettle();
+      expect(table().items.map((row) => row.key), ['$_screw|', '$_nut|']);
+      expect(table().error, isNull);
+      expect(repo.submissions, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets(
     'book header queries keep unsubmitted inputs and stay in the chosen warehouse',
     (tester) async {
@@ -326,7 +346,7 @@ void main() {
               .widget<MasterDataTableView<CountStockRow>>(
                 find.byType(MasterDataTableView<CountStockRow>),
               )
-              .onPageChange!(1);
+              .onRetry!();
           await tester.pumpAndSettle();
           await tester.enterText(field(_nut), '9');
         }
@@ -435,7 +455,7 @@ void main() {
     expect(repo.held, hasLength(2));
     repo.held.last.complete(_candidatePage([_row(_screw, qty: '10')], page: 1));
     await tester.pumpAndSettle();
-    repo.held.first.complete(_candidatePage([_row(_nut)], page: 2));
+    repo.held.first.complete(_candidatePage([_row(_nut)], page: 1));
     await tester.pumpAndSettle();
     final table = tester.widget<MasterDataTableView<CountStockRow>>(
       find.byType(MasterDataTableView<CountStockRow>),
@@ -462,7 +482,7 @@ void main() {
       if (oldFails) {
         repo.older.completeError(StateError('旧筛选响应失败'));
       } else {
-        repo.older.complete(_candidatePage([_row(_screw, qty: '10')], page: 2));
+        repo.older.complete(_candidatePage([_row(_screw, qty: '10')], page: 1));
       }
       await tester.pumpAndSettle();
       final table = tester.widget<MasterDataTableView<CountStockRow>>(
@@ -483,7 +503,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('全部物料'));
     await tester.pump();
-    repo.older.complete(_candidatePage([_row(_screw, qty: '10')], page: 2));
+    repo.older.complete(_candidatePage([_row(_screw, qty: '10')], page: 1));
     await tester.pump();
     final waiting = tester.widget<MasterDataTableView<CountStockRow>>(
       find.byType(MasterDataTableView<CountStockRow>),
@@ -705,7 +725,65 @@ void main() {
 PagedResult<CountStockRow> _candidatePage(
   List<CountStockRow> rows, {
   required int page,
-}) => PagedResult(items: rows, page: page, size: 50, total: 100, totalPages: 2);
+}) => PagedResult(
+  items: rows,
+  page: page,
+  size: 50,
+  total: rows.length,
+  totalPages: rows.isEmpty ? 0 : 1,
+  readScopeVersion: 'stock-session-fixture-v1',
+);
+
+class _InvalidCompleteRepo extends _SessionRepo {
+  _InvalidCompleteRepo(this.defect)
+    : super({
+        'leaf-a': [_row(_screw, qty: '10'), _row(_nut)],
+      });
+  final String defect;
+  bool defective = true;
+  @override
+  Future<PagedResult<CountStockRow>> candidates({
+    required String warehouseId,
+    String? keyword,
+    String? categoryId,
+    List<String> goodsIds = const [],
+    bool stockedOnly = false,
+    bool sheet = false,
+    int page = 1,
+    int size = 50,
+    bool includeRelated = false,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
+  }) async {
+    final result = await super.candidates(
+      warehouseId: warehouseId,
+      keyword: keyword,
+      categoryId: categoryId,
+      goodsIds: goodsIds,
+      stockedOnly: stockedOnly,
+      sheet: sheet,
+      page: page,
+      size: 1,
+      includeRelated: includeRelated,
+      columns: columns,
+      sort: sort,
+      ascending: ascending,
+    );
+    return PagedResult(
+      items: defective && defect == 'duplicate identity' && page == 2
+          ? [stock[warehouseId]!.first]
+          : result.items,
+      page: page,
+      size: result.size,
+      total: result.total,
+      totalPages: result.totalPages,
+      readScopeVersion: defective && defect == 'scope drift' && page == 2
+          ? 'stock-session-fixture-v2'
+          : result.readScopeVersion,
+    );
+  }
+}
 
 class _DelayedFilterRepo extends _SessionRepo {
   _DelayedFilterRepo()

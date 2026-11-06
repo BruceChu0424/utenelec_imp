@@ -247,6 +247,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
 
       final result = await readScopedPage(
         requestedPage,
+        idOf: (request) => request.id,
         slot: '_load',
         query: [
           pageRepository,
@@ -659,7 +660,28 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                   level: UtenInlineNoticeLevel.error,
                 ),
               Expanded(
-                child: _detail == null ? _list() : _detailBody(_detail!),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Keep this query's viewport and columns when opening a
+                    // detail. Visibility pauses tickers, focus and semantics;
+                    // authority/scope changes still retire the accepted rows.
+                    if (_detail == null || _page != null)
+                      Positioned.fill(
+                        key: const ValueKey('stock-review-queue-view'),
+                        child: Visibility(
+                          visible: _detail == null,
+                          maintainState: true,
+                          child: _list(),
+                        ),
+                      ),
+                    if (_detail != null)
+                      Positioned.fill(
+                        key: const ValueKey('stock-review-detail-view'),
+                        child: _detailBody(_detail!),
+                      ),
+                  ],
+                ),
               ),
             ],
           );

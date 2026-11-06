@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -41,34 +42,35 @@ typedef _Query = ({
 class _Repo implements StockCountRequestRepository {
   int pending = 1;
   int approvals = 0;
-  int totalPages = 1;
+  bool duplicateSecondBatch = false;
   final queries = <_Query>[];
   Completer<StockCountRequest>? pendingDetail;
   Completer<StockCountRequest>? pendingApproval;
 
-  StockCountRequest request([String status = 'PENDING']) => StockCountRequest(
-    id: 'r-1',
-    requestNo: 'PK20261001000001',
-    warehouseId: 'bin-1',
-    warehouseName: '注塑车间内料仓',
-    reviewRoute: 'WAREHOUSE',
-    status: status,
-    version: 1,
-    allowedActions: status == 'PENDING'
-        ? const ['APPROVE', 'REJECT']
-        : const [],
-    lines: const [
-      StockCountRequestLine(
-        goodsId: 'g-1',
-        goodsName: '塑料颗粒',
-        unitName: 'kg',
-        beforeQty: '0',
-        targetQty: '100',
-        deltaQty: '100',
-        currentQty: '0',
-      ),
-    ],
-  );
+  StockCountRequest request([String status = 'PENDING', int index = 1]) =>
+      StockCountRequest(
+        id: 'r-$index',
+        requestNo: 'PK20261001${index.toString().padLeft(6, '0')}',
+        warehouseId: 'bin-1',
+        warehouseName: '注塑车间内料仓',
+        reviewRoute: 'WAREHOUSE',
+        status: status,
+        version: 1,
+        allowedActions: status == 'PENDING'
+            ? const ['APPROVE', 'REJECT']
+            : const [],
+        lines: const [
+          StockCountRequestLine(
+            goodsId: 'g-1',
+            goodsName: '塑料颗粒',
+            unitName: 'kg',
+            beforeQty: '0',
+            targetQty: '100',
+            deltaQty: '100',
+            currentQty: '0',
+          ),
+        ],
+      );
 
   @override
   Future<PagedResult<StockCountRequest>> list({
@@ -83,8 +85,8 @@ class _Repo implements StockCountRequestRepository {
     String? sort,
     bool ascending = true,
   }) async {
-    expect(reviewRoute, 'WAREHOUSE');
-    expect(
+    expectSync(reviewRoute, 'WAREHOUSE');
+    expectSync(
       warehouseId,
       isNull,
     ); // Selected main warehouse must include children.
@@ -95,22 +97,34 @@ class _Repo implements StockCountRequestRepository {
       size: size,
       page: page,
     ));
+    final boundedSize = size.clamp(1, 50);
+    final offset = (page - 1) * boundedSize;
     return PagedResult(
-      items: pending > 0 ? [request()] : [],
+      items: [
+        for (
+          var index = offset;
+          index < pending && index < offset + boundedSize;
+          index++
+        )
+          request(
+            'PENDING',
+            duplicateSecondBatch && page == 2 && index == offset
+                ? 1
+                : index + 1,
+          ),
+      ],
       page: page,
-      size: size,
-      total: pending == 0
-          ? 0
-          : totalPages == 1
-          ? pending
-          : totalPages * size,
-      totalPages: pending == 0 ? 0 : totalPages,
+      size: boundedSize,
+      total: pending,
+      totalPages: (pending + boundedSize - 1) ~/ boundedSize,
+      readScopeVersion: 'stock-review-fixture-v1',
     );
   }
 
   @override
-  Future<StockCountRequest> detail(String id) async =>
-      pendingDetail == null ? request() : await pendingDetail!.future;
+  Future<StockCountRequest> detail(String id) async => pendingDetail == null
+      ? request('PENDING', int.parse(id.substring(2)))
+      : await pendingDetail!.future;
 
   @override
   Future<StockCountRequest> approve(
@@ -265,10 +279,33 @@ GoRouter _taskRouter() => GoRouter(
 );
 
 void main() {
-  testWidgets('真实顶栏箭头先返回原盘点队列并保留范围搜索页码，再返回仓库入口', (tester) async {
+  testWidgets('完整审核队列拒绝跨批重复申请身份且允许完整重试', (tester) async {
+    final repo = _Repo()
+      ..pending = 101
+      ..duplicateSecondBatch = true;
+    await _pump(tester, repo);
+    await _openReviewSection(tester);
+    MasterDataTableView<StockCountRequest> queue() =>
+        tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
+    expect(queue().items, isEmpty);
+    expect(find.byType(UtenInlineNotice), findsOneWidget);
+    expect(
+      tester.widget<UtenInlineNotice>(find.byType(UtenInlineNotice)).message,
+      contains('身份'),
+    );
+    expect(repo.approvals, 0);
+    repo.duplicateSecondBatch = false;
+    queue().onRetry!();
+    await tester.pumpAndSettle();
+    expect(queue().items, hasLength(101));
+    expect(queue().items.map((row) => row.id).toSet(), hasLength(101));
+    expect(find.byType(UtenInlineNotice), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('真实顶栏箭头和系统返回保留完整盘点队列的范围搜索与浏览行', (tester) async {
     final router = _taskRouter();
     addTearDown(router.dispose);
-    final repo = _Repo()..totalPages = 3;
+    final repo = _Repo()..pending = 101;
     await _pump(
       tester,
       repo,
@@ -278,21 +315,26 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'PK');
     await tester.pump(const Duration(milliseconds: 450));
     await _openReviewSection(tester);
-    final queue = tester.widget<MasterDataTableView<StockCountRequest>>(
-      find.byType(MasterDataTableView<StockCountRequest>),
+    final queueFinder = find.byType(MasterDataTableView<StockCountRequest>);
+    MasterDataTableView<StockCountRequest> queue() =>
+        tester.widget(queueFinder);
+    expect(queue().items, hasLength(101));
+    expect(queue().currentPage, 1);
+    expect(queue().totalPages, 1);
+    expect(find.byKey(const ValueKey('master-table-page-next')), findsNothing);
+    final browseRow = find.text(repo.request('PENDING', 51).requestNo);
+    final reads = repo.queries.length;
+    await tester.dragUntilVisible(
+      browseRow,
+      queueFinder,
+      const Offset(0, -400),
     );
-    await queue.onPageChange!(2);
     await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<MasterDataTableView<StockCountRequest>>(
-            find.byType(MasterDataTableView<StockCountRequest>),
-          )
-          .currentPage,
-      2,
-    );
-    expect(repo.queries.where((query) => query.page == 2), isNotEmpty);
-    await tester.tap(find.text('查看明细'));
+    expect(browseRow.hitTestable(), findsOneWidget);
+    expect(repo.queries, hasLength(reads));
+    await tester.tap(browseRow);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(browseRow);
     await tester.pumpAndSettle();
     expect(find.text('返回审核列表'), findsNothing);
     expect(find.byType(UtenBackButton), findsOneWidget);
@@ -308,31 +350,26 @@ void main() {
       find.byType(MasterDataTableView<StockCountRequestLine>),
       findsNothing,
     );
+    expect(queue().items, hasLength(101));
+    expect(queue().currentPage, 1);
     expect(
-      tester
-          .widget<MasterDataTableView<StockCountRequest>>(
-            find.byType(MasterDataTableView<StockCountRequest>),
-          )
-          .currentPage,
-      2,
+      browseRow.hitTestable(),
+      findsOneWidget,
+      reason: 'Returning restores the browsed request, not the first screen',
     );
     expect(repo.queries.last.keyword, 'PK');
     expect(repo.queries.last.warehouse, 'main-warehouse');
     expect(repo.queries.last.status, 'PENDING');
     // 系统返回与顶栏箭头使用同一条局部历史。
-    await tester.tap(find.text('查看明细'));
+    await tester.tap(browseRow);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(browseRow);
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
-    expect(
-      tester
-          .widget<MasterDataTableView<StockCountRequest>>(
-            find.byType(MasterDataTableView<StockCountRequest>),
-          )
-          .currentPage,
-      2,
-    );
+    expect(queue().currentPage, 1);
+    expect(browseRow.hitTestable(), findsOneWidget);
     await tester.tap(
       find.descendant(
         of: find.byType(UtenBackButton),

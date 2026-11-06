@@ -204,8 +204,25 @@ class UnapprovalFrozenAdoptionPostgresTest {
     private BigDecimal decimal(Owner o,UUID id,String field) throws Exception {return new BigDecimal(text("SELECT "+field+" FROM "+o.adapter().lines().table()+" WHERE id=?",id));}
     private UUID uuid(String sql,Object...args) throws Exception{return UUID.fromString(text(sql,args));}
     private long number(String sql,Object...args) throws Exception{return Long.parseLong(text(sql,args));}
-    private String text(String sql,Object...args) throws Exception {try(var q=db.prepareStatement(sql)){for(int i=0;i<args.length;i++)q.setObject(i+1,args[i]);try(var r=q.executeQuery()){assertThat(r.next()).isTrue();return r.getString(1);}}}
-    private void exec(String sql,Object...args) throws Exception {try(var q=db.prepareStatement(sql)){for(int i=0;i<args.length;i++)q.setObject(i+1,args[i]);q.execute();}}
+    private String text(String sql, Object... args) throws Exception {
+        try (var q = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                q.setObject(i + 1, args[i]);
+            }
+            try (var r = q.executeQuery()) {
+                assertThat(r.next()).isTrue();
+                return r.getString(1);
+            }
+        }
+    }
+    private void exec(String sql, Object... args) throws Exception {
+        try (var q = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                q.setObject(i + 1, args[i]);
+            }
+            q.execute();
+        }
+    }
     private void rejected(String state,Sql action) throws Exception {Savepoint point=db.setSavepoint();try{SQLException e=assertThrowsSql(action);assertThat(e.getSQLState()).isEqualTo(state);}finally{db.rollback(point);db.releaseSavepoint(point);}}
     private static SQLException assertThrowsSql(Sql action){return Assertions.assertThrows(SQLException.class,action::run);}
     @FunctionalInterface interface Sql{void run() throws Exception;}

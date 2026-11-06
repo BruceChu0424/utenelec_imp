@@ -1,6 +1,8 @@
 package com.uten.imp.features.warehouse.materialbin;
 
 import com.uten.imp.application.port.WorkshopMaterialChoicePort;
+import com.uten.imp.common.inventory.PeriodicMaterialCandidateSql;
+import com.uten.imp.common.inventory.PeriodicMaterialUnits;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -379,7 +381,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
         MapSqlParameterSource params = new MapSqlParameterSource("bin",
                 settings == null || settings.binWarehouseId() == null ? null : settings.binWarehouseId().toString());
         List<MaterialOption> out = new ArrayList<>();
-        for (Map<String, Object> row : db.queryForList("SELECT material.id,material.color_id,material.code,material.name,color.name AS color_name,EXISTS (SELECT 1 FROM v_workshop_material_bin_ledger ledger WHERE ledger.bin_warehouse_id=CAST(:bin AS uuid) AND ledger.goods_id=material.id) AS used "+com.uten.imp.features.master.goods.PeriodicMaterialCandidateSql.FROM+" ORDER BY used DESC,material.code,material.id", params)) {
+        for (Map<String, Object> row : db.queryForList("SELECT material.id,material.color_id,material.code,material.name,color.name AS color_name,EXISTS (SELECT 1 FROM v_workshop_material_bin_ledger ledger WHERE ledger.bin_warehouse_id=CAST(:bin AS uuid) AND ledger.goods_id=material.id) AS used "+PeriodicMaterialCandidateSql.FROM+" ORDER BY used DESC,material.code,material.id", params)) {
             out.add(new MaterialOption((UUID) row.get("id"), (UUID) row.get("color_id"), (String) row.get("code"),
                     (String) row.get("name"), (String) row.get("color_name")));
         }
@@ -389,9 +391,8 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
     /** BOM 单个重量换算成克: 基本单位是千克/公斤时乘 1000, 其它质量单位原样。 */
     static BigDecimal grams(BigDecimal qty, String unitName) {
         if (qty == null) return null;
-        String unit = unitName == null ? "" : unitName.strip().toLowerCase(java.util.Locale.ROOT);
-        if (Set.of("千克", "公斤", "kg", "kgs").contains(unit)) return qty.multiply(BigDecimal.valueOf(1000));
-        return qty;
+        BigDecimal factor = PeriodicMaterialUnits.gramsPerUnit(unitName);
+        return factor == null ? qty : qty.multiply(factor);
     }
 
     // ------------------------------------------------------------------ 换料 (段级)
@@ -597,13 +598,9 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
 
     /** 单个重量换算成克; 只认千克、克两类质量单位 (按单位名), 其它单位给空, 不猜。 */
     static BigDecimal gramsOrNull(BigDecimal qty, String unitName) {
-        if (qty == null || unitName == null) return null;
-        String unit = unitName.strip().toLowerCase(java.util.Locale.ROOT);
-        if (Set.of("千克", "公斤", "kg", "kgs").contains(unit)) {
-            return qty.multiply(BigDecimal.valueOf(1000));
-        }
-        if (Set.of("克", "g", "公克").contains(unit)) return qty;
-        return null;
+        if (qty == null) return null;
+        BigDecimal factor = PeriodicMaterialUnits.gramsPerUnit(unitName);
+        return factor == null ? null : qty.multiply(factor);
     }
 
     private Boolean flag(String function, UUID goods) {

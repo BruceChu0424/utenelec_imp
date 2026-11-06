@@ -86,7 +86,7 @@ final class GoodsCostVersionQuery {
             predicates.add("s.updated_at>=:costVersionUpdatedFrom AND s.updated_at<:costVersionUpdatedTo");
             parameters.addValue("costVersionUpdatedFrom",updated.from()).addValue("costVersionUpdatedTo",updated.toExclusive());
         }
-        return predicates.isEmpty()?"TRUE":"("+String.join(") AND (",predicates)+")";
+        return predicates.isEmpty()?"TRUE":"("+String.join(" ) AND ( ",predicates)+")";
     }
     private static String filterDecimalSql(String source) {
         return "CASE WHEN length("+source+")<=256 AND ("+source+") ~ '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$' THEN ("+source+")::numeric END";

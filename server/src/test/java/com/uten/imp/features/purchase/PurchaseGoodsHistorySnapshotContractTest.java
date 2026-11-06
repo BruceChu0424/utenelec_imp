@@ -189,12 +189,10 @@ class PurchaseGoodsHistorySnapshotContractTest {
                     .contains("goods_code_snapshot, goods_name_snapshot,"
                             + " goods_snapshot_source, goods_snapshot_locked_at");
         }
-        // V626/V627 重写后口径：申请/订货/退货三张 *_items 仍由 loader 写死 'LEGACY_IMPORT'；
-        // 收货明细（第 4 张）的商业字段与 goods_snapshot_source 改由 V627 权威来源投影
-        // fn_legacy_receipt_source_projection 给出（其中固化 'LEGACY_IMPORT'），loader 只
-        // 注册来源证明并引用 projected.*，故脚本内字面量 4 → 3。
+        // 收货(V627)与退货(V1093)均从注册过的原始来源投影取得快照身份；
+        // 申请/订货仍直接写入。两种投影都要核对生产者和 loader 的消费，不靠字面量计数代替来源。
         assertThat(occurrences(legacy, "'legacy_import'"))
-                .isEqualTo(ITEM_TABLES.size() - 1);
+                .isEqualTo(ITEM_TABLES.size() - 2);
         assertThat(legacy)
                 .contains("fn_register_legacy_receipt_import_source(")
                 .contains("fn_legacy_receipt_source_projection('purchase_item'")
@@ -202,6 +200,14 @@ class PurchaseGoodsHistorySnapshotContractTest {
         assertThat(compact(read(MAIN.resolve(
                 "resources/db/migration/V627__legacy_receipt_consideration_provenance.sql"))))
                 .contains("'goods_snapshot_source','legacy_import'");
+        assertThat(legacy)
+                .contains("fn_register_legacy_quantity_counter_source(")
+                .contains("proof.source_kind='purchase_return_item' and proof.source_legacy_id=s.legacy_id")
+                .contains("fn_legacy_quantity_counter_source_projection('purchase_return_item'");
+        assertThat(compact(read(MAIN.resolve(
+                "resources/db/migration/V1093__legacy_return_quantity_source_proofs.sql"))))
+                .contains("'goods_snapshot_source','legacy_import'")
+                .contains("return public.fn_legacy_return_quantity_source_projection(p_kind,s)");
 
         for (var fixture : DIRECT_INSERT_FIXTURES.entrySet()) {
             String java = read(Path.of("src/test/java/com/uten/imp").resolve(fixture.getKey()));

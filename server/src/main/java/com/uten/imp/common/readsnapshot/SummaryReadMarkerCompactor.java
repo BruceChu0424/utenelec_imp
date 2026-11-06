@@ -1,6 +1,7 @@
 package com.uten.imp.common.readsnapshot;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -10,6 +11,7 @@ import java.util.Objects;
 
 /** Metadata-only compaction; never takes or waits for a business-row lock. */
 @Component
+@Profile("!cloud")
 public class SummaryReadMarkerCompactor {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaction;

@@ -69,7 +69,12 @@ class WebMvcConfigInterceptorOrderTest {
         order.verify(registry).addInterceptor(export);
         org.mockito.Mockito.verify(registry,org.mockito.Mockito.times(1)).addInterceptor(any(NativeTaskReadScopeInterceptor.class));
         org.mockito.Mockito.verify(taskRegistration).addPathPatterns("/api/**");
-        org.mockito.Mockito.verify(businessRegistration).addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**");
+        org.mockito.Mockito.verify(businessRegistration).addPathPatterns(
+                "/api/expense-claims/**", "/api/platform-columns/expense_claim/**", "/api/platform-columns/expense_claim_item/**",
+                "/api/finance/asset-opening-groups/summaries", "/api/finance/accounting-imports/summaries",
+                "/api/finance/auxiliary-imports/summaries", "/api/finance/chart/imports/summaries",
+                "/api/finance/payable-statement-adjustments", "/api/finance/statement-documents/reviews/*/summary",
+                "/api/finance/statement-documents/reviews/*/original-table");
         org.mockito.Mockito.verify(masterRegistration).addPathPatterns("/api/master/**");
         org.mockito.Mockito.verify(printRegistration).addPathPatterns(
                 "/api/purchase/orders/*/print-data", "/api/subcontract/orders/*/print-data");

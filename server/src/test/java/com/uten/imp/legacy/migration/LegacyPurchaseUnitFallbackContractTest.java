@@ -22,13 +22,12 @@ class LegacyPurchaseUnitFallbackContractTest {
                 "migrate_purchase.sql");
         String sql = Files.readString(script, StandardCharsets.UTF_8);
 
-        // V624/V626/V627 重写后口径：申请/订货/退货三张 *_items 在 loader 内按
-        // NULLIF(unit_legacy_id, 0) 精确解析单位（原 4 处的第 4 处是收货明细，其单位
-        // 改由 V627 fn_legacy_receipt_source_projection 以同一 NULLIF 规则给出）；
+        // 申请/订货仍在 loader 精确解析单位；收货由 V627、退货由 V1093 的
+        // 不可变原始来源投影解析。逐一核对四条来源，不把投影迁移误判为单位缺失。
         // 「单位缺失且 rate=1 时回退货品基本单位」的确定性回退分支被有意删除——
         // 未解析单位保持 NULL，由『待治理/阻塞MRP』校验计数显式暴露，导入时绝不
         // 发明单位事实。
-        assertEquals(3, occurrences(sql, "NULLIF(s.unit_legacy_id, 0)"));
+        assertEquals(2, occurrences(sql, "NULLIF(s.unit_legacy_id, 0)"));
         assertEquals(0, occurrences(sql, "u.legacy_id = g.unit_legacy_id"));
         assertEquals(0, occurrences(sql, "COALESCE(s.unit_legacy_id, 0) = 0"));
         assertEquals(0, occurrences(sql, "COALESCE(s.unit_rate, 1)"));
@@ -47,6 +46,14 @@ class LegacyPurchaseUnitFallbackContractTest {
         assertTrue(projection.contains(
                 "unit:=(SELECT id FROM public.units "
                         + "WHERE legacy_id=NULLIF((s->>'unit_legacy_id')::integer,0));"));
+        assertTrue(sql.contains("fn_legacy_quantity_counter_source_projection('PURCHASE_RETURN_ITEM'"));
+        assertTrue(sql.contains("projected.unit_id, projected.unit_rate"));
+        assertTrue(sql.contains("proof.source_kind='PURCHASE_RETURN_ITEM' AND proof.source_legacy_id=s.legacy_id"));
+        String returns = Files.readString(Path.of(System.getProperty("user.dir"),
+                "src/main/resources/db/migration/V1093__legacy_return_quantity_source_proofs.sql"),
+                StandardCharsets.UTF_8);
+        assertTrue(returns.contains("'unit_id',(SELECT id FROM public.units WHERE legacy_id=NULLIF((s->>'unit_legacy_id')::integer,0))"));
+        assertTrue(returns.contains("RETURN public.fn_legacy_return_quantity_source_projection(p_kind,s)"));
     }
 
     private static int occurrences(String value, String needle) {

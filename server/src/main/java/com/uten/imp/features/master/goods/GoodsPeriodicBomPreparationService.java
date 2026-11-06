@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.common.inventory.PeriodicMaterialCandidateSql;
+
 import com.uten.imp.application.port.WorkshopMaterialChoicePort;
 import com.uten.imp.application.port.WorkshopMaterialChoicePort.MaterialRef;
 import com.uten.imp.application.port.WorkshopMaterialChoicePort.ProductChoice;

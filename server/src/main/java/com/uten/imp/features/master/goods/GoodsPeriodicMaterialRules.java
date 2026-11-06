@@ -8,7 +8,6 @@ import org.postgresql.util.PSQLException;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -36,13 +35,9 @@ public final class GoodsPeriodicMaterialRules {
     public static final String SHARED_NOT_IN_BOM = "色母这类辅料不写进 BOM, 按当期主料用量分到各产品";
     public static final String SHAPE_ONLY_UNIT_WEIGHT = "整批领料的料在 BOM 里只填单个重量, 不能设成按包装或固定批耗";
 
-    private static final BigDecimal THOUSAND = BigDecimal.valueOf(1000);
     private static final BigDecimal MIN_USUAL_GRAMS = new BigDecimal("0.1");
     private static final BigDecimal MAX_USUAL_GRAMS = BigDecimal.valueOf(5000);
     private static final BigDecimal WARN_RATIO = new BigDecimal("0.2");
-    /** 与内料仓 (认料单重展示) 同一组千克别名。 */
-    private static final Set<String> KILOGRAM_NAMES = Set.of("千克", "公斤", "kg", "kgs");
-    private static final Set<String> GRAM_NAMES = Set.of("克", "g", "公克");
     /** BOM 用量列的小数位 (goods_bom_items.qty NUMERIC(18,5))。 */
     public static final int QTY_SCALE = 5;
 
@@ -59,11 +54,7 @@ public final class GoodsPeriodicMaterialRules {
 
     /** 1 个基本单位是多少克; 不能按克换算的单位返回 null。 */
     public static BigDecimal gramsPerUnit(String unitName) {
-        if (unitName == null) return null;
-        String name = unitName.strip().toLowerCase(Locale.ROOT);
-        if (KILOGRAM_NAMES.contains(name)) return THOUSAND;
-        if (GRAM_NAMES.contains(name)) return BigDecimal.ONE;
-        return null;
+        return com.uten.imp.common.inventory.PeriodicMaterialUnits.gramsPerUnit(unitName);
     }
 
     public static BigDecimal gramsPerUnit(Unit unit) {

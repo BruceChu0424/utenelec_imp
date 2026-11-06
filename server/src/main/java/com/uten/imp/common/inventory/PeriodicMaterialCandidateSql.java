@@ -1,4 +1,4 @@
-package com.uten.imp.features.master.goods;
+package com.uten.imp.common.inventory;
 /** One candidate eligibility definition; source/prefill and command guards retain their own policies. */
 public final class PeriodicMaterialCandidateSql {
     private PeriodicMaterialCandidateSql() { }

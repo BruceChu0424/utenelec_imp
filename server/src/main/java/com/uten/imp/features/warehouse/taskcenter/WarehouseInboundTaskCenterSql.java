@@ -132,7 +132,7 @@ final class WarehouseInboundTaskCenterSql {
     }
 
     static String billNoFacets(String base) {
-        return base+"SELECT bill_no,COUNT(*) FROM inbound_rows "+predicate(true,false)
+        return base+" SELECT bill_no,COUNT(*) FROM inbound_rows "+predicate(true,false)
                 +" AND bill_no IS NOT NULL GROUP BY bill_no ORDER BY bill_no LIMIT 500";
     }
 

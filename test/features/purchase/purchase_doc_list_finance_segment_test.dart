@@ -73,7 +73,7 @@ void main() {
       // 深链落在「草稿」段：列表请求带 NONE 切片（在审单与退回件不算草稿）。
       expect(
         api.listQueries.any(
-          (q) => q['size'] == 20 && q['financeApproval'] == 'NONE',
+          (q) => q['size'] == 100 && q['financeApproval'] == 'NONE',
         ),
         isTrue,
         reason: '草稿段请求必须带 financeApproval=NONE',
@@ -133,7 +133,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('新建'), findsOneWidget);
       var listQuery = api.listQueries.lastWhere(
-        (q) => q['size'] == 20,
+        (q) => q['size'] == 100,
         orElse: () => const {},
       );
       expect(
@@ -149,7 +149,7 @@ void main() {
       await tester.tap(segment('等待财务审核'));
       await tester.pumpAndSettle();
       listQuery = api.listQueries.lastWhere(
-        (q) => q['size'] == 20,
+        (q) => q['size'] == 100,
         orElse: () => const {},
       );
       expect(
@@ -162,7 +162,7 @@ void main() {
       api.listQueries.clear();
       await tester.tap(segment('进行中'));
       await tester.pumpAndSettle();
-      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 100);
       expect(listQuery['financeApproval'], 'IN_PROGRESS');
       expect(listQuery.containsKey('status'), isFalse);
       MasterDataTableView<PurchaseDocListItem> table() =>
@@ -179,39 +179,39 @@ void main() {
       );
       table().onFilterChanged('status', 'REVIEW_PENDING');
       await tester.pumpAndSettle();
-      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 100);
       expect(listQuery['status'], 1);
       expect(listQuery['financeApproval'], 'PENDING');
       expect(listQuery['page'], 1);
       expect(table().filters['status'], 'REVIEW_PENDING');
       table().onFilterChanged('status', null);
       await tester.pumpAndSettle();
-      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 100);
       expect(listQuery['financeApproval'], 'IN_PROGRESS');
       expect(listQuery.containsKey('status'), isFalse);
       api.listQueries.clear();
       await tester.tap(segment('历史记录'));
       await tester.pumpAndSettle();
-      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 100);
       expect(listQuery.containsKey('financeApproval'), isFalse);
       expect(listQuery.containsKey('status'), isFalse);
       final dateFrom = listQuery['dateFrom'], dateTo = listQuery['dateTo'];
       table().onFilterChanged('status', 'REVERSED');
       await tester.pumpAndSettle();
-      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 100);
       expect(listQuery['status'], -1);
       expect(listQuery['originScope'], 'CURRENT');
       expect(listQuery['dateFrom'], dateFrom);
       expect(listQuery['dateTo'], dateTo);
       table().onFilterChanged('status', 'LEGACY');
       await tester.pumpAndSettle();
-      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 100);
       expect(listQuery['originScope'], 'LEGACY');
       expect(listQuery.containsKey('status'), isFalse);
       expect(listQuery.containsKey('financeApproval'), isFalse);
       table().onFilterChanged('status', null);
       await tester.pumpAndSettle();
-      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 100);
       expect(listQuery['originScope'], 'ALL');
       expect(listQuery['dateFrom'], dateFrom);
       expect(listQuery['dateTo'], dateTo);
@@ -262,7 +262,8 @@ class _OrderListApi extends ApiClient {
         },
       ],
       'page': 1,
-      'total': 2,
+      'size': query?['size'],
+      'total': 1,
       'totalPages': 1,
     };
   }

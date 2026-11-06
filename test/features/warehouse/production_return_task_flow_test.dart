@@ -57,7 +57,7 @@ class _TaskApi extends ApiClient {
         },
       ],
       'page': 1,
-      'size': 20,
+      'size': query?['size'],
       'total': 1,
       'totalPages': 1,
       'facets': {
@@ -248,9 +248,12 @@ void main() {
       expect(visible, hasLength(1));
       expect(visible.single['view'], 'ACTIVE');
       expect(visible.single['page'], 1);
+      expect(visible.single['size'], 100);
       expect(
         repository.taskApi.taskQueries.map((query) => query['source']),
-        unorderedEquals(['RETURN', 'FINISHED', 'OTHER', 'ALL']),
+        ['RETURN'],
+        reason:
+            'The active return source owns its full read; other sources are not predicted',
       );
       expect(find.text('待仓库收料'), findsWidgets);
       expect(find.text('未出库'), findsNothing);

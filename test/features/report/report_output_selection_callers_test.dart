@@ -133,9 +133,14 @@ void main() {
         await tester.pumpAndSettle();
         table().onSortChange!('goodsName', false);
         await tester.pumpAndSettle();
-        await table().onPageChange!(2);
-        await tester.pumpAndSettle();
+        expect(table().currentPage, 1);
+        expect(table().totalPages, 1);
         final physical = table().rowsController?.items ?? table().items;
+        expect(physical, hasLength(2));
+        expect(physical.map((row) => row['__lineId']), [
+          '${sample.domain}-line-1',
+          '${sample.domain}-line-2',
+        ]);
         expect(
           physical.singleWhere(
             (row) => row['__lineId'] == '${sample.domain}-line-2',

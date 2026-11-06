@@ -157,7 +157,7 @@ class SubcontractActualConsumptionUpgradePostgresTest {
                     ORDER BY tgname
                     """, row -> {triggersBefore.put(row.getString("relation")+"|"+row.getString("tgname"),row.getString("definition"));});
             TestFlyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-                    .locations("classpath:db/migration").target("1098").load().migrate();
+                    .locations("classpath:db/migration").target("1099").load().migrate();
             for(LegacySnapshot original:legacySnapshots) {
                 assertEquals(original.body(),rowWithoutConsumptionVersion(db,original.table(),original.id()),
                         "verified original quantity/unit/weight/source/adoption facts must survive without row updates");

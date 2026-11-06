@@ -5,7 +5,7 @@ DO $$ DECLARE definition TEXT; anchor TEXT; BEGIN
   definition:=pg_get_functiondef('fn_unapproval_frozen_fields(text,jsonb)'::regprocedure);
   anchor:=' RETURN result;';
   IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
-    RAISE EXCEPTION 'V1098 unapproval frozen-field return anchor differs';
+    RAISE EXCEPTION 'V1099 unapproval frozen-field return anchor differs';
   END IF;
   definition:=replace(definition,anchor,E' IF p_table=''subcontract_receipt_items'' THEN\n'
     ||E'  IF (p_source->>''material_consumption_version'')::integer IS NULL\n'

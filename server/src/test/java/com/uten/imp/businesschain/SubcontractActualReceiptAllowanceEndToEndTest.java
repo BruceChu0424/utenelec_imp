@@ -123,7 +123,10 @@ class SubcontractActualReceiptAllowanceEndToEndTest extends SubcontractFullChain
         amount("1","SELECT COUNT(*) FROM subcontract_receipt_material_consumptions source JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.receipt_id=? AND source.qty_doc=0 AND source.qty_base=0 AND source.round_credit_source_id IS NOT NULL AND source.reversal_of IS NULL",last);
         amount(vector.path("consumedQty").asText(),"SELECT SUM(consumed_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",c.item());
         stockIn(c,last,"last");
+        assertFalse(db.queryForObject("SELECT fn_subcontract_receipt_zero_increment_cost_complete(id) FROM subcontract_receipt_items WHERE receipt_id=?",Boolean.class,first));
+        assertTrue(db.queryForObject("SELECT fn_subcontract_receipt_zero_increment_cost_complete(id) FROM subcontract_receipt_items WHERE receipt_id=?",Boolean.class,last));
         assertFinal(first);assertFinal(last);
+        amount("0.00000000000000000000051","SELECT amount_local FROM stock_balances WHERE goods_id=? AND warehouse_id=?",c.product(),c.world().warehouseId());
         amount(vector.path("finishedTargetQty").asText(),"SELECT SUM(qty) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",c.product(),c.world().warehouseId());
         amount("0","SELECT COUNT(*) FROM stock_value_events event JOIN subcontract_receipt_material_consumptions source ON source.id=event.source_item_id JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.receipt_id=? AND event.source_doc_type IN('SUBCONTRACT_CONSUMED_MATERIAL','SUBCONTRACT_RECEIPT_MATERIAL')",last);
         String originals=db.queryForObject("SELECT jsonb_agg(to_jsonb(source) ORDER BY source.id)::text FROM subcontract_receipt_material_consumptions source JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.order_item_id=? AND source.reversal_of IS NULL",String.class,c.item());

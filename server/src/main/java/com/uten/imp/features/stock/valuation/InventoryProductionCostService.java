@@ -180,7 +180,7 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
         long pending=taskCount(revision);CostState next=pending>0?CostState.APPLYING:invalidBasis?CostState.PENDING_BASIS:
                 target.signum()==0?CostState.PENDING_CLASSIFICATION:
                 command.scopeComplete()&&outputQty.signum()>0&&inputs.isEmpty()
-                    &&"SUBCONTRACT_ORDER_NORMAL_LOSS".equals(object.get("source_kind"))?CostState.FINAL:CostState.PROVISIONAL;
+                    &&knownEmptyMaterialScope(object,command.executionSegmentId())?CostState.FINAL:CostState.PROVISIONAL;
         if(db.update("UPDATE stock_value_production_cost_objects SET version=:version,current_revision_id=:revision,state=:state WHERE execution_segment_id=:segment AND version=:previous",
                 args("segment",command.executionSegmentId(),"version",version,"revision",revision,"state",next.name(),"previous",command.expectedVersion()))!=1)
             throw conflict("生产成本方案版本已变化");
@@ -192,6 +192,13 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                 WHERE r.id=:revision AND d.input_node_id=(i->>'node')::uuid
                 """,args("revision",revision));
         return new Revised(revision,command.executionSegmentId(),version,pending,next,false);
+    }
+
+    private boolean knownEmptyMaterialScope(Map<String,Object> object,UUID scope) {
+        if("SUBCONTRACT_ORDER_NORMAL_LOSS".equals(object.get("source_kind")))return true;
+        return "SUBCONTRACT_RECEIPT_ITEM".equals(object.get("source_kind"))
+                &&Boolean.TRUE.equals(db.queryForObject("SELECT fn_subcontract_receipt_zero_increment_cost_complete(:id)",
+                        args("id",scope),Boolean.class));
     }
 
     private void createWholeTargetTasks(UUID revision){

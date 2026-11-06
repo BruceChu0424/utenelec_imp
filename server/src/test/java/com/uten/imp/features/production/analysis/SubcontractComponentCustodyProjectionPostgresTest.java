@@ -108,10 +108,10 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     FROM bounds b WHERE b.application_item_id = p_application_item_id), 0);
             $$;
         """);
-        MigratedProjectionSchema.createCurrentFunctions(new JdbcTemplate(new SingleConnectionDataSource(connection,true)),
-                "fn_subcontract_actual_receipt_material_qty");
         MigratedProjectionSchema.createCurrentColumns(new JdbcTemplate(new SingleConnectionDataSource(connection,true)),
                 "subcontract_receipt_material_consumptions");
+        MigratedProjectionSchema.createCurrentFunctions(new JdbcTemplate(new SingleConnectionDataSource(connection,true)),
+                "fn_subcontract_actual_receipt_material_qty","fn_subcontract_material_consumption_cohort_target");
         MigratedProjectionSchema.createCurrentTables(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
                 "preplan_aggregate_batches", "preplan_aggregate_batch_events");
         MigratedProjectionSchema.installImportedDocumentPolicy(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
@@ -890,16 +890,23 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         World w=new World(UUID.randomUUID());Parent parent=w.parent("parent",false);
         UUID child=w.child(parent,"child",w.goodsA);
         UUID action=w.action("1","0");UUID application=w.allocation(action,parent,"1");
-        UUID item=w.orderItem("1",application,"1");w.planLine(item,w.goodsA,"0.5","0.5");
+        UUID item=w.orderItem("1",application,"1"),planLine=w.planLine(item,w.goodsA,"0.5","0.5");
         w.stockedReceipt(item,"0.0001");
         UUID legacy;
         try(var statement=connection.prepareStatement("SELECT id FROM subcontract_receipt_items WHERE order_item_id=?")) {
             statement.setObject(1,item);try(var rows=statement.executeQuery()){rows.next();legacy=rows.getObject(1,UUID.class);}
         }
         w.stockedReceipt(item,"0.0001");
+        // V1 owns a cumulative target, not the sum of per-receipt ceilings:
+        // CEIL4((.0001+.0001)*.5)=.0001, rather than .0001+.0001.
+        try(var query=connection.prepareStatement("SELECT fn_subcontract_material_consumption_cohort_target(?,1,NULL::uuid)")) {
+            query.setObject(1,planLine);try(var result=query.executeQuery()) {
+                assertThat(result.next()).isTrue();assertThat(result.getBigDecimal(1)).isEqualByComparingTo("0.0001");
+            }
+        }
         BigDecimal[] historical=preparation(w.analysis,child);
-        assertThat(historical[0]).isEqualByComparingTo("0.4998");
-        assertThat(historical[2]).isEqualByComparingTo("0.4998");
+        assertThat(historical[0]).isEqualByComparingTo("0.4999");
+        assertThat(historical[2]).isEqualByComparingTo("0.4999");
         update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE order_item_id=? AND id<>?",item,legacy);
         BigDecimal[] fact=preparation(w.analysis,child);
         // V1 consumes CEIL4(.0001*.5)=.0001, V2 consumes CEIL24=.00005.

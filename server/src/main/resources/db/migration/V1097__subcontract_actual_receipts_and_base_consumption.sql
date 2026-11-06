@@ -14,6 +14,9 @@ WHERE receipt.id=item.receipt_id AND receipt.status=0 AND NOT receipt.is_deleted
   AND NOT EXISTS(SELECT 1 FROM document_unapprovals lineage WHERE lineage.family='subcontractReceipt'
       AND (lineage.draft_id=receipt.id OR lineage.original_id=receipt.id))
   AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source WHERE source.receipt_item_id=item.id);
+-- Drain real deferred validations before changing the populated receipt relation (same contract as V961).
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
 ALTER TABLE subcontract_receipt_items ALTER COLUMN material_consumption_version SET DEFAULT 2,
   ALTER COLUMN material_consumption_version SET NOT NULL,
   ADD CONSTRAINT subcontract_receipt_consumption_version_chk CHECK(material_consumption_version IN(1,2));
@@ -52,7 +55,7 @@ DO $$ DECLARE rule RECORD; changed INTEGER:=0; BEGIN
     EXECUTE format('ALTER TABLE subcontract_receipt_material_consumptions DROP CONSTRAINT %I',rule.conname);
     changed:=changed+1;
   END LOOP;
-  IF changed<>2 THEN RAISE EXCEPTION 'V1096 expected the two original positive consumption quantity checks'; END IF;
+  IF changed<>2 THEN RAISE EXCEPTION 'V1097 expected the two original positive consumption quantity checks'; END IF;
 END $$;
 ALTER TABLE subcontract_receipt_material_consumptions ADD CONSTRAINT subcontract_consumption_actual_zero_proof_chk CHECK(
   (qty_doc>0 AND qty_base>0 AND round_credit_source_id IS NULL)
@@ -289,6 +292,29 @@ RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
         END
 $$;
 
+-- Only an explicitly proven all-material zero increment is a known empty cost
+-- input scope. Missing consumption, own-material basis zero and historical
+-- estimate scopes never gain a zero-cost completeness default.
+CREATE FUNCTION fn_subcontract_receipt_zero_increment_cost_complete(p_receipt_item UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(item.material_consumption_version=2 AND item.material_basis_qty>0
+    AND head.status=1 AND NOT head.is_deleted AND NOT item.is_deleted
+    AND fn_subcontract_receipt_material_complete(item.id)
+    AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source
+      WHERE source.receipt_item_id=item.id AND source.reversal_of IS NULL AND source.qty_doc>0
+        AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=source.id))
+    AND EXISTS(SELECT 1 FROM subcontract_material_plan_items plan WHERE plan.order_item_id=item.order_item_id AND NOT plan.is_deleted)
+    AND NOT EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
+      WHERE plan.order_item_id=item.order_item_id AND NOT plan.is_deleted AND NOT EXISTS(
+        SELECT 1 FROM subcontract_receipt_material_consumptions source
+        JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id AND issued.plan_item_id=plan.id
+        WHERE source.receipt_item_id=item.id AND source.reversal_of IS NULL AND source.qty_doc=0
+          AND source.qty_base=0 AND source.round_credit_source_id IS NOT NULL
+          AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=source.id))),FALSE)
+  FROM subcontract_receipt_items item JOIN subcontract_receipts head ON head.id=item.receipt_id
+  WHERE item.id=p_receipt_item
+$$;
+
 CREATE OR REPLACE FUNCTION fn_assert_subcontract_target_outbound_receipt(p_order_item_id UUID)
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
@@ -475,7 +501,7 @@ DO $$ DECLARE source TEXT; anchor TEXT; BEGIN
   source:=pg_get_functiondef('fn_guard_procurement_received_with_arrival_allowance()'::regprocedure);
   anchor:='+ v_iqc_replacement;';
   IF (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN
-    RAISE EXCEPTION 'V1096 received capacity anchor differs';
+    RAISE EXCEPTION 'V1097 received capacity anchor differs';
   END IF;
   source:=replace(source,anchor,anchor||E'\n  IF TG_ARGV[0]=''SUBCONTRACT'' THEN\n'
     ||E'    v_capacity:=v_capacity+GREATEST(fn_subcontract_normal_receipt_quantity_limit(COALESCE(NEW.qty,0),(to_jsonb(NEW)->>''allowed_loss_pct'')::numeric)-COALESCE(NEW.qty,0),0);\n'
@@ -484,7 +510,7 @@ DO $$ DECLARE source TEXT; anchor TEXT; BEGIN
   source:=pg_get_functiondef('fn_guard_return_allowance()'::regprocedure);
   anchor:='v_rate := COALESCE((v_new_row->>''unit_rate'')::numeric,1);';
   IF (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN
-    RAISE EXCEPTION 'V1096 return allowance capacity anchor differs';
+    RAISE EXCEPTION 'V1097 return allowance capacity anchor differs';
   END IF;
   EXECUTE replace(source,anchor,anchor||E'\n'
     ||E'            IF TG_TABLE_NAME=''subcontract_order_items'' THEN\n'

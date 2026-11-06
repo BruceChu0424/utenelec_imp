@@ -32,9 +32,9 @@
     "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteService.java",
     "server/src/main/java/com/uten/imp/common/finance/SubcontractReceiptAllowance.java",
     "server/src/main/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreview.java",
-    "server/src/main/resources/db/migration/V1096__subcontract_actual_receipts_and_base_consumption.sql",
-    "server/src/main/resources/db/migration/V1097__subcontract_finished_target_short_delivery.sql",
-    "server/src/main/resources/db/migration/V1098__inherit_subcontract_receipt_consumption_version.sql"
+    "server/src/main/resources/db/migration/V1097__subcontract_actual_receipts_and_base_consumption.sql",
+    "server/src/main/resources/db/migration/V1098__subcontract_finished_target_short_delivery.sql",
+    "server/src/main/resources/db/migration/V1099__inherit_subcontract_receipt_consumption_version.sql"
   ],
   "nativeConsumers": [],
   "nativeImplementationComplete": false,

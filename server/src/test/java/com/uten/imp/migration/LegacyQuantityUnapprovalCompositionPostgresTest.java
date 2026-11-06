@@ -65,7 +65,22 @@ class LegacyQuantityUnapprovalCompositionPostgresTest {
                 TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).load().migrate();
                 assertThat(definition(db,"fn_guard_document_quantity_adoption()")).isEqualTo(quantityAfter);
                 assertThat(definition(db,"fn_validate_receipt_weight_adoption()")).isEqualTo(weightAfter);
-                assertThat(financeAuthority(db)).isEqualTo(preservedFinance);
+                var finalFinance=financeAuthority(db);
+                String frozenFunction="fn_unapproval_frozen_fields(text,jsonb)";
+                // Independent literal oracle: V1099 may only append this inheritance check.
+                // All original function bodies, owners, ACLs and function settings remain exact.
+                String consumptionInheritance=" IF p_table='subcontract_receipt_items' THEN\n"
+                        +"  IF (p_source->>'material_consumption_version')::integer IS NULL\n"
+                        +"    OR (p_source->>'material_consumption_version')::integer NOT IN(1,2) THEN\n"
+                        +"   RAISE EXCEPTION 'original subcontract consumption rule is unavailable' USING ERRCODE='55000'; END IF;\n"
+                        +"  result:=result||jsonb_build_object('material_consumption_version',p_source->'material_consumption_version');\n"
+                        +" END IF;\n";
+                assertThat(preservedFinance.get(frozenFunction)).doesNotContain(consumptionInheritance);
+                assertThat(occurrences(finalFinance.get(frozenFunction),consumptionInheritance)).isEqualTo(1);
+                var unchangedFinance=new java.util.LinkedHashMap<>(finalFinance);
+                unchangedFinance.put(frozenFunction,finalFinance.get(frozenFunction).replace(consumptionInheritance,""));
+                assertThat(unchangedFinance).isEqualTo(preservedFinance);
+                assertConsumptionVersionInheritance(db);
                 System.out.println("legacy-unapproval-runtime-definition-proof quantity-main="+sha(quantityBefore)
                         +" quantity-composed="+sha(quantityAfter)+" weight-main="+sha(weightBefore)+" weight-composed="+sha(weightAfter));
             }
@@ -89,6 +104,27 @@ class LegacyQuantityUnapprovalCompositionPostgresTest {
             }
         }
         return facts;
+    }
+    private static void assertConsumptionVersionInheritance(Connection db) throws Exception {
+        for(int version:new int[]{1,2}) {
+            try(var sql=db.prepareStatement("SELECT fn_unapproval_frozen_fields('subcontract_receipt_items',?::jsonb)=?::jsonb")) {
+                String source="{\"material_consumption_version\":"+version+"}";
+                sql.setString(1,source);sql.setString(2,source);
+                try(var row=sql.executeQuery()){assertThat(row.next()).isTrue();assertThat(row.getBoolean(1)).as("successor inherits original consumption version %s",version).isTrue();}
+            }
+        }
+        for(String invalid:java.util.List.of("{}","{\"material_consumption_version\":null}",
+                "{\"material_consumption_version\":0}","{\"material_consumption_version\":3}")) {
+            var rejected=org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,()->{
+                try(var sql=db.prepareStatement("SELECT fn_unapproval_frozen_fields('subcontract_receipt_items',?::jsonb)")) {
+                    sql.setString(1,invalid);sql.executeQuery();
+                }
+            });
+            assertThat(rejected.getSQLState()).as("missing or unsupported original rule must not be invented").isEqualTo("55000");
+        }
+        try(var sql=db.prepareStatement("SELECT fn_unapproval_frozen_fields('purchase_receipt_items','{\"material_consumption_version\":1}'::jsonb)='{}'::jsonb")) {
+            try(var row=sql.executeQuery()){assertThat(row.next()).isTrue();assertThat(row.getBoolean(1)).as("unrelated receipt families retain their own frozen fields").isTrue();}
+        }
     }
     private static int occurrences(String value,String needle){return (value.length()-value.replace(needle,"").length())/needle.length();}
     private static String sha(String text) throws Exception{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));}

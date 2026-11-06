@@ -99,6 +99,8 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   bool _ownsController = false;
   late String _appliedText;
   late String _inputText;
+  String? _controllerInputPending;
+  String? _controllerAppliedBeforeInput;
   late final _searchLifecycle = PageSearchLifecycle(
     onLeave: _cancelPendingSearch,
     onReturn: _clear,
@@ -147,6 +149,8 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
           text: text,
           selection: TextSelection.collapsed(offset: text.length),
         );
+        _controllerInputPending = null;
+        _controllerAppliedBeforeInput = null;
         _inputText = text;
         widget.onInputChanged?.call(text);
         _appliedText = text;
@@ -203,20 +207,38 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     super.dispose();
   }
 
-  /// controller 值变化：只负责「组合结束但文本没变」的补发（TextField.onChanged
-  /// 只在文本变化时触发，覆盖不了这种结束方式）。程序赋值不会走到这里需要补发
-  /// 的路径——它们发生时 [_heldByComposition] 已被调用方清空。
+  /// 外部控制器复位只更新本地基线并取消旧防抖，不替宿主发查询。
+  /// 用户编辑随后会同步走 onChanged，仍须明确派发；组合原样上屏则由此补发。
   void _onControllerValueChanged() {
     final held = _heldByComposition;
+    final text = _controller.text;
+    if (text != _inputText) {
+      final applied = _appliedText;
+      _cancelPendingSearch();
+      _appliedText = _inputText = text;
+      _controllerInputPending = text;
+      _controllerAppliedBeforeInput = applied;
+      setState(() {});
+    }
     if (held == null) return;
     final composing = _controller.value.composing;
     if (composing.isValid && !composing.isCollapsed) return;
-    if (_controller.text != held) return;
+    if (text != held) return;
     _heldByComposition = null;
-    _dispatch(held);
+    _controllerInputPending = null;
+    _controllerAppliedBeforeInput = null;
+    _dispatch(held, controllerInput: true);
   }
 
   void _onChanged(String value) {
+    final controllerInput = _controllerInputPending == value;
+    if (controllerInput) {
+      // This was a user edit, so the previous applied query remains active
+      // until its replacement is actually submitted (including a deletion).
+      _appliedText = _controllerAppliedBeforeInput ?? _appliedText;
+    }
+    _controllerInputPending = null;
+    _controllerAppliedBeforeInput = null;
     final composing = _controller.value.composing;
     if (composing.isValid && !composing.isCollapsed) {
       // 拼音组合中：挂起回调（不清文本），等组合结束统一派发。
@@ -226,17 +248,20 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       return;
     }
     _heldByComposition = null;
-    _dispatch(value);
+    _dispatch(value, controllerInput: controllerInput);
   }
 
-  void _dispatch(String value) {
-    if (_inputText == value &&
+  void _dispatch(String value, {bool controllerInput = false}) {
+    if (!controllerInput &&
+        _inputText == value &&
         (_appliedText == value || (_debounce?.isActive ?? false))) {
       return;
     }
     _debounce?.cancel();
     _inputText = value;
     widget.onInputChanged?.call(value);
+    // The owner can synchronously retire/replace this input from its callback.
+    if (_controller.text != value) return;
     _debounce = Timer(widget.debounce, () {
       if (!mounted) return;
       if (widget.onChanged != null) {
@@ -269,6 +294,8 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   void _cancelPendingSearch() {
     _debounce?.cancel();
     _heldByComposition = null;
+    _controllerInputPending = null;
+    _controllerAppliedBeforeInput = null;
   }
 
   void _clear() {

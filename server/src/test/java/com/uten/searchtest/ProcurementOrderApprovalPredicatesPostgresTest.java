@@ -34,7 +34,13 @@ class ProcurementOrderApprovalPredicatesPostgresTest {
         c.getProperties().put("hibernate.connection.datasource",ds);
         c.setStatementInspector(sql->{SQL.add(sql);return sql;});factory=c.buildSessionFactory();
     }
-    @AfterAll static void stop(){if(factory!=null)factory.close();PG.stop();}
+    @AfterAll
+    static void stop() {
+        if (factory != null) {
+            factory.close();
+        }
+        PG.stop();
+    }
     @BeforeEach void clear(){jdbc.execute("TRUNCATE approval_predicate_orders,procurement_order_approval_cases");SQL.clear();}
 
     @Test void anyOrderPendingAndLatestOrderRejectionRetainTypeAndRequestBoundaries() {

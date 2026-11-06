@@ -481,7 +481,7 @@ class GoodsBomEditEndToEndTest {
         BomEditRequest initial=draft(List.of(create),root,shared);
         var initialPreview=edits.preview(root,initial);
         assertEquals(1,initialPreview.warnings().size());
-        assertTrue(initialPreview.warnings().getFirst().contains("25%"));
+        assertTrue(initialPreview.warnings().getFirst().contains("单个重量 12.5 克与货品资料单重 10 克相差超过20%"));
         assertTrue(bom.list(shared).isEmpty(),"a warning preview must still roll back all recipe writes");
         BomItemSaveRequest edited=new BomItemSaveRequest();
         edited.setComponentGoodsId(material); edited.setUnitWeightGrams(new BigDecimal("15"));
@@ -489,7 +489,7 @@ class GoodsBomEditEndToEndTest {
                 new BomEditRequest.Operation(UPDATE,shared,temp,null,edited,null,null)),initial.snapshots(),null,null);
         var updatedPreview=edits.preview(root,updated);
         assertEquals(1,updatedPreview.warnings().size());
-        assertTrue(updatedPreview.warnings().getFirst().contains("50%"));
+        assertTrue(updatedPreview.warnings().getFirst().contains("单个重量 15 克与货品资料单重 10 克相差超过20%"));
         assertFalse(updatedPreview.warnings().getFirst().contains("12.5"),"an intermediate draft warning must not survive a later edit");
         edits.commit(root,confirmed(updated,updatedPreview));
         assertEquals(0,new BigDecimal(".015").compareTo(bom.list(shared).getFirst().getQty()));

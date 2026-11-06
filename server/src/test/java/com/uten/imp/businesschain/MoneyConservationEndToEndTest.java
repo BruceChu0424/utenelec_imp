@@ -51,6 +51,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @AutoConfigureMockMvc(print = org.springframework.boot.webmvc.test.autoconfigure.MockMvcPrint.NONE)
 @Import(ProductionJdbcMeasurement.Configuration.class)
 class MoneyConservationEndToEndTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "money.cumulative-share", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"),
+                "finance.sales-order.future-original", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"),
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"),
+                "quantity.share", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "DOWN"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -360,6 +371,9 @@ class MoneyConservationEndToEndTest {
                     status -> com.uten.imp.common.finance.ProcurementReturnQualityPolicy.lockAndLimit(
                             em, "PURCHASE", receiptItem, BigDecimal.ONE, new BigDecimal("3"),
                             new BigDecimal("100"), new BigDecimal("100")));
+            assertThat(returnable.qty()).as("24位向下保留的箱数不得超出已入库的2件")
+                    .isEqualByComparingTo("0.666666666666666666666666");
+            assertThat(returnable.qty().multiply(new BigDecimal("3"))).isLessThanOrEqualTo(new BigDecimal("2"));
             assertThat(returnable.amountOriginal()).as("可退额度 = 收货金额 − 不合格金额 = 放行价值")
                     .isEqualByComparingTo(released);
             assertThat(returnable.amountLocal()).isEqualByComparingTo(released);
@@ -434,6 +448,7 @@ class MoneyConservationEndToEndTest {
     private UUID producedOrderItem(FullChainEndToEndTest.World w, String qty) {
         Object production = ReflectionTestUtils.invokeMethod(fixture, "produceFinishedFromOpeningInputs",
                 w, w.goodsA(), qty, qty);
+        ReflectionTestUtils.invokeMethod(fixture, "drainCosts", w);
         return ReflectionTestUtils.invokeMethod(production, "orderItemId");
     }
 
